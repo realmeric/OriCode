@@ -292,8 +292,8 @@ Commit: 53ef75f
 
 #### K-31 · Release v0.4
 Tag `v0.4.0`.
-Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.4.0, launched with an empty environment, answered hello and ran a Write in Accept edits mode that created the file. No event stored in the last hour is missing its thread, so the K-22 fix holds.
-Commit: pending
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.4.0, launched with an empty environment, answered hello and ran a Write in Accept edits mode that created the file. The store still has 8 text events without a thread, all written between 22:13 and 22:32, before the K-22 fix; none written since is missing one.
+Commit: a3b5431
 
 
 ## Exceptions
