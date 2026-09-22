@@ -91,14 +91,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-### Todo: v0.1 "One window"
-
-The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
-
-#### K-12 · Release v0.1
-`make app`: Release build, ad-hoc code signature, copy to `/Applications`. `CHANGELOG.md` with a v0.1.0 entry written from the Done column. Tag `v0.1.0`.
-Done when: OriCode is in the Dock, opened from there with Terminal closed, and holds a conversation with an approval in it.
-
 ### Backlog: v0.2 "See what it did"
 
 #### K-13 · Diff cards
@@ -256,6 +248,12 @@ Commit: cf8974b
 Native `.commands` (K-05 already added File › New Thread ⌘N and Add Project… ⌘O, and a Threads menu with ⌘1–9, a Project submenu and Delete Thread; this card finishes the set): File › New Thread ⌘N; View › Threads ⌘\; Threads › 1–9 as ⌘1–9; Thread › Stop ⌘.; and the standard App › Settings… ⌘,. A native `Settings` scene with three tabs: General (Glass slider, Node path with Automatic / Choose…), Notifications (one toggle, wired in K-15; until then it says "Coming in 0.2"), About (version, a link to the repo).
 Done when: every item in the menu bar works from the keyboard, and Settings opens as a real macOS settings window with the slider changing the glass live.
 Notes: The thread list and Stop share one Thread menu instead of separate Threads and Thread menus, since both act on threads. The Notifications toggle is live from the start because K-15 is next in line. About links to the local checkout (baked into Info.plist as OriCodeSource), because there's no public repo to link to yet. Checked: Settings opens as a native tabbed settings window, and the slider changed the stored glass from 0.30 to 0.345 with the main window redrawing. cmd-N, cmd-1…9 and cmd-period were pressed with real keys in earlier cards; cmd-comma and cmd-backslash couldn't be, because the agent types US keycodes into a Turkish-QWERTY-PC layout.
+Commit: 674da4d
+
+#### K-12 · Release v0.1
+`make app`: Release build, ad-hoc code signature, copy to `/Applications`. `CHANGELOG.md` with a v0.1.0 entry written from the Done column. Tag `v0.1.0`.
+Done when: OriCode is in the Dock, opened from there with Terminal closed, and holds a conversation with an approval in it.
+Notes: Checked by launching /Applications/OriCode.app with an empty environment, the way the Dock does, and allowing an edit from the card. Getting there fixed three things: views read conversations but never create them (creating one inside RootView.body crashed SwiftUI with an AttributeGraph precondition when cmd-1 was pressed), the engine exits when the app dies instead of waiting on a turn nobody can see, and the CLI starts with MCP_CONNECTION_NONBLOCKING so a slow MCP server in the user's settings can't hold the first turn. The pin shortcut uses localization .custom, because automatic localization put it on cmd-comma on Turkish-QWERTY-PC, on top of Settings.
 Commit: pending
 
 

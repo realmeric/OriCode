@@ -65,6 +65,9 @@ export function cleanEnvironment(): Record<string, string | undefined> {
     environment[key] = value;
   }
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "oricode/0.1.0";
+  // Without it the first turn waits for every MCP server in the user's settings to connect,
+  // and one started with `npm exec …@latest` can take minutes. The desktop app sets it too.
+  environment.MCP_CONNECTION_NONBLOCKING ??= "true";
   return environment;
 }
 

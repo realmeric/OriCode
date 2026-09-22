@@ -54,7 +54,10 @@ final class AppModel {
     }
 
     var selectedChatID: UUID? {
-        didSet { UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat") }
+        didSet {
+            UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
+            loadSelectedConversation()
+        }
     }
 
     var lastPermissionMode: String {
@@ -77,6 +80,14 @@ final class AppModel {
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
+        loadSelectedConversation()
+    }
+
+    private func loadSelectedConversation() {
+        guard let id = selectedChatID, conversations[id] == nil,
+              let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
+        else { return }
+        conversations[id] = Conversation(chat: chat, context: context)
     }
 
     func say(_ line: String) {

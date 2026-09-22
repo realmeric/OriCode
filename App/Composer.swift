@@ -73,7 +73,7 @@ struct Composer: View {
     }
 
     private var waitingAsk: PendingAsk? {
-        model.chat.flatMap { model.conversation(for: $0).waitingAsk }
+        model.currentConversation?.waitingAsk
     }
 
     private var waitingPermission: PendingAsk? {

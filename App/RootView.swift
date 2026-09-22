@@ -9,7 +9,7 @@ struct RootView: View {
             ZStack {
                 Color.black.opacity(glass)
                     .ignoresSafeArea()
-                let conversation = model.chat.map(model.conversation(for:))
+                let conversation = model.currentConversation
                 VStack(spacing: 0) {
                     if let conversation, let chat = model.chat, !conversation.items.isEmpty {
                         TranscriptView(conversation: conversation, cwd: chat.cwd)

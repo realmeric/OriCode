@@ -110,7 +110,9 @@ input.on("line", (line) => {
 // Terminal still gets its answer), then take the CLIs down with us.
 input.on("close", () => {
   setInterval(() => {
-    if (inFlight > 0 || [...threads.values()].some((found) => found.isRunning)) return;
+    // Reparented to launchd means the app died; a turn nobody can see isn't worth finishing.
+    const orphaned = process.ppid === 1;
+    if (!orphaned && (inFlight > 0 || [...threads.values()].some((found) => found.isRunning))) return;
     for (const found of threads.values()) found.close();
     process.exit(0);
   }, 200);

@@ -12,14 +12,16 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut("o")
         }
         CommandGroup(before: .toolbar) {
+            // .custom keeps it on the backslash key; automatic localization moved it onto
+            // the comma on Turkish-QWERTY-PC, on top of Settings.
             Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
-                .keyboardShortcut("\\")
+                .keyboardShortcut("\\", modifiers: .command, localization: .custom)
             Divider()
         }
         CommandMenu("Thread") {
             Button("Stop") { model.stop() }
                 .keyboardShortcut(".")
-                .disabled(!(model.chat.map { model.conversation(for: $0).running } ?? false))
+                .disabled(!(model.currentConversation?.running ?? false))
             Divider()
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }

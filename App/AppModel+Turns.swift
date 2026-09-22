@@ -1,6 +1,13 @@
 import Foundation
 
 extension AppModel {
+    /// The selected thread's transcript, for views. Views only read; the conversation is
+    /// created when the thread is selected, because creating it inside a view update
+    /// mutates observed state mid-render and SwiftUI aborts.
+    var currentConversation: Conversation? {
+        selectedChatID.flatMap { conversations[$0] }
+    }
+
     func conversation(for chat: Chat) -> Conversation {
         if let existing = conversations[chat.id] { return existing }
         let created = Conversation(chat: chat, context: context)
