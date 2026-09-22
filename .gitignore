@@ -1,0 +1,5 @@
+OriCode.xcodeproj/
+build/
+engine/node_modules/
+.DS_Store
+xcuserdata/
