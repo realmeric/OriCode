@@ -64,11 +64,12 @@ Requests from the app: `{"id": 7, "method": "...", "params": {...}}`. The engine
 
 Methods:
 
-- `hello` → `{ version, models: [{ id, name, description, efforts: [...] }] }`. Models come from the SDK's supported-models call; if that isn't available, a list in `engine/models.ts` marked as a fallback.
+- `hello` → `{ version, models: [{ id, name, description, efforts: [...] }], claude, loggedIn }`. `claude` is the path of the CLI the engine found (null when there is none) and `loggedIn` comes from `claude auth status`, so the app can tell the three failures apart without touching a credential. Models come from the SDK's supported-models call; if that isn't available, a list in `engine/models.ts` marked as a fallback.
 - `send { threadId, sessionId?, cwd, text, model?, effort?, permissionMode, attachments? }` → `{ ok }`. Starts a turn; `sessionId` resumes an earlier one.
 - `interrupt { threadId }` → `{ ok }`.
 - `setMode { threadId, permissionMode }` → `{ applied }`. `applied` is false when the running turn can't take it and it will hold from the next one.
 - `answer { requestId, allow, updatedInput?, answers?, message? }` → `{ ok }`. Resolves a pending `ask`.
+- `close { threadId }` → `{ ok }`. Ends the thread's CLI process; the app calls it when a thread is deleted.
 
 Events, each with `threadId`:
 
@@ -77,7 +78,9 @@ Events, each with `threadId`:
 - `tool.use { toolUseId, name, input }`
 - `tool.result { toolUseId, content, isError }`
 - `ask { requestId, kind: "permission" | "question", tool, input, options? }`. Permission asks come from the SDK's `canUseTool`; `AskUserQuestion` arrives the same way and is answered through `updatedInput`.
-- `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite } }`
+- `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
+- `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
+- `compacted` when Claude Code compacted the conversation.
 - `error { message }`, and without a threadId when the engine itself is in trouble.
 
 Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypassPermissions`. The app names them Ask, Accept edits, Plan, Auto, Don't ask.
@@ -91,10 +94,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 ### Todo: v0.1 "One window"
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
-
-#### K-03 · Engine: the sidecar
-`engine/` with `main.ts`, the SDK, and a `tsconfig` used for checking only. Implements the wire protocol above end to end: `hello`, `send` with streaming (`includePartialMessages`), `interrupt`, `setMode`, `answer`, and every event. Tool calls, permission asks and `AskUserQuestion` go through `canUseTool`. `make engine` runs `tsc --noEmit` and `npm ci --omit=dev`.
-Done when: from Terminal, `printf '{"id":1,"method":"hello"}\n' | node engine/main.ts` answers with the models, and a `send` for "say hi" against any git repo streams `text` events followed by `turn.done` with a cost. No app involved yet.
 
 #### K-04 · Engine in the app
 `Engine` actor: finds `node`, spawns the bundled engine, reads stdout line by line into `Codable` events on an `AsyncStream`, matches replies to requests by id, restarts on exit with a one-line note in the window ("Engine stopped. Retry."). Distinguishes three failures and says each plainly: no `node`, no `claude` login, engine crashed.
@@ -235,6 +234,12 @@ Commit: 9c7de76
 Hidden title bar, full-size content view, transparent title bar, `isMovableByWindowBackground`. Behind-window material as the window background and the tint layer over it, bound to an `@AppStorage("glass")` value defaulting to 0.30. Start with SwiftUI's `containerBackground(_:for: .window)`; if the desktop doesn't come through strongly enough, drop to an `NSVisualEffectView` with `.hudWindow` material and `.behindWindow` blending, and note which one won in the card. Centred mark and the empty-state line.
 Done when: over a colourful wallpaper the window looks like the Codex reference: the wallpaper visible through it, the traffic lights alone at the top-left, no other chrome, and the window drags from any empty glass.
 Notes: NSVisualEffectView won (.hudWindow, .behindWindow, state .active): SwiftUI's containerBackground material goes flat grey whenever the window isn't key. The default size uses defaultWindowPlacement; a stale saved window state had been hiding it. Needs Meriç's eye: screen capture of other apps isn't available to the agent, so the wallpaper through the glass and dragging from empty glass were not seen.
+Commit: 5d14bef
+
+#### K-03 · Engine: the sidecar
+`engine/` with `main.ts`, the SDK, and a `tsconfig` used for checking only. Implements the wire protocol above end to end: `hello`, `send` with streaming (`includePartialMessages`), `interrupt`, `setMode`, `answer`, and every event. Tool calls, permission asks and `AskUserQuestion` go through `canUseTool`. `make engine` runs `tsc --noEmit` and `npm ci --omit=dev`.
+Done when: from Terminal, `printf '{"id":1,"method":"hello"}\n' | node engine/main.ts` answers with the models, and a `send` for "say hi" against any git repo streams `text` events followed by `turn.done` with a cost. No app involved yet.
+Notes: One long-lived SDK query per thread, fed from an open input queue, which is what lets setMode and interrupt reach a running turn. The engine runs the user's own claude (pathToClaudeCodeExecutable) and stages without the SDK's optional 208 MB bundled CLI, so the engine is 47 MB. The wire protocol gained hello's claude and loggedIn, a close method, ask.cancelled, compacted and turn.done's context; the Architecture section says so. make test covers the protocol without starting Claude.
 Commit: pending
 
 
