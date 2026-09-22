@@ -116,6 +116,7 @@ struct ItemView: View {
             Markdown(text)
                 .markdownTheme(.glass)
                 .markdownSoftBreakMode(.lineBreak)
+                .markdownCodeSyntaxHighlighter(TranscriptCodeHighlighter.shared)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .thinking(_, let text):

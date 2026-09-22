@@ -100,10 +100,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.4 "Hands"
 
-#### K-30 · Code colours
-Syntax colours in the transcript's code blocks, muted: keyword, string, number, comment, name, and nothing else.
-Done when: a Swift block reads as code and not as a rainbow.
-
 #### K-31 · Release v0.4
 Tag `v0.4.0`.
 
@@ -291,6 +287,12 @@ Commit: 7ac2491
 Typing `/` at the start of the composer lists the commands and skills the project and `~/.claude` define; picking one inserts it. Sent as text; the engine already understands them.
 Done when: `/compact` from the composer compacts.
 Notes: The engine's commands call asks the SDK for the commands and skills of a folder: from the thread's own CLI when it has one, otherwise from a probe with user, project and local settings, cached per folder (Architecture updated). The menu rises above the capsule while the message starts with / and has no space yet; arrows move, Tab or Return completes, and Return on a completed command sends it. Checked: /comp listed /compact first, and Return, Return compacted the thread from 50K tokens to 1K. Two older bugs came out on the way. The app read the engine's stdout and stderr with FileHandle.bytes, whose reads block on one shared queue, so a reply could sit in the pipe until the engine next wrote to stderr; that is the "first-turn stall" from K-06 and K-21, and both pipes now use readability handlers and one ordered stream. And footers showed running totals, because a resumed CLI's first result carries the session's saved total; send now passes costSoFar as the baseline, and a turn after a relaunch showed /bin/zsh.003 instead of the running /bin/zsh.016.
+Commit: 7971e8e
+
+#### K-30 · Code colours
+Syntax colours in the transcript's code blocks, muted: keyword, string, number, comment, name, and nothing else.
+Done when: a Swift block reads as code and not as a rainbow.
+Notes: Code blocks use the same five muted kinds as the file viewer, through a MarkdownUI CodeSyntaxHighlighter. MarkdownUI asks synchronously from the view update, so it has its own Highlightr behind a lock and keeps a small cache, since a streaming message asks for the same block on every delta. Checked with a Swift snippet from Haiku: faint comment, soft violet keywords, sand strings, peach numbers, and everything else in plain ink.
 Commit: pending
 
 
