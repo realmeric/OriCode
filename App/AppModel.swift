@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import SwiftData
@@ -35,6 +36,7 @@ final class AppModel {
     /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.
     var modeNote: String?
     let engine = Engine()
+    let notifier = Notifier()
     let context: ModelContext
     /// Bumped on every save so views reading fetched lists redraw.
     private(set) var revision = 0
@@ -57,6 +59,7 @@ final class AppModel {
         didSet {
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
             loadSelectedConversation()
+            if let selectedChatID { notifier.clear(chatID: selectedChatID) }
         }
     }
 
@@ -81,6 +84,16 @@ final class AppModel {
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
         loadSelectedConversation()
+        notifier.open = { [weak self] id in self?.open(chatID: id) }
+    }
+
+    func open(chatID: UUID) {
+        guard let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == chatID })).first,
+              let project = chat.project
+        else { return }
+        selectedProjectID = project.id
+        selectedChatID = chat.id
+        (NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true } ?? NSApp.mainWindow)?.makeKeyAndOrderFront(nil)
     }
 
     private func loadSelectedConversation() {

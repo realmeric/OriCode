@@ -93,10 +93,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.2 "See what it did"
 
-#### K-15 · Notifications and badge
-`UserNotifications`: when a turn ends or asks while the window isn't key, one notification with the thread's title; clicking it opens that thread. Dock badge counts threads waiting on you. The Settings toggle from K-11 goes live.
-Done when: start a long turn, switch to another app, and the notification arrives and lands you on the right thread.
-
 #### K-16 · Titles
 A thread's title is its first message, trimmed to 60 characters, until renamed. Double-click a drawer row to rename inline with a native `TextField`. The window's title is the thread's title.
 Done when: ⌘-Tab shows which thread you're going back to.
@@ -258,6 +254,12 @@ Commit: f44f0e9
 Usage from `turn.done` feeds a thin ring around the send button showing context used, and the footer's cost accumulates per thread in the drawer row's tooltip. If the SDK exposes compaction, a Compact item in the Thread menu; if it doesn't, the auto-compaction notice is shown as a quiet line and the card says so.
 Done when: the ring grows across a long thread and the numbers match the engine's usage.
 Notes: The SDK compacts on a /compact message, so Thread › Compact sends one and the compacted event shows as a quiet line with the token counts either side. The chat stores contextUsed, contextWindow and a running costUSD; the drawer row's tooltip shows the cost. Checked against the store: the ring drew 49,870 of 1,000,000 tokens, the same numbers the engine's turn.done carried. The first compaction reported the old size, because a compacting turn has no assistant message to measure, so compacted now carries the SDK's pre and post token counts (Architecture updated); that fix wasn't re-run, since each compaction spends a turn.
+Commit: 28a668d
+
+#### K-15 · Notifications and badge
+`UserNotifications`: when a turn ends or asks while the window isn't key, one notification with the thread's title; clicking it opens that thread. Dock badge counts threads waiting on you. The Settings toggle from K-11 goes live.
+Done when: start a long turn, switch to another app, and the notification arrives and lands you on the right thread.
+Notes: A thread counts as away when OriCode isn't active or it isn't the selected thread, so a background thread finishing also notifies. One notification per thread, replaced by the next and cleared when the thread is opened; clicking one opens its project and thread. Checked: the first finished turn in the background made macOS show its "OriCode would like to send notifications" prompt, which is Meriç's to answer. Still for Meriç: after allowing, start a long turn, switch apps, click the notification, and look at the Dock badge while a card waits (the agent's screenshots leave out the Dock).
 Commit: pending
 
 

@@ -67,7 +67,7 @@ private struct NotificationSettings: View {
     var body: some View {
         Form {
             Toggle("Tell me when a thread finishes or needs me", isOn: $notify)
-            Text("Only while OriCode isn't the window you're in.")
+            Text("Only while you're in another app or another thread. The Dock icon counts threads waiting on you.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

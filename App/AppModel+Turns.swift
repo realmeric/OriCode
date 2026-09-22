@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 extension AppModel {
@@ -68,10 +69,25 @@ extension AppModel {
             }
             return
         }
-        if let conversation = conversations[id] {
-            conversation.receive(event)
-        } else if let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first {
-            conversation(for: chat).receive(event)
+        guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return }
+        conversation(for: chat).receive(event)
+        tellIfAway(event, chat: chat)
+    }
+
+    /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.
+    private func tellIfAway(_ event: EngineEvent, chat: Chat) {
+        notifier.badge(conversations.values.count { $0.waitingAsk != nil })
+        guard event.name == "turn.done" || event.name == "ask" else { return }
+        let away = !NSApp.isActive || chat.id != selectedChatID
+        guard away else { return }
+        if event.name == "ask" {
+            let tool = event.body["tool"]?.string ?? ""
+            let summary = event.body["kind"]?.string == "question"
+                ? "Claude has a question for you."
+                : "Waiting on you: " + ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: event.body["input"] ?? .null), cwd: chat.cwd)
+            notifier.post(title: chat.title, body: summary, chatID: chat.id)
+        } else if event.body["stopReason"]?.string != "interrupted" {
+            notifier.post(title: chat.title, body: "Finished.", chatID: chat.id)
         }
     }
 
