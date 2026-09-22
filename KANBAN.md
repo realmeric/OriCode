@@ -70,6 +70,7 @@ Methods:
 - `setMode { threadId, permissionMode }` → `{ applied }`. `applied` is false when the running turn can't take it and it will hold from the next one.
 - `answer { requestId, allow, updatedInput?, answers?, message? }` → `{ ok }`. Resolves a pending `ask`.
 - `close { threadId }` → `{ ok }`. Ends the thread's CLI process; the app calls it when a thread is deleted.
+- `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
 
 Events, each with `threadId`:
 
@@ -94,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.3 "Git"
-
-#### K-22 · Capsule
-A small glass capsule centred at the top of the window: project · branch · thread title, 12.5pt, the branch in monospace. It is the window's title made visible, and the only thing besides the traffic lights on the top row. Branch comes from `git rev-parse --abbrev-ref HEAD` in the thread's cwd, refreshed after every turn.
-Done when: the capsule sits level with the traffic lights and never wraps.
 
 #### K-23 · Changes
 ⌘⇧D slides a glass sheet over the transcript: changed files as a native `List` with `Toggle`s, a commit message box, Commit, Push. "Write message" asks the engine for one through a small Haiku query with the diff. Git runs through the engine so the app has no shell of its own.
@@ -272,6 +269,12 @@ Commit: 900d4d2
 #### K-21 · Release v0.2
 As K-12. Tag `v0.2.0`.
 Notes: The engine's version now lives in engine/version.ts, bumped with MARKETING_VERSION and package.json. Checked as in K-12: /Applications/OriCode.app at 0.2.0, launched with an empty environment, allowed an edit from the card. Its first attempt stalled once more, with the CLI idle and a user MCP server still starting through npm exec, and the retry went straight through; the stall still has no known cause, and the CLI debug log (defaults write com.realmeric.oricode traceEngine -bool true, then ~/Library/Logs/OriCode/cli) is the way to catch the next one. In the good run, Meriç's iTerm2 cc-status hook took 6s on the permission prompt.
+Commit: 0c1261c
+
+#### K-22 · Capsule
+A small glass capsule centred at the top of the window: project · branch · thread title, 12.5pt, the branch in monospace. It is the window's title made visible, and the only thing besides the traffic lights on the top row. Branch comes from `git rev-parse --abbrev-ref HEAD` in the thread's cwd, refreshed after every turn.
+Done when: the capsule sits level with the traffic lights and never wraps.
+Notes: Git goes through the engine from the first card on: git.branch returns the branch, commits ahead of upstream and whether there is one (Architecture updated), refreshed on selection, when the engine comes up and after every turn. The capsule ignores the title bar's safe area so it sits centred 16pt from the top, level with the traffic lights, and truncates the thread title instead of wrapping. Two bugs turned up while checking it. Text events streamed as a single delta were saved without their chat, because SwiftData dropped a relationship set in init before insertion; events are now inserted first and attached after. And a long transcript came up blank at launch with LazyVStack anchored to the bottom, so the transcript is a VStack of the latest 200 items with a button for the rest.
 Commit: pending
 
 

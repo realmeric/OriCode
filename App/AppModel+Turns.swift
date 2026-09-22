@@ -72,6 +72,7 @@ extension AppModel {
         guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return }
         conversation(for: chat).receive(event)
         tellIfAway(event, chat: chat)
+        if event.name == "turn.done" { refreshBranch(for: chat) }
     }
 
     /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.

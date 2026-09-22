@@ -13,6 +13,7 @@ struct RootView: View {
                 VStack(spacing: 0) {
                     if let conversation, let chat = model.chat, !conversation.items.isEmpty {
                         TranscriptView(conversation: conversation, cwd: chat.cwd)
+                            .id(chat.id)
                     } else {
                         Spacer()
                         EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
@@ -45,6 +46,13 @@ struct RootView: View {
         }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()
+        }
+        .overlay(alignment: .top) {
+            // Traffic lights are centred 16pt from the top; so is this.
+            TitleCapsule()
+                .padding(.top, 4)
+                .padding(.horizontal, 90)
+                .ignoresSafeArea()
         }
         .overlay(alignment: .topLeading) {
             Drawer()

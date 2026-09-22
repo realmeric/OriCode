@@ -4,6 +4,7 @@ import { query, type PermissionMode, type SDKUserMessage } from "@anthropic-ai/c
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
+import { branch } from "./git.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
@@ -68,6 +69,10 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async answer(params: Answer) {
     answer(params);
     return { ok: true };
+  },
+
+  async "git.branch"({ cwd }: { cwd: string }) {
+    return branch(cwd);
   },
 
   async close({ threadId }: { threadId: string }) {

@@ -4,17 +4,35 @@ import SwiftUI
 struct TranscriptView: View {
     let conversation: Conversation
     let cwd: String
-    @State private var position = ScrollPosition(edge: .bottom)
+    // Starting at .bottom scrolled past a long transcript's lazily measured content and left the
+    // window blank at launch; defaultScrollAnchor places the first frame instead.
+    @State private var position = ScrollPosition()
     @State private var pinned = true
+    @State private var showAll = false
+
+    /// A plain VStack: LazyVStack left a long transcript blank at launch when anchored to the
+    /// bottom. To keep a long thread cheap, only the latest items are laid out until asked.
+    private static let recent = 200
+
+    private var shown: ArraySlice<Item> {
+        showAll ? conversation.items[...] : conversation.items.suffix(Self.recent)
+    }
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
+            VStack(alignment: .leading, spacing: 0) {
+                if shown.count < conversation.items.count {
+                    Button("Show \(conversation.items.count - shown.count) earlier") { showAll = true }
+                        .buttonStyle(.plain)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.faint)
+                        .padding(.bottom, 20)
+                }
+                ForEach(Array(zip(shown.indices, shown)), id: \.1.id) { index, item in
                     ItemView(
                         item: item, cwd: cwd, listening: conversation.waitingAsk?.requestId,
                         live: conversation.running && index == conversation.items.count - 1)
-                        .padding(.top, index == 0 ? 0 : spacing(before: item, after: conversation.items[index - 1]))
+                        .padding(.top, index == shown.startIndex ? 0 : spacing(before: item, after: conversation.items[index - 1]))
                 }
                 if let retrying = conversation.retrying {
                     Text(retrying)

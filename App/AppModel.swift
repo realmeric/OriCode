@@ -41,6 +41,7 @@ final class AppModel {
     /// Bumped on every save so views reading fetched lists redraw.
     private(set) var revision = 0
     var conversations: [UUID: Conversation] = [:]
+    var branches: [UUID: BranchInfo] = [:]
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
@@ -63,6 +64,7 @@ final class AppModel {
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
             loadSelectedConversation()
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
+            refreshBranch(for: chat)
         }
     }
 
@@ -141,6 +143,7 @@ final class AppModel {
             let hello = try reply.decode(Hello.self)
             models = hello.models
             engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
+            refreshBranch(for: chat)
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

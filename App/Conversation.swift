@@ -204,9 +204,10 @@ final class Conversation {
     }
 
     private func record(_ kind: String, _ body: JSON, keepOpen: Bool = false) {
-        let event = Event(chat: chat, turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
+        let event = Event(turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
         seq += 1
         context.insert(event)
+        event.chat = chat
         unsaved = true
         open = nil
         apply(kind, body, id: event.id)

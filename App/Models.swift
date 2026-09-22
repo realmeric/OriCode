@@ -60,9 +60,10 @@ final class Event {
     var payload: Data
     var createdAt: Date
 
-    init(chat: Chat, turn: Int, seq: Int, kind: String, payload: Data) {
+    /// Not given its chat here: set before the event is inserted, SwiftData can drop the
+    /// relationship on save. `Conversation.record` inserts first, then attaches.
+    init(turn: Int, seq: Int, kind: String, payload: Data) {
         id = UUID()
-        self.chat = chat
         self.turn = turn
         self.seq = seq
         self.kind = kind
