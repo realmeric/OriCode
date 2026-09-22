@@ -34,21 +34,21 @@ Every time rule 1 is broken on purpose, add a line under **Exceptions** at the b
 
 The reference is the empty Codex window: a rounded pane of glass with the wallpaper's orange and violet visible through it, traffic lights top-left, a single mark in the middle, and no chrome at all. The test is whether the window still feels like that once a conversation is in it.
 
-**Window.** Hidden title bar, full-size content, `titlebarAppearsTransparent`, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them; nothing sits near them. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
+**Window.** Hidden title bar, full-size content, `titlebarAppearsTransparent`, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them, with one thing beside them: the sidebar button. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
 
-**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces.
+**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass and tint, its panes laid out as those cards.
 
-**Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Two colours carry meaning and nothing else does: a soft green for added lines and a soft red for deleted ones. No accent colour. A running thread shows a small spinning ring in the drawer, in white.
+**Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Colour carries meaning and nothing else does: a soft green for added lines and a soft red for deleted ones; the usage circle's three bands from kullanym-notch (green, amber, red), because they say how close a limit is; and Claude's terracotta on the burst beside the model's name. No accent colour. A running thread lights rays on its mark in the drawer, in white.
 
-**Layout.** Transcript is a centred column, max 760pt wide, with 20pt side padding at narrower widths. The composer is a capsule at the bottom of that column, 16pt from the window's bottom edge, minimum height 48pt, radius 24pt, and it grows with the text up to 40% of the window. The send button is a 36pt circle at the capsule's right end; it becomes Stop while a turn runs. The model and mode picker is a small `Menu` at the capsule's left end showing the model's short name.
+**Layout.** Transcript is a centred column, max 760pt wide, with 20pt side padding at narrower widths. The composer is a capsule at the bottom of that column, 28pt from the window's bottom edge, minimum height 48pt, radius 24pt, and it grows with the text up to 40% of the window. In a thread with nothing in it, the composer sits in the middle of the window under the mark, and the first message sends it down to its place. Left to right it holds the text, an attach button, the model menu (the burst, the model's short name and its effort), the usage circle, and send: a 36pt circle that becomes Stop while a turn runs. Under a turn, a footer says how many files it changed and by how much; the time it took and what it cost are there only if Settings asks for them.
 
-**The drawer.** The thread list is a drawer, not a sidebar. Closed, the window is only the conversation. Bring the mouse to the left edge and it slides in over the glass; move away and it slides back. Press ⌘1–9 and it slides in just long enough to show the thread you picked: that row lit and nudged 6pt to the right, the way one card stands proud of a drawer of index cards, then it slides back on its own. ⌘\ pins it open for people who want a list.
+**The drawer.** The thread list is a drawer, not a sidebar. Closed, the window is only the conversation. Bring the mouse to the left edge, or onto the sidebar button right of the traffic lights, and it slides in over the glass; move away and it slides back. Press ⌘1–9 and it slides in just long enough to show the thread you picked: that row lit and nudged 6pt to the right, the way one card stands proud of a drawer of index cards, then it slides back on its own. Clicking the sidebar button, or ⌘B, pins it open for people who want a list.
 
-Numbers: 260pt wide, inset 12pt from the left, 40pt from the top (clear of the traffic lights), 12pt from the bottom. Hot zone 8pt at the window's left edge, 120ms before it reacts. Slide in 220ms ease-out, slide out 180ms ease-in, and it waits 400ms after the mouse leaves before going. The ⌘digit peek lasts 700ms after the keypress, or as long as the mouse is over it. Rows 34pt: state ring, title (single line, truncated), and the ⌘digit for the first nine. At its top, a `Menu` for the project with "Add project…" at the end; at its bottom, a New thread button.
+Numbers: 280pt wide, running the window's full height 6pt in from its top, left and bottom edges, corners 12pt so they sit concentric with the window's, and the traffic lights and the sidebar button sit inside its first 44pt, the way ChatGPT's sidebar holds them. Hot zone 8pt at the window's left edge, 120ms before it reacts. Slide in 220ms ease-out, slide out 180ms ease-in, and it waits 400ms after the mouse leaves before going. The ⌘digit peek lasts 700ms after the keypress, or as long as the mouse is over it. Rows 34pt: the thread's rays mark, title (single line, truncated), and the ⌘digit for the first nine. Under the title-bar row, a `Menu` for the project with "Add project…" at the end; at its foot, New thread on the left and a Settings gear on the right, both lit on hover like a row.
 
-**Motion.** `.spring(duration: 0.28, bounce: 0.12)` for anything that moves, `.easeOut(duration: 0.18)` for anything that appears or fades. Nothing bounces more than that. Nothing animates that the user didn't cause.
+**Motion.** `.spring(duration: 0.28, bounce: 0.12)` for anything that moves, `.easeOut(duration: 0.18)` for anything that appears or fades. Nothing bounces more than that, with three exceptions borrowed from kullanym-notch for things that travel or measure: the composer's slide from the middle to the bottom and the usage card use its glide (`.spring(response: 0.5, dampingFraction: 0.86)`), and the usage ring sweeps to a new value with its reading spring (`response: 0.9, dampingFraction: 0.9`), because a ring that snaps reads as a glitch. Nothing animates that the user didn't cause, except what reports work the user started: rays lighting and the arc turning inside the usage circle.
 
-**Empty state.** A monochrome mark, 44pt, centred, at 55% white, and under it one line: "Where do we pick up?" for a project, "Add a project to start." with none. The mark is one Meriç supplies; a plain ring until then.
+**Empty state.** The mark, 44pt, centred, and under it one line: "Where do we pick up?" for a project, "Add a project to start." with none. The mark is Meriç's: a dot inside six arcs. The arcs are rays, and each lit ray is a head running in the thread, the main loop first and then each subagent, up to six; idle, they rest at 30% white around a 92% dot. The app icon is the same mark on a dark violet squircle.
 
 ## Architecture
 
@@ -97,6 +97,49 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 ### In progress
 
 (nothing yet)
+
+### Todo: v0.5 "Rays"
+
+Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
+
+#### K-32 · The rays mark and the icon
+`RaysMark`, drawn in code: a dot inside six arcs, with how many arcs are lit as a parameter. It replaces the plain ring in the empty state. The app icon is the same drawing on a dark violet squircle, rendered by `scripts/icon.swift` into the asset catalog at every size macOS asks for, so the icon and the mark can't drift apart.
+Done when: the Dock shows the new icon, and the empty state shows the mark.
+
+#### K-33 · Heads light the rays
+A thread's heads are its main loop while a turn runs, plus each Agent call that hasn't returned, up to six. The drawer row's state ring becomes a 14pt `RaysMark` with that many rays lit, turning slowly while any are lit; a thread waiting on you pulses its dot. The empty-state mark reads the selected thread the same way.
+Done when: a turn that starts two subagents lights three rays on its row, and they go out as the subagents return.
+
+#### K-34 · The sidebar button, and a drawer that reaches the top
+Right of the traffic lights, a `sidebar.left` button. Hovering it opens the drawer the way the left edge does; clicking it pins or unpins; ⌘B does the same and replaces ⌘\, which Turkish-QWERTY-PC can't reach. The drawer takes the brief's new numbers: full height, the traffic lights and the button inside its first row.
+Done when: hovering the button opens the drawer with the traffic lights sitting inside it, clicking pins it, and ⌘B toggles it.
+
+#### K-35 · The drawer's foot
+New thread lights on hover like a row, and a gear at the bottom right opens Settings.
+Done when: New thread lights under the mouse, and the gear opens Settings.
+
+#### K-36 · Composer order and height
+The brief's new order: text, attach (a paperclip opening the native panel for images, going through K-27's path), the model menu (a burst in Claude's terracotta, the model's short name, its effort, a chevron), a circle, send. Until K-38 the circle is the context ring that used to wrap the send button. The capsule moves up to 28pt from the bottom edge.
+Done when: the capsule reads left to right as the brief says, sits visibly higher, and the paperclip attaches an image through the panel.
+
+#### K-37 · Centred when empty
+In a thread with nothing in it, the mark, the line and the composer sit together in the middle of the window. The first message sends the composer down to its place with the glide spring, while the mark and the line lift and fade and the transcript comes up under them. One composer view moved by `matchedGeometryEffect`, not two.
+Done when: a new thread shows the composer in the middle, and sending moves it to the bottom in one motion with the message already in the transcript.
+
+#### K-38 · Usage circle
+The circle left of send becomes Claude plan usage. The engine asks the SDK's usage call through the user's own CLI, so no token is read (rule 3), and caches it for a minute; `usage` joins the wire protocol. The ring shows the 5-hour window in kullanym-notch's three bands and sweeps with its reading spring; while the thread runs, a thin white arc turns inside it, as kullanym-notch shows an agent working. Hovering opens a native popover, glass on this macOS: each window as a bar with its reset time in kullanym-notch's wording, and this thread's context as the last bar. The context ring from K-14 retires into that bar.
+Done when: the circle shows the session percentage `/usage` shows, and the popover lists the weekly window and the thread's context.
+
+#### K-39 · Footers off by default
+"Worked for 14s" and the cost are hidden unless Settings › Transcript turns them on, each on its own. A turn that changed files still says how many and by how much.
+Done when: out of the box no turn shows its time or cost, and each toggle brings its half back live.
+
+#### K-40 · Settings on glass
+The Settings window gets the main window's glass and tint, and its panes become quiet glass cards in the brief's ink: General (the glass slider with a live swatch, Node), Transcript (K-39's toggles), Notifications, About (the rays mark, the version, the source).
+Done when: Settings reads as the same app over a colourful wallpaper. Needs Meriç's eye.
+
+#### K-41 · Release v0.5
+As K-12. Tag `v0.5.0`.
 
 ### Parking lot
 
