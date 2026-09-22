@@ -36,7 +36,7 @@ The reference is the empty Codex window: a rounded pane of glass with the wallpa
 
 **Window.** Hidden title bar, full-size content, `titlebarAppearsTransparent`, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them, with one thing beside them: the sidebar button. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
 
-**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass and tint, its panes laid out as those cards.
+**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass, laid out like Meriç's reference: a sidebar of panes under a search field, holding the traffic lights the way the drawer does, and each pane's settings in cards under quiet headings, rows parted by hairlines inside a card. Those hairlines are the one place a line appears, because the reference has them.
 
 **Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Colour carries meaning and nothing else does: a soft green for added lines and a soft red for deleted ones; the usage circle's three bands from kullanym-notch (green, amber, red), because they say how close a limit is; and Claude's terracotta on the burst beside the model's name. No accent colour. A running thread lights rays on its mark in the drawer, in white.
 
@@ -99,6 +99,21 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 ### In progress
 
 (nothing yet)
+
+### Todo: v0.6 "Settings"
+
+After v0.5, Meriç sent the Settings of his earlier app as the reference: a glass window with a sidebar and cards. What it has that OriCode doesn't (token activity, MCP, Models, Source control, Archive, a workspace default, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) is on Linear as REA-138 to REA-148, not here.
+
+#### K-42 · The title capsule sits lower
+Meriç wants the pill a little lower, the way the composer went up in K-36: centred 26pt from the top instead of level with the traffic lights.
+Done when: the capsule's centre is 26pt from the window's top edge.
+
+#### K-43 · Settings like the reference
+The Settings scene becomes a `NavigationSplitView`: a sidebar of panes (General, Conversation, Notifications, Shortcuts, About) with a search field that narrows the panes to those whose settings match, and a detail of cards under headings, on the main window's glass and tint all the way through. General holds Glass and Node, and a New threads card that says what a new thread starts on and sets its permission mode. Conversation holds K-39's two switches. Shortcuts lists the ⌘/ sheet's shortcuts.
+Done when: Settings opens as a sidebar window with the traffic lights in the sidebar, the whole window is as see-through as the main one, and searching "cost" leaves only Conversation. Needs Meriç's eye for the glass.
+
+#### K-44 · Release v0.6
+As K-12. Tag `v0.6.0`.
 
 ### Parking lot
 
