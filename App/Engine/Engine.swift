@@ -22,6 +22,21 @@ enum EngineError: LocalizedError {
 
 /// The node sidecar. Requests go out as JSON lines on stdin; replies are matched back
 /// by id, and everything else the engine prints is an event on `output`.
+/// Bytes in, whole lines out. Only ever touched from one readability handler at a time.
+private final class LineBuffer: @unchecked Sendable {
+    private var pending = Data()
+
+    func append(_ chunk: Data) -> [String] {
+        pending.append(chunk)
+        var lines: [String] = []
+        while let newline = pending.firstIndex(of: 0x0A) {
+            lines.append(String(decoding: pending[pending.startIndex..<newline], as: UTF8.self))
+            pending.removeSubrange(pending.startIndex...newline)
+        }
+        return lines
+    }
+}
+
 actor Engine {
     enum Output: Sendable {
         case event(EngineEvent)
@@ -87,25 +102,38 @@ actor Engine {
         stdin = input.fileHandleForWriting
         Self.logger.notice("engine started with \(node.path, privacy: .public)")
 
-        Task.detached { [weak self] in
-            do {
-                for try await line in output.fileHandleForReading.bytes.lines {
-                    await self?.receive(line)
-                }
-            } catch {}
+        // Not FileHandle.bytes: its reads block on one shared queue, so a stderr read waiting
+        // for output held back stdout, and replies sat in the pipe until the engine logged.
+        let (replies, reply) = AsyncStream<String>.makeStream()
+        Self.lines(from: output.fileHandleForReading, onEnd: { reply.finish() }) { reply.yield($0) }
+        // One consumer, so events arrive in the order the engine wrote them.
+        Task { [weak self] in
+            for await line in replies { await self?.receive(line) }
         }
-        Task.detached {
-            try? FileManager.default.createDirectory(at: Self.logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: Self.logFile.path) {
-                FileManager.default.createFile(atPath: Self.logFile.path, contents: nil)
+        try? FileManager.default.createDirectory(at: Self.logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: Self.logFile.path) {
+            FileManager.default.createFile(atPath: Self.logFile.path, contents: nil)
+        }
+        let log = try? FileHandle(forWritingTo: Self.logFile)
+        _ = try? log?.seekToEnd()
+        Self.lines(from: errors.fileHandleForReading, onEnd: {}) { line in
+            try? log?.write(contentsOf: Data((line + "\n").utf8))
+        }
+    }
+
+    /// Calls `line` for each newline-terminated line, in order, from a GCD readability handler.
+    private nonisolated static func lines(
+        from handle: FileHandle, onEnd: @escaping @Sendable () -> Void, _ line: @escaping @Sendable (String) -> Void
+    ) {
+        let buffer = LineBuffer()
+        handle.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                onEnd()
+                return
             }
-            let log = try? FileHandle(forWritingTo: Self.logFile)
-            _ = try? log?.seekToEnd()
-            do {
-                for try await line in errors.fileHandleForReading.bytes.lines {
-                    try? log?.write(contentsOf: Data((line + "\n").utf8))
-                }
-            } catch {}
+            for complete in buffer.append(chunk) { line(complete) }
         }
     }
 

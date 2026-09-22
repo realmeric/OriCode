@@ -65,7 +65,7 @@ Requests from the app: `{"id": 7, "method": "...", "params": {...}}`. The engine
 Methods:
 
 - `hello` → `{ version, models: [{ id, name, description, efforts: [...] }], claude, loggedIn }`. `claude` is the path of the CLI the engine found (null when there is none) and `loggedIn` comes from `claude auth status`, so the app can tell the three failures apart without touching a credential. Models come from the SDK's supported-models call; if that isn't available, a list in `engine/models.ts` marked as a fallback.
-- `send { threadId, sessionId?, cwd, text, model?, effort?, permissionMode, attachments? }` → `{ ok }`. Starts a turn; `sessionId` resumes an earlier one.
+- `send { threadId, sessionId?, cwd, text, model?, effort?, permissionMode, attachments?, costSoFar? }` → `{ ok }`. Starts a turn; `sessionId` resumes an earlier one. `costSoFar` is what the thread has cost, because a resumed CLI's first result carries the session's saved running total.
 - `interrupt { threadId }` → `{ ok }`.
 - `setMode { threadId, permissionMode }` → `{ applied }`. `applied` is false when the running turn can't take it and it will hold from the next one.
 - `answer { requestId, allow, updatedInput?, answers?, message? }` → `{ ok }`. Resolves a pending `ask`.
@@ -73,6 +73,7 @@ Methods:
 - `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
 - `git.status { cwd }` → `{ files: [{ path, status }] }`, `git.commit { cwd, paths, message }` → `{ hash }`, `git.push { cwd }` → `{ ok }`, and `git.message { cwd, paths }` → `{ message }`, which is one tool-less Haiku call over the diff.
 - `worktree.add { cwd, slug }` → `{ path, branch }`, `worktree.loss { path, branch }` → `{ dirty, unpushed }`, `worktree.remove { cwd, path, branch }` → `{ ok }`. A worktree thread lives in `.worktrees/<slug>` on branch `oricode/<slug>`.
+- `commands { threadId?, cwd }` → `{ commands: [{ name, description, hint }] }`, the slash commands and skills the SDK reports for that folder.
 - `files.list { cwd }` → `{ files }` (tracked plus untracked, not ignored) and `files.read { cwd, path }` → `{ path, content, truncated }`, read-only, inside the project, cut at 1 MB.
 
 Events, each with `threadId`:
@@ -98,10 +99,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.4 "Hands"
-
-#### K-29 · Slash commands and skills
-Typing `/` at the start of the composer lists the commands and skills the project and `~/.claude` define; picking one inserts it. Sent as text; the engine already understands them.
-Done when: `/compact` from the composer compacts.
 
 #### K-30 · Code colours
 Syntax colours in the transcript's code blocks, muted: keyword, string, number, comment, name, and nothing else.
@@ -288,6 +285,12 @@ Commit: 269cf95
 ⌘P: find a file in the project with fuzzy matching; open it read-only in a glass sheet with syntax colours from Highlightr, kept muted to the brief. A path in a tool line opens the same sheet.
 Done when: clicking "Edit App/Engine.swift" in the transcript shows the file.
 Notes: The engine lists files with git ls-files (tracked plus untracked, not ignored) and reads them read-only, refusing anything outside the project after resolving real paths on both sides, since /tmp and /private/tmp are one folder (Architecture updated). Highlightr can only load its bundled themes, so it renders with Atom One Dark and each of that theme's colours maps onto five muted kinds, keyword, string, number, comment and name, with the rest in plain ink; CodeHighlighter is an actor so the JavaScript context stays on one thread. In a tool line only the path opens the file and the rest of the line still toggles the result; in a diff card the path does the same. Checked: clicking User.swift in a diff card showed the file with line numbers and muted colours, and cmd-P, "welc", Return opened Welcome.swift.
+Commit: 7ac2491
+
+#### K-29 · Slash commands and skills
+Typing `/` at the start of the composer lists the commands and skills the project and `~/.claude` define; picking one inserts it. Sent as text; the engine already understands them.
+Done when: `/compact` from the composer compacts.
+Notes: The engine's commands call asks the SDK for the commands and skills of a folder: from the thread's own CLI when it has one, otherwise from a probe with user, project and local settings, cached per folder (Architecture updated). The menu rises above the capsule while the message starts with / and has no space yet; arrows move, Tab or Return completes, and Return on a completed command sends it. Checked: /comp listed /compact first, and Return, Return compacted the thread from 50K tokens to 1K. Two older bugs came out on the way. The app read the engine's stdout and stderr with FileHandle.bytes, whose reads block on one shared queue, so a reply could sit in the pipe until the engine next wrote to stderr; that is the "first-turn stall" from K-06 and K-21, and both pipes now use readability handlers and one ordered stream. And footers showed running totals, because a resumed CLI's first result carries the session's saved total; send now passes costSoFar as the baseline, and a turn after a relaunch showed /bin/zsh.003 instead of the running /bin/zsh.016.
 Commit: pending
 
 

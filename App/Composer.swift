@@ -9,6 +9,8 @@ struct Composer: View {
     /// A new id after each send rebuilds the field, whose editor otherwise sometimes writes the
     /// sent text back after Return.
     @State private var draft = UUID()
+    @State private var slashSelected = 0
+    @State private var height: CGFloat = 48
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -28,6 +30,19 @@ struct Composer: View {
                     LinearGradient(colors: [Surface.composerEdge, .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
                     lineWidth: 1)
                 .allowsHitTesting(false)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .overlay(alignment: .bottomLeading) {
+            if !slashMatches.isEmpty {
+                SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }
+                    .frame(maxWidth: 520, alignment: .leading)
+                    .padding(.bottom, height + 8)
+                    .transition(.opacity)
+            }
+        }
+        .onChange(of: slashQuery) { _, query in
+            slashSelected = 0
+            if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
         }
         .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
             accept(providers)
@@ -97,9 +112,26 @@ struct Composer: View {
                 .lineLimit(1...maxLines)
                 .id(draft)
                 .focused($focused)
+                .onKeyPress(.downArrow) {
+                    guard !slashMatches.isEmpty else { return .ignored }
+                    slashSelected = min(slashSelected + 1, slashMatches.count - 1)
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    guard !slashMatches.isEmpty else { return .ignored }
+                    slashSelected = max(slashSelected - 1, 0)
+                    return .handled
+                }
+                .onKeyPress(.tab) {
+                    guard let command = selectedSlash else { return .ignored }
+                    complete(command)
+                    return .handled
+                }
                 .onKeyPress(.return, phases: .down) { press in
                     if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
                         text += "\n"
+                    } else if let command = selectedSlash, text != "/" + command.name {
+                        complete(command)
                     } else if !canSend, let ask = waitingPermission {
                         model.answer(ask, allow: true)
                     } else {
@@ -134,6 +166,26 @@ struct Composer: View {
         .help(running ? "Stop (⌘.)" : "Send (Return)")
         .accessibilityLabel(running ? "Stop" : "Send")
         .animation(Motion.fade, value: running)
+    }
+
+    /// The word after a leading "/", while it's still being typed.
+    private var slashQuery: String? {
+        guard text.hasPrefix("/"), !text.contains(where: \.isWhitespace) else { return nil }
+        return String(text.dropFirst())
+    }
+
+    private var slashMatches: [SlashCommandInfo] {
+        guard let query = slashQuery, let chat = model.chat, let commands = model.slashCommands[chat.cwd] else { return [] }
+        return Array(Fuzzy.rank(commands, by: query) { $0.name }.prefix(8))
+    }
+
+    private var selectedSlash: SlashCommandInfo? {
+        let matches = slashMatches
+        return matches.isEmpty ? nil : matches[min(slashSelected, matches.count - 1)]
+    }
+
+    private func complete(_ command: SlashCommandInfo) {
+        text = "/" + command.name + ((command.hint ?? "").isEmpty ? "" : " ")
     }
 
     private var waitingAsk: PendingAsk? {

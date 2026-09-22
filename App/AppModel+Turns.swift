@@ -30,6 +30,7 @@ extension AppModel {
             "cwd": .string(chat.cwd),
             "text": .string(trimmed),
             "permissionMode": .string(chat.permissionMode),
+            "costSoFar": .number(chat.costUSD),
         ]
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = chat.model { params["model"] = .string(model) }

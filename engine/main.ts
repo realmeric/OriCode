@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
-import { query, type PermissionMode, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
@@ -18,8 +18,32 @@ async function requireClaude(): Promise<string> {
   return claude;
 }
 
+const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
+const commandsByFolder = new Map<string, Promise<SlashCommand[]>>();
+
+/// Commands for a folder when no thread there has a CLI yet: one probe with the user's and
+/// the project's settings, kept for the engine's lifetime.
+function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
+  let found = commandsByFolder.get(cwd);
+  if (!found) {
+    found = (async () => {
+      const probe = query({
+        prompt: idle,
+        options: { cwd, pathToClaudeCodeExecutable: claude, settingSources: ["user", "project", "local"], env: cleanEnvironment() },
+      });
+      try {
+        return await probe.supportedCommands();
+      } finally {
+        probe.close();
+      }
+    })();
+    found.catch(() => commandsByFolder.delete(cwd));
+    commandsByFolder.set(cwd, found);
+  }
+  return found;
+}
+
 async function supportedModels(claude: string): Promise<Model[]> {
-  const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
   const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
@@ -126,6 +150,14 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "worktree.remove"({ cwd, path, branch: branchName }: { cwd: string; path: string; branch: string }) {
     await removeWorktree(cwd, path, branchName);
     return { ok: true };
+  },
+
+  async commands({ threadId, cwd }: { threadId?: string; cwd: string }) {
+    const live = threadId ? await threads.get(threadId)?.commands().catch(() => undefined) : undefined;
+    const commands = live ?? (await folderCommands(await requireClaude(), cwd));
+    return {
+      commands: commands.map((command) => ({ name: command.name, description: command.description, hint: command.argumentHint })),
+    };
   },
 
   async "files.list"({ cwd }: { cwd: string }) {

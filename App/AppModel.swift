@@ -48,6 +48,8 @@ final class AppModel {
     var fileFinderShown = false
     var projectFiles: [String] = []
     var openFile: OpenFile?
+    /// Slash commands by folder; an empty list means they're being fetched.
+    var slashCommands: [String: [SlashCommandInfo]] = [:]
     let changes = ChangesState()
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {

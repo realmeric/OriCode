@@ -9,6 +9,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive } from "./models.ts";
@@ -25,6 +26,9 @@ export type SendParams = {
   effort?: EffortLevel;
   permissionMode: PermissionMode;
   attachments?: Attachment[];
+  /// What the thread's turns have cost so far. A resumed CLI reports the session's saved
+  /// running total in its first result, so this is the baseline a turn's cost is taken from.
+  costSoFar?: number;
 };
 
 type Ask = {
@@ -119,6 +123,11 @@ export class Thread {
     return this.running;
   }
 
+  /// The commands and skills this thread's CLI knows, when it has one running.
+  async commands(): Promise<SlashCommand[] | undefined> {
+    return this.query?.supportedCommands();
+  }
+
   async send(params: SendParams): Promise<void> {
     if (this.running) throw new Error("A turn is already running in this thread.");
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
@@ -190,7 +199,7 @@ export class Thread {
     log(`start thread=${this.id} cwd=${params.cwd} resume=${resume ?? "none"}`);
     this.key = key;
     this.mode = params.permissionMode;
-    this.costSoFar = 0;
+    this.costSoFar = resume ? (params.costSoFar ?? 0) : 0;
     const inbox = new Inbox();
     this.inbox = inbox;
     this.query = query({

@@ -21,6 +21,7 @@ struct ShortcutsSheet: View {
         ("Conversation", [
             ("Send", "Return"),
             ("New line", "⇧Return"),
+            ("Slash commands and skills", "/ at the start"),
             ("Stop", "⌘."),
             ("Allow what Claude asks", "Return"),
             ("Deny it, or close what's on top", "Esc"),

@@ -22,6 +22,8 @@ struct RootView: View {
                     if model.project != nil {
                         Composer(running: conversation?.running ?? false, maxHeight: window.size.height * 0.4)
                             .column()
+                            // Above the transcript, so the slash menu can rise over it.
+                            .zIndex(1)
                     }
                     EngineNote()
                         .frame(height: 16)
