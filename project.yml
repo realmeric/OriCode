@@ -41,6 +41,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: OriCode
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Claude reads and edits the projects you add, and some of them live in Documents.
         INFOPLIST_KEY_NSDesktopFolderUsageDescription: Claude reads and edits the projects you add, and some of them live on the Desktop.

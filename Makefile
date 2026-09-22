@@ -8,7 +8,7 @@ DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode.app
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
-.PHONY: run engine test app project
+.PHONY: run engine test app project icon
 
 # XcodeGen lists source files explicitly, so regenerate on every build.
 project:
@@ -41,3 +41,9 @@ app: project
 	-pkill -x OriCode; sleep 0.3
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
+
+# The app icon is RaysMark on a squircle; re-render it whenever the mark changes.
+icon:
+	mkdir -p $(BUILD)/icon
+	swiftc -O -o $(BUILD)/icon/render scripts/icon/main.swift App/RaysMark.swift
+	$(BUILD)/icon/render App/Assets.xcassets/AppIcon.appiconset

@@ -102,10 +102,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
 
-#### K-32 · The rays mark and the icon
-`RaysMark`, drawn in code: a dot inside six arcs, with how many arcs are lit as a parameter. It replaces the plain ring in the empty state. The app icon is the same drawing on a dark violet squircle, rendered by `scripts/icon.swift` into the asset catalog at every size macOS asks for, so the icon and the mark can't drift apart.
-Done when: the Dock shows the new icon, and the empty state shows the mark.
-
 #### K-33 · Heads light the rays
 A thread's heads are its main loop while a turn runs, plus each Agent call that hasn't returned, up to six. The drawer row's state ring becomes a 14pt `RaysMark` with that many rays lit, turning slowly while any are lit; a thread waiting on you pulses its dot. The empty-state mark reads the selected thread the same way.
 Done when: a turn that starts two subagents lights three rays on its row, and they go out as the subagents return.
@@ -337,6 +333,12 @@ Commit: 53ef75f
 Tag `v0.4.0`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.4.0, launched with an empty environment, answered hello and ran a Write in Accept edits mode that created the file. The store still has 8 text events without a thread, all written between 22:13 and 22:32, before the K-22 fix; none written since is missing one.
 Commit: a3b5431
+
+#### K-32 · The rays mark and the icon
+`RaysMark`, drawn in code: a dot inside six arcs, with how many arcs are lit as a parameter. It replaces the plain ring in the empty state. The app icon is the same drawing on a dark violet squircle, rendered by `scripts/icon.swift` into the asset catalog at every size macOS asks for, so the icon and the mark can't drift apart.
+Done when: the Dock shows the new icon, and the empty state shows the mark.
+Notes: RaysMark draws six arcs of 38° with 22° gaps around a dot a third of its width, strokes at 8.5% of its size, and lights arcs clockwise from twelve. The icon's arcs are 62% white and the dot full white, at the proportions of Meriç's image: ring 58% of the squircle, dot 30% of the ring. make icon compiles scripts/icon/main.swift together with App/RaysMark.swift and writes all ten macOS sizes plus Contents.json. The dot's waiting pulse is driven by the clock instead of a repeatForever animation, which kullanym-notch found doesn't stop when its value is set back. Checked: the built bundle's AppIcon.icns is the new icon, and the empty state shows the mark at 44pt. The Dock itself is outside what the agent can screenshot.
+Commit: pending
 
 
 ## Exceptions

@@ -191,7 +191,8 @@ struct EmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Mark()
+            RaysMark()
+                .frame(width: 44, height: 44)
             Text(line)
                 .font(Type.body)
                 .foregroundStyle(Ink.secondary)
@@ -199,12 +200,3 @@ struct EmptyStateView: View {
     }
 }
 
-/// Stand-in for the mark Meriç supplies: a plain ring.
-struct Mark: View {
-    var body: some View {
-        Circle()
-            .stroke(Ink.secondary, lineWidth: 2.5)
-            .frame(width: 40, height: 40)
-            .frame(width: 44, height: 44)
-    }
-}
