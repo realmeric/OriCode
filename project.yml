@@ -28,6 +28,9 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: OriCode
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Claude reads and edits the projects you add, and some of them live in Documents.
+        INFOPLIST_KEY_NSDesktopFolderUsageDescription: Claude reads and edits the projects you add, and some of them live on the Desktop.
+        INFOPLIST_KEY_NSDownloadsFolderUsageDescription: Claude reads and edits the projects you add, and some of them live in Downloads.
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_APP_SANDBOX: NO
     preBuildScripts:

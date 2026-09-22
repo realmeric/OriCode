@@ -5,17 +5,31 @@ struct RootView: View {
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(glass)
-                .ignoresSafeArea()
-            VStack(spacing: 18) {
-                EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
-                ThreadsMenu()
+        GeometryReader { window in
+            ZStack {
+                Color.black.opacity(glass)
+                    .ignoresSafeArea()
+                let conversation = model.chat.map(model.conversation(for:))
+                if let conversation, !conversation.items.isEmpty {
+                    TranscriptView(conversation: conversation)
+                        .column()
+                } else {
+                    VStack(spacing: 18) {
+                        EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
+                        ThreadsMenu()
+                    }
+                }
+                VStack(spacing: 8) {
+                    Spacer()
+                    if model.project != nil {
+                        Composer(running: conversation?.running ?? false, maxHeight: window.size.height * 0.4)
+                            .column()
+                    }
+                    EngineNote()
+                        .frame(height: 16)
+                }
+                .padding(.bottom, 8)
             }
-        }
-        .overlay(alignment: .bottom) {
-            EngineNote()
-                .padding(.bottom, 24)
         }
     }
 }
@@ -50,6 +64,15 @@ struct ThreadsMenu: View {
         .fixedSize()
         .font(Type.secondary)
         .foregroundStyle(Ink.secondary)
+    }
+}
+
+extension View {
+    /// The transcript's centred column: 760pt at most, 20pt from the edges below that.
+    func column() -> some View {
+        frame(maxWidth: 760)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity)
     }
 }
 

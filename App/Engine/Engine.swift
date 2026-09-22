@@ -35,6 +35,9 @@ actor Engine {
     private var nextId = 1
     private var pending: [Int: CheckedContinuation<JSON, Error>] = [:]
     private var generation = 0
+    /// Keeps App Nap off while the engine runs. A napped app's children are throttled,
+    /// network included, and a turn behind another window would stall with them.
+    private var activity: NSObjectProtocol?
 
     static let logger = Logger(subsystem: "com.realmeric.oricode", category: "engine")
     static let logFile = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/OriCode/engine.log")
@@ -54,8 +57,17 @@ actor Engine {
         process.arguments = [script.path]
         process.currentDirectoryURL = script.deletingLastPathComponent()
         var environment = ProcessInfo.processInfo.environment
+        // Opened from a shell, the app inherits that shell's PWD, and the CLI treats it as a
+        // place to read. The engine has its own working directory and each turn its cwd.
+        environment["PWD"] = nil
+        environment["OLDPWD"] = nil
         environment["PATH"] = [node.deletingLastPathComponent().path, environment["PATH"] ?? "/usr/bin:/bin"].joined(separator: ":")
+        if UserDefaults.standard.bool(forKey: "traceEngine") {
+            environment["ORICODE_TRACE"] = "1"
+            environment["ORICODE_CLI_DEBUG"] = Self.logFile.deletingLastPathComponent().appending(path: "cli").path
+        }
         process.environment = environment
+        process.qualityOfService = .userInitiated
 
         let input = Pipe(), output = Pipe(), errors = Pipe()
         process.standardInput = input
@@ -70,6 +82,8 @@ actor Engine {
         }
         try process.run()
         self.process = process
+        activity = activity ?? ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep], reason: "The engine is running Claude")
         stdin = input.fileHandleForWriting
         Self.logger.notice("engine started with \(node.path, privacy: .public)")
 
@@ -133,6 +147,7 @@ actor Engine {
                 waiting.resume(returning: message["result"] ?? .null)
             }
         } else if let name = message["event"]?.string {
+            Self.logger.debug("event \(name, privacy: .public)")
             continuation.yield(.event(EngineEvent(name: name, threadId: message["threadId"]?.string, body: message)))
         }
     }

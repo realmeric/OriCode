@@ -61,9 +61,15 @@ export async function loggedIn(claude: string): Promise<boolean> {
 export function cleanEnvironment(): Record<string, string | undefined> {
   const environment: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if ((key.startsWith("CLAUDE") && key !== "CLAUDE_CONFIG_DIR") || key === "AI_AGENT") continue;
+    if ((key.startsWith("CLAUDE") && key !== "CLAUDE_CONFIG_DIR") || key === "AI_AGENT" || key === "PWD" || key === "OLDPWD") continue;
     environment[key] = value;
   }
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = "oricode/0.1.0";
   return environment;
+}
+
+/// Where the CLI writes its --debug-file when the app asks for a trace.
+export function cliDebugFile(name: string): string | undefined {
+  const folder = process.env.ORICODE_CLI_DEBUG;
+  return folder ? `${folder}/${name}-${Date.now()}.log` : undefined;
 }

@@ -36,6 +36,7 @@ final class AppModel {
     let context: ModelContext
     /// Bumped on every save so views reading fetched lists redraw.
     private(set) var revision = 0
+    var conversations: [UUID: Conversation] = [:]
     private var listening = false
     private var noteTask: Task<Void, Never>?
 
@@ -117,9 +118,12 @@ final class AppModel {
                 handle(event)
             case .stopped:
                 engineState = .stopped
+                engineStopped()
             }
         }
     }
 
-    private func handle(_ event: EngineEvent) {}
+    private func handle(_ event: EngineEvent) {
+        route(event)
+    }
 }

@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-06 · Composer
-The glass capsule from the brief. `TextField` with `axis: .vertical`, placeholder "Ask for a change", Return sends, ⇧Return inserts a newline, the round button sends and turns into Stop (⌘.) while a turn runs. Sending writes the user event and calls `send` with the thread's cwd, model, effort and mode.
-Done when: typing and pressing Return starts a turn, the button shows Stop while it runs, and Stop interrupts.
-
 #### K-07 · Model and mode
 The `Menu` at the capsule's left end: its label is the model's short name (and effort when set). Inside, native `Picker`s for Model (from `hello`), Effort (when the model has any), and Permission mode with a one-line description each: Ask "Edits and commands wait for you", Accept edits "Edits go through, commands ask", Auto "Claude decides what is safe", Plan "Reads and thinks, changes nothing", Don't ask "Everything goes through". Changing the mode mid-turn calls `setMode`; if it returns `applied: false`, a small "from the next reply" note under the capsule for two seconds.
 Done when: switching model and mode changes what the next turn does, checked by watching the engine's stderr.
@@ -244,6 +240,12 @@ Commit: 4327a6b
 SwiftData models from the Architecture section. Add project through the native open panel, folders only; refuse anything without a `.git` and say why in the window, not in an alert. Create and delete threads; the current project and thread survive relaunch. No UI for the list yet beyond what K-02 shows; a temporary `Menu` in the empty state is fine for this card and K-10 replaces it.
 Done when: add two projects, make a thread in each, quit, relaunch, and both are there with the last one selected.
 Notes: A folder opened onto the app (Dock drop, or open -a OriCode <folder>) is added the same way as through the panel, which is also how the agent tests it. The menu bar got File › New Thread, Add Project… and a Threads menu early, because background tools can't open the in-window Menu; K-11 says so. Event gained a seq field.
+Commit: 63c6d66
+
+#### K-06 · Composer
+The glass capsule from the brief. `TextField` with `axis: .vertical`, placeholder "Ask for a change", Return sends, ⇧Return inserts a newline, the round button sends and turns into Stop (⌘.) while a turn runs. Sending writes the user event and calls `send` with the thread's cwd, model, effort and mode.
+Done when: typing and pressing Return starts a turn, the button shows Stop while it runs, and Stop interrupts.
+Notes: Three launch-time traps, all fixed in the engine's environment: inherited PWD pointing into ~/Documents made the CLI stall on a Documents privacy check (the Info.plist now carries Documents, Desktop and Downloads usage strings for projects that really live there), App Nap is held off while the engine runs, and an interrupt reports stopReason interrupted instead of a diagnostic. Checked with real keys: Return sends, shift-Return breaks the line, the button turns into Stop and cmd-period interrupts.
 Commit: pending
 
 

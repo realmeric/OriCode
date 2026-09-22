@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { query, type PermissionMode, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { cleanEnvironment, findClaude, loggedIn } from "./claude.ts";
+import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { emit, event, log, type Request } from "./wire.ts";
@@ -18,7 +18,7 @@ async function requireClaude(): Promise<string> {
 
 async function supportedModels(claude: string): Promise<Model[]> {
   const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
-  const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), stderr: (data: string) => process.stderr.write(data) } });
+  const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
     return fromSDK(await Promise.race([probe.supportedModels(), timeout]));

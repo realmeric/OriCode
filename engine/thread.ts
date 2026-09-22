@@ -9,7 +9,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { cleanEnvironment } from "./claude.ts";
+import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { event, log } from "./wire.ts";
 
 export type Attachment = { mediaType: string; data: string };
@@ -99,6 +99,7 @@ export class Thread {
   private sessionId: string | undefined;
   private running = false;
   private started = false;
+  private interrupted = false;
   private streamed = new Set<string>();
   private costSoFar = 0;
   private lastContext = 0;
@@ -126,6 +127,7 @@ export class Thread {
     log(`send thread=${this.id} model=${params.model ?? "default"} effort=${params.effort ?? "default"} mode=${params.permissionMode}`);
     this.running = true;
     this.started = false;
+    this.interrupted = false;
     this.inbox!.push({
       type: "user",
       message: { role: "user", content: content(params) },
@@ -135,6 +137,7 @@ export class Thread {
 
   async interrupt(): Promise<void> {
     if (!this.running || !this.query) return;
+    this.interrupted = true;
     for (const [requestId, ask] of asks) {
       if (ask.threadId !== this.id) continue;
       asks.delete(requestId);
@@ -193,6 +196,7 @@ export class Thread {
         pathToClaudeCodeExecutable: this.claude,
         env: cleanEnvironment(),
         stderr: (data) => process.stderr.write(data),
+        debugFile: cliDebugFile(this.id),
         canUseTool: (tool, input, { signal, toolUseID }) => this.ask(tool, input, toolUseID, signal),
       },
     });
@@ -301,13 +305,14 @@ export class Thread {
         const cost = message.total_cost_usd - this.costSoFar;
         this.costSoFar = message.total_cost_usd;
         const window = Object.values(message.modelUsage).reduce((largest, usage) => Math.max(largest, usage.contextWindow ?? 0), 0);
-        if (message.subtype !== "success" && message.errors.length) {
+        // An interrupt ends the turn as error_during_execution with a diagnostic nobody needs to read.
+        if (message.subtype !== "success" && message.errors.length && !this.interrupted) {
           event("error", { threadId: this.id, message: message.errors.join("\n") });
         }
         event("turn.done", {
           threadId: this.id,
           sessionId: message.session_id,
-          stopReason: message.subtype === "success" ? (message.stop_reason ?? "end_turn") : message.subtype,
+          stopReason: this.interrupted ? "interrupted" : message.subtype === "success" ? (message.stop_reason ?? "end_turn") : message.subtype,
           durationMs: message.duration_ms,
           costUSD: Math.max(0, cost),
           usage: {
