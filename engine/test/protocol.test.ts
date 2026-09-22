@@ -49,5 +49,5 @@ test("interrupting an idle thread is fine", async () => {
 
 test("a send into a missing folder is refused", async () => {
   const reply = await request(5, "send", { threadId: "t", cwd: "/nowhere/at/all", text: "hi", permissionMode: "default" });
-  assert.match(reply.error, /is gone/);
+  assert.match(reply.error, /isn't where it was/);
 });

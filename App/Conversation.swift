@@ -72,6 +72,8 @@ enum Item: Identifiable, Hashable {
 final class Conversation {
     private(set) var items: [Item] = []
     private(set) var running = false
+    /// "Can't reach Claude…" while the CLI retries; a live line, never stored.
+    private(set) var retrying: String?
     private(set) var turn = 0
     private let chat: Chat
     private let context: ModelContext
@@ -94,11 +96,9 @@ final class Conversation {
             if case .ask(let id, var ask) = items[index], ask.state == .waiting {
                 ask.state = .cancelled
                 items[index] = .ask(id: id, ask: ask)
-            } else if case .tool(let id, var call) = items[index], call.result == nil {
-                call.result = ""
-                items[index] = .tool(id: id, call: call)
             }
         }
+        finishOpenTools()
     }
 
     /// The oldest ask still waiting, which is the one Return and Esc answer.
@@ -128,7 +128,12 @@ final class Conversation {
     }
 
     func receive(_ event: EngineEvent) {
+        if event.name != "retrying" { retrying = nil }
         switch event.name {
+        case "retrying":
+            let attempt = event.body["attempt"]?.int ?? 0
+            let max = event.body["max"]?.int ?? 0
+            retrying = "Can't reach Claude. Trying again, \(attempt) of \(max)…"
         case "turn.started":
             running = true
             if let sessionId = event.body["sessionId"]?.string, chat.sessionId != sessionId {
@@ -184,7 +189,18 @@ final class Conversation {
     func stopped() {
         guard running else { return }
         running = false
+        retrying = nil
+        finishOpenTools()
         flush()
+    }
+
+    private func finishOpenTools() {
+        for index in items.indices {
+            if case .tool(let id, var call) = items[index], call.result == nil {
+                call.result = ""
+                items[index] = .tool(id: id, call: call)
+            }
+        }
     }
 
     private func record(_ kind: String, _ body: JSON, keepOpen: Bool = false) {

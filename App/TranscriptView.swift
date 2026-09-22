@@ -16,6 +16,13 @@ struct TranscriptView: View {
                         live: conversation.running && index == conversation.items.count - 1)
                         .padding(.top, index == 0 ? 0 : spacing(before: item, after: conversation.items[index - 1]))
                 }
+                if let retrying = conversation.retrying {
+                    Text(retrying)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.secondary)
+                        .padding(.top, 14)
+                        .transition(.opacity)
+                }
             }
             .column()
             .padding(.top, 52)
@@ -74,6 +81,7 @@ struct ItemView: View {
         case .text(_, let text):
             Markdown(text)
                 .markdownTheme(.glass)
+                .markdownSoftBreakMode(.lineBreak)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .thinking(_, let text):

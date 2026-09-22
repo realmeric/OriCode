@@ -91,11 +91,19 @@ struct Drawer: View {
                         .onSubmit { finishRename(chat) }
                         .onChange(of: renameFocused) { _, focused in if !focused { finishRename(chat) } }
                 } else {
-                    Text(chat.title)
-                        .font(Type.body)
-                        .foregroundStyle(selected ? Ink.primary : Ink.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    let missing = !FileManager.default.fileExists(atPath: chat.cwd)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(chat.title)
+                            .font(Type.body)
+                            .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if missing {
+                            Text("folder missing")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Ink.faint)
+                        }
+                    }
                 }
                 Spacer(minLength: 4)
                 if index < 9 {

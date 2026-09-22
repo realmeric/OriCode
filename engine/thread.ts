@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import {
   query,
   type EffortLevel,
@@ -101,6 +102,8 @@ export class Thread {
   private running = false;
   private started = false;
   private interrupted = false;
+  /// One error line per turn: the CLI can report the same failure as a message and in the result.
+  private errored = false;
   /// The send in flight while the CLI resumes a session, so it can go again fresh if that session is gone.
   private resuming: SendParams | undefined;
   private streamed = new Set<string>();
@@ -118,7 +121,7 @@ export class Thread {
 
   async send(params: SendParams): Promise<void> {
     if (this.running) throw new Error("A turn is already running in this thread.");
-    if (!existsSync(params.cwd)) throw new Error(`The folder ${params.cwd} is gone.`);
+    if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
     const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null]);
     if (!this.query || key !== this.key) {
       this.close();
@@ -131,6 +134,7 @@ export class Thread {
     this.running = true;
     this.started = false;
     this.interrupted = false;
+    this.errored = false;
     this.push(params);
   }
 
@@ -213,6 +217,12 @@ export class Thread {
     this.pump(this.query);
   }
 
+  private fail(message: string): void {
+    if (this.errored) return;
+    this.errored = true;
+    event("error", { threadId: this.id, message });
+  }
+
   /// The session this thread pointed at is gone (deleted, or from another machine). Say so
   /// once and send the same message again in a new session.
   private startFresh(params: SendParams): void {
@@ -291,16 +301,19 @@ export class Thread {
         if (usage) {
           this.lastContext = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.output_tokens ?? 0);
         }
+        if (message.error) {
+          // An API failure arrives as a synthetic message; its text is the raw error, so say it once, plainly.
+          this.fail(errorText(message.error));
+          return;
+        }
         const streamed = this.streamed.has(message.message.id);
         for (const block of message.message.content) {
           if (block.type === "tool_use") {
             event("tool.use", { threadId: this.id, toolUseId: block.id, name: block.name, input: block.input });
           } else if (block.type === "text" && !streamed) {
-            // Synthetic messages (API errors, a missing login) arrive whole, never as deltas.
             event("text", { threadId: this.id, delta: block.text });
           }
         }
-        if (message.error) event("error", { threadId: this.id, message: errorText(message.error) });
         return;
       }
       case "user": {
@@ -321,6 +334,10 @@ export class Thread {
         return;
       }
       case "system": {
+        if (message.subtype === "api_retry") {
+          event("retrying", { threadId: this.id, attempt: message.attempt, max: message.max_retries, error: message.error });
+          return;
+        }
         if (message.subtype === "compact_boundary") {
           // A compacting turn has no assistant message to take the new size from.
           this.lastContext = message.compact_metadata.post_tokens ?? 0;
@@ -342,7 +359,7 @@ export class Thread {
         const window = Object.values(message.modelUsage).reduce((largest, usage) => Math.max(largest, usage.contextWindow ?? 0), 0);
         // An interrupt ends the turn as error_during_execution with a diagnostic nobody needs to read.
         if (message.subtype !== "success" && message.errors.length && !this.interrupted) {
-          event("error", { threadId: this.id, message: message.errors.join("\n") });
+          this.fail(message.errors.join("\n"));
         }
         event("turn.done", {
           threadId: this.id,
@@ -398,6 +415,9 @@ function errorText(error: string): string {
       return "Claude isn't logged in. Run `claude` in Terminal and log in.";
     case "rate_limit":
       return "Rate limited. Try again in a moment.";
+    case "server_error":
+    case "unknown":
+      return "Couldn't reach Claude. Check the network, then send again.";
     case "overloaded":
       return "Claude is overloaded right now.";
     case "billing_error":

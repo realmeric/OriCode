@@ -78,6 +78,7 @@ Events, each with `threadId`:
 - `tool.use { toolUseId, name, input }`
 - `tool.result { toolUseId, content, isError, patch? }`. `patch` is the hunks an Edit, MultiEdit or Write applied (`[{ oldStart, newStart, lines }]`, lines prefixed `+`, `-` or a space), from the SDK's structured tool output.
 - `ask { requestId, kind: "permission" | "question", tool, input, options? }`. Permission asks come from the SDK's `canUseTool`; `AskUserQuestion` arrives the same way and is answered through `updatedInput`.
+- `retrying { attempt, max, error }` while the CLI retries a failed API request, which is what a dropped network looks like.
 - `session.lost` when the session a send asked to resume no longer exists; the engine sends the same message again in a new session.
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
 - `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
@@ -93,10 +94,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.2 "See what it did"
-
-#### K-19 · Edges
-Engine crash mid-turn, `claude` not found, network gone, a project folder that moved: each a one-line note in the transcript in 55% white, never an alert or a modal. A thread whose folder is gone is greyed in the drawer with "folder missing" under the title.
-Done when: pulling the network cable during a turn produces one calm line and the next turn works when it's back.
 
 #### K-20 · Keyboard pass
 An escape stack: Esc closes the topmost thing (drawer, ask, menu), and nothing else hears it. Everything in v0.1 and v0.2 reachable without the mouse; ⌘/ shows the shortcuts in a sheet.
@@ -267,6 +264,12 @@ Commit: 5eb926c
 Optional "Thinking…" lines, collapsed, showing the delta stream when expanded. The Effort picker from K-07 gains the values the model supports and sends them.
 Done when: `xhigh` visibly changes how long Claude thinks on a hard question.
 Notes: Thinking only streams text when the query asks for a summarized display, so the engine passes thinking { adaptive, summarized } to every model the SDK lists as supporting adaptive thinking; any other model gets no thinking option at all, because asking for it is an error. The Effort picker from K-07 already offered each model's own levels and sent them. In the transcript a thinking block is one faint line, "Thinking…" while it streams and "Thought" after, and it opens onto the summary. Checked on Sonnet with the same question (how many numbers below 10,000 have digits summing to 20): Low answered in 3.0s with no thinking, Extra high thought for 7.6s, streamed a 671-character summary and answered 633, which is correct.
+Commit: d6e7671
+
+#### K-19 · Edges
+Engine crash mid-turn, `claude` not found, network gone, a project folder that moved: each a one-line note in the transcript in 55% white, never an alert or a modal. A thread whose folder is gone is greyed in the drawer with "folder missing" under the title.
+Done when: pulling the network cable during a turn produces one calm line and the next turn works when it's back.
+Notes: Each edge is one line in 55% white. A dropped network shows up as the CLI retrying, so the engine passes the SDK's api_retry messages on as retrying (Architecture updated) and the app keeps one live line, "Can't reach Claude. Trying again, 4 of 10…", that clears once the turn moves on; an API failure is said once per turn instead of as raw error text plus a result error. A moved folder refuses the send by the folder's name, and its drawer row greys with "folder missing". Checked: the app launched behind a dead HTTPS proxy showed the retry line, and the next turn after a normal launch answered; killing the engine mid-turn left "The engine stopped in the middle of this turn." and closed the open tool calls; a renamed-away folder gave the note and the grey row. Not seen: the line after all ten retries fail, since that takes minutes of backoff. Assistant text now keeps single newlines as line breaks, which is how the CLI shows them.
 Commit: pending
 
 
