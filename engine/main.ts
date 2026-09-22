@@ -6,6 +6,7 @@ import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, commit, diffFor, push, removeWorktree, status, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
+import { usage } from "./usage.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
@@ -150,6 +151,10 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "worktree.remove"({ cwd, path, branch: branchName }: { cwd: string; path: string; branch: string }) {
     await removeWorktree(cwd, path, branchName);
     return { ok: true };
+  },
+
+  async usage({ fresh }: { fresh?: boolean }) {
+    return usage(await requireClaude(), fresh ? 15_000 : 60_000);
   },
 
   async commands({ threadId, cwd }: { threadId?: string; cwd: string }) {

@@ -73,6 +73,7 @@ Methods:
 - `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
 - `git.status { cwd }` → `{ files: [{ path, status }] }`, `git.commit { cwd, paths, message }` → `{ hash }`, `git.push { cwd }` → `{ ok }`, and `git.message { cwd, paths }` → `{ message }`, which is one tool-less Haiku call over the diff.
 - `worktree.add { cwd, slug }` → `{ path, branch }`, `worktree.loss { path, branch }` → `{ dirty, unpushed }`, `worktree.remove { cwd, path, branch }` → `{ ok }`. A worktree thread lives in `.worktrees/<slug>` on branch `oricode/<slug>`.
+- `usage { fresh? }` → `{ available, plan, windows: [{ id, label, used, resetsAt }] }`, Claude plan usage from the SDK's usage call through the user's own CLI, kept a minute (15 seconds when `fresh`). `used` is a fraction.
 - `commands { threadId?, cwd }` → `{ commands: [{ name, description, hint }] }`, the slash commands and skills the SDK reports for that folder.
 - `files.list { cwd }` → `{ files }` (tracked plus untracked, not ignored) and `files.read { cwd, path }` → `{ path, content, truncated }`, read-only, inside the project, cut at 1 MB.
 
@@ -102,10 +103,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 ### Todo: v0.5 "Rays"
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
-
-#### K-38 · Usage circle
-The circle left of send becomes Claude plan usage. The engine asks the SDK's usage call through the user's own CLI, so no token is read (rule 3), and caches it for a minute; `usage` joins the wire protocol. The ring shows the 5-hour window in kullanym-notch's three bands and sweeps with its reading spring; while the thread runs, a thin white arc turns inside it, as kullanym-notch shows an agent working. Hovering opens a native popover, glass on this macOS: each window as a bar with its reset time in kullanym-notch's wording, and this thread's context as the last bar. The context ring from K-14 retires into that bar.
-Done when: the circle shows the session percentage `/usage` shows, and the popover lists the weekly window and the thread's context.
 
 #### K-39 · Footers off by default
 "Worked for 14s" and the cost are hidden unless Settings › Transcript turns them on, each on its own. A turn that changed files still says how many and by how much.
@@ -349,6 +346,12 @@ Commit: a2a484f
 In a thread with nothing in it, the mark, the line and the composer sit together in the middle of the window. The first message sends the composer down to its place with the glide spring, while the mark and the line lift and fade and the transcript comes up under them. One composer view moved by `matchedGeometryEffect`, not two.
 Done when: a new thread shows the composer in the middle, and sending moves it to the bottom in one motion with the message already in the transcript.
 Notes: Not matchedGeometryEffect after all: the composer keeps one place in the view tree in both layouts and only the spacers around it change, so sending moves the same view and the field keeps its state. The spacers leave the mark's height again under the composer, so it's the composer that sits in the middle. The send is wrapped in the glide spring; the mark and its line leave upward, scaling to 92% as they fade; the transcript rises in 0.22s later so the first message doesn't appear under the composer as it passes. Two things had come apart mid-slide and are fixed: the send button's fade also animated its position, so it's now scoped to colour and icon, and the field rebuilt after a send was inserted at its final place, so on a first message that waits until the slide ends. Checked with frames captured during the send: the capsule travels down in one piece, then the message appears.
+Commit: 0ea3d32
+
+#### K-38 · Usage circle
+The circle left of send becomes Claude plan usage. The engine asks the SDK's usage call through the user's own CLI, so no token is read (rule 3), and caches it for a minute; `usage` joins the wire protocol. The ring shows the 5-hour window in kullanym-notch's three bands and sweeps with its reading spring; while the thread runs, a thin white arc turns inside it, as kullanym-notch shows an agent working. Hovering opens a native popover, glass on this macOS: each window as a bar with its reset time in kullanym-notch's wording, and this thread's context as the last bar. The context ring from K-14 retires into that bar.
+Done when: the circle shows the session percentage `/usage` shows, and the popover lists the weekly window and the thread's context.
+Notes: The engine's usage method spawns the CLI with no settings and asks the SDK's usage call, about a second, and keeps the answer a minute (15 seconds when the app asks fresh after a turn); only the named windows come through, since the response also carries codenamed ones nobody could label (Architecture updated). The app asks when the engine comes up, fresh after each turn, and on hover when its answer is over a minute old. The ring is the session window in kullanym-notch's bands (green under 50%, amber under 70%, red above) and sweeps with its reading spring; while the thread runs, a quarter arc turns inside it once every 1.1s, clock-driven. The card is a native popover that opens a quarter second into a hover and closes 0.3s after the mouse leaves both it and the ring; its bars grow from zero with the reading spring, staggered 45ms, and the reset times use kullanym-notch's wording. Checked: the ring showed 15%, and the card listed Session 15% resetting in 3 hr 37 min, Week 84% resetting Sat 12:00 AM, Fable week 77%, and this thread at 23K of 200K; the arc turned during a turn and the card closed when the mouse left. claude -p /usage, run right after, reported the same three: session 15%, week 84% resetting Sep 26 at 12am, Fable 77%.
 Commit: pending
 
 

@@ -45,6 +45,10 @@ final class AppModel {
     var changesShown = false
     var goToShown = false
     var draftAttachments: [ImageAttachment] = []
+    var usage: PlanUsage?
+    var usageAt: Date?
+    var usageStale = false
+    var usageLoading = false
     var fileFinderShown = false
     var projectFiles: [String] = []
     var openFile: OpenFile?
@@ -155,6 +159,7 @@ final class AppModel {
             models = hello.models
             engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
             refreshBranch(for: chat)
+            refreshUsage()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

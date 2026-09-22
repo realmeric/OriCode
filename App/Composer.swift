@@ -142,8 +142,7 @@ struct Composer: View {
             HStack(spacing: 4) {
                 attachButton
                 ModelMenu(chat: model.chat)
-                ContextRing(chat: model.chat)
-                    .padding(.horizontal, 4)
+                UsageCircle(running: running, chat: model.chat)
             }
             .frame(height: 36)
             sendButton
@@ -243,27 +242,5 @@ struct Composer: View {
             draft = UUID()
             focused = true
         }
-    }
-}
-
-/// How full the thread's context is, as a thin ring around the send button.
-struct ContextRing: View {
-    let chat: Chat?
-
-    var body: some View {
-        let used = chat?.contextUsed ?? 0
-        let window = chat?.contextWindow ?? 0
-        let fraction = window > 0 ? min(1, Double(used) / Double(window)) : 0
-        ZStack {
-            Circle().stroke(Surface.selected, lineWidth: 2.5)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(fraction > 0.8 ? Ink.primary : Ink.secondary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(Motion.move, value: fraction)
-        }
-        .frame(width: 20, height: 20)
-        .help(window > 0 ? "\(used.formatted(.number.notation(.compactName))) of \(window.formatted(.number.notation(.compactName))) tokens" : "")
-        .allowsHitTesting(false)
     }
 }
