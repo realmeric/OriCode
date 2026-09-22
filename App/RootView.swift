@@ -10,23 +10,38 @@ struct RootView: View {
                 Color.black.opacity(glass)
                     .ignoresSafeArea()
                 let conversation = model.currentConversation
+                let started = conversation.map { !$0.items.isEmpty } ?? false
                 VStack(spacing: 0) {
-                    if let conversation, let chat = model.chat, !conversation.items.isEmpty {
+                    if let conversation, let chat = model.chat, started {
                         TranscriptView(conversation: conversation, cwd: chat.cwd)
                             .id(chat.id)
+                            // After the composer has mostly gone past, so the first message rises in
+                            // behind it instead of under it.
+                            .transition(.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22)))
                     } else {
-                        Spacer()
+                        Spacer(minLength: 0)
                         EmptyStateView(
                             line: model.project == nil ? "Add a project to start." : "Where do we pick up?",
                             heads: conversation?.heads ?? 0,
                             waiting: conversation?.waitingAsk != nil)
-                        Spacer()
+                            .padding(.bottom, 28)
+                            .transition(.asymmetric(
+                                insertion: .opacity,
+                                removal: .opacity.combined(with: .offset(y: -36)).combined(with: .scale(scale: 0.92))))
                     }
+                    // One composer in one place in the tree, whichever layout is showing, so the
+                    // first message moves it rather than swapping it for another.
                     if model.project != nil {
                         Composer(running: conversation?.running ?? false, maxHeight: window.size.height * 0.4)
                             .column()
                             // Above the transcript, so the slash menu can rise over it.
                             .zIndex(1)
+                    }
+                    if !started {
+                        // Equal room under the composer and over the mark, and the mark's own
+                        // height again, so it's the composer that sits in the middle.
+                        Spacer(minLength: 0)
+                        Color.clear.frame(height: model.project == nil ? 0 : EmptyStateView.height + 28)
                     }
                     // The capsule sits 28pt above the window's bottom edge; notes live in that gap.
                     // A ZStack, because EngineNote is an EmptyView when there's nothing to say,
@@ -232,6 +247,9 @@ struct EngineNote: View {
 }
 
 struct EmptyStateView: View {
+    /// The mark, the gap and the line, for centring what's under it.
+    static let height: CGFloat = 44 + 14 + 18
+
     let line: String
     var heads = 0
     var waiting = false

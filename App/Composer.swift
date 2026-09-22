@@ -181,16 +181,20 @@ struct Composer: View {
         } label: {
             Image(systemName: running ? "stop.fill" : "arrow.up")
                 .font(.system(size: running ? 12 : 15, weight: .semibold))
-                .foregroundStyle(canSend || running ? Color.black.opacity(0.85) : Ink.faint)
                 .frame(width: 36, height: 36)
-                .background(canSend || running ? Ink.primary : Surface.selected, in: .circle)
+                // Scoped to colour: a fade on the whole button also animated its position,
+                // and it left the capsule behind when the composer slid down.
+                .animation(Motion.fade) { content in
+                    content
+                        .foregroundStyle(canSend || running ? Color.black.opacity(0.85) : Ink.faint)
+                        .background(canSend || running ? Ink.primary : Surface.selected, in: .circle)
+                }
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
         .disabled(!running && !canSend)
         .help(running ? "Stop (⌘.)" : "Send (Return)")
         .accessibilityLabel(running ? "Stop" : "Send")
-        .animation(Motion.fade, value: running)
     }
 
     /// The word after a leading "/", while it's still being typed.
@@ -227,10 +231,18 @@ struct Composer: View {
 
     private func send() {
         guard !running, canSend else { return }
-        model.send(text)
+        let moving = model.currentConversation?.items.isEmpty ?? true
+        // The first message moves the composer from the middle of an empty thread to the bottom.
+        withAnimation(Motion.glide) { model.send(text) }
         text = ""
-        draft = UUID()
-        Task { @MainActor in focused = true }
+        // A new field is inserted at its final place, so while the composer is still sliding
+        // it would draw apart from it; rebuild it once the slide is over.
+        Task { @MainActor in
+            if moving { try? await Task.sleep(for: .milliseconds(650)) }
+            text = ""
+            draft = UUID()
+            focused = true
+        }
     }
 }
 

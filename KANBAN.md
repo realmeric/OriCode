@@ -103,10 +103,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
 
-#### K-37 · Centred when empty
-In a thread with nothing in it, the mark, the line and the composer sit together in the middle of the window. The first message sends the composer down to its place with the glide spring, while the mark and the line lift and fade and the transcript comes up under them. One composer view moved by `matchedGeometryEffect`, not two.
-Done when: a new thread shows the composer in the middle, and sending moves it to the bottom in one motion with the message already in the transcript.
-
 #### K-38 · Usage circle
 The circle left of send becomes Claude plan usage. The engine asks the SDK's usage call through the user's own CLI, so no token is read (rule 3), and caches it for a minute; `usage` joins the wire protocol. The ring shows the 5-hour window in kullanym-notch's three bands and sweeps with its reading spring; while the thread runs, a thin white arc turns inside it, as kullanym-notch shows an agent working. Hovering opens a native popover, glass on this macOS: each window as a bar with its reset time in kullanym-notch's wording, and this thread's context as the last bar. The context ring from K-14 retires into that bar.
 Done when: the circle shows the session percentage `/usage` shows, and the popover lists the weekly window and the thread's context.
@@ -347,6 +343,12 @@ Commit: 2830210
 The brief's new order: text, attach (a paperclip opening the native panel for images, going through K-27's path), the model menu (a burst in Claude's terracotta, the model's short name, its effort, a chevron), a circle, send. Until K-38 the circle is the context ring that used to wrap the send button. The capsule moves up to 28pt from the bottom edge.
 Done when: the capsule reads left to right as the brief says, sits visibly higher, and the paperclip attaches an image through the panel.
 Notes: The capsule reads text, paperclip, model menu, circle, send. The menu's label is kullanym-notch's drawn Burst in terracotta, the model's short name in primary ink, the effort (when set) in secondary and a small chevron; the circle is K-14's context ring at 20pt until K-38. Raising the capsule turned up an old bug: when the engine has nothing to say, EngineNote is an EmptyView, and SwiftUI drops a frame on an EmptyView, so the gap under the capsule never existed and it has sat on the bottom edge since K-06. The gap is now a ZStack with a clear view, and the send button's frame moved from y 718 to 690, putting the capsule 28pt above the bottom. Checked: the paperclip opened the native panel, and reference.png picked there showed as a thumbnail in the capsule.
+Commit: a2a484f
+
+#### K-37 · Centred when empty
+In a thread with nothing in it, the mark, the line and the composer sit together in the middle of the window. The first message sends the composer down to its place with the glide spring, while the mark and the line lift and fade and the transcript comes up under them. One composer view moved by `matchedGeometryEffect`, not two.
+Done when: a new thread shows the composer in the middle, and sending moves it to the bottom in one motion with the message already in the transcript.
+Notes: Not matchedGeometryEffect after all: the composer keeps one place in the view tree in both layouts and only the spacers around it change, so sending moves the same view and the field keeps its state. The spacers leave the mark's height again under the composer, so it's the composer that sits in the middle. The send is wrapped in the glide spring; the mark and its line leave upward, scaling to 92% as they fade; the transcript rises in 0.22s later so the first message doesn't appear under the composer as it passes. Two things had come apart mid-slide and are fixed: the send button's fade also animated its position, so it's now scoped to colour and icon, and the field rebuilt after a send was inserted at its final place, so on a first message that waits until the slide ends. Checked with frames captured during the send: the capsule travels down in one piece, then the message appears.
 Commit: pending
 
 

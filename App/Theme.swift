@@ -30,6 +30,11 @@ enum Type {
 enum Motion {
     static let move = Animation.spring(duration: 0.28, bounce: 0.12)
     static let fade = Animation.easeOut(duration: 0.18)
+    /// kullanym-notch's glide, for things that travel a long way: the composer leaving the
+    /// middle of the window, the usage card.
+    static let glide = Animation.spring(response: 0.5, dampingFraction: 0.86)
+    /// kullanym-notch's reading spring: a ring that snaps to a new value reads as a glitch.
+    static let reading = Animation.spring(response: 0.9, dampingFraction: 0.9)
 }
 
 enum Glass {
