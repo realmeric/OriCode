@@ -101,6 +101,7 @@ struct Drawer: View {
             .animation(Motion.move, value: peeked)
         }
         .buttonStyle(.plain)
+        .help(chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : "")
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
             Button("Delete…") { deleting = chat }

@@ -80,7 +80,7 @@ Events, each with `threadId`:
 - `ask { requestId, kind: "permission" | "question", tool, input, options? }`. Permission asks come from the SDK's `canUseTool`; `AskUserQuestion` arrives the same way and is answered through `updatedInput`.
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
 - `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
-- `compacted` when Claude Code compacted the conversation.
+- `compacted { before, after }` when Claude Code compacted the conversation, with the token counts on either side.
 - `error { message }`, and without a threadId when the engine itself is in trouble.
 
 Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypassPermissions`. The app names them Ask, Accept edits, Plan, Auto, Don't ask.
@@ -92,10 +92,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.2 "See what it did"
-
-#### K-14 · Meter
-Usage from `turn.done` feeds a thin ring around the send button showing context used, and the footer's cost accumulates per thread in the drawer row's tooltip. If the SDK exposes compaction, a Compact item in the Thread menu; if it doesn't, the auto-compaction notice is shown as a quiet line and the card says so.
-Done when: the ring grows across a long thread and the numbers match the engine's usage.
 
 #### K-15 · Notifications and badge
 `UserNotifications`: when a turn ends or asks while the window isn't key, one notification with the thread's title; clicking it opens that thread. Dock badge counts threads waiting on you. The Settings toggle from K-11 goes live.
@@ -256,6 +252,12 @@ Commit: b49f5f7
 `Edit`, `MultiEdit` and `Write` render as a card per file: path, `+12 −3` in the two colours, and a unified diff in monospace with added and deleted lines tinted, collapsed to the header by default. The turn footer sums them: "3 files · +41 −9".
 Done when: an edit turn shows exactly what changed without opening anything else.
 Notes: Cards draw from the hunks the SDK reports in its structured tool output (tool.result gained patch, and the Architecture section says so), so they carry real context lines. Before a result arrives, and for turns stored by older engines, the card diffs the tool input instead. Checked with a two-file edit: two cards with +1 −1 and +1 −0, the first opened onto its tinted diff, and a footer of 2 files · +2 −1.
+Commit: f44f0e9
+
+#### K-14 · Meter
+Usage from `turn.done` feeds a thin ring around the send button showing context used, and the footer's cost accumulates per thread in the drawer row's tooltip. If the SDK exposes compaction, a Compact item in the Thread menu; if it doesn't, the auto-compaction notice is shown as a quiet line and the card says so.
+Done when: the ring grows across a long thread and the numbers match the engine's usage.
+Notes: The SDK compacts on a /compact message, so Thread › Compact sends one and the compacted event shows as a quiet line with the token counts either side. The chat stores contextUsed, contextWindow and a running costUSD; the drawer row's tooltip shows the cost. Checked against the store: the ring drew 49,870 of 1,000,000 tokens, the same numbers the engine's turn.done carried. The first compaction reported the old size, because a compacting turn has no assistant message to measure, so compacted now carries the SDK's pre and post token counts (Architecture updated); that fix wasn't re-run, since each compaction spends a turn.
 Commit: pending
 
 

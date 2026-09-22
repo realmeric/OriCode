@@ -143,11 +143,19 @@ final class Conversation {
             } else {
                 record(event.name, ["event": .string(event.name), "delta": .string(delta)], keepOpen: true)
             }
-        case "tool.use", "tool.result", "ask", "ask.cancelled", "error", "compacted":
+        case "compacted":
+            chat.contextUsed = event.body["after"]?.int ?? 0
+            record(event.name, event.body)
+        case "tool.use", "tool.result", "ask", "ask.cancelled", "error":
             record(event.name, event.body)
         case "turn.done":
             running = false
             if let sessionId = event.body["sessionId"]?.string { chat.sessionId = sessionId }
+            chat.costUSD += event.body["costUSD"]?.double ?? 0
+            if let used = event.body["context"]?["used"]?.int, used > 0 {
+                chat.contextUsed = used
+                chat.contextWindow = event.body["context"]?["window"]?.int ?? chat.contextWindow
+            }
             record(event.name, event.body)
             flush()
         default:
@@ -247,7 +255,9 @@ final class Conversation {
         case "error", "note":
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
         case "compacted":
-            items.append(.note(id: id, text: "Claude compacted the conversation."))
+            let before = body["before"]?.int.map { $0.formatted(.number.notation(.compactName)) }
+            let after = body["after"]?.int.map { $0.formatted(.number.notation(.compactName)) }
+            items.append(.note(id: id, text: before.map { "Compacted from \($0) tokens to \(after ?? "less")." } ?? "Claude compacted the conversation."))
         default:
             break
         }

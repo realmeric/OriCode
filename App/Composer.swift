@@ -66,6 +66,7 @@ struct Composer: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
+        .background { ContextRing(chat: model.chat) }
         .disabled(!running && !canSend)
         .help(running ? "Stop (⌘.)" : "Send (Return)")
         .accessibilityLabel(running ? "Stop" : "Send")
@@ -90,5 +91,28 @@ struct Composer: View {
         text = ""
         // The field editor can write its buffer back after a Return; clear again once it has.
         Task { @MainActor in text = "" }
+    }
+}
+
+/// How full the thread's context is, as a thin ring around the send button.
+struct ContextRing: View {
+    let chat: Chat?
+
+    var body: some View {
+        let used = chat?.contextUsed ?? 0
+        let window = chat?.contextWindow ?? 0
+        let fraction = window > 0 ? min(1, Double(used) / Double(window)) : 0
+        ZStack {
+            Circle().stroke(Surface.selected, lineWidth: 1.5)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(fraction > 0.8 ? Ink.primary : Ink.secondary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(Motion.move, value: fraction)
+        }
+        .frame(width: 42, height: 42)
+        .opacity(window > 0 ? 1 : 0)
+        .help(window > 0 ? "\(used.formatted(.number.notation(.compactName))) of \(window.formatted(.number.notation(.compactName))) tokens" : "")
+        .allowsHitTesting(false)
     }
 }

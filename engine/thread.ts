@@ -297,7 +297,11 @@ export class Thread {
         return;
       }
       case "system": {
-        if (message.subtype === "compact_boundary") event("compacted", { threadId: this.id });
+        if (message.subtype === "compact_boundary") {
+          // A compacting turn has no assistant message to take the new size from.
+          this.lastContext = message.compact_metadata.post_tokens ?? 0;
+          event("compacted", { threadId: this.id, before: message.compact_metadata.pre_tokens, after: this.lastContext });
+        }
         return;
       }
       case "result": {

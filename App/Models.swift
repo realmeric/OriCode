@@ -30,6 +30,10 @@ final class Chat {
     var cwd: String
     var createdAt: Date
     var updatedAt: Date
+    /// Tokens in the last request's context and the model's window, from the latest turn.done.
+    var contextUsed: Int = 0
+    var contextWindow: Int = 0
+    var costUSD: Double = 0
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = "New thread", permissionMode: String = "default") {

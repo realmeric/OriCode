@@ -22,6 +22,8 @@ struct OriCodeCommands: Commands {
             Button("Stop") { model.stop() }
                 .keyboardShortcut(".")
                 .disabled(!(model.currentConversation?.running ?? false))
+            Button("Compact") { model.send("/compact") }
+                .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))
             Divider()
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }
