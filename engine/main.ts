@@ -4,9 +4,9 @@ import { query, type PermissionMode, type SDKUserMessage } from "@anthropic-ai/c
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
+import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
-const version = "0.1.0";
 const threads = new Map<string, Thread>();
 let models: Model[] | undefined;
 

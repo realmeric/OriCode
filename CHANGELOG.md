@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.2.0 "See what it did" - 2026-09-22
+
+- Edits, multi-edits and writes show as a card per file with its added and deleted counts, opening onto the diff Claude applied, and each turn's footer adds up the files and lines.
+- A thin ring around the send button shows how full the thread's context is, the drawer row's tooltip shows what the thread has cost, and Thread › Compact compacts it.
+- When a thread finishes or waits on you while you're elsewhere, you get one notification, and clicking it opens that thread. The Dock icon counts threads waiting on you.
+- A thread is titled by its first message until you rename it: double-click its row, or cmd-R. The window's title is the thread's.
+- Threads pick up their Claude session after a relaunch, and one whose session is gone says so and carries on in a new one.
+- Thinking shows as one folded line with Claude's summary inside, and the Effort picker offers each model's own levels.
+- A dropped network, a crashed engine, a missing claude or a moved project folder each get one quiet line, never an alert; a thread whose folder is gone is greyed in the drawer.
+- Everything works from the keyboard: model and permission pickers in the Thread menu, delete with cmd-delete, Esc closes whatever is on top, and cmd-/ lists the shortcuts.
+
 ## v0.1.0 "One window" - 2026-09-22
 
 The first version you can use as a daily Claude window.

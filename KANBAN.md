@@ -93,11 +93,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-### Backlog: v0.2 "See what it did"
-
-#### K-21 · Release v0.2
-As K-12. Tag `v0.2.0`.
-
 ### Backlog: v0.3 "Git"
 
 #### K-22 · Capsule
@@ -272,6 +267,11 @@ Commit: efa5848
 An escape stack: Esc closes the topmost thing (drawer, ask, menu), and nothing else hears it. Everything in v0.1 and v0.2 reachable without the mouse; ⌘/ shows the shortcuts in a sheet.
 Done when: a full session (add project, new thread, send, approve, switch thread, rename) is done with the trackpad unplugged.
 Notes: The Esc monitor from K-09 is now the whole stack: a rename in progress, then the drawer, then a waiting ask; it only acts in the main window with no sheet attached, so dialogs, the shortcuts sheet and the open panel keep their own Esc. The Thread menu gained Model, Effort and Permission Mode pickers, Rename Thread (cmd-R) and Delete Thread (cmd-delete, which asks first, with Delete as the default so Return confirms), and Help › Keyboard Shortcuts (cmd-/) opens the list as a sheet. Rename and delete state moved into AppModel so the menu can start them. Checked with real keys: cmd-N, typing, Return to send and to allow, cmd-1…9, cmd-R to rename, cmd-delete then Return to delete, and Return to close the sheet. Esc and the layout-dependent cmd-backslash, cmd-comma and cmd-/ couldn't be pressed by the agent, so they're Meriç's to try.
+Commit: 900d4d2
+
+#### K-21 · Release v0.2
+As K-12. Tag `v0.2.0`.
+Notes: The engine's version now lives in engine/version.ts, bumped with MARKETING_VERSION and package.json. Checked as in K-12: /Applications/OriCode.app at 0.2.0, launched with an empty environment, allowed an edit from the card. Its first attempt stalled once more, with the CLI idle and a user MCP server still starting through npm exec, and the retry went straight through; the stall still has no known cause, and the CLI debug log (defaults write com.realmeric.oricode traceEngine -bool true, then ~/Library/Logs/OriCode/cli) is the way to catch the next one. In the good run, Meriç's iTerm2 cc-status hook took 6s on the permission prompt.
 Commit: pending
 
 
