@@ -1,0 +1,37 @@
+import SwiftUI
+
+/// The brief's palette. Every surface and ink in the app comes from here.
+enum Surface {
+    static let composer = Color.white.opacity(0.08)
+    static let composerEdge = Color.white.opacity(0.12)
+    static let userMessage = Color.white.opacity(0.07)
+    static let card = Color.white.opacity(0.05)
+    static let drawer = Color.white.opacity(0.06)
+    static let hover = Color.white.opacity(0.07)
+    static let selected = Color.white.opacity(0.10)
+}
+
+enum Ink {
+    static let primary = Color.white.opacity(0.92)
+    static let secondary = Color.white.opacity(0.55)
+    static let faint = Color.white.opacity(0.30)
+    static let added = Color(red: 0.55, green: 0.85, blue: 0.60)
+    static let deleted = Color(red: 0.95, green: 0.55, blue: 0.55)
+}
+
+enum Type {
+    static let body = Font.system(size: 14)
+    static let secondary = Font.system(size: 12.5)
+    static let mono = Font.system(size: 12.5, design: .monospaced)
+}
+
+enum Motion {
+    static let move = Animation.spring(duration: 0.28, bounce: 0.12)
+    static let fade = Animation.easeOut(duration: 0.18)
+}
+
+enum Glass {
+    static let key = "glass"
+    static let defaultTint = 0.30
+    static let range = 0.15...0.60
+}

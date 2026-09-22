@@ -92,10 +92,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-02 · The glass window
-Hidden title bar, full-size content view, transparent title bar, `isMovableByWindowBackground`. Behind-window material as the window background and the tint layer over it, bound to an `@AppStorage("glass")` value defaulting to 0.30. Start with SwiftUI's `containerBackground(_:for: .window)`; if the desktop doesn't come through strongly enough, drop to an `NSVisualEffectView` with `.hudWindow` material and `.behindWindow` blending, and note which one won in the card. Centred mark and the empty-state line.
-Done when: over a colourful wallpaper the window looks like the Codex reference: the wallpaper visible through it, the traffic lights alone at the top-left, no other chrome, and the window drags from any empty glass.
-
 #### K-03 · Engine: the sidecar
 `engine/` with `main.ts`, the SDK, and a `tsconfig` used for checking only. Implements the wire protocol above end to end: `hello`, `send` with streaming (`includePartialMessages`), `interrupt`, `setMode`, `answer`, and every event. Tool calls, permission asks and `AskUserQuestion` go through `canUseTool`. `make engine` runs `tsc --noEmit` and `npm ci --omit=dev`.
 Done when: from Terminal, `printf '{"id":1,"method":"hello"}\n' | node engine/main.ts` answers with the models, and a `send` for "say hi" against any git repo streams `text` events followed by `turn.done` with a cost. No app involved yet.
@@ -233,6 +229,12 @@ Things that were once on the roadmap and are out on purpose. Each one stays out 
 `git init`, a three-line README, this file, `docs/reference.png` (the Codex screenshot; Meriç supplies it, and every design card looks at it first), and `CLAUDE.md` holding the five rules verbatim plus the four `make` targets and where things live (`App/`, `engine/`, `project.yml`). XcodeGen comes from `brew install xcodegen`. `project.yml` for XcodeGen with one app target, bundle id `com.realmeric.oricode`, and a pre-build script that runs `make engine`. An empty SwiftUI app. Record `sw_vers` and `xcodebuild -version` in the README and set the deployment target to what the Mac actually runs.
 Done when: `make run` builds and opens an empty window with "OriCode" in the title, on a clean clone.
 Notes: Builds go to ~/Library/Developer/OriCode, not build/: Documents is iCloud-synced and its FinderInfo xattrs make codesign refuse the bundle. Deployment target is macOS 26.0 on a Mac running 27.0. The engine skips the SDK's optional 208 MB bundled CLI and runs the user's own claude (see K-03).
+Commit: 9c7de76
+
+#### K-02 · The glass window
+Hidden title bar, full-size content view, transparent title bar, `isMovableByWindowBackground`. Behind-window material as the window background and the tint layer over it, bound to an `@AppStorage("glass")` value defaulting to 0.30. Start with SwiftUI's `containerBackground(_:for: .window)`; if the desktop doesn't come through strongly enough, drop to an `NSVisualEffectView` with `.hudWindow` material and `.behindWindow` blending, and note which one won in the card. Centred mark and the empty-state line.
+Done when: over a colourful wallpaper the window looks like the Codex reference: the wallpaper visible through it, the traffic lights alone at the top-left, no other chrome, and the window drags from any empty glass.
+Notes: NSVisualEffectView won (.hudWindow, .behindWindow, state .active): SwiftUI's containerBackground material goes flat grey whenever the window isn't key. The default size uses defaultWindowPlacement; a stale saved window state had been hiding it. Needs Meriç's eye: screen capture of other apps isn't available to the agent, so the wallpaper through the glass and dragging from empty glass were not seen.
 Commit: pending
 
 
