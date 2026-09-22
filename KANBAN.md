@@ -354,7 +354,7 @@ Commit: d0e7fc4
 #### K-41 · Release v0.5
 As K-12. Tag `v0.5.0`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.5.0, launched with an empty environment, opened a new thread with the composer in the middle, and an edit sent in Ask mode waited on its card, was allowed, and landed in the file.
-Commit: pending
+Commit: a695482
 
 
 ## Exceptions
