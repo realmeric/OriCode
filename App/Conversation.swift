@@ -75,17 +75,21 @@ final class Conversation {
             apply(event.kind, body, id: event.id)
         }
         open = nil
-        // Asks from an earlier launch can't be answered any more; the engine that asked is gone.
+        // Asks and tool calls from an earlier launch will never finish; the engine that ran them is gone.
         for index in items.indices {
             if case .ask(let id, var ask) = items[index], ask.state == .waiting {
                 ask.state = .cancelled
                 items[index] = .ask(id: id, ask: ask)
+            } else if case .tool(let id, var call) = items[index], call.result == nil {
+                call.result = ""
+                items[index] = .tool(id: id, call: call)
             }
         }
     }
 
+    /// The oldest ask still waiting, which is the one Return and Esc answer.
     var waitingAsk: PendingAsk? {
-        for item in items.reversed() {
+        for item in items {
             if case .ask(_, let ask) = item, ask.state == .waiting { return ask }
         }
         return nil

@@ -91,6 +91,7 @@ final class AppModel {
     func boot() async {
         if !listening {
             listening = true
+            installEscapeMonitor()
             Task { await listen() }
         }
         await startEngine()

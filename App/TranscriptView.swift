@@ -11,7 +11,7 @@ struct TranscriptView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
-                    ItemView(item: item, cwd: cwd)
+                    ItemView(item: item, cwd: cwd, listening: conversation.waitingAsk?.requestId)
                         .padding(.top, index == 0 ? 0 : spacing(before: item, after: conversation.items[index - 1]))
                 }
             }
@@ -53,6 +53,7 @@ struct TranscriptView: View {
 struct ItemView: View {
     let item: Item
     let cwd: String
+    let listening: String?
 
     var body: some View {
         switch item {
@@ -76,9 +77,7 @@ struct ItemView: View {
         case .tool(_, let call):
             ToolLine(call: call, cwd: cwd)
         case .ask(_, let ask):
-            Text("\(ask.tool) is waiting")
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
+            AskCard(ask: ask, cwd: cwd, listens: ask.requestId == listening)
         case .footer(_, let footer):
             Text(footer.line)
                 .font(Type.secondary)

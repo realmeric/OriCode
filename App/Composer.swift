@@ -21,11 +21,14 @@ struct Composer: View {
                 .onKeyPress(.return, phases: .down) { press in
                     if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
                         text += "\n"
+                    } else if !canSend, let ask = waitingPermission {
+                        model.answer(ask, allow: true)
                     } else {
                         send()
                     }
                     return .handled
                 }
+
                 .padding(.vertical, 9)
             sendButton
         }
@@ -41,6 +44,10 @@ struct Composer: View {
                 .allowsHitTesting(false)
         }
         .onAppear { focused = true }
+        // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
+        .onChange(of: waitingAsk?.requestId) { _, waiting in
+            focused = waiting == nil
+        }
     }
 
     private var maxLines: Int {
@@ -64,6 +71,14 @@ struct Composer: View {
         .help(running ? "Stop (⌘.)" : "Send (Return)")
         .accessibilityLabel(running ? "Stop" : "Send")
         .animation(Motion.fade, value: running)
+    }
+
+    private var waitingAsk: PendingAsk? {
+        model.chat.flatMap { model.conversation(for: $0).waitingAsk }
+    }
+
+    private var waitingPermission: PendingAsk? {
+        waitingAsk.flatMap { $0.kind == "permission" ? $0 : nil }
     }
 
     private var canSend: Bool {

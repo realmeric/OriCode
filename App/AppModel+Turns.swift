@@ -32,6 +32,23 @@ extension AppModel {
         }
     }
 
+    func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil) {
+        guard let chat else { return }
+        var params: [String: JSON] = ["requestId": .string(ask.requestId), "allow": .bool(allow)]
+        if let answers { params["answers"] = .object(answers.mapValues(JSON.string)) }
+        if !allow {
+            params["message"] = .string(message ?? "The user denied this. Tell them you stopped, and wait for what they want instead.")
+        }
+        conversation(for: chat).answered(ask.requestId, allow: allow)
+        Task {
+            do {
+                _ = try await engine.request("answer", .object(params))
+            } catch {
+                say(error.localizedDescription)
+            }
+        }
+    }
+
     func stop() {
         guard let chat else { return }
         Task { _ = try? await engine.request("interrupt", ["threadId": .string(chat.id.uuidString)]) }

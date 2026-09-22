@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-09 · Asks
-An `ask` event renders an inline card at the bottom of the transcript: the tool, a short summary of its input (file path for edits, the command for Bash, the whole diff for edits behind a disclosure), and two buttons, Allow and Deny. Return allows, Esc denies, and only the topmost pending card listens. A `question` ask renders its options as buttons and a text field for "Other". Answers go back through `answer`; a deny includes a message so Claude knows.
-Done when: in Ask mode, an edit waits on the card, Allow lets it through, Deny makes Claude say so and stop.
-
 #### K-10 · The drawer
 Exactly the drawer in the brief: hot zone, delay, slide in and out with those durations, the 400ms grace, ⌘\ to pin, and the ⌘1–9 peek with the row lit and nudged. Rows: state ring (idle, running, waiting on you), title, ⌘digit. Delete with a confirmation sheet. Project `Menu` at the top with "Add project…" (opens K-05's panel). New thread button at the bottom (⌘N).
 Done when: this one is judged by eye. Build it, then stop and ask Meriç to move the mouse to the edge and press ⌘2, and to say what feels off. Iterate on the numbers, not the structure.
@@ -250,6 +246,12 @@ Commit: e63a690
 The 760pt column. User messages as bubbles on the right. Assistant text through MarkdownUI (the `swift-markdown-ui` package), themed to the brief: no coloured links, code blocks on a white-5% card. Streaming updates the last block in place. Tool calls as one quiet line each ("Read App/Engine.swift", "Edit engine/main.ts", "Bash: swift build"), 12.5pt at 55% white; click toggles the result underneath on a card, collapsed by default. Turn footer at 12.5pt: "Worked for 14s · $0.04". The transcript fades under the top edge and above the composer instead of ending at a line. Auto-scroll stays pinned to the bottom unless the user scrolled up.
 Done when: a real turn that reads three files and edits one reads as prose with four quiet lines under it, and the window is as calm with a conversation in it as it was empty.
 Notes: Checked with a Sonnet turn in a scratch repo that ran one Bash, read three files and edited one: five quiet lines, two sentences of prose and the footer. The composer now clears again on the next runloop, because the field editor sometimes wrote its buffer back after Return. Tool paths are standardized before being made relative, since /tmp and /private/tmp are the same folder. An interrupted turn's footer says "Stopped after Ns".
+Commit: 50ab3aa
+
+#### K-09 · Asks
+An `ask` event renders an inline card at the bottom of the transcript: the tool, a short summary of its input (file path for edits, the command for Bash, the whole diff for edits behind a disclosure), and two buttons, Allow and Deny. Return allows, Esc denies, and only the topmost pending card listens. A `question` ask renders its options as buttons and a text field for "Other". Answers go back through `answer`; a deny includes a message so Claude knows.
+Done when: in Ask mode, an edit waits on the card, Allow lets it through, Deny makes Claude say so and stop.
+Notes: The composer gives up focus while a card waits so Return reaches the card's default button; Esc goes through one local key monitor (the start of K-20's escape stack), because a plain window never routes Esc to a cancel button. Checked in Ask mode with a scratch repo: an edit waited on the card with its diff behind a disclosure, Return allowed it, Deny made Claude say it stopped, and a question's option button answered it. Esc itself couldn't be pressed by the agent, since the automation layer keeps that key; Meriç should press it once on a waiting card.
 Commit: pending
 
 
