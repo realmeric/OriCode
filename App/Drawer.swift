@@ -6,8 +6,8 @@ struct Drawer: View {
     /// From the window's top, left and bottom edges; the corners are the window's less this.
     static let inset: CGFloat = 6
     static let corner: CGFloat = 12
-    /// The title-bar row the traffic lights and the sidebar button sit in.
-    static let titleRow: CGFloat = 38
+    /// The first row, level with the toolbar's, so the traffic lights sit in its middle.
+    static let titleRow: CGFloat = TitleBar.height - inset * 2
 
     @Environment(AppModel.self) private var model
     @State private var hovered: UUID?

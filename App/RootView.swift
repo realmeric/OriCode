@@ -96,9 +96,9 @@ struct RootView: View {
             ShortcutsSheet()
         }
         .overlay(alignment: .top) {
-            // Centred 26pt from the top: a little under the traffic lights, as Meriç asked.
+            // In the toolbar's row, level with the traffic lights AppKit centres in it.
             TitleCapsule()
-                .padding(.top, 14)
+                .frame(height: TitleBar.height)
                 .padding(.horizontal, 90)
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 90 : 0)
                 .ignoresSafeArea()
@@ -106,27 +106,27 @@ struct RootView: View {
         .overlay(alignment: .top) {
             if let file = model.openFile {
                 FileViewer(file: file)
-                    .padding(.top, 40)
+                    .padding(.top, 20)
                     .padding(.horizontal, 40)
                     .padding(.bottom, 90)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if model.fileFinderShown {
                 FileFinder()
-                    .padding(.top, 60)
+                    .padding(.top, 40)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .overlay(alignment: .top) {
             if model.goToShown {
                 GoToSheet()
-                    .padding(.top, 60)
+                    .padding(.top, 40)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .overlay(alignment: .top) {
             if model.changesShown {
                 ChangesSheet()
-                    .padding(.top, 40)
+                    .padding(.top, 20)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -139,12 +139,15 @@ struct RootView: View {
                 .allowsHitTesting(model.drawerShown)
                 .ignoresSafeArea()
         }
-        .overlay(alignment: .topLeading) {
-            SidebarButton()
-                .padding(.leading, 78)
-                .padding(.top, 5)
-                .ignoresSafeArea()
+        // A toolbar item, so AppKit sets it beside the traffic lights and on their line; the
+        // toolbar itself draws nothing, and the glass and the drawer show through it.
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                SidebarButton()
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .overlay(alignment: .leading) {
             Color.clear
                 .frame(width: 8)
@@ -179,6 +182,12 @@ struct SidebarButton: View {
         .help(model.drawerPinned ? "Hide threads (⌘B)" : "Show threads (⌘B)")
         .accessibilityLabel(model.drawerPinned ? "Hide threads" : "Show threads")
     }
+}
+
+/// The window's toolbar row: AppKit makes a unified toolbar 52pt tall and centres the traffic
+/// lights in it, so the capsule and the drawer's first row are laid out to the same line.
+enum TitleBar {
+    static let height: CGFloat = 52
 }
 
 extension View {

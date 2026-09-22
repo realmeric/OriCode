@@ -31,7 +31,9 @@ struct OriCodeApp: App {
                 .preferredColorScheme(.dark)
         }
         .commands { OriCodeCommands(model: model) }
-        .windowStyle(.hiddenTitleBar)
+        // A toolbar row, so the traffic lights sit where a toolbar window's do: in from the
+        // corner, inside the drawer's first row, level with the sidebar button and the capsule.
+        .windowToolbarStyle(.unified(showsTitle: false))
         .windowBackgroundDragBehavior(.enabled)
         .defaultWindowPlacement { _, context in
             let visible = context.defaultDisplay.visibleRect.size
