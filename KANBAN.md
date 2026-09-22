@@ -373,7 +373,7 @@ Commit: 85a1b72
 #### K-44 · Release v0.6
 As K-12. Tag `v0.6.0`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.0, launched with an empty environment, opened Settings as the sidebar window, and an edit sent in Ask mode waited on its card, was allowed, and landed in greet.swift.
-Commit: pending
+Commit: ee52680
 
 
 ## Exceptions
