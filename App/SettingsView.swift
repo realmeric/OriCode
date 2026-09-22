@@ -5,6 +5,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
+            Tab("Transcript", systemImage: "text.bubble") { TranscriptPane() }
             Tab("Notifications", systemImage: "bell") { NotificationSettings() }
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
@@ -58,6 +59,24 @@ private struct GeneralSettings: View {
     private func use(_ path: String) {
         nodePath = path
         Task { await model.startEngine() }
+    }
+}
+
+private struct TranscriptPane: View {
+    @AppStorage(TranscriptSettings.showTime) private var showTime = false
+    @AppStorage(TranscriptSettings.showCost) private var showCost = false
+
+    var body: some View {
+        Form {
+            Toggle("Show how long each turn took", isOn: $showTime)
+            Toggle("Show what each turn cost", isOn: $showCost)
+            Text("The cost is what the turn would have cost on the metered API, not a bill.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .scrollDisabled(true)
+        .frame(height: 150)
     }
 }
 

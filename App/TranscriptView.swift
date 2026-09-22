@@ -130,16 +130,7 @@ struct ItemView: View {
         case .ask(_, let ask):
             AskCard(ask: ask, cwd: cwd, listens: ask.requestId == listening)
         case .footer(_, let footer):
-            HStack(spacing: 5) {
-                Text(footer.line)
-                if footer.files > 0 {
-                    Text("· \(footer.files) \(footer.files == 1 ? "file" : "files") ·")
-                    Counts(added: footer.added, deleted: footer.deleted)
-                        .opacity(0.8)
-                }
-            }
-            .font(Type.secondary)
-            .foregroundStyle(Ink.faint)
+            FooterLine(footer: footer)
         case .note(_, let text):
             Text(text)
                 .font(Type.secondary)
@@ -255,11 +246,44 @@ struct ThinkingLine: View {
     }
 }
 
+/// What a turn did. Its files always; how long it took and what it cost only when
+/// Settings › Transcript asks, and nothing at all when there's nothing to say.
+struct FooterLine: View {
+    let footer: TurnFooter
+    @AppStorage(TranscriptSettings.showTime) private var showTime = false
+    @AppStorage(TranscriptSettings.showCost) private var showCost = false
+
+    var body: some View {
+        let words = footer.words(time: showTime, cost: showCost)
+        if !words.isEmpty || footer.files > 0 {
+            HStack(spacing: 5) {
+                if !words.isEmpty { Text(words) }
+                if footer.files > 0 {
+                    Text((words.isEmpty ? "" : "· ") + "\(footer.files) \(footer.files == 1 ? "file" : "files") ·")
+                    Counts(added: footer.added, deleted: footer.deleted)
+                        .opacity(0.8)
+                }
+            }
+            .font(Type.secondary)
+            .foregroundStyle(Ink.faint)
+        }
+    }
+}
+
+enum TranscriptSettings {
+    static let showTime = "showTurnTime"
+    static let showCost = "showTurnCost"
+}
+
 extension TurnFooter {
-    var line: String {
+    func words(time showTime: Bool, cost showCost: Bool) -> String {
         let seconds = Int((durationMs / 1000).rounded())
         let time = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
-        if stopReason == "interrupted" { return "Stopped after \(time)" }
-        return "Worked for \(time) · " + String(format: "$%.2f", costUSD)
+        // A stopped turn says so either way: it's what happened, not a statistic.
+        if stopReason == "interrupted" { return showTime ? "Stopped after \(time)" : "Stopped" }
+        var parts: [String] = []
+        if showTime { parts.append("Worked for \(time)") }
+        if showCost { parts.append(String(format: "$%.2f", costUSD)) }
+        return parts.joined(separator: " · ")
     }
 }

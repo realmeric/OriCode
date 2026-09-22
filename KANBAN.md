@@ -104,10 +104,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
 
-#### K-39 · Footers off by default
-"Worked for 14s" and the cost are hidden unless Settings › Transcript turns them on, each on its own. A turn that changed files still says how many and by how much.
-Done when: out of the box no turn shows its time or cost, and each toggle brings its half back live.
-
 #### K-40 · Settings on glass
 The Settings window gets the main window's glass and tint, and its panes become quiet glass cards in the brief's ink: General (the glass slider with a live swatch, Node), Transcript (K-39's toggles), Notifications, About (the rays mark, the version, the source).
 Done when: Settings reads as the same app over a colourful wallpaper. Needs Meriç's eye.
@@ -352,6 +348,12 @@ Commit: 0ea3d32
 The circle left of send becomes Claude plan usage. The engine asks the SDK's usage call through the user's own CLI, so no token is read (rule 3), and caches it for a minute; `usage` joins the wire protocol. The ring shows the 5-hour window in kullanym-notch's three bands and sweeps with its reading spring; while the thread runs, a thin white arc turns inside it, as kullanym-notch shows an agent working. Hovering opens a native popover, glass on this macOS: each window as a bar with its reset time in kullanym-notch's wording, and this thread's context as the last bar. The context ring from K-14 retires into that bar.
 Done when: the circle shows the session percentage `/usage` shows, and the popover lists the weekly window and the thread's context.
 Notes: The engine's usage method spawns the CLI with no settings and asks the SDK's usage call, about a second, and keeps the answer a minute (15 seconds when the app asks fresh after a turn); only the named windows come through, since the response also carries codenamed ones nobody could label (Architecture updated). The app asks when the engine comes up, fresh after each turn, and on hover when its answer is over a minute old. The ring is the session window in kullanym-notch's bands (green under 50%, amber under 70%, red above) and sweeps with its reading spring; while the thread runs, a quarter arc turns inside it once every 1.1s, clock-driven. The card is a native popover that opens a quarter second into a hover and closes 0.3s after the mouse leaves both it and the ring; its bars grow from zero with the reading spring, staggered 45ms, and the reset times use kullanym-notch's wording. Checked: the ring showed 15%, and the card listed Session 15% resetting in 3 hr 37 min, Week 84% resetting Sat 12:00 AM, Fable week 77%, and this thread at 23K of 200K; the arc turned during a turn and the card closed when the mouse left. claude -p /usage, run right after, reported the same three: session 15%, week 84% resetting Sep 26 at 12am, Fable 77%.
+Commit: 8b46134
+
+#### K-39 · Footers off by default
+"Worked for 14s" and the cost are hidden unless Settings › Transcript turns them on, each on its own. A turn that changed files still says how many and by how much.
+Done when: out of the box no turn shows its time or cost, and each toggle brings its half back live.
+Notes: Two @AppStorage keys, showTurnTime and showTurnCost, both off unless set. A footer with neither and no file changes draws nothing, and since it's an EmptyView its spacing goes with it; a stopped turn still says "Stopped", with the time only when that's on, because it's what happened rather than a statistic. The toggles live in a new Settings tab, Transcript, which K-40 restyles. Checked: with the keys unset, turns showed no footer; turning on the time showed "Worked for 3s" at once, and the cost added "· /bin/zsh.00" beside it.
 Commit: pending
 
 
