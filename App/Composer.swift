@@ -9,6 +9,9 @@ struct Composer: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
+            ModelMenu(chat: model.chat)
+                .frame(height: 36)
+                .padding(.leading, 12)
             TextField("Ask for a change", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Type.body)
@@ -24,7 +27,6 @@ struct Composer: View {
                     return .handled
                 }
                 .padding(.vertical, 9)
-                .padding(.leading, 12)
             sendButton
         }
         .padding(6)

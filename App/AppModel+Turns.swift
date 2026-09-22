@@ -38,7 +38,6 @@ extension AppModel {
     }
 
     func route(_ event: EngineEvent) {
-        Engine.logger.debug("route \(event.name, privacy: .public) \(event.threadId ?? "-", privacy: .public) known=\(self.conversations.keys.map(\.uuidString).joined(separator: ","), privacy: .public)")
         guard let threadId = event.threadId, let id = UUID(uuidString: threadId) else {
             if event.name == "error", let message = event.body["message"]?.string {
                 say(message)
@@ -60,3 +59,37 @@ extension AppModel {
     }
 }
 
+extension AppModel {
+    func setModel(_ id: String, for chat: Chat?) {
+        lastModel = id
+        guard let chat else { return }
+        chat.model = id
+        if let efforts = models.first(where: { $0.id == id })?.efforts, let effort = chat.effort, !efforts.contains(effort) {
+            chat.effort = nil
+        }
+        save()
+    }
+
+    func setEffort(_ effort: String?, for chat: Chat?) {
+        lastEffort = effort
+        guard let chat else { return }
+        chat.effort = effort
+        save()
+    }
+
+    func setPermissionMode(_ mode: String, for chat: Chat?) {
+        lastPermissionMode = mode
+        guard let chat else { return }
+        chat.permissionMode = mode
+        save()
+        let running = conversation(for: chat).running
+        Task {
+            let reply = try? await engine.request("setMode", ["threadId": .string(chat.id.uuidString), "permissionMode": .string(mode)])
+            if running, reply?["applied"]?.bool == false {
+                modeNote = "from the next reply"
+                try? await Task.sleep(for: .seconds(2))
+                modeNote = nil
+            }
+        }
+    }
+}

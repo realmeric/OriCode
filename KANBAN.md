@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-07 · Model and mode
-The `Menu` at the capsule's left end: its label is the model's short name (and effort when set). Inside, native `Picker`s for Model (from `hello`), Effort (when the model has any), and Permission mode with a one-line description each: Ask "Edits and commands wait for you", Accept edits "Edits go through, commands ask", Auto "Claude decides what is safe", Plan "Reads and thinks, changes nothing", Don't ask "Everything goes through". Changing the mode mid-turn calls `setMode`; if it returns `applied: false`, a small "from the next reply" note under the capsule for two seconds.
-Done when: switching model and mode changes what the next turn does, checked by watching the engine's stderr.
-
 #### K-08 · Transcript
 The 760pt column. User messages as bubbles on the right. Assistant text through MarkdownUI (the `swift-markdown-ui` package), themed to the brief: no coloured links, code blocks on a white-5% card. Streaming updates the last block in place. Tool calls as one quiet line each ("Read App/Engine.swift", "Edit engine/main.ts", "Bash: swift build"), 12.5pt at 55% white; click toggles the result underneath on a card, collapsed by default. Turn footer at 12.5pt: "Worked for 14s · $0.04". The transcript fades under the top edge and above the composer instead of ending at a line. Auto-scroll stays pinned to the bottom unless the user scrolled up.
 Done when: a real turn that reads three files and edits one reads as prose with four quiet lines under it, and the window is as calm with a conversation in it as it was empty.
@@ -246,6 +242,12 @@ Commit: 63c6d66
 The glass capsule from the brief. `TextField` with `axis: .vertical`, placeholder "Ask for a change", Return sends, ⇧Return inserts a newline, the round button sends and turns into Stop (⌘.) while a turn runs. Sending writes the user event and calls `send` with the thread's cwd, model, effort and mode.
 Done when: typing and pressing Return starts a turn, the button shows Stop while it runs, and Stop interrupts.
 Notes: Three launch-time traps, all fixed in the engine's environment: inherited PWD pointing into ~/Documents made the CLI stall on a Documents privacy check (the Info.plist now carries Documents, Desktop and Downloads usage strings for projects that really live there), App Nap is held off while the engine runs, and an interrupt reports stopReason interrupted instead of a diagnostic. Checked with real keys: Return sends, shift-Return breaks the line, the button turns into Stop and cmd-period interrupts.
+Commit: 56db5e2
+
+#### K-07 · Model and mode
+The `Menu` at the capsule's left end: its label is the model's short name (and effort when set). Inside, native `Picker`s for Model (from `hello`), Effort (when the model has any), and Permission mode with a one-line description each: Ask "Edits and commands wait for you", Accept edits "Edits go through, commands ask", Auto "Claude decides what is safe", Plan "Reads and thinks, changes nothing", Don't ask "Everything goes through". Changing the mode mid-turn calls `setMode`; if it returns `applied: false`, a small "from the next reply" note under the capsule for two seconds.
+Done when: switching model and mode changes what the next turn does, checked by watching the engine's stderr.
+Notes: Mode items are native menu items with the description as their subtitle. A model or effort change restarts the thread's CLI with resume, since the SDK fixes both at spawn; mode changes go through setMode. Checked in engine.log: after picking Sonnet, Low and Plan, the next turn logged model=sonnet effort=low mode=plan. The applied:false note is wired but wasn't seen, because the SDK took every mid-turn change it was given.
 Commit: pending
 
 

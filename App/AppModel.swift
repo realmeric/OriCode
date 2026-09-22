@@ -32,6 +32,8 @@ final class AppModel {
     var models: [ModelOption] = []
     /// A transient line under the composer, for things the user did that didn't work.
     private(set) var note: String?
+    /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.
+    var modeNote: String?
     let engine = Engine()
     let context: ModelContext
     /// Bumped on every save so views reading fetched lists redraw.

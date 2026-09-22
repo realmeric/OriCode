@@ -86,7 +86,7 @@ struct EngineNote: View {
 
     var body: some View {
         Group {
-            if let note = model.note {
+            if let note = model.modeNote ?? model.note {
                 Text(note)
             } else {
                 engineLine
@@ -96,6 +96,7 @@ struct EngineNote: View {
         .foregroundStyle(Ink.secondary)
         .animation(Motion.fade, value: model.engineState)
         .animation(Motion.fade, value: model.note)
+        .animation(Motion.fade, value: model.modeNote)
     }
 
     @ViewBuilder
