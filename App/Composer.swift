@@ -11,6 +11,7 @@ struct Composer: View {
     @State private var draft = UUID()
     @State private var slashSelected = 0
     @State private var height: CGFloat = 48
+    @State private var attachHovered = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -161,11 +162,13 @@ struct Composer: View {
         } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: 14))
-                .foregroundStyle(Ink.secondary)
+                .foregroundStyle(attachHovered ? Ink.primary : Ink.secondary)
                 .frame(width: 30, height: 30)
+                .background(attachHovered ? Surface.hover : .clear, in: .circle)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .onHover { attachHovered = $0 }
         .help("Attach an image")
         .accessibilityLabel("Attach an image")
     }

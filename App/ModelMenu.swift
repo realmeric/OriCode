@@ -44,6 +44,7 @@ enum PermissionModeOption: String, CaseIterable, Identifiable {
 struct ModelMenu: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
+    @State private var hovering = false
 
     var body: some View {
         Menu {
@@ -90,12 +91,14 @@ struct ModelMenu: View {
             .font(Type.secondary)
             .padding(.horizontal, 8)
             .frame(height: 30)
+            .background(hovering ? Surface.hover : .clear, in: .capsule)
             .contentShape(.rect)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+        .onHover { hovering = $0 }
         .help("Model and permission mode")
     }
 

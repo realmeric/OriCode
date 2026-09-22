@@ -34,9 +34,9 @@ Every time rule 1 is broken on purpose, add a line under **Exceptions** at the b
 
 The reference is the empty Codex window: a rounded pane of glass with the wallpaper's orange and violet visible through it, traffic lights top-left, a single mark in the middle, and no chrome at all. The test is whether the window still feels like that once a conversation is in it.
 
-**Window.** Hidden title bar, full-size content, `titlebarAppearsTransparent`, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them, with one thing beside them: the sidebar button. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
+**Window.** A unified toolbar with its background hidden, full-size content, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them in a toolbar window, with one thing beside them: the sidebar button, the toolbar's only item. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
 
-**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass, laid out like Meriç's reference: a sidebar of panes under a search field, holding the traffic lights the way the drawer does, and each pane's settings in cards under quiet headings, rows parted by hairlines inside a card. Those hairlines are the one place a line appears, because the reference has them.
+**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row or a button: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass, laid out like Meriç's reference: a sidebar of panes under a search field, holding the traffic lights the way the drawer does, and each pane's settings in cards under quiet headings, rows parted by hairlines inside a card. Those hairlines are the one place a line appears, because the reference has them.
 
 **Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Colour carries meaning and nothing else does: a soft green for added lines and a soft red for deleted ones; the usage circle's three bands from kullanym-notch (green, amber, red), because they say how close a limit is; and Claude's terracotta on the burst beside the model's name. No accent colour. A running thread lights rays on its mark in the drawer, in white.
 
@@ -385,6 +385,12 @@ Commit: c192052
 As K-12. Tag `v0.6.1`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.1, launched with an empty environment, showed the traffic lights at (18, 18) level with the sidebar button and the capsule, and an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
 Commit: cb58c3c
+
+#### K-47 · Hover on the composer's buttons
+The paperclip and the model menu light on hover the way the drawer's rows and its foot do: white at 7% behind them, a circle behind the paperclip and a capsule behind the menu, and the paperclip's ink goes from secondary to primary.
+Done when: hovering the paperclip or the model menu shows its hover background, and moving away takes it off.
+Notes: Checked with the real pointer: over the paperclip a circle came up behind it and the icon brightened, over the menu a capsule came up behind the mark, the name and the chevron, and both went when the pointer left. Like every other hover in the app it doesn't animate.
+Commit: pending
 
 
 ## Exceptions
