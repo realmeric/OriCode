@@ -90,6 +90,10 @@ extension AppModel {
         case idle, running, waiting
     }
 
+    func heads(of chat: Chat) -> Int {
+        conversations[chat.id]?.heads ?? 0
+    }
+
     func state(of chat: Chat) -> ThreadState {
         guard let conversation = conversations[chat.id] else { return .idle }
         if conversation.waitingAsk != nil { return .waiting }

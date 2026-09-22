@@ -83,6 +83,7 @@ Events, each with `threadId`:
 - `tool.use { toolUseId, name, input }`
 - `tool.result { toolUseId, content, isError, patch? }`. `patch` is the hunks an Edit, MultiEdit or Write applied (`[{ oldStart, newStart, lines }]`, lines prefixed `+`, `-` or a space), from the SDK's structured tool output.
 - `ask { requestId, kind: "permission" | "question", tool, input, options? }`. Permission asks come from the SDK's `canUseTool`; `AskUserQuestion` arrives the same way and is answered through `updatedInput`.
+- `tasks { running, tasks }` whenever the subagents and other tasks the CLI runs for the thread change, foreground or background; the app lights a ray for each.
 - `retrying { attempt, max, error }` while the CLI retries a failed API request, which is what a dropped network looks like.
 - `session.lost` when the session a send asked to resume no longer exists; the engine sends the same message again in a new session.
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
@@ -101,10 +102,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 ### Todo: v0.5 "Rays"
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
-
-#### K-33 · Heads light the rays
-A thread's heads are its main loop while a turn runs, plus each Agent call that hasn't returned, up to six. The drawer row's state ring becomes a 14pt `RaysMark` with that many rays lit, turning slowly while any are lit; a thread waiting on you pulses its dot. The empty-state mark reads the selected thread the same way.
-Done when: a turn that starts two subagents lights three rays on its row, and they go out as the subagents return.
 
 #### K-34 · The sidebar button, and a drawer that reaches the top
 Right of the traffic lights, a `sidebar.left` button. Hovering it opens the drawer the way the left edge does; clicking it pins or unpins; ⌘B does the same and replaces ⌘\, which Turkish-QWERTY-PC can't reach. The drawer takes the brief's new numbers: full height, the traffic lights and the button inside its first row.
@@ -338,6 +335,12 @@ Commit: a3b5431
 `RaysMark`, drawn in code: a dot inside six arcs, with how many arcs are lit as a parameter. It replaces the plain ring in the empty state. The app icon is the same drawing on a dark violet squircle, rendered by `scripts/icon.swift` into the asset catalog at every size macOS asks for, so the icon and the mark can't drift apart.
 Done when: the Dock shows the new icon, and the empty state shows the mark.
 Notes: RaysMark draws six arcs of 38° with 22° gaps around a dot a third of its width, strokes at 8.5% of its size, and lights arcs clockwise from twelve. The icon's arcs are 62% white and the dot full white, at the proportions of Meriç's image: ring 58% of the squircle, dot 30% of the ring. make icon compiles scripts/icon/main.swift together with App/RaysMark.swift and writes all ten macOS sizes plus Contents.json. The dot's waiting pulse is driven by the clock instead of a repeatForever animation, which kullanym-notch found doesn't stop when its value is set back. Checked: the built bundle's AppIcon.icns is the new icon, and the empty state shows the mark at 44pt. The Dock itself is outside what the agent can screenshot.
+Commit: 171d363
+
+#### K-33 · Heads light the rays
+A thread's heads are its main loop while a turn runs, plus each Agent call that hasn't returned, up to six. The drawer row's state ring becomes a 14pt `RaysMark` with that many rays lit, turning slowly while any are lit; a thread waiting on you pulses its dot. The empty-state mark reads the selected thread the same way.
+Done when: a turn that starts two subagents lights three rays on its row, and they go out as the subagents return.
+Notes: Counting unfinished Agent calls wasn't enough: Claude sends subagents to the background, the Agent call returns at once, and the turn ends while they work. So the engine tracks the CLI's task messages (task_started, task_notification, task_updated, background_tasks_changed) per thread and emits tasks { running } (Architecture updated), and heads = the main loop while a turn runs + tasks, capped at six. A background agent reporting back makes the CLI start a turn nobody sent; the engine now treats that as a turn, so it gets turn.started, Stop and a footer. Checked: a Haiku turn with two parallel subagents traced tasks running 2, then 1, then 0 as they returned, and one subagent's Bash command waited on a card in the thread like any other ask. RaysMark rendered large showed 0, 1, 3 and 6 rays lit clockwise from twelve; at 14pt in the drawer the agent's zoom can't count rays, so the row itself is for Meriç's eye.
 Commit: pending
 
 

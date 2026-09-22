@@ -69,7 +69,10 @@ struct Drawer: View {
             model.select(chat)
         } label: {
             HStack(spacing: 10) {
-                StateRing(state: model.state(of: chat))
+                let heads = model.heads(of: chat)
+                RaysMark(lit: heads, turning: heads > 0, waiting: model.state(of: chat) == .waiting,
+                         restingOpacity: 0.28, dotOpacity: selected || heads > 0 ? 0.92 : 0.55)
+                    .frame(width: 14, height: 14)
                 if model.renamingChatID == chat.id {
                     TextField("Title", text: $draft)
                         .textFieldStyle(.plain)
@@ -129,37 +132,5 @@ struct Drawer: View {
             Button("Rename") { model.startRename(chat) }
             Button("Delete…") { model.askToDelete(chat) }
         }
-    }
-}
-
-/// Idle is a faint ring, running spins, waiting on you is solid.
-struct StateRing: View {
-    let state: AppModel.ThreadState
-
-    var body: some View {
-        ZStack {
-            switch state {
-            case .idle:
-                Circle().stroke(Ink.faint, lineWidth: 1.5)
-            case .running:
-                SpinningRing()
-            case .waiting:
-                Circle().fill(Ink.primary)
-            }
-        }
-        .frame(width: 10, height: 10)
-    }
-}
-
-private struct SpinningRing: View {
-    @State private var turning = false
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.7)
-            .stroke(Ink.primary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: turning)
-            .onAppear { turning = true }
     }
 }

@@ -72,6 +72,8 @@ enum Item: Identifiable, Hashable {
 final class Conversation {
     private(set) var items: [Item] = []
     private(set) var running = false
+    /// Subagents and other tasks out for this thread, as the engine last counted them.
+    private(set) var tasks = 0
     /// "Can't reach Claude…" while the CLI retries; a live line, never stored.
     private(set) var retrying: String?
     private(set) var turn = 0
@@ -99,6 +101,12 @@ final class Conversation {
             }
         }
         finishOpenTools()
+    }
+
+    /// Heads at work: the main loop while a turn runs, and each subagent it sent out
+    /// that hasn't come back. What the rays on the thread's mark light up for.
+    var heads: Int {
+        min((running ? 1 : 0) + tasks, RaysMark.rays)
     }
 
     /// The oldest ask still waiting, which is the one Return and Esc answer.
@@ -132,6 +140,8 @@ final class Conversation {
     func receive(_ event: EngineEvent) {
         if event.name != "retrying" { retrying = nil }
         switch event.name {
+        case "tasks":
+            tasks = event.body["running"]?.int ?? 0
         case "retrying":
             let attempt = event.body["attempt"]?.int ?? 0
             let max = event.body["max"]?.int ?? 0
@@ -189,6 +199,7 @@ final class Conversation {
     }
 
     func stopped() {
+        tasks = 0
         guard running else { return }
         running = false
         retrying = nil

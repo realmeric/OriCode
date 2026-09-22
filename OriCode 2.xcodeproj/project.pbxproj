@@ -1,0 +1,688 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		033167EF92D77ECB973A2FCF /* Diff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19330E1C5835956A0A31FEAA /* Diff.swift */; };
+		064E8C73CA75F7953E505D8A /* ModelMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA3711DAC3687B5BBAFFBAA /* ModelMenu.swift */; };
+		104CB62540762B395AE8D5DC /* ShortcutsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 187CC0EFB05AC1B271F4F07D /* ShortcutsSheet.swift */; };
+		17C51C125712724606964117 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = B43BBFD579D7C33FA0C55595 /* MarkdownUI */; };
+		1D22988A8D155E26AA128862 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F347ADF6979BFFA2B30C803A /* TranscriptView.swift */; };
+		1E349CEC396ED1BB3DD5638E /* Drawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A894E79006980C228E436DC /* Drawer.swift */; };
+		24742A93BC677323B1DF19CA /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4817D3DC6ADDBD9DD95AE66A /* Models.swift */; };
+		364D7AB7892B3740045BCFD7 /* AskCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDEEF2525D210075328AC11 /* AskCard.swift */; };
+		486E950DD50073A2D1CA6B26 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E17D6EE6E61DF4899C5A7FC /* SettingsView.swift */; };
+		5D5246C722198F2B0C66A7FF /* EscapeStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B87BA7400670F0F563BE54A /* EscapeStack.swift */; };
+		633493483ECE05C36AF4BC0E /* Attachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880CB70B09EE501A77223A16 /* Attachments.swift */; };
+		650C331E6A1EB961C89235CC /* RaysMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640A8C4CCC172624F281F084 /* RaysMark.swift */; };
+		6F50E6C2DDE6F0522F3F50B8 /* AppModel+Projects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CA0CBA8BF4FD5A9885F7DA1 /* AppModel+Projects.swift */; };
+		7183C1FFF5164B6C8EF3E396 /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = EF5818FB07B575D9E3593A90 /* Highlightr */; };
+		72F8424412F97764131C3505 /* AppModel+Turns.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC9575BDB5E73775694060B0 /* AppModel+Turns.swift */; };
+		764D241C896A6F82162BEB1B /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC16B295AFDA8ED1438F865 /* CodeHighlighter.swift */; };
+		7810D604DCA787DC1112A8BC /* MarkdownTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028DCA12F161C2450E746A21 /* MarkdownTheme.swift */; };
+		78E87461BED8EBD7E6494438 /* AppModel+Drawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 744876908A1D2C9D4EC32D2B /* AppModel+Drawer.swift */; };
+		7D5B40FE3AE2D2339283B086 /* ToolSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735D0816E1BEC2C572245F9A /* ToolSummary.swift */; };
+		8B77C05360240CBC99DFA670 /* OriCodeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DD3272F44163318D0C9F7F /* OriCodeApp.swift */; };
+		8CF7D7C2A942A5748EC1DD7E /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D643F26ED784690FE079ED /* AppModel.swift */; };
+		8EF9832FCD139A2931A9383E /* Notifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95569CDE76BED5D079FCAF60 /* Notifier.swift */; };
+		94B5D3E68FE7E4BD1063EB85 /* AppModel+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71E6CF9642A4416C994B29C3 /* AppModel+Git.swift */; };
+		9544B6F74AC45351673C7FF9 /* Fuzzy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3176176505A628D2403B48 /* Fuzzy.swift */; };
+		96AD5C4AF08DB1B233899560 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89BD37AC7876A70FB200C9D1 /* RootView.swift */; };
+		98E89AFF0FE9905B7602284C /* GoTo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F17A0F67F64CD5CC2920F80A /* GoTo.swift */; };
+		9A2FD8C56236E566B1E90B6E /* NodeLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF640EF5181B18728E55BA9A /* NodeLocator.swift */; };
+		9B92756A21B3A667056CC4BA /* ChangesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AC9A13245E6DEBB48BC4EBC /* ChangesSheet.swift */; };
+		A06F578CC1CFD64AE383E50F /* Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87FAE7537D142EB5D55ADBF /* Engine.swift */; };
+		A81B37B49720F73C82071E54 /* SlashMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D41F5EBC1F14EC88B345A5F /* SlashMenu.swift */; };
+		AC2115BC5DD565A9216B3512 /* Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3A24A97D5524F5A363E70C /* Composer.swift */; };
+		B6109136FB6A807E75589F87 /* TitleCapsule.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF2C30B7AC7DE62E3DCED698 /* TitleCapsule.swift */; };
+		B727B6099D095A48BF5AC1CC /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6490FF15B348A99D156FC67B /* Conversation.swift */; };
+		BF729CB5ABA0FDF42DB3CE20 /* FuzzyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA54289D5CFA3B757217502 /* FuzzyTests.swift */; };
+		C383A9F65FBDB39D58DF3625 /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C63B34E8F271B8D2A351E9D /* Commands.swift */; };
+		C48839A633DEB399FD693FC3 /* JSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3BDFAB41D462F480A6BEB52 /* JSON.swift */; };
+		C6DF517273A930FE935AFF0E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58086C84011941C88BEE1259 /* AppDelegate.swift */; };
+		C8DE62AB4BD83B08BEB9B480 /* BehindWindowGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F8D90B2E6726683297C624 /* BehindWindowGlass.swift */; };
+		CAE9E239AC9F699B0D373922 /* Files.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F5957B54F77CFA0DCE338D /* Files.swift */; };
+		D683044DB59139F065E59CE2 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5656B79B4D6D4EF49CA6E6F7 /* Theme.swift */; };
+		ECB054E68BE90DE6A0980DF3 /* DiffCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE21E2B69CDC16DB8D820FF3 /* DiffCard.swift */; };
+		F84CDF41A6F2348D41789706 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F9F8FE6E8554069AEAF3B60 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C27B84312F96D68689257403 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FB09A26034270F12B89147EA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 15F4B386118CF79BF811CD8C;
+			remoteInfo = OriCode;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		028DCA12F161C2450E746A21 /* MarkdownTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTheme.swift; sourceTree = "<group>"; };
+		0AC9A13245E6DEBB48BC4EBC /* ChangesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesSheet.swift; sourceTree = "<group>"; };
+		0CA0CBA8BF4FD5A9885F7DA1 /* AppModel+Projects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Projects.swift"; sourceTree = "<group>"; };
+		187CC0EFB05AC1B271F4F07D /* ShortcutsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutsSheet.swift; sourceTree = "<group>"; };
+		19330E1C5835956A0A31FEAA /* Diff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Diff.swift; sourceTree = "<group>"; };
+		1AA54289D5CFA3B757217502 /* FuzzyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuzzyTests.swift; sourceTree = "<group>"; };
+		1BDEEF2525D210075328AC11 /* AskCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskCard.swift; sourceTree = "<group>"; };
+		1E17D6EE6E61DF4899C5A7FC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2A894E79006980C228E436DC /* Drawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Drawer.swift; sourceTree = "<group>"; };
+		2AA3711DAC3687B5BBAFFBAA /* ModelMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelMenu.swift; sourceTree = "<group>"; };
+		2B3176176505A628D2403B48 /* Fuzzy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fuzzy.swift; sourceTree = "<group>"; };
+		4817D3DC6ADDBD9DD95AE66A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		5656B79B4D6D4EF49CA6E6F7 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		58086C84011941C88BEE1259 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		5A3A24A97D5524F5A363E70C /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
+		640A8C4CCC172624F281F084 /* RaysMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaysMark.swift; sourceTree = "<group>"; };
+		6490FF15B348A99D156FC67B /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
+		6A4463FF8007D1AEE3033392 /* OriCodeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OriCodeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6D41F5EBC1F14EC88B345A5F /* SlashMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashMenu.swift; sourceTree = "<group>"; };
+		71E6CF9642A4416C994B29C3 /* AppModel+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Git.swift"; sourceTree = "<group>"; };
+		735D0816E1BEC2C572245F9A /* ToolSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolSummary.swift; sourceTree = "<group>"; };
+		744876908A1D2C9D4EC32D2B /* AppModel+Drawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Drawer.swift"; sourceTree = "<group>"; };
+		78152B514DDAE7CBBE1F730C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7B87BA7400670F0F563BE54A /* EscapeStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscapeStack.swift; sourceTree = "<group>"; };
+		880CB70B09EE501A77223A16 /* Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachments.swift; sourceTree = "<group>"; };
+		89BD37AC7876A70FB200C9D1 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		8F9F8FE6E8554069AEAF3B60 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		95569CDE76BED5D079FCAF60 /* Notifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifier.swift; sourceTree = "<group>"; };
+		95F5957B54F77CFA0DCE338D /* Files.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Files.swift; sourceTree = "<group>"; };
+		9C63B34E8F271B8D2A351E9D /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
+		AE21E2B69CDC16DB8D820FF3 /* DiffCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffCard.swift; sourceTree = "<group>"; };
+		B1DD3272F44163318D0C9F7F /* OriCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriCodeApp.swift; sourceTree = "<group>"; };
+		B6F8D90B2E6726683297C624 /* BehindWindowGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehindWindowGlass.swift; sourceTree = "<group>"; };
+		CDC16B295AFDA8ED1438F865 /* CodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighter.swift; sourceTree = "<group>"; };
+		D87FAE7537D142EB5D55ADBF /* Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engine.swift; sourceTree = "<group>"; };
+		E3BDFAB41D462F480A6BEB52 /* JSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSON.swift; sourceTree = "<group>"; };
+		E8B00E36DCB10E0C8E90E5A8 /* OriCode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OriCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E8D643F26ED784690FE079ED /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		EC9575BDB5E73775694060B0 /* AppModel+Turns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Turns.swift"; sourceTree = "<group>"; };
+		EF2C30B7AC7DE62E3DCED698 /* TitleCapsule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleCapsule.swift; sourceTree = "<group>"; };
+		F17A0F67F64CD5CC2920F80A /* GoTo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoTo.swift; sourceTree = "<group>"; };
+		F347ADF6979BFFA2B30C803A /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
+		FF640EF5181B18728E55BA9A /* NodeLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeLocator.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1C1B30D8808A25640E132BE5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				17C51C125712724606964117 /* MarkdownUI in Frameworks */,
+				7183C1FFF5164B6C8EF3E396 /* Highlightr in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		04E6CF20F43A69434CDB004A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E8B00E36DCB10E0C8E90E5A8 /* OriCode.app */,
+				6A4463FF8007D1AEE3033392 /* OriCodeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6AB9811674A8DA5E4927CC80 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				1AA54289D5CFA3B757217502 /* FuzzyTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		85DF66DBE4165D4111DFF650 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				D87FAE7537D142EB5D55ADBF /* Engine.swift */,
+				E3BDFAB41D462F480A6BEB52 /* JSON.swift */,
+				FF640EF5181B18728E55BA9A /* NodeLocator.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		CC3946182298558C58E90D42 = {
+			isa = PBXGroup;
+			children = (
+				CD9EB421B5F6DB21CDFD3843 /* App */,
+				6AB9811674A8DA5E4927CC80 /* Tests */,
+				04E6CF20F43A69434CDB004A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CD9EB421B5F6DB21CDFD3843 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				58086C84011941C88BEE1259 /* AppDelegate.swift */,
+				E8D643F26ED784690FE079ED /* AppModel.swift */,
+				744876908A1D2C9D4EC32D2B /* AppModel+Drawer.swift */,
+				71E6CF9642A4416C994B29C3 /* AppModel+Git.swift */,
+				0CA0CBA8BF4FD5A9885F7DA1 /* AppModel+Projects.swift */,
+				EC9575BDB5E73775694060B0 /* AppModel+Turns.swift */,
+				1BDEEF2525D210075328AC11 /* AskCard.swift */,
+				8F9F8FE6E8554069AEAF3B60 /* Assets.xcassets */,
+				880CB70B09EE501A77223A16 /* Attachments.swift */,
+				B6F8D90B2E6726683297C624 /* BehindWindowGlass.swift */,
+				0AC9A13245E6DEBB48BC4EBC /* ChangesSheet.swift */,
+				CDC16B295AFDA8ED1438F865 /* CodeHighlighter.swift */,
+				9C63B34E8F271B8D2A351E9D /* Commands.swift */,
+				5A3A24A97D5524F5A363E70C /* Composer.swift */,
+				6490FF15B348A99D156FC67B /* Conversation.swift */,
+				19330E1C5835956A0A31FEAA /* Diff.swift */,
+				AE21E2B69CDC16DB8D820FF3 /* DiffCard.swift */,
+				2A894E79006980C228E436DC /* Drawer.swift */,
+				7B87BA7400670F0F563BE54A /* EscapeStack.swift */,
+				95F5957B54F77CFA0DCE338D /* Files.swift */,
+				2B3176176505A628D2403B48 /* Fuzzy.swift */,
+				F17A0F67F64CD5CC2920F80A /* GoTo.swift */,
+				78152B514DDAE7CBBE1F730C /* Info.plist */,
+				028DCA12F161C2450E746A21 /* MarkdownTheme.swift */,
+				2AA3711DAC3687B5BBAFFBAA /* ModelMenu.swift */,
+				4817D3DC6ADDBD9DD95AE66A /* Models.swift */,
+				95569CDE76BED5D079FCAF60 /* Notifier.swift */,
+				B1DD3272F44163318D0C9F7F /* OriCodeApp.swift */,
+				640A8C4CCC172624F281F084 /* RaysMark.swift */,
+				89BD37AC7876A70FB200C9D1 /* RootView.swift */,
+				1E17D6EE6E61DF4899C5A7FC /* SettingsView.swift */,
+				187CC0EFB05AC1B271F4F07D /* ShortcutsSheet.swift */,
+				6D41F5EBC1F14EC88B345A5F /* SlashMenu.swift */,
+				5656B79B4D6D4EF49CA6E6F7 /* Theme.swift */,
+				EF2C30B7AC7DE62E3DCED698 /* TitleCapsule.swift */,
+				735D0816E1BEC2C572245F9A /* ToolSummary.swift */,
+				F347ADF6979BFFA2B30C803A /* TranscriptView.swift */,
+				85DF66DBE4165D4111DFF650 /* Engine */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		15F4B386118CF79BF811CD8C /* OriCode */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7122AF280E59664F0F1008CA /* Build configuration list for PBXNativeTarget "OriCode" */;
+			buildPhases = (
+				7819D7201C569920F2AB7D4C /* Engine */,
+				3CFD506B0584DFAEF62F53EE /* Sources */,
+				1453064C668F9929453D2676 /* Bundle engine */,
+				91C8AAA3F001D7E696194CAA /* Resources */,
+				1C1B30D8808A25640E132BE5 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OriCode;
+			packageProductDependencies = (
+				B43BBFD579D7C33FA0C55595 /* MarkdownUI */,
+				EF5818FB07B575D9E3593A90 /* Highlightr */,
+			);
+			productName = OriCode;
+			productReference = E8B00E36DCB10E0C8E90E5A8 /* OriCode.app */;
+			productType = "com.apple.product-type.application";
+		};
+		99C6622B42CD733C1D76D351 /* OriCodeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C1EA21E1DD39F53CAD402D4D /* Build configuration list for PBXNativeTarget "OriCodeTests" */;
+			buildPhases = (
+				63F790EDC63C082C47ADFF3B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D3B33F2B2086C73BA0CBC5A6 /* PBXTargetDependency */,
+			);
+			name = OriCodeTests;
+			packageProductDependencies = (
+			);
+			productName = OriCodeTests;
+			productReference = 6A4463FF8007D1AEE3033392 /* OriCodeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FB09A26034270F12B89147EA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					15F4B386118CF79BF811CD8C = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					99C6622B42CD733C1D76D351 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 16DDD99F96053A8E2FFD1177 /* Build configuration list for PBXProject "OriCode" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = CC3946182298558C58E90D42;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				59F4E1AD82FDC64AD19C454E /* XCRemoteSwiftPackageReference "Highlightr" */,
+				05684340C98121B64E631D97 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 04E6CF20F43A69434CDB004A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				15F4B386118CF79BF811CD8C /* OriCode */,
+				99C6622B42CD733C1D76D351 /* OriCodeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		91C8AAA3F001D7E696194CAA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F84CDF41A6F2348D41789706 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		1453064C668F9929453D2676 /* Bundle engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ -d \"$HOME/Library/Developer/OriCode/engine\" ]; then\n  mkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\n  rsync -a --delete --exclude .stamp \"$HOME/Library/Developer/OriCode/engine/\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/\"\nfi\n";
+		};
+		7819D7201C569920F2AB7D4C /* Engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = Engine;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\"\nmake -C \"$SRCROOT\" engine\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3CFD506B0584DFAEF62F53EE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6DF517273A930FE935AFF0E /* AppDelegate.swift in Sources */,
+				78E87461BED8EBD7E6494438 /* AppModel+Drawer.swift in Sources */,
+				94B5D3E68FE7E4BD1063EB85 /* AppModel+Git.swift in Sources */,
+				6F50E6C2DDE6F0522F3F50B8 /* AppModel+Projects.swift in Sources */,
+				72F8424412F97764131C3505 /* AppModel+Turns.swift in Sources */,
+				8CF7D7C2A942A5748EC1DD7E /* AppModel.swift in Sources */,
+				364D7AB7892B3740045BCFD7 /* AskCard.swift in Sources */,
+				633493483ECE05C36AF4BC0E /* Attachments.swift in Sources */,
+				C8DE62AB4BD83B08BEB9B480 /* BehindWindowGlass.swift in Sources */,
+				9B92756A21B3A667056CC4BA /* ChangesSheet.swift in Sources */,
+				764D241C896A6F82162BEB1B /* CodeHighlighter.swift in Sources */,
+				C383A9F65FBDB39D58DF3625 /* Commands.swift in Sources */,
+				AC2115BC5DD565A9216B3512 /* Composer.swift in Sources */,
+				B727B6099D095A48BF5AC1CC /* Conversation.swift in Sources */,
+				033167EF92D77ECB973A2FCF /* Diff.swift in Sources */,
+				ECB054E68BE90DE6A0980DF3 /* DiffCard.swift in Sources */,
+				1E349CEC396ED1BB3DD5638E /* Drawer.swift in Sources */,
+				A06F578CC1CFD64AE383E50F /* Engine.swift in Sources */,
+				5D5246C722198F2B0C66A7FF /* EscapeStack.swift in Sources */,
+				CAE9E239AC9F699B0D373922 /* Files.swift in Sources */,
+				9544B6F74AC45351673C7FF9 /* Fuzzy.swift in Sources */,
+				98E89AFF0FE9905B7602284C /* GoTo.swift in Sources */,
+				C48839A633DEB399FD693FC3 /* JSON.swift in Sources */,
+				7810D604DCA787DC1112A8BC /* MarkdownTheme.swift in Sources */,
+				064E8C73CA75F7953E505D8A /* ModelMenu.swift in Sources */,
+				24742A93BC677323B1DF19CA /* Models.swift in Sources */,
+				9A2FD8C56236E566B1E90B6E /* NodeLocator.swift in Sources */,
+				8EF9832FCD139A2931A9383E /* Notifier.swift in Sources */,
+				8B77C05360240CBC99DFA670 /* OriCodeApp.swift in Sources */,
+				650C331E6A1EB961C89235CC /* RaysMark.swift in Sources */,
+				96AD5C4AF08DB1B233899560 /* RootView.swift in Sources */,
+				486E950DD50073A2D1CA6B26 /* SettingsView.swift in Sources */,
+				104CB62540762B395AE8D5DC /* ShortcutsSheet.swift in Sources */,
+				A81B37B49720F73C82071E54 /* SlashMenu.swift in Sources */,
+				D683044DB59139F065E59CE2 /* Theme.swift in Sources */,
+				B6109136FB6A807E75589F87 /* TitleCapsule.swift in Sources */,
+				7D5B40FE3AE2D2339283B086 /* ToolSummary.swift in Sources */,
+				1D22988A8D155E26AA128862 /* TranscriptView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		63F790EDC63C082C47ADFF3B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF729CB5ABA0FDF42DB3CE20 /* FuzzyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D3B33F2B2086C73BA0CBC5A6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 15F4B386118CF79BF811CD8C /* OriCode */;
+			targetProxy = C27B84312F96D68689257403 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1C9C708A1217E841A1C79504 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OriCode;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Claude reads and edits the projects you add, and some of them live on the Desktop.";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Claude reads and edits the projects you add, and some of them live in Documents.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Claude reads and edits the projects you add, and some of them live in Downloads.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.realmeric.oricode;
+				PRODUCT_NAME = OriCode;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		427940E5C24521895DB52A26 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.realmeric.OriCodeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OriCode.app/Contents/MacOS/OriCode";
+			};
+			name = Debug;
+		};
+		5A0FFC2EBFF7B06736CF73AB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		8357D67C23E7870B84083396 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		8A41649D905C832101E93C41 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.realmeric.OriCodeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OriCode.app/Contents/MacOS/OriCode";
+			};
+			name = Release;
+		};
+		DB08A221D490E3B8A70DDBB7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = OriCode;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Claude reads and edits the projects you add, and some of them live on the Desktop.";
+				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Claude reads and edits the projects you add, and some of them live in Documents.";
+				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Claude reads and edits the projects you add, and some of them live in Downloads.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.realmeric.oricode;
+				PRODUCT_NAME = OriCode;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		16DDD99F96053A8E2FFD1177 /* Build configuration list for PBXProject "OriCode" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8357D67C23E7870B84083396 /* Debug */,
+				5A0FFC2EBFF7B06736CF73AB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7122AF280E59664F0F1008CA /* Build configuration list for PBXNativeTarget "OriCode" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB08A221D490E3B8A70DDBB7 /* Debug */,
+				1C9C708A1217E841A1C79504 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C1EA21E1DD39F53CAD402D4D /* Build configuration list for PBXNativeTarget "OriCodeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				427940E5C24521895DB52A26 /* Debug */,
+				8A41649D905C832101E93C41 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		05684340C98121B64E631D97 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
+		59F4E1AD82FDC64AD19C454E /* XCRemoteSwiftPackageReference "Highlightr" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/raspu/Highlightr";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B43BBFD579D7C33FA0C55595 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 05684340C98121B64E631D97 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+		EF5818FB07B575D9E3593A90 /* Highlightr */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 59F4E1AD82FDC64AD19C454E /* XCRemoteSwiftPackageReference "Highlightr" */;
+			productName = Highlightr;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = FB09A26034270F12B89147EA /* Project object */;
+}

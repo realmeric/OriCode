@@ -111,6 +111,8 @@ export class Thread {
   /// The send in flight while the CLI resumes a session, so it can go again fresh if that session is gone.
   private resuming: SendParams | undefined;
   private streamed = new Set<string>();
+  /// Subagents and other tasks the CLI is running for this thread, in the foreground or not.
+  private tasks = new Map<string, { description: string; background: boolean }>();
   private costSoFar = 0;
   private lastContext = 0;
 
@@ -226,6 +228,38 @@ export class Thread {
     this.pump(this.query);
   }
 
+  /// Keeps `tasks` in step with the CLI's task messages and tells the app how many are out.
+  private trackTask(message: SDKMessage & { type: "system" }): boolean {
+    const before = this.tasks.size;
+    switch (message.subtype) {
+      case "task_started":
+        if (!message.ambient) this.tasks.set(message.task_id, { description: message.description, background: message.is_backgrounded ?? false });
+        break;
+      case "task_notification":
+        this.tasks.delete(message.task_id);
+        break;
+      case "task_updated":
+        if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) this.tasks.delete(message.task_id);
+        break;
+      case "background_tasks_changed": {
+        // The CLI's own list of what's still running in the background: a backgrounded
+        // task it no longer lists is over.
+        const listed = new Set(message.tasks.filter((task) => !task.ambient).map((task) => task.task_id));
+        for (const [id, task] of this.tasks) if (task.background && !listed.has(id)) this.tasks.delete(id);
+        for (const task of message.tasks) {
+          if (!task.ambient) this.tasks.set(task.task_id, { description: task.description, background: true });
+        }
+        break;
+      }
+      default:
+        return false;
+    }
+    if (this.tasks.size !== before || message.subtype === "task_started") {
+      event("tasks", { threadId: this.id, running: this.tasks.size, tasks: [...this.tasks.values()].map((task) => task.description) });
+    }
+    return true;
+  }
+
   private fail(message: string): void {
     if (this.errored) return;
     this.errored = true;
@@ -290,6 +324,13 @@ export class Thread {
 
   private handle(message: SDKMessage): void {
     if ("session_id" in message && message.session_id) this.sessionId = message.session_id;
+    // A background agent reporting back makes the CLI start a turn nobody sent.
+    if (!this.running && (message.type === "stream_event" || message.type === "assistant") && !message.parent_tool_use_id) {
+      this.running = true;
+      this.started = false;
+      this.interrupted = false;
+      this.errored = false;
+    }
     if (this.running && !this.started && this.sessionId) {
       this.started = true;
       event("turn.started", { threadId: this.id, sessionId: this.sessionId });
@@ -343,6 +384,7 @@ export class Thread {
         return;
       }
       case "system": {
+        if (this.trackTask(message)) return;
         if (message.subtype === "api_retry") {
           event("retrying", { threadId: this.id, attempt: message.attempt, max: message.max_retries, error: message.error });
           return;

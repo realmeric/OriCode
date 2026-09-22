@@ -16,7 +16,10 @@ struct RootView: View {
                             .id(chat.id)
                     } else {
                         Spacer()
-                        EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
+                        EmptyStateView(
+                            line: model.project == nil ? "Add a project to start." : "Where do we pick up?",
+                            heads: conversation?.heads ?? 0,
+                            waiting: conversation?.waitingAsk != nil)
                         Spacer()
                     }
                     if model.project != nil {
@@ -188,10 +191,12 @@ struct EngineNote: View {
 
 struct EmptyStateView: View {
     let line: String
+    var heads = 0
+    var waiting = false
 
     var body: some View {
         VStack(spacing: 14) {
-            RaysMark()
+            RaysMark(lit: heads, turning: heads > 0, waiting: waiting)
                 .frame(width: 44, height: 44)
             Text(line)
                 .font(Type.body)
