@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0 "Settings" - 2026-09-23
+
+- Settings is a glass window like the rest of the app: a sidebar of panes with the traffic lights in it and a search field that narrows the panes to what you type, and each pane's settings in cards under headings.
+- General gains a New threads card that sets the permission mode a new thread starts in; Shortcuts lists every shortcut.
+- The title pill sits a little lower, under the traffic lights rather than level with them.
+
 ## v0.5.0 "Rays" - 2026-09-23
 
 - The mark is a dot inside six arcs, and the app icon is the same drawing. Each lit arc is a head at work in the thread: the main loop, then each subagent, in the foreground or the background, up to six. The drawer's rows show them.

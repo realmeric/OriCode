@@ -100,12 +100,7 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-### Todo: v0.6 "Settings"
-
-After v0.5, Meriç sent the Settings of his earlier app as the reference: a glass window with a sidebar and cards. What it has that OriCode doesn't (token activity, MCP, Models, Source control, Archive, a workspace default, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) is on Linear as REA-138 to REA-148, not here.
-
-#### K-44 · Release v0.6
-As K-12. Tag `v0.6.0`.
+From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
 ### Parking lot
 
@@ -373,6 +368,11 @@ Commit: ca63ddc
 The Settings scene becomes a `NavigationSplitView`: a sidebar of panes (General, Conversation, Notifications, Shortcuts, About) with a search field that narrows the panes to those whose settings match, and a detail of cards under headings, on the main window's glass and tint all the way through. General holds Glass and Node, and a New threads card that says what a new thread starts on and sets its permission mode. Conversation holds K-39's two switches. Shortcuts lists the ⌘/ sheet's shortcuts.
 Done when: Settings opens as a sidebar window with the traffic lights in the sidebar, the whole window is as see-through as the main one, and searching "cost" leaves only Conversation. Needs Meriç's eye for the glass.
 Notes: Why K-40 wasn't glass: its TabView drew its own backing over the window's material. Now the Settings scene holds a NavigationSplitView: the sidebar is the system's own sidebar glass with a searchable field, and the detail is a clear ScrollView over the window's behind-window material and the same black tint as the main window. The toolbar stays, because it carries the traffic lights, with its background hidden and the sidebar toggle and title removed; hiding it outright took the traffic lights with it. Cards are white at 5% with hairlines between rows, under 15pt headings. General gained a New threads card that explains the model and effort and sets the permission mode a new thread starts in (the existing lastPermissionMode), with an icon per mode. Shortcuts shows the same list as the cmd-/ sheet, now one ShortcutList both read. Checked: the window opens as a sidebar with the traffic lights in it and no toolbar buttons, the detail captures as the same material as the main window, and searching "cost" left only Conversation and switched to it; clearing with real keys brought the panes back. Needs Meriç's eye: the glass over a wallpaper, and whether the system's sidebar material reads as the lighter panel in his reference.
+Commit: 85a1b72
+
+#### K-44 · Release v0.6
+As K-12. Tag `v0.6.0`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.0, launched with an empty environment, opened Settings as the sidebar window, and an edit sent in Ask mode waited on its card, was allowed, and landed in greet.swift.
 Commit: pending
 
 
