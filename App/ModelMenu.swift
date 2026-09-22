@@ -75,8 +75,7 @@ struct ModelMenu: View {
             .pickerStyle(.inline)
         } label: {
             HStack(spacing: 6) {
-                Burst()
-                    .fill(Ink.claude)
+                ClaudeMark()
                     .frame(width: 14, height: 14)
                 Text(selectedModel.map { Self.shortName($0.name) } ?? "Model")
                     .foregroundStyle(Ink.primary)

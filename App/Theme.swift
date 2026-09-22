@@ -17,8 +17,8 @@ enum Ink {
     static let faint = Color.white.opacity(0.30)
     static let added = Color(red: 0.55, green: 0.85, blue: 0.60)
     static let deleted = Color(red: 0.95, green: 0.55, blue: 0.55)
-    /// Claude's terracotta, on the burst beside the model's name and nowhere else.
-    static let claude = Color(red: 0.85, green: 0.47, blue: 0.34)
+    /// Claude's orange, #D97757, on Claude's mark beside the model's name and nowhere else.
+    static let claude = Color(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255)
 }
 
 enum Type {
