@@ -10,6 +10,7 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
+import { adaptive } from "./models.ts";
 import { event, log } from "./wire.ts";
 
 export type Attachment = { mediaType: string; data: string };
@@ -194,6 +195,8 @@ export class Thread {
         cwd: params.cwd,
         model: params.model,
         effort: params.effort,
+        // Summarized, so the thinking deltas carry text the app can show when asked.
+        thinking: adaptive.has(params.model ?? "default") ? { type: "adaptive", display: "summarized" } : undefined,
         permissionMode: params.permissionMode,
         allowDangerouslySkipPermissions: true,
         resume,

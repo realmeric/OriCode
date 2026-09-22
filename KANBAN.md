@@ -94,10 +94,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.2 "See what it did"
 
-#### K-18 · Thinking and effort
-Optional "Thinking…" lines, collapsed, showing the delta stream when expanded. The Effort picker from K-07 gains the values the model supports and sends them.
-Done when: `xhigh` visibly changes how long Claude thinks on a hard question.
-
 #### K-19 · Edges
 Engine crash mid-turn, `claude` not found, network gone, a project folder that moved: each a one-line note in the transcript in 55% white, never an alert or a modal. A thread whose folder is gone is greyed in the drawer with "folder missing" under the title.
 Done when: pulling the network cable during a turn produces one calm line and the next turn works when it's back.
@@ -265,6 +261,12 @@ Commit: 64326c6
 `turn.started` and `turn.done` carry a `sessionId`; the thread stores it, and the next `send` passes it. If the engine reports the session is gone, the thread continues fresh with a one-line note.
 Done when: quit mid-conversation, relaunch, ask "what were we doing", and Claude knows.
 Notes: Storing and passing sessionId landed with K-06; this card adds the lost-session path. When a resumed session is gone, the CLI ends the turn with "No conversation found with session ID"; the engine catches that, emits session.lost (Architecture updated) and sends the same message again in a new session, and the app notes it in one line. Checked from Terminal with a made-up session id (one note, then the reply), and in the app: after a relaunch, "What were we doing?" got the files and commands from before. The first turn after a relaunch costs more (/bin/zsh.34 here), because the prompt cache went with the old CLI process.
+Commit: 5eb926c
+
+#### K-18 · Thinking and effort
+Optional "Thinking…" lines, collapsed, showing the delta stream when expanded. The Effort picker from K-07 gains the values the model supports and sends them.
+Done when: `xhigh` visibly changes how long Claude thinks on a hard question.
+Notes: Thinking only streams text when the query asks for a summarized display, so the engine passes thinking { adaptive, summarized } to every model the SDK lists as supporting adaptive thinking; any other model gets no thinking option at all, because asking for it is an error. The Effort picker from K-07 already offered each model's own levels and sent them. In the transcript a thinking block is one faint line, "Thinking…" while it streams and "Thought" after, and it opens onto the summary. Checked on Sonnet with the same question (how many numbers below 10,000 have digits summing to 20): Low answered in 3.0s with no thinking, Extra high thought for 7.6s, streamed a 671-character summary and answered 633, which is correct.
 Commit: pending
 
 

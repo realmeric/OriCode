@@ -11,7 +11,9 @@ struct TranscriptView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
-                    ItemView(item: item, cwd: cwd, listening: conversation.waitingAsk?.requestId)
+                    ItemView(
+                        item: item, cwd: cwd, listening: conversation.waitingAsk?.requestId,
+                        live: conversation.running && index == conversation.items.count - 1)
                         .padding(.top, index == 0 ? 0 : spacing(before: item, after: conversation.items[index - 1]))
                 }
             }
@@ -55,6 +57,7 @@ struct ItemView: View {
     let item: Item
     let cwd: String
     let listening: String?
+    let live: Bool
 
     var body: some View {
         switch item {
@@ -73,8 +76,8 @@ struct ItemView: View {
                 .markdownTheme(.glass)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case .thinking:
-            EmptyView()
+        case .thinking(_, let text):
+            ThinkingLine(text: text, live: live)
         case .tool(_, let call):
             if call.isEdit && !call.isError {
                 DiffCard(call: call, cwd: cwd)
@@ -142,6 +145,40 @@ struct ToolLine: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
                 .transition(.opacity)
+            }
+        }
+    }
+}
+
+/// Thinking, folded to one line; the summary Claude streamed is underneath.
+struct ThinkingLine: View {
+    let text: String
+    let live: Bool
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(Motion.fade) { open.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(live ? "Thinking…" : "Thought")
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .font(Type.secondary)
+                .foregroundStyle(Ink.faint)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if open {
+                Text(text)
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.secondary)
+                    .textSelection(.enabled)
+                    .padding(.leading, 10)
+                    .transition(.opacity)
             }
         }
     }
