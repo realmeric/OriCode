@@ -74,5 +74,7 @@ struct Composer: View {
         guard !running, canSend else { return }
         model.send(text)
         text = ""
+        // The field editor can write its buffer back after a Return; clear again once it has.
+        Task { @MainActor in text = "" }
     }
 }

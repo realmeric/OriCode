@@ -10,17 +10,17 @@ struct RootView: View {
                 Color.black.opacity(glass)
                     .ignoresSafeArea()
                 let conversation = model.chat.map(model.conversation(for:))
-                if let conversation, !conversation.items.isEmpty {
-                    TranscriptView(conversation: conversation)
-                        .column()
-                } else {
-                    VStack(spacing: 18) {
-                        EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
-                        ThreadsMenu()
+                VStack(spacing: 0) {
+                    if let conversation, let chat = model.chat, !conversation.items.isEmpty {
+                        TranscriptView(conversation: conversation, cwd: chat.cwd)
+                    } else {
+                        Spacer()
+                        VStack(spacing: 18) {
+                            EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
+                            ThreadsMenu()
+                        }
+                        Spacer()
                     }
-                }
-                VStack(spacing: 8) {
-                    Spacer()
                     if model.project != nil {
                         Composer(running: conversation?.running ?? false, maxHeight: window.size.height * 0.4)
                             .column()
@@ -28,9 +28,9 @@ struct RootView: View {
                     EngineNote()
                         .frame(height: 16)
                 }
-                .padding(.bottom, 8)
             }
         }
+        .ignoresSafeArea(edges: .top)
     }
 }
 

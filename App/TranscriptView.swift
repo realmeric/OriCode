@@ -1,24 +1,58 @@
+import MarkdownUI
 import SwiftUI
 
 struct TranscriptView: View {
     let conversation: Conversation
+    let cwd: String
+    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var pinned = true
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
-                ForEach(conversation.items) { item in
-                    ItemView(item: item)
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(conversation.items.enumerated()), id: \.element.id) { index, item in
+                    ItemView(item: item, cwd: cwd)
+                        .padding(.top, index == 0 ? 0 : spacing(before: item, after: conversation.items[index - 1]))
                 }
             }
-            .padding(.vertical, 48)
+            .column()
+            .padding(.top, 52)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.never)
+        .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 48
+        } action: { _, atBottom in
+            pinned = atBottom
+        }
+        .onChange(of: conversation.items) {
+            if pinned { position.scrollTo(edge: .bottom) }
+        }
+        .mask {
+            // Fades under the top edge and above the composer instead of ending at a line.
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 44)
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
+            }
+        }
+    }
+
+    private func spacing(before item: Item, after previous: Item) -> CGFloat {
+        switch (previous, item) {
+        case (.tool, .tool): 4
+        case (_, .footer): 8
+        case (.footer, _): 28
+        default: 14
+        }
     }
 }
 
 struct ItemView: View {
     let item: Item
+    let cwd: String
 
     var body: some View {
         switch item {
@@ -26,34 +60,87 @@ struct ItemView: View {
             Text(text)
                 .font(Type.body)
                 .foregroundStyle(Ink.primary)
+                .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Surface.userMessage, in: .rect(cornerRadius: 18, style: .continuous))
                 .frame(maxWidth: 560, alignment: .trailing)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         case .text(_, let text):
-            Text(text)
-                .font(Type.body)
-                .foregroundStyle(Ink.primary)
+            Markdown(text)
+                .markdownTheme(.glass)
                 .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .thinking:
             EmptyView()
         case .tool(_, let call):
-            Text(call.name)
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
+            ToolLine(call: call, cwd: cwd)
         case .ask(_, let ask):
             Text("\(ask.tool) is waiting")
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
         case .footer(_, let footer):
-            Text("Worked for \(Int(footer.durationMs / 1000))s · \(footer.costUSD, format: .currency(code: "USD"))")
+            Text(footer.line)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
         case .note(_, let text):
             Text(text)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
+                .textSelection(.enabled)
         }
+    }
+}
+
+struct ToolLine: View {
+    let call: ToolCall
+    let cwd: String
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(Motion.fade) { open.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(ToolSummary.line(for: call, cwd: cwd))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if call.isError {
+                        Text("failed").foregroundStyle(Ink.faint)
+                    } else if call.result == nil {
+                        ProgressView().controlSize(.mini).tint(Ink.secondary)
+                    }
+                }
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(call.result == nil)
+            if open, let result = call.result {
+                ScrollView {
+                    Text(result.isEmpty ? "(no output)" : String(result.prefix(20_000)))
+                        .font(Type.mono)
+                        .foregroundStyle(Ink.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
+                .frame(maxHeight: 280)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+                .transition(.opacity)
+            }
+        }
+    }
+}
+
+extension TurnFooter {
+    var line: String {
+        let seconds = Int((durationMs / 1000).rounded())
+        let time = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+        if stopReason == "interrupted" { return "Stopped after \(time)" }
+        return "Worked for \(time) · " + String(format: "$%.2f", costUSD)
     }
 }

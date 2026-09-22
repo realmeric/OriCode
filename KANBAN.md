@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-08 · Transcript
-The 760pt column. User messages as bubbles on the right. Assistant text through MarkdownUI (the `swift-markdown-ui` package), themed to the brief: no coloured links, code blocks on a white-5% card. Streaming updates the last block in place. Tool calls as one quiet line each ("Read App/Engine.swift", "Edit engine/main.ts", "Bash: swift build"), 12.5pt at 55% white; click toggles the result underneath on a card, collapsed by default. Turn footer at 12.5pt: "Worked for 14s · $0.04". The transcript fades under the top edge and above the composer instead of ending at a line. Auto-scroll stays pinned to the bottom unless the user scrolled up.
-Done when: a real turn that reads three files and edits one reads as prose with four quiet lines under it, and the window is as calm with a conversation in it as it was empty.
-
 #### K-09 · Asks
 An `ask` event renders an inline card at the bottom of the transcript: the tool, a short summary of its input (file path for edits, the command for Bash, the whole diff for edits behind a disclosure), and two buttons, Allow and Deny. Return allows, Esc denies, and only the topmost pending card listens. A `question` ask renders its options as buttons and a text field for "Other". Answers go back through `answer`; a deny includes a message so Claude knows.
 Done when: in Ask mode, an edit waits on the card, Allow lets it through, Deny makes Claude say so and stop.
@@ -248,6 +244,12 @@ Commit: 56db5e2
 The `Menu` at the capsule's left end: its label is the model's short name (and effort when set). Inside, native `Picker`s for Model (from `hello`), Effort (when the model has any), and Permission mode with a one-line description each: Ask "Edits and commands wait for you", Accept edits "Edits go through, commands ask", Auto "Claude decides what is safe", Plan "Reads and thinks, changes nothing", Don't ask "Everything goes through". Changing the mode mid-turn calls `setMode`; if it returns `applied: false`, a small "from the next reply" note under the capsule for two seconds.
 Done when: switching model and mode changes what the next turn does, checked by watching the engine's stderr.
 Notes: Mode items are native menu items with the description as their subtitle. A model or effort change restarts the thread's CLI with resume, since the SDK fixes both at spawn; mode changes go through setMode. Checked in engine.log: after picking Sonnet, Low and Plan, the next turn logged model=sonnet effort=low mode=plan. The applied:false note is wired but wasn't seen, because the SDK took every mid-turn change it was given.
+Commit: e63a690
+
+#### K-08 · Transcript
+The 760pt column. User messages as bubbles on the right. Assistant text through MarkdownUI (the `swift-markdown-ui` package), themed to the brief: no coloured links, code blocks on a white-5% card. Streaming updates the last block in place. Tool calls as one quiet line each ("Read App/Engine.swift", "Edit engine/main.ts", "Bash: swift build"), 12.5pt at 55% white; click toggles the result underneath on a card, collapsed by default. Turn footer at 12.5pt: "Worked for 14s · $0.04". The transcript fades under the top edge and above the composer instead of ending at a line. Auto-scroll stays pinned to the bottom unless the user scrolled up.
+Done when: a real turn that reads three files and edits one reads as prose with four quiet lines under it, and the window is as calm with a conversation in it as it was empty.
+Notes: Checked with a Sonnet turn in a scratch repo that ran one Bash, read three files and edited one: five quiet lines, two sentences of prose and the footer. The composer now clears again on the next runloop, because the field editor sometimes wrote its buffer back after Return. Tool paths are standardized before being made relative, since /tmp and /private/tmp are the same folder. An interrupted turn's footer says "Stopped after Ns".
 Commit: pending
 
 

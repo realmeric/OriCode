@@ -29,6 +29,7 @@ struct PendingAsk: Hashable {
 struct TurnFooter: Hashable {
     let durationMs: Double
     let costUSD: Double
+    let stopReason: String
 }
 
 enum Item: Identifiable, Hashable {
@@ -203,7 +204,10 @@ final class Conversation {
                 items[index] = .ask(id: itemId, ask: ask)
             }
         case "turn.done":
-            let footer = TurnFooter(durationMs: body["durationMs"]?.double ?? 0, costUSD: body["costUSD"]?.double ?? 0)
+            let footer = TurnFooter(
+                durationMs: body["durationMs"]?.double ?? 0,
+                costUSD: body["costUSD"]?.double ?? 0,
+                stopReason: body["stopReason"]?.string ?? "")
             items.append(.footer(id: id, footer: footer))
         case "error", "note":
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
