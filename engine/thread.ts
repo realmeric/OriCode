@@ -283,6 +283,7 @@ export class Thread {
         if (message.parent_tool_use_id) return;
         const blocks = message.message.content;
         if (typeof blocks === "string") return;
+        const patch = patchOf(message.tool_use_result);
         for (const block of blocks) {
           if (block.type !== "tool_result") continue;
           event("tool.result", {
@@ -290,6 +291,7 @@ export class Thread {
             toolUseId: block.tool_use_id,
             content: resultText(block.content),
             isError: block.is_error ?? false,
+            patch,
           });
         }
         return;
@@ -340,6 +342,13 @@ function content(params: SendParams): SDKUserMessage["message"]["content"] {
     })),
     { type: "text" as const, text: params.text },
   ];
+}
+
+/// Edit, MultiEdit and Write report the hunks they applied; the app draws its diff cards from them.
+function patchOf(output: unknown): { oldStart: number; newStart: number; lines: string[] }[] | undefined {
+  const hunks = (output as { structuredPatch?: unknown } | undefined)?.structuredPatch;
+  if (!Array.isArray(hunks)) return undefined;
+  return hunks.map((hunk) => ({ oldStart: hunk.oldStart, newStart: hunk.newStart, lines: hunk.lines }));
 }
 
 function resultText(content: unknown): string {

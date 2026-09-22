@@ -42,6 +42,7 @@ struct TranscriptView: View {
 
     private func spacing(before item: Item, after previous: Item) -> CGFloat {
         switch (previous, item) {
+        case (.tool(_, let a), .tool(_, let b)) where a.isEdit || b.isEdit: 8
         case (.tool, .tool): 4
         case (_, .footer): 8
         case (.footer, _): 28
@@ -75,13 +76,24 @@ struct ItemView: View {
         case .thinking:
             EmptyView()
         case .tool(_, let call):
-            ToolLine(call: call, cwd: cwd)
+            if call.isEdit && !call.isError {
+                DiffCard(call: call, cwd: cwd)
+            } else {
+                ToolLine(call: call, cwd: cwd)
+            }
         case .ask(_, let ask):
             AskCard(ask: ask, cwd: cwd, listens: ask.requestId == listening)
         case .footer(_, let footer):
-            Text(footer.line)
-                .font(Type.secondary)
-                .foregroundStyle(Ink.faint)
+            HStack(spacing: 5) {
+                Text(footer.line)
+                if footer.files > 0 {
+                    Text("· \(footer.files) \(footer.files == 1 ? "file" : "files") ·")
+                    Counts(added: footer.added, deleted: footer.deleted)
+                        .opacity(0.8)
+                }
+            }
+            .font(Type.secondary)
+            .foregroundStyle(Ink.faint)
         case .note(_, let text):
             Text(text)
                 .font(Type.secondary)

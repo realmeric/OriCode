@@ -3,7 +3,7 @@ import SwiftUI
 /// A line diff of what an edit does, from the tool's input rather than from git.
 struct Diff: Hashable {
     enum Kind: Hashable {
-        case context, added, deleted
+        case context, added, deleted, gap
     }
 
     struct Line: Hashable {
@@ -44,6 +44,26 @@ struct Diff: Hashable {
             }
         }
         return lines
+    }
+
+    /// What an edit did: the hunks it reported once it ran, or the diff of its input before then.
+    static func of(_ call: ToolCall, cwd: String) -> Diff? {
+        guard call.isEdit else { return nil }
+        guard let patch = call.patch, !patch.isEmpty else { return of(tool: call.name, input: call.input, cwd: cwd) }
+        var lines: [Line] = []
+        for (index, hunk) in patch.enumerated() {
+            if index > 0 { lines.append(Line(kind: .gap, text: "")) }
+            for raw in hunk.lines {
+                let text = String(raw.dropFirst())
+                switch raw.first {
+                case "+": lines.append(Line(kind: .added, text: text))
+                case "-": lines.append(Line(kind: .deleted, text: text))
+                case "\\": continue
+                default: lines.append(Line(kind: .context, text: text))
+                }
+            }
+        }
+        return Diff(path: ToolSummary.relative(call.input["file_path"]?.string ?? "", to: cwd), lines: lines)
     }
 
     /// The diff an Edit, MultiEdit or Write call would make, or nil for any other tool.
@@ -93,12 +113,14 @@ struct DiffLinesView: View {
         case .context: "  "
         case .added: "+ "
         case .deleted: "− "
+        case .gap: "⋯"
         }
     }
 
     private func color(_ kind: Diff.Kind) -> Color {
         switch kind {
         case .context: Ink.secondary
+        case .gap: Ink.faint
         case .added: Ink.added
         case .deleted: Ink.deleted
         }
@@ -106,7 +128,7 @@ struct DiffLinesView: View {
 
     private func tint(_ kind: Diff.Kind) -> Color {
         switch kind {
-        case .context: .clear
+        case .context, .gap: .clear
         case .added: Ink.added.opacity(0.10)
         case .deleted: Ink.deleted.opacity(0.10)
         }

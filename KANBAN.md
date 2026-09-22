@@ -76,7 +76,7 @@ Events, each with `threadId`:
 - `turn.started { sessionId }`
 - `text { delta }`, `thinking { delta }`
 - `tool.use { toolUseId, name, input }`
-- `tool.result { toolUseId, content, isError }`
+- `tool.result { toolUseId, content, isError, patch? }`. `patch` is the hunks an Edit, MultiEdit or Write applied (`[{ oldStart, newStart, lines }]`, lines prefixed `+`, `-` or a space), from the SDK's structured tool output.
 - `ask { requestId, kind: "permission" | "question", tool, input, options? }`. Permission asks come from the SDK's `canUseTool`; `AskUserQuestion` arrives the same way and is answered through `updatedInput`.
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
 - `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
@@ -92,10 +92,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.2 "See what it did"
-
-#### K-13 · Diff cards
-`Edit`, `MultiEdit` and `Write` render as a card per file: path, `+12 −3` in the two colours, and a unified diff in monospace with added and deleted lines tinted, collapsed to the header by default. The turn footer sums them: "3 files · +41 −9".
-Done when: an edit turn shows exactly what changed without opening anything else.
 
 #### K-14 · Meter
 Usage from `turn.done` feeds a thin ring around the send button showing context used, and the footer's cost accumulates per thread in the drawer row's tooltip. If the SDK exposes compaction, a Compact item in the Thread menu; if it doesn't, the auto-compaction notice is shown as a quiet line and the card says so.
@@ -254,6 +250,12 @@ Commit: 674da4d
 `make app`: Release build, ad-hoc code signature, copy to `/Applications`. `CHANGELOG.md` with a v0.1.0 entry written from the Done column. Tag `v0.1.0`.
 Done when: OriCode is in the Dock, opened from there with Terminal closed, and holds a conversation with an approval in it.
 Notes: Checked by launching /Applications/OriCode.app with an empty environment, the way the Dock does, and allowing an edit from the card. Getting there fixed three things: views read conversations but never create them (creating one inside RootView.body crashed SwiftUI with an AttributeGraph precondition when cmd-1 was pressed), the engine exits when the app dies instead of waiting on a turn nobody can see, and the CLI starts with MCP_CONNECTION_NONBLOCKING so a slow MCP server in the user's settings can't hold the first turn. The pin shortcut uses localization .custom, because automatic localization put it on cmd-comma on Turkish-QWERTY-PC, on top of Settings.
+Commit: b49f5f7
+
+#### K-13 · Diff cards
+`Edit`, `MultiEdit` and `Write` render as a card per file: path, `+12 −3` in the two colours, and a unified diff in monospace with added and deleted lines tinted, collapsed to the header by default. The turn footer sums them: "3 files · +41 −9".
+Done when: an edit turn shows exactly what changed without opening anything else.
+Notes: Cards draw from the hunks the SDK reports in its structured tool output (tool.result gained patch, and the Architecture section says so), so they carry real context lines. Before a result arrives, and for turns stored by older engines, the card diffs the tool input instead. Checked with a two-file edit: two cards with +1 −1 and +1 −0, the first opened onto its tinted diff, and a footer of 2 files · +2 −1.
 Commit: pending
 
 

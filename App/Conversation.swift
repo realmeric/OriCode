@@ -2,12 +2,23 @@ import Foundation
 import Observation
 import SwiftData
 
+struct Hunk: Hashable {
+    let oldStart: Int
+    let newStart: Int
+    let lines: [String]
+}
+
 struct ToolCall: Hashable {
     let toolUseId: String
     let name: String
     let input: JSON
     var result: String?
     var isError = false
+    var patch: [Hunk]?
+
+    static let edits: Set<String> = ["Edit", "MultiEdit", "Write"]
+
+    var isEdit: Bool { Self.edits.contains(name) }
 }
 
 struct PendingAsk: Hashable {
@@ -30,6 +41,9 @@ struct TurnFooter: Hashable {
     let durationMs: Double
     let costUSD: Double
     let stopReason: String
+    var files = 0
+    var added = 0
+    var deleted = 0
 }
 
 enum Item: Identifiable, Hashable {
@@ -188,6 +202,12 @@ final class Conversation {
             {
                 call.result = body["content"]?.string ?? ""
                 call.isError = body["isError"]?.bool ?? false
+                call.patch = body["patch"]?.array?.map { hunk in
+                    Hunk(
+                        oldStart: hunk["oldStart"]?.int ?? 0,
+                        newStart: hunk["newStart"]?.int ?? 0,
+                        lines: hunk["lines"]?.array?.compactMap(\.string) ?? [])
+                }
                 items[index] = .tool(id: itemId, call: call)
             }
         case "ask":
@@ -208,10 +228,21 @@ final class Conversation {
                 items[index] = .ask(id: itemId, ask: ask)
             }
         case "turn.done":
-            let footer = TurnFooter(
+            var footer = TurnFooter(
                 durationMs: body["durationMs"]?.double ?? 0,
                 costUSD: body["costUSD"]?.double ?? 0,
                 stopReason: body["stopReason"]?.string ?? "")
+            var paths = Set<String>()
+            for item in items.reversed() {
+                if case .user = item { break }
+                guard case .tool(_, let call) = item, call.isEdit, call.result != nil, !call.isError,
+                      let diff = Diff.of(call, cwd: chat.cwd)
+                else { continue }
+                paths.insert(diff.path)
+                footer.added += diff.added
+                footer.deleted += diff.deleted
+            }
+            footer.files = paths.count
             items.append(.footer(id: id, footer: footer))
         case "error", "note":
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
