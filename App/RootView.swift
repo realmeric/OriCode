@@ -8,7 +8,10 @@ struct RootView: View {
         ZStack {
             Color.black.opacity(glass)
                 .ignoresSafeArea()
-            EmptyStateView(line: "Add a project to start.")
+            VStack(spacing: 18) {
+                EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
+                ThreadsMenu()
+            }
         }
         .overlay(alignment: .bottom) {
             EngineNote()
@@ -17,11 +20,63 @@ struct RootView: View {
     }
 }
 
+/// Stand-in for the drawer until K-10: the project and its threads in one native menu.
+struct ThreadsMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            ForEach(model.projects) { project in
+                Button(project.name) { model.select(project) }
+                    .disabled(project.id == model.project?.id)
+            }
+            Button("Add project…") { model.addProject() }
+            if model.project != nil {
+                Divider()
+                ForEach(model.chats) { chat in
+                    Button(chat.title) { model.select(chat) }
+                        .disabled(chat.id == model.chat?.id)
+                }
+                Button("New thread") { model.newChat() }
+                if let chat = model.chat {
+                    Button("Delete \(chat.title)", role: .destructive) { model.delete(chat) }
+                }
+            }
+        } label: {
+            Text([model.project?.name, model.chat?.title].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "Projects")
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .fixedSize()
+        .font(Type.secondary)
+        .foregroundStyle(Ink.secondary)
+    }
+}
+
+extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
+}
+
 /// One quiet line when the engine can't run, never an alert.
 struct EngineNote: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        Group {
+            if let note = model.note {
+                Text(note)
+            } else {
+                engineLine
+            }
+        }
+        .font(Type.secondary)
+        .foregroundStyle(Ink.secondary)
+        .animation(Motion.fade, value: model.engineState)
+        .animation(Motion.fade, value: model.note)
+    }
+
+    @ViewBuilder
+    private var engineLine: some View {
         Group {
             switch model.engineState {
             case .starting, .ready:
@@ -42,9 +97,6 @@ struct EngineNote: View {
                 }
             }
         }
-        .font(Type.secondary)
-        .foregroundStyle(Ink.secondary)
-        .animation(Motion.fade, value: model.engineState)
     }
 
     private var retry: some View {

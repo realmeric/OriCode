@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftData
 
 struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let id: String
@@ -29,8 +30,56 @@ final class AppModel {
 
     var engineState: EngineState = .starting
     var models: [ModelOption] = []
+    /// A transient line under the composer, for things the user did that didn't work.
+    private(set) var note: String?
     let engine = Engine()
+    let context: ModelContext
+    /// Bumped on every save so views reading fetched lists redraw.
+    private(set) var revision = 0
     private var listening = false
+    private var noteTask: Task<Void, Never>?
+
+    var selectedProjectID: UUID? {
+        didSet { UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject") }
+    }
+
+    var selectedChatID: UUID? {
+        didSet { UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat") }
+    }
+
+    var lastPermissionMode: String {
+        get { UserDefaults.standard.string(forKey: "lastPermissionMode") ?? "default" }
+        set { UserDefaults.standard.set(newValue, forKey: "lastPermissionMode") }
+    }
+
+    var lastModel: String? {
+        get { UserDefaults.standard.string(forKey: "lastModel") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastModel") }
+    }
+
+    var lastEffort: String? {
+        get { UserDefaults.standard.string(forKey: "lastEffort") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastEffort") }
+    }
+
+    init(container: ModelContainer) {
+        context = container.mainContext
+        selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
+        selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
+    }
+
+    func say(_ line: String) {
+        note = line
+        noteTask?.cancel()
+        noteTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { note = nil }
+        }
+    }
+
+    func touch() {
+        revision += 1
+    }
 
     var nodeOverride: String? {
         UserDefaults.standard.string(forKey: "nodePath")

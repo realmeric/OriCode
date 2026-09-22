@@ -56,7 +56,7 @@ Numbers: 260pt wide, inset 12pt from the left, 40pt from the top (clear of the t
 
 **Engine.** A TypeScript sidecar in `engine/`, built on `@anthropic-ai/claude-agent-sdk`. Node 24 runs TypeScript directly, so there is no build step: the app spawns `node engine/main.ts` and talks newline-delimited JSON over stdin/stdout. It ships inside the app bundle under `Contents/Resources/engine/` with its `node_modules` (`npm ci --omit=dev` at build time). The app finds `node` by asking a login shell (`zsh -lc 'command -v node'`), then `/opt/homebrew/bin`, `/usr/local/bin`, `~/.nvm/versions/node/*/bin`, and insists on 24 or newer; Settings can override the path. Read the SDK reference before writing a line of it; the shapes below are the app's protocol, not the SDK's.
 
-**Data.** SwiftData. `Project { id, name, path, createdAt }`. `Chat { id, project, title, sessionId?, model?, effort?, permissionMode, cwd, createdAt, updatedAt }`, named `Chat` in code only because `Thread` is Foundation's; the interface says thread everywhere. `Event { id, chat, turn, kind, payload: Data, createdAt }` where payload is the JSON of the wire event. Streaming text deltas are coalesced into one `text` event per assistant message, updated in place; never one row per token. If SwiftData fights back on something basic, GRDB is the fallback, decided in the card that hits it.
+**Data.** SwiftData. `Project { id, name, path, createdAt }`. `Chat { id, project, title, sessionId?, model?, effort?, permissionMode, cwd, createdAt, updatedAt }`, named `Chat` in code only because `Thread` is Foundation's; the interface says thread everywhere. `Event { id, chat, turn, seq, kind, payload: Data, createdAt }`, with `seq` ordering events that share a timestamp, where payload is the JSON of the wire event. Streaming text deltas are coalesced into one `text` event per assistant message, updated in place; never one row per token. If SwiftData fights back on something basic, GRDB is the fallback, decided in the card that hits it.
 
 ### Wire protocol
 
@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-05 · Projects and threads
-SwiftData models from the Architecture section. Add project through the native open panel, folders only; refuse anything without a `.git` and say why in the window, not in an alert. Create and delete threads; the current project and thread survive relaunch. No UI for the list yet beyond what K-02 shows; a temporary `Menu` in the empty state is fine for this card and K-10 replaces it.
-Done when: add two projects, make a thread in each, quit, relaunch, and both are there with the last one selected.
-
 #### K-06 · Composer
 The glass capsule from the brief. `TextField` with `axis: .vertical`, placeholder "Ask for a change", Return sends, ⇧Return inserts a newline, the round button sends and turns into Stop (⌘.) while a turn runs. Sending writes the user event and calls `send` with the thread's cwd, model, effort and mode.
 Done when: typing and pressing Return starts a turn, the button shows Stop while it runs, and Stop interrupts.
@@ -120,7 +116,7 @@ Exactly the drawer in the brief: hot zone, delay, slide in and out with those du
 Done when: this one is judged by eye. Build it, then stop and ask Meriç to move the mouse to the edge and press ⌘2, and to say what feels off. Iterate on the numbers, not the structure.
 
 #### K-11 · Menu bar and Settings
-Native `.commands`: File › New Thread ⌘N; View › Threads ⌘\; Threads › 1–9 as ⌘1–9; Thread › Stop ⌘.; and the standard App › Settings… ⌘,. A native `Settings` scene with three tabs: General (Glass slider, Node path with Automatic / Choose…), Notifications (one toggle, wired in K-15; until then it says "Coming in 0.2"), About (version, a link to the repo).
+Native `.commands` (K-05 already added File › New Thread ⌘N and Add Project… ⌘O, and a Threads menu with ⌘1–9, a Project submenu and Delete Thread; this card finishes the set): File › New Thread ⌘N; View › Threads ⌘\; Threads › 1–9 as ⌘1–9; Thread › Stop ⌘.; and the standard App › Settings… ⌘,. A native `Settings` scene with three tabs: General (Glass slider, Node path with Automatic / Choose…), Notifications (one toggle, wired in K-15; until then it says "Coming in 0.2"), About (version, a link to the repo).
 Done when: every item in the menu bar works from the keyboard, and Settings opens as a real macOS settings window with the slider changing the glass live.
 
 #### K-12 · Release v0.1
@@ -242,6 +238,12 @@ Commit: 32d33e8
 `Engine` actor: finds `node`, spawns the bundled engine, reads stdout line by line into `Codable` events on an `AsyncStream`, matches replies to requests by id, restarts on exit with a one-line note in the window ("Engine stopped. Retry."). Distinguishes three failures and says each plainly: no `node`, no `claude` login, engine crashed.
 Done when: the app logs the `hello` reply at launch, and `kill`ing the node process from Terminal shows the note and Retry brings it back.
 Notes: The engine strips inherited CLAUDE* variables before spawning the CLI: opened from inside a Claude Code session, the app inherited that session's environment and the child claude hung waiting for a host. The engine's stderr goes to ~/Library/Logs/OriCode/engine.log and the hello reply to the unified log (subsystem com.realmeric.oricode). Checked: kill shows "Engine stopped. Retry", Retry relaunches, and a v22 node override shows the no-node line.
+Commit: 4327a6b
+
+#### K-05 · Projects and threads
+SwiftData models from the Architecture section. Add project through the native open panel, folders only; refuse anything without a `.git` and say why in the window, not in an alert. Create and delete threads; the current project and thread survive relaunch. No UI for the list yet beyond what K-02 shows; a temporary `Menu` in the empty state is fine for this card and K-10 replaces it.
+Done when: add two projects, make a thread in each, quit, relaunch, and both are there with the last one selected.
+Notes: A folder opened onto the app (Dock drop, or open -a OriCode <folder>) is added the same way as through the panel, which is also how the agent tests it. The menu bar got File › New Thread, Add Project… and a Threads menu early, because background tools can't open the in-window Menu; K-11 says so. Event gained a seq field.
 Commit: pending
 
 
