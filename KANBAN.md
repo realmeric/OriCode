@@ -96,11 +96,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-### Backlog: v0.3 "Git"
-
-#### K-25 · Release v0.3
-Tag `v0.3.0`.
-
 ### Backlog: v0.4 "Hands"
 
 #### K-26 · Go to
@@ -281,6 +276,11 @@ Commit: b795d27
 ⌘⇧N: new thread on a new branch in a worktree under `.worktrees/<slug>/`; the thread's cwd is the worktree. Deleting the thread offers to remove the worktree when nothing on it is unpushed, and says what would be lost otherwise.
 Done when: two threads edit the same file in parallel and neither sees the other's change until merged.
 Notes: A worktree thread gets branch oricode/<slug> in .worktrees/<slug>, which is kept out of the project's own status through .git/info/exclude rather than its .gitignore. What deleting would lose is uncommitted files plus commits no other branch or remote has (rev-list HEAD --not --branches --remotes, excluding its own branch). With nothing to lose, the dialog defaults to removing the worktree and its branch; otherwise it says what would go and defaults to keeping the worktree. Checked: two worktree threads on Haiku told to change greet.swift to "hey" and to "yo" at the same time each saw only their own edit, and the root still returned "hi"; deleting the second said "1 uncommitted file", and Remove took the worktree and branch away. A stale git.branch reply for the project root no longer overwrites the worktree's branch in the capsule.
+Commit: c9b4c4a
+
+#### K-25 · Release v0.3
+Tag `v0.3.0`.
+Notes: Checked: /Applications/OriCode.app at 0.3.0, launched with an empty environment, answered hello with the real models and opened Changes on a worktree thread, showing its branch and changed file.
 Commit: pending
 
 
