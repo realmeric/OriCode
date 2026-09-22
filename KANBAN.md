@@ -384,7 +384,7 @@ Commit: c192052
 #### K-46 · Release v0.6.1
 As K-12. Tag `v0.6.1`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.1, launched with an empty environment, showed the traffic lights at (18, 18) level with the sidebar button and the capsule, and an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
-Commit: pending
+Commit: cb58c3c
 
 
 ## Exceptions
