@@ -11,9 +11,14 @@ struct OriCodeCommands: Commands {
             Button("Add Project…") { model.addProject() }
                 .keyboardShortcut("o")
         }
+        CommandGroup(before: .toolbar) {
+            Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
+                .keyboardShortcut("\\")
+            Divider()
+        }
         CommandMenu("Threads") {
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
-                Button(chat.title) { model.select(chat) }
+                Button(chat.title) { model.pick(threadAt: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
             }
             Divider()

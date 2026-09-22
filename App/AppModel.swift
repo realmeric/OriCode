@@ -39,6 +39,13 @@ final class AppModel {
     /// Bumped on every save so views reading fetched lists redraw.
     private(set) var revision = 0
     var conversations: [UUID: Conversation] = [:]
+    var drawerShown = false
+    var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
+        didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
+    }
+    var peekedChatID: UUID?
+    var mouseInDrawer = false
+    var drawerTask: Task<Void, Never>?
     private var listening = false
     private var noteTask: Task<Void, Never>?
 
@@ -69,6 +76,7 @@ final class AppModel {
         context = container.mainContext
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
+        drawerShown = drawerPinned
     }
 
     func say(_ line: String) {

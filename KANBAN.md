@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-10 · The drawer
-Exactly the drawer in the brief: hot zone, delay, slide in and out with those durations, the 400ms grace, ⌘\ to pin, and the ⌘1–9 peek with the row lit and nudged. Rows: state ring (idle, running, waiting on you), title, ⌘digit. Delete with a confirmation sheet. Project `Menu` at the top with "Add project…" (opens K-05's panel). New thread button at the bottom (⌘N).
-Done when: this one is judged by eye. Build it, then stop and ask Meriç to move the mouse to the edge and press ⌘2, and to say what feels off. Iterate on the numbers, not the structure.
-
 #### K-11 · Menu bar and Settings
 Native `.commands` (K-05 already added File › New Thread ⌘N and Add Project… ⌘O, and a Threads menu with ⌘1–9, a Project submenu and Delete Thread; this card finishes the set): File › New Thread ⌘N; View › Threads ⌘\; Threads › 1–9 as ⌘1–9; Thread › Stop ⌘.; and the standard App › Settings… ⌘,. A native `Settings` scene with three tabs: General (Glass slider, Node path with Automatic / Choose…), Notifications (one toggle, wired in K-15; until then it says "Coming in 0.2"), About (version, a link to the repo).
 Done when: every item in the menu bar works from the keyboard, and Settings opens as a real macOS settings window with the slider changing the glass live.
@@ -252,6 +248,12 @@ Commit: 50ab3aa
 An `ask` event renders an inline card at the bottom of the transcript: the tool, a short summary of its input (file path for edits, the command for Bash, the whole diff for edits behind a disclosure), and two buttons, Allow and Deny. Return allows, Esc denies, and only the topmost pending card listens. A `question` ask renders its options as buttons and a text field for "Other". Answers go back through `answer`; a deny includes a message so Claude knows.
 Done when: in Ask mode, an edit waits on the card, Allow lets it through, Deny makes Claude say so and stop.
 Notes: The composer gives up focus while a card waits so Return reaches the card's default button; Esc goes through one local key monitor (the start of K-20's escape stack), because a plain window never routes Esc to a cancel button. Checked in Ask mode with a scratch repo: an edit waited on the card with its diff behind a disclosure, Return allowed it, Deny made Claude say it stopped, and a question's option button answered it. Esc itself couldn't be pressed by the agent, since the automation layer keeps that key; Meriç should press it once on a waiting card.
+Commit: 871136d
+
+#### K-10 · The drawer
+Exactly the drawer in the brief: hot zone, delay, slide in and out with those durations, the 400ms grace, ⌘\ to pin, and the ⌘1–9 peek with the row lit and nudged. Rows: state ring (idle, running, waiting on you), title, ⌘digit. Delete with a confirmation sheet. Project `Menu` at the top with "Add project…" (opens K-05's panel). New thread button at the bottom (⌘N).
+Done when: this one is judged by eye. Build it, then stop and ask Meriç to move the mouse to the edge and press ⌘2, and to say what feels off. Iterate on the numbers, not the structure.
+Notes: Built to the brief's numbers and checked by the agent: the 8pt hot zone opens it, it stays while the mouse is over it and leaves after the grace, cmd-2 lights and nudges the second row and slides back on its own, and View › Show Threads pins it. Still waiting on Meriç's eye, which is what this card is judged by: move the mouse to the left edge, press cmd-2, and say what feels off. One thing to check first: on the Turkish layout the cmd-backslash keystroke didn't reach the app from the agent's keyboard, while the menu item worked, so the shortcut may need another key.
 Commit: pending
 
 

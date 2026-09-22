@@ -15,10 +15,7 @@ struct RootView: View {
                         TranscriptView(conversation: conversation, cwd: chat.cwd)
                     } else {
                         Spacer()
-                        VStack(spacing: 18) {
-                            EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
-                            ThreadsMenu()
-                        }
+                        EmptyStateView(line: model.project == nil ? "Add a project to start." : "Where do we pick up?")
                         Spacer()
                     }
                     if model.project != nil {
@@ -28,42 +25,27 @@ struct RootView: View {
                     EngineNote()
                         .frame(height: 16)
                 }
+                .simultaneousGesture(TapGesture().onEnded {
+                    if !model.drawerPinned { model.hideDrawer() }
+                })
             }
         }
         .ignoresSafeArea(edges: .top)
-    }
-}
-
-/// Stand-in for the drawer until K-10: the project and its threads in one native menu.
-struct ThreadsMenu: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Menu {
-            ForEach(model.projects) { project in
-                Button(project.name) { model.select(project) }
-                    .disabled(project.id == model.project?.id)
-            }
-            Button("Add project…") { model.addProject() }
-            if model.project != nil {
-                Divider()
-                ForEach(model.chats) { chat in
-                    Button(chat.title) { model.select(chat) }
-                        .disabled(chat.id == model.chat?.id)
-                }
-                Button("New thread") { model.newChat() }
-                if let chat = model.chat {
-                    Button("Delete \(chat.title)", role: .destructive) { model.delete(chat) }
-                }
-            }
-        } label: {
-            Text([model.project?.name, model.chat?.title].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "Projects")
+        .overlay(alignment: .topLeading) {
+            Drawer()
+                .padding(.leading, 12)
+                .padding(.top, 40)
+                .padding(.bottom, 12)
+                .offset(x: model.drawerShown ? 0 : -300)
+                .opacity(model.drawerShown ? 1 : 0)
+                .allowsHitTesting(model.drawerShown)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .fixedSize()
-        .font(Type.secondary)
-        .foregroundStyle(Ink.secondary)
+        .overlay(alignment: .leading) {
+            Color.clear
+                .frame(width: 8)
+                .contentShape(.rect)
+                .onHover { model.hotZone($0) }
+        }
     }
 }
 
