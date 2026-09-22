@@ -36,7 +36,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode
         PRODUCT_NAME: OriCode
-        MARKETING_VERSION: "0.6.1"
+        MARKETING_VERSION: "0.6.2"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: OriCode

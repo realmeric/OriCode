@@ -396,6 +396,11 @@ Commit: 8b0359b
 The burst beside the model's name and in the usage card becomes Claude's own logo, the way other coding tools show it beside Claude's models. It comes from simple-icons, whose source for it is claude.ai, and it's drawn in Claude's orange, #D97757.
 Done when: the model menu and the usage card show Claude's logo, crisp at 14pt.
 Notes: The logo is an SVG in the asset catalog, kept as a vector and marked as a template, so ClaudeMark tints it with Ink.claude, which is now exactly #D97757 instead of a rounded 0.85, 0.47, 0.34. Burst.swift is gone, since nothing else drew it. Checked: the compiled asset loads from the built app as a template with its SVG representation, a 256px render of it is Claude's spark, and the app shows it in the model menu and in the usage card's header beside "Claude Max".
+Commit: 1eb5cf1
+
+#### K-49 · Release v0.6.2
+As K-12. Tag `v0.6.2`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.2, launched with an empty environment, lit the paperclip and the model menu under the real pointer and showed Claude's logo in the menu, and an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
 Commit: pending
 
 

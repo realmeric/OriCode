@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.2 - 2026-09-23
+
+- The paperclip and the model menu light up under the pointer, like the app's other buttons.
+- The model menu and the usage card show Claude's own logo, in Claude's orange.
+
 ## v0.6.1 - 2026-09-23
 
 - The traffic lights come down to the title pill's line, with the sidebar button beside them, and sit inside the thread list's first row with room around them instead of in its corner.
