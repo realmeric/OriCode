@@ -104,10 +104,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
 
-#### K-40 · Settings on glass
-The Settings window gets the main window's glass and tint, and its panes become quiet glass cards in the brief's ink: General (the glass slider with a live swatch, Node), Transcript (K-39's toggles), Notifications, About (the rays mark, the version, the source).
-Done when: Settings reads as the same app over a colourful wallpaper. Needs Meriç's eye.
-
 #### K-41 · Release v0.5
 As K-12. Tag `v0.5.0`.
 
@@ -354,6 +350,12 @@ Commit: 8b46134
 "Worked for 14s" and the cost are hidden unless Settings › Transcript turns them on, each on its own. A turn that changed files still says how many and by how much.
 Done when: out of the box no turn shows its time or cost, and each toggle brings its half back live.
 Notes: Two @AppStorage keys, showTurnTime and showTurnCost, both off unless set. A footer with neither and no file changes draws nothing, and since it's an EmptyView its spacing goes with it; a stopped turn still says "Stopped", with the time only when that's on, because it's what happened rather than a statistic. The toggles live in a new Settings tab, Transcript, which K-40 restyles. Checked: with the keys unset, turns showed no footer; turning on the time showed "Worked for 3s" at once, and the cost added "· /bin/zsh.00" beside it.
+Commit: c3b9880
+
+#### K-40 · Settings on glass
+The Settings window gets the main window's glass and tint, and its panes become quiet glass cards in the brief's ink: General (the glass slider with a live swatch, Node), Transcript (K-39's toggles), Notifications, About (the rays mark, the version, the source).
+Done when: Settings reads as the same app over a colourful wallpaper. Needs Meriç's eye.
+Notes: The Settings scene takes the main window's always-active behind-window material and the same black tint from the glass slider, so moving the slider tints Settings too. Panes are cards of white at 5% holding rows with a one-line description under each title; the controls stay native (tabs, switches, slider, buttons). General shows the glass as a live percentage, Node shows what's chosen with Choose… and Automatic, and About carries the rays mark, the version and a link to the source. The app also gets a neutral AccentColor in its asset catalog, because the brief has no accent colour and the system's blue was showing on the selected tab and on default buttons. Checked: all four panes render as cards and the selected tab is grey. Still Meriç's to judge: the glass over a colourful wallpaper, which the agent's screenshots can't show.
 Commit: pending
 
 
