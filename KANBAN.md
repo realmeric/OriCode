@@ -103,10 +103,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
 
-#### K-35 · The drawer's foot
-New thread lights on hover like a row, and a gear at the bottom right opens Settings.
-Done when: New thread lights under the mouse, and the gear opens Settings.
-
 #### K-36 · Composer order and height
 The brief's new order: text, attach (a paperclip opening the native panel for images, going through K-27's path), the model menu (a burst in Claude's terracotta, the model's short name, its effort, a chevron), a circle, send. Until K-38 the circle is the context ring that used to wrap the send button. The capsule moves up to 28pt from the bottom edge.
 Done when: the capsule reads left to right as the brief says, sits visibly higher, and the paperclip attaches an image through the panel.
@@ -343,6 +339,12 @@ Commit: 30d509b
 Right of the traffic lights, a `sidebar.left` button. Hovering it opens the drawer the way the left edge does; clicking it pins or unpins; ⌘B does the same and replaces ⌘\, which Turkish-QWERTY-PC can't reach. The drawer takes the brief's new numbers: full height, the traffic lights and the button inside its first row.
 Done when: hovering the button opens the drawer with the traffic lights sitting inside it, clicking pins it, and ⌘B toggles it.
 Notes: The drawer is 280pt wide, 6pt in from the window's top, left and bottom edges with 12pt corners, and ignores the title bar's safe area, so the traffic lights draw inside its first 38pt row. The sidebar button sits at x 78, level with the traffic lights, and calls the same hotZone(_:) as the left edge, so it opens with the same 120ms delay and grace; clicking toggles the pin. One change beyond the card: while pinned, the conversation and the title capsule move right by the drawer's width, because a pinned list covering the transcript's left edge isn't a list you'd keep open. Checked with real input: hovering the button opened the drawer over the conversation with the traffic lights inside it, a click pinned it and it stayed after the mouse left, and cmd-B unpinned it.
+Commit: caa8a4a
+
+#### K-35 · The drawer's foot
+New thread lights on hover like a row, and a gear at the bottom right opens Settings.
+Done when: New thread lights under the mouse, and the gear opens Settings.
+Notes: The foot is one row: New thread filling the width, lit white 7% under the mouse like a row, and a 34pt gear on the right that opens the Settings scene through SwiftUI's openSettings. Checked with the mouse: New thread lit under it, the gear lit, and clicking the gear opened Settings.
 Commit: pending
 
 

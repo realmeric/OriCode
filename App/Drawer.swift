@@ -12,7 +12,13 @@ struct Drawer: View {
     @Environment(AppModel.self) private var model
     @State private var hovered: UUID?
     @State private var draft = ""
+    @State private var footHover: Foot?
     @FocusState private var renameFocused: Bool
+    @Environment(\.openSettings) private var openSettings
+
+    private enum Foot {
+        case newThread, settings
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -31,19 +37,37 @@ struct Drawer: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 34)
-            Button {
-                model.newChat()
-            } label: {
-                Label("New thread", systemImage: "square.and.pencil")
-                    .font(Type.secondary)
-                    .foregroundStyle(Ink.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .frame(height: 34)
-                    .contentShape(.rect)
+            HStack(spacing: 4) {
+                Button {
+                    model.newChat()
+                } label: {
+                    Label("New thread", systemImage: "square.and.pencil")
+                        .font(Type.secondary)
+                        .foregroundStyle(footHover == .newThread ? Ink.primary : Ink.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .background(footHover == .newThread ? Surface.hover : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(model.project == nil)
+                .onHover { footHover = $0 ? .newThread : (footHover == .newThread ? nil : footHover) }
+                Button {
+                    openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14))
+                        .foregroundStyle(footHover == .settings ? Ink.primary : Ink.secondary)
+                        .frame(width: 34, height: 34)
+                        .background(footHover == .settings ? Surface.hover : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .onHover { footHover = $0 ? .settings : (footHover == .settings ? nil : footHover) }
+                .help("Settings (⌘,)")
+                .accessibilityLabel("Settings")
             }
-            .buttonStyle(.plain)
-            .disabled(model.project == nil)
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
         }
