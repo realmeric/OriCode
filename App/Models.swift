@@ -36,6 +36,8 @@ final class Chat {
     var costUSD: Double = 0
     /// Set once the user renames the thread; until then the title follows the first message.
     var titleIsCustom: Bool = false
+    /// Set for a thread on its own branch: cwd is the worktree, the branch is oricode/<slug>.
+    var worktreeBranch: String?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

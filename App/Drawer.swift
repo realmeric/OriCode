@@ -85,11 +85,19 @@ struct Drawer: View {
                 } else {
                     let missing = !FileManager.default.fileExists(atPath: chat.cwd)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(chat.title)
-                            .font(Type.body)
-                            .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                        HStack(spacing: 5) {
+                            Text(chat.title)
+                                .font(Type.body)
+                                .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            if chat.worktreeBranch != nil {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Ink.faint)
+                                    .help(chat.worktreeBranch ?? "")
+                            }
+                        }
                         if missing {
                             Text("folder missing")
                                 .font(.system(size: 11))
@@ -119,7 +127,7 @@ struct Drawer: View {
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
             Button("Rename") { model.startRename(chat) }
-            Button("Delete…") { model.deletingChat = chat }
+            Button("Delete…") { model.askToDelete(chat) }
         }
     }
 }

@@ -72,6 +72,7 @@ Methods:
 - `close { threadId }` → `{ ok }`. Ends the thread's CLI process; the app calls it when a thread is deleted.
 - `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
 - `git.status { cwd }` → `{ files: [{ path, status }] }`, `git.commit { cwd, paths, message }` → `{ hash }`, `git.push { cwd }` → `{ ok }`, and `git.message { cwd, paths }` → `{ message }`, which is one tool-less Haiku call over the diff.
+- `worktree.add { cwd, slug }` → `{ path, branch }`, `worktree.loss { path, branch }` → `{ dirty, unpushed }`, `worktree.remove { cwd, path, branch }` → `{ ok }`. A worktree thread lives in `.worktrees/<slug>` on branch `oricode/<slug>`.
 
 Events, each with `threadId`:
 
@@ -96,10 +97,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.3 "Git"
-
-#### K-24 · A thread on its own branch
-⌘⇧N: new thread on a new branch in a worktree under `.worktrees/<slug>/`; the thread's cwd is the worktree. Deleting the thread offers to remove the worktree when nothing on it is unpushed, and says what would be lost otherwise.
-Done when: two threads edit the same file in parallel and neither sees the other's change until merged.
 
 #### K-25 · Release v0.3
 Tag `v0.3.0`.
@@ -278,6 +275,12 @@ Commit: e6d0b55
 ⌘⇧D slides a glass sheet over the transcript: changed files as a native `List` with `Toggle`s, a commit message box, Commit, Push. "Write message" asks the engine for one through a small Haiku query with the diff. Git runs through the engine so the app has no shell of its own.
 Done when: a turn's edits are committed and pushed from the sheet, and the capsule's branch shows ↑1 until the push.
 Notes: The sheet is an overlay pane that slides down over the transcript, not a system sheet, and Esc closes it first. Git runs in the engine through git.status, git.commit, git.push and git.message (Architecture updated). Commit adds and commits only the ticked paths, Push sets an upstream the first time, and git.message is one Haiku call with no tools and no settings sources, so the user's hooks and MCP servers stay out of it. Checked against a scratch repo with a bare remote: unticked the new file, Write message gave "Expand User model and enhance greetings" in about 15s (mostly CLI startup), Commit left the capsule showing main ↑1, and Push cleared it with the commit in the remote.
+Commit: b795d27
+
+#### K-24 · A thread on its own branch
+⌘⇧N: new thread on a new branch in a worktree under `.worktrees/<slug>/`; the thread's cwd is the worktree. Deleting the thread offers to remove the worktree when nothing on it is unpushed, and says what would be lost otherwise.
+Done when: two threads edit the same file in parallel and neither sees the other's change until merged.
+Notes: A worktree thread gets branch oricode/<slug> in .worktrees/<slug>, which is kept out of the project's own status through .git/info/exclude rather than its .gitignore. What deleting would lose is uncommitted files plus commits no other branch or remote has (rev-list HEAD --not --branches --remotes, excluding its own branch). With nothing to lose, the dialog defaults to removing the worktree and its branch; otherwise it says what would go and defaults to keeping the worktree. Checked: two worktree threads on Haiku told to change greet.swift to "hey" and to "yo" at the same time each saw only their own edit, and the root still returned "hi"; deleting the second said "1 uncommitted file", and Remove took the worktree and branch away. A stale git.branch reply for the project root no longer overwrites the worktree's branch in the capsule.
 Commit: pending
 
 

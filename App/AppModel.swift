@@ -51,6 +51,7 @@ final class AppModel {
     var peekedChatID: UUID?
     var renamingChatID: UUID?
     var deletingChat: Chat?
+    var deletingLoss: WorktreeLoss?
     var showingShortcuts = false
     var mouseInDrawer = false
     var drawerTask: Task<Void, Never>?

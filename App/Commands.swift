@@ -8,6 +8,9 @@ struct OriCodeCommands: Commands {
             Button("New Thread") { model.newChat() }
                 .keyboardShortcut("n")
                 .disabled(model.project == nil)
+            Button("New Thread on Its Own Branch") { model.newWorktreeChat() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(model.project == nil)
             Button("Add Project…") { model.addProject() }
                 .keyboardShortcut("o")
         }
@@ -61,7 +64,7 @@ struct OriCodeCommands: Commands {
             }
             .keyboardShortcut("r")
             .disabled(model.chat == nil)
-            Button("Delete Thread…") { model.deletingChat = model.chat }
+            Button("Delete Thread…") { model.askToDelete(model.chat) }
                 .keyboardShortcut(.delete)
                 .disabled(model.chat == nil)
         }

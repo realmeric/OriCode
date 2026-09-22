@@ -76,3 +76,34 @@ export async function diffFor(cwd: string, paths: string[]): Promise<string> {
   }
   return parts.join("\n").slice(0, 60_000);
 }
+
+/// A new branch checked out in `.worktrees/<slug>` inside the project, kept out of the
+/// project's status through .git/info/exclude rather than its .gitignore.
+export async function addWorktree(root: string, slug: string): Promise<{ path: string; branch: string }> {
+  const { appendFile, readFile } = await import("node:fs/promises");
+  const gitDir = (await git(root, ["rev-parse", "--git-common-dir"])).trim();
+  const exclude = `${gitDir.startsWith("/") ? gitDir : `${root}/${gitDir}`}/info/exclude`;
+  const current = await readFile(exclude, "utf8").catch(() => "");
+  if (!current.split("\n").includes("/.worktrees/")) {
+    await appendFile(exclude, `${current.endsWith("\n") || !current ? "" : "\n"}/.worktrees/\n`);
+  }
+  const path = `${root}/.worktrees/${slug}`;
+  const branchName = `oricode/${slug}`;
+  await git(root, ["worktree", "add", "-b", branchName, path]);
+  return { path, branch: branchName };
+}
+
+/// What removing a worktree would throw away: uncommitted files, and commits that no other
+/// branch or remote has.
+export async function worktreeLoss(path: string, branchName: string): Promise<{ dirty: number; unpushed: number }> {
+  const dirty = (await status(path)).length;
+  const unpushed = Number(
+    (await git(path, ["rev-list", "--count", "HEAD", "--not", `--exclude=${branchName}`, "--branches", "--remotes"])).trim(),
+  );
+  return { dirty, unpushed };
+}
+
+export async function removeWorktree(root: string, path: string, branchName: string): Promise<void> {
+  await git(root, ["worktree", "remove", "--force", path]);
+  await git(root, ["branch", "-D", branchName]);
+}

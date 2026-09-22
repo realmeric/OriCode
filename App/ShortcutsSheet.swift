@@ -7,6 +7,7 @@ struct ShortcutsSheet: View {
     private let groups: [(String, [(String, String)])] = [
         ("Threads", [
             ("New thread", "⌘N"),
+            ("New thread on its own branch", "⌘⇧N"),
             ("Add project", "⌘O"),
             ("Go to thread 1–9", "⌘1 … ⌘9"),
             ("Show or hide the thread list", "⌘\\"),

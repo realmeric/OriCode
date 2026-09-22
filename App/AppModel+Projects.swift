@@ -62,7 +62,8 @@ extension AppModel {
         guard let project else { return nil }
         let chat = Chat(project: project, permissionMode: lastPermissionMode)
         chat.model = lastModel
-        chat.effort = lastEffort
+        let efforts = models.first { $0.id == lastModel }?.efforts ?? []
+        chat.effort = lastEffort.flatMap { efforts.contains($0) ? $0 : nil }
         context.insert(chat)
         save()
         selectedChatID = chat.id

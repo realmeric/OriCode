@@ -38,11 +38,27 @@ struct RootView: View {
             isPresented: Binding(get: { model.deletingChat != nil }, set: { if !$0 { model.deletingChat = nil } }),
             presenting: model.deletingChat
         ) { chat in
-            Button("Delete", role: .destructive) { model.delete(chat) }
-                .keyboardShortcut(.defaultAction)
+            if chat.worktreeBranch != nil, let loss = model.deletingLoss {
+                if loss.isEmpty {
+                    Button("Delete and Remove Worktree", role: .destructive) { model.delete(chat, removingWorktree: true) }
+                        .keyboardShortcut(.defaultAction)
+                    Button("Delete, Keep Worktree") { model.delete(chat, removingWorktree: false) }
+                } else {
+                    Button("Delete, Keep Worktree") { model.delete(chat, removingWorktree: false) }
+                        .keyboardShortcut(.defaultAction)
+                    Button("Delete and Remove Worktree", role: .destructive) { model.delete(chat, removingWorktree: true) }
+                }
+            } else {
+                Button("Delete", role: .destructive) { model.delete(chat) }
+                    .keyboardShortcut(.defaultAction)
+            }
             Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Its transcript goes with it.")
+        } message: { chat in
+            if let branch = chat.worktreeBranch, let loss = model.deletingLoss {
+                Text(loss.isEmpty ? "Everything on \(branch) is on another branch or remote, so its worktree can go too." : loss.sentence)
+            } else {
+                Text("Its transcript goes with it.")
+            }
         }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()
