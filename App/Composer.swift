@@ -101,10 +101,7 @@ struct Composer: View {
     }
 
     private var row: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            ModelMenu(chat: model.chat)
-                .frame(height: 36)
-                .padding(.leading, 12)
+        HStack(alignment: .bottom, spacing: 6) {
             TextField("Ask for a change", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Type.body)
@@ -141,8 +138,37 @@ struct Composer: View {
                 }
 
                 .padding(.vertical, 9)
+                .padding(.leading, 14)
+            HStack(spacing: 4) {
+                attachButton
+                ModelMenu(chat: model.chat)
+                ContextRing(chat: model.chat)
+                    .padding(.horizontal, 4)
+            }
+            .frame(height: 36)
             sendButton
         }
+    }
+
+    /// The native panel for images; they go in the way a paste or a drop does.
+    private var attachButton: some View {
+        Button {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.image]
+            panel.allowsMultipleSelection = true
+            panel.prompt = "Attach"
+            guard panel.runModal() == .OK else { return }
+            for url in panel.urls { _ = model.attach(fileAt: url) }
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 14))
+                .foregroundStyle(Ink.secondary)
+                .frame(width: 30, height: 30)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help("Attach an image")
+        .accessibilityLabel("Attach an image")
     }
 
     private var maxLines: Int {
@@ -161,7 +187,6 @@ struct Composer: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .background { ContextRing(chat: model.chat) }
         .disabled(!running && !canSend)
         .help(running ? "Stop (⌘.)" : "Send (Return)")
         .accessibilityLabel(running ? "Stop" : "Send")
@@ -218,15 +243,14 @@ struct ContextRing: View {
         let window = chat?.contextWindow ?? 0
         let fraction = window > 0 ? min(1, Double(used) / Double(window)) : 0
         ZStack {
-            Circle().stroke(Surface.selected, lineWidth: 1.5)
+            Circle().stroke(Surface.selected, lineWidth: 2.5)
             Circle()
                 .trim(from: 0, to: fraction)
-                .stroke(fraction > 0.8 ? Ink.primary : Ink.secondary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .stroke(fraction > 0.8 ? Ink.primary : Ink.secondary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(Motion.move, value: fraction)
         }
-        .frame(width: 42, height: 42)
-        .opacity(window > 0 ? 1 : 0)
+        .frame(width: 20, height: 20)
         .help(window > 0 ? "\(used.formatted(.number.notation(.compactName))) of \(window.formatted(.number.notation(.compactName))) tokens" : "")
         .allowsHitTesting(false)
     }

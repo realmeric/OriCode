@@ -28,8 +28,14 @@ struct RootView: View {
                             // Above the transcript, so the slash menu can rise over it.
                             .zIndex(1)
                     }
-                    EngineNote()
-                        .frame(height: 16)
+                    // The capsule sits 28pt above the window's bottom edge; notes live in that gap.
+                    // A ZStack, because EngineNote is an EmptyView when there's nothing to say,
+                    // and a frame on an EmptyView takes no space at all.
+                    ZStack {
+                        Color.clear
+                        EngineNote()
+                    }
+                    .frame(height: 28)
                 }
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)

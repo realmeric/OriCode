@@ -63,9 +63,24 @@ struct ModelMenu: View {
             }
             .pickerStyle(.inline)
         } label: {
-            Text(label)
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
+            HStack(spacing: 6) {
+                Burst()
+                    .fill(Ink.claude)
+                    .frame(width: 14, height: 14)
+                Text(selectedModel.map { Self.shortName($0.name) } ?? "Model")
+                    .foregroundStyle(Ink.primary)
+                if let effort = shownEffort {
+                    Text(Self.effortName(effort))
+                        .foregroundStyle(Ink.secondary)
+                }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Ink.secondary)
+            }
+            .font(Type.secondary)
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .contentShape(.rect)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -79,12 +94,9 @@ struct ModelMenu: View {
         return model.models.first { $0.id == id } ?? model.models.first
     }
 
-    private var label: String {
-        var parts = [selectedModel.map { Self.shortName($0.name) } ?? "Model"]
-        if let effort = chat?.effort ?? (chat == nil ? model.lastEffort : nil), !effort.isEmpty {
-            parts.append(effort)
-        }
-        return parts.joined(separator: " · ")
+    private var shownEffort: String? {
+        guard let effort = chat?.effort ?? (chat == nil ? model.lastEffort : nil), !effort.isEmpty else { return nil }
+        return effort
     }
 
     static func effortName(_ effort: String) -> String {
