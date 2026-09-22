@@ -100,13 +100,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-### Todo: v0.5 "Rays"
-
-Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
-
-#### K-41 · Release v0.5
-As K-12. Tag `v0.5.0`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -356,6 +349,11 @@ Commit: c3b9880
 The Settings window gets the main window's glass and tint, and its panes become quiet glass cards in the brief's ink: General (the glass slider with a live swatch, Node), Transcript (K-39's toggles), Notifications, About (the rays mark, the version, the source).
 Done when: Settings reads as the same app over a colourful wallpaper. Needs Meriç's eye.
 Notes: The Settings scene takes the main window's always-active behind-window material and the same black tint from the glass slider, so moving the slider tints Settings too. Panes are cards of white at 5% holding rows with a one-line description under each title; the controls stay native (tabs, switches, slider, buttons). General shows the glass as a live percentage, Node shows what's chosen with Choose… and Automatic, and About carries the rays mark, the version and a link to the source. The app also gets a neutral AccentColor in its asset catalog, because the brief has no accent colour and the system's blue was showing on the selected tab and on default buttons. Checked: all four panes render as cards and the selected tab is grey. Still Meriç's to judge: the glass over a colourful wallpaper, which the agent's screenshots can't show.
+Commit: d0e7fc4
+
+#### K-41 · Release v0.5
+As K-12. Tag `v0.5.0`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.5.0, launched with an empty environment, opened a new thread with the composer in the middle, and an edit sent in Ask mode waited on its card, was allowed, and landed in the file.
 Commit: pending
 
 

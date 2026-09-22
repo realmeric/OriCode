@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0 "Rays" - 2026-09-23
+
+- The mark is a dot inside six arcs, and the app icon is the same drawing. Each lit arc is a head at work in the thread: the main loop, then each subagent, in the foreground or the background, up to six. The drawer's rows show them.
+- A sidebar button sits right of the traffic lights. Hovering it opens the thread list the way the left edge does, clicking it pins the list, and so does cmd-B. The list runs the window's full height with the traffic lights inside it, and while it's pinned the conversation moves over for it. Its foot has New thread and a Settings gear.
+- The composer sits in the middle of an empty thread and slides down with the first message. It reads left to right as text, attach, the model and its effort, the usage circle, send, and it sits higher off the bottom edge.
+- The usage circle shows how much of your Claude plan's session window is gone, in green, amber or red, with a thin arc turning inside it while the thread works. Hovering it lists every window with when it resets, and this thread's context. It asks your own claude, so the app still never reads a token.
+- Turns no longer show how long they took or what they cost unless Settings › Transcript asks for it; what they changed still shows.
+- Settings sits on the same glass as the window, in cards, and the system's blue is gone from the app.
+
 ## v0.4.0 "Hands" - 2026-09-22
 
 - cmd-K opens Go to: threads from every project, the projects and the app's actions, fuzzy-matched; arrows move and Return opens.
