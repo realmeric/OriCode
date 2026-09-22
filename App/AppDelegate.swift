@@ -1,6 +1,7 @@
 import AppKit
 
-/// Folders dropped on the Dock icon, or `open -a OriCode <folder>`, become projects.
+/// Folders dropped on the Dock icon, or `open -a OriCode <folder>`, become projects; images
+/// opened the same way go into the composer.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var openFolder: ((URL) -> Void)?
     private var early: [URL] = []

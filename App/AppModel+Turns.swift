@@ -17,11 +17,14 @@ extension AppModel {
     }
 
     func send(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let chat = chat ?? newChat() else { return }
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let images = draftAttachments
+        guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return }
         let conversation = conversation(for: chat)
         guard !conversation.running else { return }
-        conversation.userSent(trimmed)
+        if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
+        draftAttachments = []
+        conversation.userSent(trimmed, previews: images.compactMap(\.preview))
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
@@ -31,6 +34,11 @@ extension AppModel {
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = chat.model { params["model"] = .string(model) }
         if let effort = chat.effort { params["effort"] = .string(effort) }
+        if !images.isEmpty {
+            params["attachments"] = .array(images.map {
+                ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
+            })
+        }
         Task {
             do {
                 _ = try await engine.request("send", .object(params))

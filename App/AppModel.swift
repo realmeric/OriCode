@@ -44,6 +44,7 @@ final class AppModel {
     var branches: [UUID: BranchInfo] = [:]
     var changesShown = false
     var goToShown = false
+    var draftAttachments: [ImageAttachment] = []
     let changes = ChangesState()
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
@@ -133,6 +134,7 @@ final class AppModel {
         if !listening {
             listening = true
             installEscapeMonitor()
+            installPasteMonitor()
             Task { await listen() }
         }
         await startEngine()

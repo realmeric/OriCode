@@ -1,3 +1,4 @@
+import AppKit
 import MarkdownUI
 import SwiftUI
 
@@ -86,16 +87,31 @@ struct ItemView: View {
 
     var body: some View {
         switch item {
-        case .user(_, let text):
-            Text(text)
-                .font(Type.body)
-                .foregroundStyle(Ink.primary)
-                .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Surface.userMessage, in: .rect(cornerRadius: 18, style: .continuous))
-                .frame(maxWidth: 560, alignment: .trailing)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+        case .user(_, let text, let images):
+            VStack(alignment: .trailing, spacing: 6) {
+                if !images.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, data in
+                            if let image = NSImage(data: data) {
+                                Image(nsImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 96, height: 72)
+                                    .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                            }
+                        }
+                    }
+                }
+                Text(text)
+                    .font(Type.body)
+                    .foregroundStyle(Ink.primary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Surface.userMessage, in: .rect(cornerRadius: 18, style: .continuous))
+            }
+            .frame(maxWidth: 560, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         case .text(_, let text):
             Markdown(text)
                 .markdownTheme(.glass)

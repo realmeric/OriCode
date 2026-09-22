@@ -47,7 +47,7 @@ struct TurnFooter: Hashable {
 }
 
 enum Item: Identifiable, Hashable {
-    case user(id: UUID, text: String)
+    case user(id: UUID, text: String, images: [Data] = [])
     case text(id: UUID, text: String)
     case thinking(id: UUID, text: String)
     case tool(id: UUID, call: ToolCall)
@@ -57,7 +57,7 @@ enum Item: Identifiable, Hashable {
 
     var id: UUID {
         switch self {
-        case .user(let id, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
+        case .user(let id, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _):
             id
         }
@@ -109,13 +109,15 @@ final class Conversation {
         return nil
     }
 
-    func userSent(_ text: String) {
+    func userSent(_ text: String, previews: [Data] = []) {
         turn += 1
         running = true
         if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {
             chat.title = Chat.title(from: text)
         }
-        record("user", ["event": "user", "text": .string(text)])
+        var body: [String: JSON] = ["event": "user", "text": .string(text)]
+        if !previews.isEmpty { body["images"] = .array(previews.map { .string($0.base64EncodedString()) }) }
+        record("user", .object(body))
     }
 
     func sendFailed(_ message: String) {
@@ -218,7 +220,8 @@ final class Conversation {
     private func apply(_ kind: String, _ body: JSON, id: UUID) {
         switch kind {
         case "user":
-            items.append(.user(id: id, text: body["text"]?.string ?? ""))
+            let images = body["images"]?.array?.compactMap { $0.string.flatMap { Data(base64Encoded: $0) } } ?? []
+            items.append(.user(id: id, text: body["text"]?.string ?? "", images: images))
         case "text":
             items.append(.text(id: id, text: body["delta"]?.string ?? ""))
         case "thinking":
@@ -290,7 +293,7 @@ final class Conversation {
 extension Item {
     var text: String? {
         switch self {
-        case .text(_, let text), .thinking(_, let text), .user(_, let text), .note(_, let text): text
+        case .text(_, let text), .thinking(_, let text), .user(_, let text, _), .note(_, let text): text
         default: nil
         }
     }

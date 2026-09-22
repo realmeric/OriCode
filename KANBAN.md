@@ -98,10 +98,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.4 "Hands"
 
-#### K-27 · Attachments
-Paste or drop images into the composer; they show as small thumbnails in the capsule and go out as image content blocks.
-Done when: a screenshot pasted into the composer is described by Claude.
-
 #### K-28 · Files
 ⌘P: find a file in the project with fuzzy matching; open it read-only in a glass sheet with syntax colours from Highlightr, kept muted to the brief. A path in a tool line opens the same sheet.
 Done when: clicking "Edit App/Engine.swift" in the transcript shows the file.
@@ -283,6 +279,12 @@ Commit: 6221009
 ⌘K: a glass sheet with a search field listing threads, actions and projects, fuzzy-matched, Return opens. Native `List`, keyboard-driven.
 Done when: any thread is two keystrokes and a few letters away.
 Notes: An overlay pane like Changes, holding a TextField over a native List. Arrow keys move the selection from the field, Return opens, and Esc or a click elsewhere closes it. Fuzzy matching is an in-order subsequence scored for word starts and consecutive runs (App/Fuzzy.swift, which K-28 reuses), and it ranks threads from every project, the projects themselves and the menu's actions. This card also added the OriCodeTests target, so make test now runs Swift Testing tests (fuzzy ranking, titles, the line diff) after the engine's protocol tests. The field is focused a beat after the pane appears, because at onAppear it isn't in the window yet and the first keystrokes went nowhere. Checked with real keys: cmd-K, "coun", Return opened Counting test in project alpha.
+Commit: c836baf
+
+#### K-27 · Attachments
+Paste or drop images into the composer; they show as small thumbnails in the capsule and go out as image content blocks.
+Done when: a screenshot pasted into the composer is described by Claude.
+Notes: Three ways in: cmd-V with an image and no text on the pasteboard (a key monitor takes it, since the field editor ignores images), a drop on the capsule, and an image file opened onto the app, the way folders become projects. Images are scaled to 1568px on the long edge and sent as PNG, or as JPEG when the PNG would be over 3.5 MB. The user event keeps a 240px JPEG preview so the transcript shows what was sent; the full image isn't stored. Checked: docs/reference.png opened onto the app showed as a thumbnail in the capsule, and Claude answered that it showed the ChatGPT app with a widget reading İstanbul. The composer now rebuilds its field after each send, because clearing it again on the next runloop didn't always stop the field editor writing the sent text back. Paste and drop weren't driven by the agent, to leave Meriç's clipboard alone.
 Commit: pending
 
 

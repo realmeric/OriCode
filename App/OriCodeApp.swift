@@ -19,7 +19,10 @@ struct OriCodeApp: App {
                 .environment(model)
                 .modelContainer(container)
                 .task {
-                    delegate.openFolder = { [model] url in model.addProject(at: url) }
+                    delegate.openFolder = { [model] url in
+                        if !url.hasDirectoryPath, model.attach(fileAt: url) { return }
+                        model.addProject(at: url)
+                    }
                     delegate.deliverEarlyFolders()
                     await model.boot()
                 }

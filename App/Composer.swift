@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct Composer: View {
@@ -5,9 +6,86 @@ struct Composer: View {
     let running: Bool
     let maxHeight: CGFloat
     @State private var text = ""
+    /// A new id after each send rebuilds the field, whose editor otherwise sometimes writes the
+    /// sent text back after Return.
+    @State private var draft = UUID()
     @FocusState private var focused: Bool
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !model.draftAttachments.isEmpty {
+                thumbnails
+            }
+            row
+        }
+        .padding(6)
+        .frame(minHeight: 48)
+        .background(Surface.composer, in: .rect(cornerRadius: 24, style: .continuous))
+        .overlay {
+            // The raised-glass highlight along the top edge, fading out before the sides.
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(colors: [Surface.composerEdge, .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
+                    lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
+            accept(providers)
+        }
+        .onAppear { focused = true }
+        // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
+        .onChange(of: waitingAsk?.requestId) { _, waiting in
+            focused = waiting == nil
+        }
+    }
+
+    private var thumbnails: some View {
+        HStack(spacing: 6) {
+            ForEach(model.draftAttachments) { attachment in
+                Image(nsImage: attachment.thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            model.draftAttachments.removeAll { $0.id == attachment.id }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Ink.primary, Color.black.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 5, y: -5)
+                        .accessibilityLabel("Remove image")
+                    }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+    }
+
+    private func accept(_ providers: [NSItemProvider]) -> Bool {
+        var took = false
+        for provider in providers {
+            if provider.canLoadObject(ofClass: NSURL.self) {
+                took = true
+                _ = provider.loadObject(ofClass: NSURL.self) { url, _ in
+                    guard let url = url as? URL else { return }
+                    Task { @MainActor in _ = model.attach(fileAt: url) }
+                }
+            } else if provider.canLoadObject(ofClass: NSImage.self) {
+                took = true
+                _ = provider.loadObject(ofClass: NSImage.self) { image, _ in
+                    guard let image = image as? NSImage else { return }
+                    Task { @MainActor in model.attach([image]) }
+                }
+            }
+        }
+        return took
+    }
+
+    private var row: some View {
         HStack(alignment: .bottom, spacing: 10) {
             ModelMenu(chat: model.chat)
                 .frame(height: 36)
@@ -17,6 +95,7 @@ struct Composer: View {
                 .font(Type.body)
                 .foregroundStyle(Ink.primary)
                 .lineLimit(1...maxLines)
+                .id(draft)
                 .focused($focused)
                 .onKeyPress(.return, phases: .down) { press in
                     if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
@@ -31,22 +110,6 @@ struct Composer: View {
 
                 .padding(.vertical, 9)
             sendButton
-        }
-        .padding(6)
-        .frame(minHeight: 48)
-        .background(Surface.composer, in: .rect(cornerRadius: 24, style: .continuous))
-        .overlay {
-            // The raised-glass highlight along the top edge, fading out before the sides.
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(colors: [Surface.composerEdge, .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
-                    lineWidth: 1)
-                .allowsHitTesting(false)
-        }
-        .onAppear { focused = true }
-        // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
-        .onChange(of: waitingAsk?.requestId) { _, waiting in
-            focused = waiting == nil
         }
     }
 
@@ -82,15 +145,15 @@ struct Composer: View {
     }
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.draftAttachments.isEmpty
     }
 
     private func send() {
         guard !running, canSend else { return }
         model.send(text)
         text = ""
-        // The field editor can write its buffer back after a Return; clear again once it has.
-        Task { @MainActor in text = "" }
+        draft = UUID()
+        Task { @MainActor in focused = true }
     }
 }
 
