@@ -28,6 +28,8 @@ struct RootView: View {
                 }
                 .simultaneousGesture(TapGesture().onEnded {
                     if !model.drawerPinned { model.hideDrawer() }
+                    if model.goToShown { model.toggleGoTo() }
+                    if model.changesShown { model.closeChanges() }
                 })
             }
         }
@@ -69,6 +71,13 @@ struct RootView: View {
                 .padding(.top, 4)
                 .padding(.horizontal, 90)
                 .ignoresSafeArea()
+        }
+        .overlay(alignment: .top) {
+            if model.goToShown {
+                GoToSheet()
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .overlay(alignment: .top) {
             if model.changesShown {

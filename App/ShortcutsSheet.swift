@@ -26,6 +26,7 @@ struct ShortcutsSheet: View {
             ("Deny it, or close what's on top", "Esc"),
         ]),
         ("App", [
+            ("Go to anything", "⌘K"),
             ("Settings", "⌘,"),
             ("These shortcuts", "⌘/"),
         ]),

@@ -43,6 +43,7 @@ final class AppModel {
     var conversations: [UUID: Conversation] = [:]
     var branches: [UUID: BranchInfo] = [:]
     var changesShown = false
+    var goToShown = false
     let changes = ChangesState()
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {

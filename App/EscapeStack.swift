@@ -4,6 +4,10 @@ extension AppModel {
     /// Esc closes the topmost thing and nothing under it hears the key. Returns whether
     /// anything took it. Menus run their own event loop and handle Esc before this.
     func escape() -> Bool {
+        if goToShown {
+            toggleGoTo()
+            return true
+        }
         if changesShown {
             closeChanges()
             return true

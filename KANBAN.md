@@ -98,10 +98,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.4 "Hands"
 
-#### K-26 · Go to
-⌘K: a glass sheet with a search field listing threads, actions and projects, fuzzy-matched, Return opens. Native `List`, keyboard-driven.
-Done when: any thread is two keystrokes and a few letters away.
-
 #### K-27 · Attachments
 Paste or drop images into the composer; they show as small thumbnails in the capsule and go out as image content blocks.
 Done when: a screenshot pasted into the composer is described by Claude.
@@ -281,6 +277,12 @@ Commit: c9b4c4a
 #### K-25 · Release v0.3
 Tag `v0.3.0`.
 Notes: Checked: /Applications/OriCode.app at 0.3.0, launched with an empty environment, answered hello with the real models and opened Changes on a worktree thread, showing its branch and changed file.
+Commit: 6221009
+
+#### K-26 · Go to
+⌘K: a glass sheet with a search field listing threads, actions and projects, fuzzy-matched, Return opens. Native `List`, keyboard-driven.
+Done when: any thread is two keystrokes and a few letters away.
+Notes: An overlay pane like Changes, holding a TextField over a native List. Arrow keys move the selection from the field, Return opens, and Esc or a click elsewhere closes it. Fuzzy matching is an in-order subsequence scored for word starts and consecutive runs (App/Fuzzy.swift, which K-28 reuses), and it ranks threads from every project, the projects themselves and the menu's actions. This card also added the OriCodeTests target, so make test now runs Swift Testing tests (fuzzy ranking, titles, the line diff) after the engine's protocol tests. The field is focused a beat after the pane appears, because at onAppear it isn't in the window yet and the first keystrokes went nowhere. Checked with real keys: cmd-K, "coun", Return opened Counting test in project alpha.
 Commit: pending
 
 

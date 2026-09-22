@@ -57,3 +57,24 @@ targets:
             rsync -a --delete --exclude .stamp "$HOME/Library/Developer/OriCode/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
           fi
         basedOnDependencyAnalysis: false
+  OriCodeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: OriCode
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/OriCode.app/Contents/MacOS/OriCode
+schemes:
+  OriCode:
+    build:
+      targets:
+        OriCode: all
+        OriCodeTests: [test]
+    test:
+      targets:
+        - OriCodeTests
