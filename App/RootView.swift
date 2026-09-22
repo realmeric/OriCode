@@ -32,6 +32,20 @@ struct RootView: View {
         }
         .ignoresSafeArea(edges: .top)
         .navigationTitle(model.chat?.title ?? model.project?.name ?? "OriCode")
+        .confirmationDialog(
+            "Delete “\(model.deletingChat?.title ?? "")”?",
+            isPresented: Binding(get: { model.deletingChat != nil }, set: { if !$0 { model.deletingChat = nil } }),
+            presenting: model.deletingChat
+        ) { chat in
+            Button("Delete", role: .destructive) { model.delete(chat) }
+                .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Its transcript goes with it.")
+        }
+        .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
+            ShortcutsSheet()
+        }
         .overlay(alignment: .topLeading) {
             Drawer()
                 .padding(.leading, 12)

@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.2 "See what it did"
 
-#### K-20 · Keyboard pass
-An escape stack: Esc closes the topmost thing (drawer, ask, menu), and nothing else hears it. Everything in v0.1 and v0.2 reachable without the mouse; ⌘/ shows the shortcuts in a sheet.
-Done when: a full session (add project, new thread, send, approve, switch thread, rename) is done with the trackpad unplugged.
-
 #### K-21 · Release v0.2
 As K-12. Tag `v0.2.0`.
 
@@ -270,6 +266,12 @@ Commit: d6e7671
 Engine crash mid-turn, `claude` not found, network gone, a project folder that moved: each a one-line note in the transcript in 55% white, never an alert or a modal. A thread whose folder is gone is greyed in the drawer with "folder missing" under the title.
 Done when: pulling the network cable during a turn produces one calm line and the next turn works when it's back.
 Notes: Each edge is one line in 55% white. A dropped network shows up as the CLI retrying, so the engine passes the SDK's api_retry messages on as retrying (Architecture updated) and the app keeps one live line, "Can't reach Claude. Trying again, 4 of 10…", that clears once the turn moves on; an API failure is said once per turn instead of as raw error text plus a result error. A moved folder refuses the send by the folder's name, and its drawer row greys with "folder missing". Checked: the app launched behind a dead HTTPS proxy showed the retry line, and the next turn after a normal launch answered; killing the engine mid-turn left "The engine stopped in the middle of this turn." and closed the open tool calls; a renamed-away folder gave the note and the grey row. Not seen: the line after all ten retries fail, since that takes minutes of backoff. Assistant text now keeps single newlines as line breaks, which is how the CLI shows them.
+Commit: efa5848
+
+#### K-20 · Keyboard pass
+An escape stack: Esc closes the topmost thing (drawer, ask, menu), and nothing else hears it. Everything in v0.1 and v0.2 reachable without the mouse; ⌘/ shows the shortcuts in a sheet.
+Done when: a full session (add project, new thread, send, approve, switch thread, rename) is done with the trackpad unplugged.
+Notes: The Esc monitor from K-09 is now the whole stack: a rename in progress, then the drawer, then a waiting ask; it only acts in the main window with no sheet attached, so dialogs, the shortcuts sheet and the open panel keep their own Esc. The Thread menu gained Model, Effort and Permission Mode pickers, Rename Thread (cmd-R) and Delete Thread (cmd-delete, which asks first, with Delete as the default so Return confirms), and Help › Keyboard Shortcuts (cmd-/) opens the list as a sheet. Rename and delete state moved into AppModel so the menu can start them. Checked with real keys: cmd-N, typing, Return to send and to allow, cmd-1…9, cmd-R to rename, cmd-delete then Return to delete, and Return to close the sheet. Esc and the layout-dependent cmd-backslash, cmd-comma and cmd-/ couldn't be pressed by the agent, so they're Meriç's to try.
 Commit: pending
 
 

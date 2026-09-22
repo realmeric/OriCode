@@ -38,10 +38,49 @@ struct OriCodeCommands: Commands {
                 }
             }
             Divider()
-            Button("Delete Thread") {
-                if let chat = model.chat { model.delete(chat) }
+            Picker("Model", selection: modelBinding) {
+                ForEach(model.models) { option in
+                    Text(option.name).tag(option.id)
+                }
             }
+            if let efforts = model.models.first(where: { $0.id == modelBinding.wrappedValue })?.efforts, !efforts.isEmpty {
+                Picker("Effort", selection: effortBinding) {
+                    Text("Default").tag("")
+                    ForEach(efforts, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
+                }
+            }
+            Picker("Permission Mode", selection: modeBinding) {
+                ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            Divider()
+            Button("Rename Thread…") {
+                if let chat = model.chat { model.startRename(chat) }
+            }
+            .keyboardShortcut("r")
             .disabled(model.chat == nil)
+            Button("Delete Thread…") { model.deletingChat = model.chat }
+                .keyboardShortcut(.delete)
+                .disabled(model.chat == nil)
         }
+        CommandGroup(replacing: .help) {
+            Button("Keyboard Shortcuts") { model.showingShortcuts = true }
+                .keyboardShortcut("/")
+        }
+    }
+
+    private var modelBinding: Binding<String> {
+        Binding {
+            model.chat?.model ?? model.lastModel ?? model.models.first?.id ?? ""
+        } set: { id in
+            model.setModel(id, for: model.chat)
+        }
+    }
+
+    private var effortBinding: Binding<String> {
+        Binding { model.chat?.effort ?? "" } set: { model.setEffort($0.isEmpty ? nil : $0, for: model.chat) }
+    }
+
+    private var modeBinding: Binding<String> {
+        Binding { model.chat?.permissionMode ?? model.lastPermissionMode } set: { model.setPermissionMode($0, for: model.chat) }
     }
 }

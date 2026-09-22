@@ -4,8 +4,6 @@ import SwiftUI
 struct Drawer: View {
     @Environment(AppModel.self) private var model
     @State private var hovered: UUID?
-    @State private var deleting: Chat?
-    @State private var renaming: UUID?
     @State private var draft = ""
     @FocusState private var renameFocused: Bool
 
@@ -45,16 +43,6 @@ struct Drawer: View {
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
         .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
         .onHover { model.drawerHover($0) }
-        .confirmationDialog(
-            "Delete “\(deleting?.title ?? "")”?",
-            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            presenting: deleting
-        ) { chat in
-            Button("Delete", role: .destructive) { model.delete(chat) }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Its transcript goes with it.")
-        }
     }
 
     private var projectMenu: some View {
@@ -82,14 +70,18 @@ struct Drawer: View {
         } label: {
             HStack(spacing: 10) {
                 StateRing(state: model.state(of: chat))
-                if renaming == chat.id {
+                if model.renamingChatID == chat.id {
                     TextField("Title", text: $draft)
                         .textFieldStyle(.plain)
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
                         .focused($renameFocused)
-                        .onSubmit { finishRename(chat) }
-                        .onChange(of: renameFocused) { _, focused in if !focused { finishRename(chat) } }
+                        .onSubmit { model.finishRename(chat, to: draft) }
+                        .onChange(of: renameFocused) { _, focused in if !focused { model.finishRename(chat, to: draft) } }
+                        .onAppear {
+                            draft = chat.title
+                            renameFocused = true
+                        }
                 } else {
                     let missing = !FileManager.default.fileExists(atPath: chat.cwd)
                     VStack(alignment: .leading, spacing: 1) {
@@ -122,25 +114,13 @@ struct Drawer: View {
             .animation(Motion.move, value: peeked)
         }
         .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture(count: 2).onEnded { startRename(chat) })
+        .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
         .help(chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : "")
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
-            Button("Rename") { startRename(chat) }
-            Button("Delete…") { deleting = chat }
+            Button("Rename") { model.startRename(chat) }
+            Button("Delete…") { model.deletingChat = chat }
         }
-    }
-
-    private func startRename(_ chat: Chat) {
-        draft = chat.title
-        renaming = chat.id
-        renameFocused = true
-    }
-
-    private func finishRename(_ chat: Chat) {
-        guard renaming == chat.id else { return }
-        renaming = nil
-        if draft != chat.title { model.rename(chat, to: draft) }
     }
 }
 

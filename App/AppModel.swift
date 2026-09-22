@@ -46,6 +46,9 @@ final class AppModel {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
     }
     var peekedChatID: UUID?
+    var renamingChatID: UUID?
+    var deletingChat: Chat?
+    var showingShortcuts = false
     var mouseInDrawer = false
     var drawerTask: Task<Void, Never>?
     private var listening = false

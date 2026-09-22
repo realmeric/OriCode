@@ -64,14 +64,26 @@ extension AppModel {
         }
     }
 
-    private func scheduleHide(after delay: Duration) {
+    func scheduleHide(after delay: Duration) {
         drawerTask?.cancel()
         guard !drawerPinned else { return }
         drawerTask = Task {
             try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, !mouseInDrawer, !drawerPinned else { return }
+            guard !Task.isCancelled, !mouseInDrawer, !drawerPinned, renamingChatID == nil else { return }
             hideDrawer()
         }
+    }
+
+    func startRename(_ chat: Chat) {
+        renamingChatID = chat.id
+        showDrawer()
+    }
+
+    func finishRename(_ chat: Chat, to title: String?) {
+        guard renamingChatID == chat.id else { return }
+        renamingChatID = nil
+        if let title, title != chat.title { rename(chat, to: title) }
+        if !mouseInDrawer { scheduleHide(after: DrawerTiming.grace) }
     }
 
     enum ThreadState {
