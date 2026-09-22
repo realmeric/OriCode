@@ -401,7 +401,7 @@ Commit: 1eb5cf1
 #### K-49 · Release v0.6.2
 As K-12. Tag `v0.6.2`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.2, launched with an empty environment, lit the paperclip and the model menu under the real pointer and showed Claude's logo in the menu, and an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
-Commit: pending
+Commit: 0ce1ef4
 
 
 ## Exceptions
