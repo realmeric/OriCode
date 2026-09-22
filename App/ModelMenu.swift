@@ -19,6 +19,16 @@ enum PermissionModeOption: String, CaseIterable, Identifiable {
         }
     }
 
+    var icon: String {
+        switch self {
+        case .ask: "hand.raised"
+        case .acceptEdits: "pencil"
+        case .auto: "sparkles"
+        case .plan: "list.bullet.clipboard"
+        case .dontAsk: "lock.open"
+        }
+    }
+
     var summary: String {
         switch self {
         case .ask: "Edits and commands wait for you"

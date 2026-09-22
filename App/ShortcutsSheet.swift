@@ -1,54 +1,69 @@
 import SwiftUI
 
+/// Every shortcut, for the ⌘/ sheet and Settings › Shortcuts alike.
+enum ShortcutList {
+    struct Row {
+        let name: String
+        let keys: String
+    }
+
+    struct Group {
+        let title: String
+        let rows: [Row]
+    }
+
+    static let groups: [Group] = [
+        Group(title: "Threads", rows: [
+            Row(name: "New thread", keys: "⌘N"),
+            Row(name: "New thread on its own branch", keys: "⌘⇧N"),
+            Row(name: "Add project", keys: "⌘O"),
+            Row(name: "Go to thread 1–9", keys: "⌘1 … ⌘9"),
+            Row(name: "Show or hide the thread list", keys: "⌘B"),
+            Row(name: "Rename thread", keys: "⌘R"),
+            Row(name: "Delete thread", keys: "⌘⌫"),
+        ]),
+        Group(title: "Git", rows: [
+            Row(name: "Changes", keys: "⌘⇧D"),
+            Row(name: "Commit", keys: "⌘Return"),
+        ]),
+        Group(title: "Conversation", rows: [
+            Row(name: "Send", keys: "Return"),
+            Row(name: "New line", keys: "⇧Return"),
+            Row(name: "Slash commands and skills", keys: "/ at the start"),
+            Row(name: "Stop", keys: "⌘."),
+            Row(name: "Allow what Claude asks", keys: "Return"),
+            Row(name: "Deny it, or close what's on top", keys: "Esc"),
+        ]),
+        Group(title: "App", rows: [
+            Row(name: "Go to anything", keys: "⌘K"),
+            Row(name: "Find a file", keys: "⌘P"),
+            Row(name: "Settings", keys: "⌘,"),
+            Row(name: "These shortcuts", keys: "⌘/"),
+        ]),
+    ]
+}
+
 /// ⌘/ : every shortcut in one place.
 struct ShortcutsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    private let groups: [(String, [(String, String)])] = [
-        ("Threads", [
-            ("New thread", "⌘N"),
-            ("New thread on its own branch", "⌘⇧N"),
-            ("Add project", "⌘O"),
-            ("Go to thread 1–9", "⌘1 … ⌘9"),
-            ("Show or hide the thread list", "⌘B"),
-            ("Rename thread", "⌘R"),
-            ("Delete thread", "⌘⌫"),
-        ]),
-        ("Git", [
-            ("Changes", "⌘⇧D"),
-            ("Commit", "⌘Return"),
-        ]),
-        ("Conversation", [
-            ("Send", "Return"),
-            ("New line", "⇧Return"),
-            ("Slash commands and skills", "/ at the start"),
-            ("Stop", "⌘."),
-            ("Allow what Claude asks", "Return"),
-            ("Deny it, or close what's on top", "Esc"),
-        ]),
-        ("App", [
-            ("Go to anything", "⌘K"),
-            ("Find a file", "⌘P"),
-            ("Settings", "⌘,"),
-            ("These shortcuts", "⌘/"),
-        ]),
-    ]
+    private let groups = ShortcutList.groups
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
-                ForEach(groups, id: \.0) { title, rows in
+                ForEach(groups, id: \.title) { group in
                     GridRow {
-                        Text(title)
+                        Text(group.title)
                             .font(Type.secondary)
                             .foregroundStyle(Ink.secondary)
-                            .padding(.top, title == groups.first?.0 ? 0 : 12)
+                            .padding(.top, group.title == groups.first?.title ? 0 : 12)
                             .gridCellColumns(2)
                     }
-                    ForEach(rows, id: \.0) { name, keys in
+                    ForEach(group.rows, id: \.name) { row in
                         GridRow {
-                            Text(name).font(Type.body).foregroundStyle(Ink.primary)
-                            Text(keys).font(Type.mono).foregroundStyle(Ink.secondary)
+                            Text(row.name).font(Type.body).foregroundStyle(Ink.primary)
+                            Text(row.keys).font(Type.mono).foregroundStyle(Ink.secondary)
                         }
                     }
                 }

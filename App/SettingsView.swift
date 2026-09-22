@@ -1,40 +1,150 @@
 import AppKit
 import SwiftUI
 
-/// Settings on the main window's glass: native tabs and controls, laid out as the same
-/// quiet cards the transcript uses, in the brief's ink.
+/// Settings laid out like Meriç's reference: a sidebar of panes under a search field, and
+/// each pane's settings in cards under quiet headings, all on the main window's glass.
 struct SettingsView: View {
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
+    @State private var pane: SettingsPane? = .general
+    @State private var query = ""
+
+    private var panes: [SettingsPane] {
+        SettingsPane.allCases.filter { $0.matches(query) }
+    }
 
     var body: some View {
-        TabView {
-            Tab("General", systemImage: "gearshape") { GeneralPane() }
-            Tab("Transcript", systemImage: "text.bubble") { TranscriptPane() }
-            Tab("Notifications", systemImage: "bell") { NotificationsPane() }
-            Tab("About", systemImage: "info.circle") { AboutPane() }
+        NavigationSplitView {
+            List(panes, selection: $pane) { pane in
+                Label(pane.title, systemImage: pane.icon)
+                    .font(Type.body)
+                    .padding(.vertical, 3)
+                    .tag(pane)
+            }
+            .searchable(text: $query, placement: .sidebar, prompt: "Search")
+            .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 214, max: 260)
+            .onChange(of: query) {
+                // Searching moves to the first pane that still has what was typed.
+                if let pane, panes.contains(pane) { return }
+                pane = panes.first
+            }
+        } detail: {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    switch pane ?? .general {
+                    case .general: GeneralPane()
+                    case .conversation: ConversationPane()
+                    case .notifications: NotificationsPane()
+                    case .shortcuts: ShortcutsPane()
+                    case .about: AboutPane()
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .scrollContentBackground(.hidden)
+            .scrollIndicators(.never)
+            .toolbar(removing: .title)
         }
-        .frame(width: 480)
-        .background(Color.black.opacity(glass).ignoresSafeArea())
-        .containerBackground(for: .window) { BehindWindowGlass() }
+        // The toolbar stays, because it carries the traffic lights, but shows nothing else.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .frame(width: 860, height: 640)
+        // The main window's material and tint, under the sidebar and the detail alike.
+        .containerBackground(for: .window) {
+            ZStack {
+                BehindWindowGlass()
+                Color.black.opacity(glass)
+            }
+        }
         .preferredColorScheme(.dark)
-        // Switches and the slider in grey rather than the system's accent, which the app doesn't use.
         .tint(Color(white: 0.62))
     }
 }
 
-/// A group of settings on white at 5%, apart from the next by space rather than a line.
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case general, conversation, notifications, shortcuts, about
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .conversation: "Conversation"
+        case .notifications: "Notifications"
+        case .shortcuts: "Shortcuts"
+        case .about: "About"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: "gearshape"
+        case .conversation: "text.bubble"
+        case .notifications: "bell"
+        case .shortcuts: "command"
+        case .about: "info.circle"
+        }
+    }
+
+    /// The words a search can find a pane by: its title and what its settings are called.
+    private var words: [String] {
+        switch self {
+        case .general: ["glass", "window", "clear", "dark", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
+        case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript"]
+        case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
+        case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
+        case .about: ["version", "source", "oricode"]
+        }
+    }
+
+    func matches(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return true }
+        return ([title] + words).contains { $0.lowercased().contains(query) }
+    }
+}
+
+// MARK: - Building blocks
+
+/// A heading over a card, quieter than the settings in it.
+private struct SectionHeading: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Ink.secondary)
+            .padding(.top, 22)
+            .padding(.bottom, 10)
+    }
+}
+
+/// Rows on white at 5%, parted by hairlines inset from the leading edge.
 private struct SettingsCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) { content }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+        VStack(alignment: .leading, spacing: 0) {
+            Group(subviews: content) { rows in
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 1)
+                            .padding(.leading, 18)
+                    }
+                    row
+                }
+            }
+        }
+        .background(Surface.card, in: .rect(cornerRadius: 16, style: .continuous))
     }
 }
 
-/// A label with a line under it saying what the setting does, and the control on the right.
+/// A title with a line under it saying what the setting does, and its control on the right.
 private struct SettingsRow<Control: View>: View {
     let title: String
     var detail: String?
@@ -42,8 +152,8 @@ private struct SettingsRow<Control: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(Type.body).foregroundStyle(Ink.primary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
                 if let detail {
                     Text(detail).font(Type.secondary).foregroundStyle(Ink.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -52,28 +162,47 @@ private struct SettingsRow<Control: View>: View {
             Spacer(minLength: 12)
             control
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
     }
 }
 
-private struct Pane<Content: View>: View {
-    @ViewBuilder let content: Content
+extension SettingsRow where Control == EmptyView {
+    init(title: String, detail: String?) {
+        self.init(title: title, detail: detail) { EmptyView() }
+    }
+}
+
+private struct PaneTitle: View {
+    let text: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) { content }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+        Text(text)
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(Ink.primary)
     }
 }
+
+// MARK: - Panes
 
 private struct GeneralPane: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
     @AppStorage("nodePath") private var nodePath = ""
+    @AppStorage("lastPermissionMode") private var permissionMode = "default"
 
     var body: some View {
-        Pane {
-            SettingsCard {
-                SettingsRow(title: "Glass", detail: "How much of the desktop shows through the window.") {
+        PaneTitle(text: "General")
+        SectionHeading("Window")
+        SettingsCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Glass").font(.system(size: 14)).foregroundStyle(Ink.primary)
+                        Text("How much of the desktop shows through the window.")
+                            .font(Type.secondary).foregroundStyle(Ink.secondary)
+                    }
+                    Spacer()
                     Text("\(Int((glass * 100).rounded()))%")
                         .font(Type.mono)
                         .foregroundStyle(Ink.secondary)
@@ -89,17 +218,40 @@ private struct GeneralPane: View {
                 }
                 .labelsHidden()
             }
-            SettingsCard {
-                SettingsRow(title: "Node", detail: nodePath.isEmpty ? "Found on its own; it needs Node 24 or newer." : nodePath) {
-                    HStack(spacing: 8) {
-                        if !nodePath.isEmpty {
-                            Button("Automatic") { use("") }
-                        }
-                        Button("Choose…", action: choose)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+        }
+        SectionHeading("New threads")
+        SettingsCard {
+            SettingsRow(
+                title: "Model and effort",
+                detail: "A new thread starts on the model and effort you last picked in the composer.")
+            SettingsRow(title: "Permissions", detail: selectedMode.summary) {
+                Picker("Permissions", selection: $permissionMode) {
+                    ForEach(PermissionModeOption.allCases) { option in
+                        Label(option.title, systemImage: option.icon).tag(option.rawValue)
                     }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+        }
+        SectionHeading("Engine")
+        SettingsCard {
+            SettingsRow(title: "Node", detail: nodePath.isEmpty ? "Found on its own; it needs Node 24 or newer." : nodePath) {
+                HStack(spacing: 8) {
+                    if !nodePath.isEmpty {
+                        Button("Automatic") { use("") }
+                    }
+                    Button("Choose…", action: choose)
                 }
             }
         }
+    }
+
+    private var selectedMode: PermissionModeOption {
+        PermissionModeOption(rawValue: permissionMode) ?? .ask
     }
 
     private func choose() {
@@ -119,19 +271,19 @@ private struct GeneralPane: View {
     }
 }
 
-private struct TranscriptPane: View {
+private struct ConversationPane: View {
     @AppStorage(TranscriptSettings.showTime) private var showTime = false
     @AppStorage(TranscriptSettings.showCost) private var showCost = false
 
     var body: some View {
-        Pane {
-            SettingsCard {
-                SettingsRow(title: "How long each turn took", detail: "Under each turn, beside the files it changed.") {
-                    Toggle("How long each turn took", isOn: $showTime).labelsHidden().toggleStyle(.switch)
-                }
-                SettingsRow(title: "What each turn cost", detail: "What it would cost on the metered API, not a bill.") {
-                    Toggle("What each turn cost", isOn: $showCost).labelsHidden().toggleStyle(.switch)
-                }
+        PaneTitle(text: "Conversation")
+        SectionHeading("Under each turn")
+        SettingsCard {
+            SettingsRow(title: "How long it took", detail: "Beside the files the turn changed, which always show.") {
+                Toggle("How long it took", isOn: $showTime).labelsHidden().toggleStyle(.switch)
+            }
+            SettingsRow(title: "What it cost", detail: "What the turn would cost on the metered API, not a bill.") {
+                Toggle("What it cost", isOn: $showCost).labelsHidden().toggleStyle(.switch)
             }
         }
     }
@@ -141,13 +293,33 @@ private struct NotificationsPane: View {
     @AppStorage("notify") private var notify = true
 
     var body: some View {
-        Pane {
+        PaneTitle(text: "Notifications")
+        SectionHeading("When you're elsewhere")
+        SettingsCard {
+            SettingsRow(
+                title: "When a thread finishes or needs you",
+                detail: "Only while you're in another app or another thread. The Dock icon counts threads waiting on you."
+            ) {
+                Toggle("Notify", isOn: $notify).labelsHidden().toggleStyle(.switch)
+            }
+        }
+    }
+}
+
+private struct ShortcutsPane: View {
+    var body: some View {
+        PaneTitle(text: "Shortcuts")
+        ForEach(ShortcutList.groups, id: \.title) { group in
+            SectionHeading(group.title)
             SettingsCard {
-                SettingsRow(
-                    title: "When a thread finishes or needs you",
-                    detail: "Only while you're in another app or another thread. The Dock icon counts threads waiting on you."
-                ) {
-                    Toggle("Notify", isOn: $notify).labelsHidden().toggleStyle(.switch)
+                ForEach(group.rows, id: \.name) { row in
+                    HStack {
+                        Text(row.name).font(.system(size: 14)).foregroundStyle(Ink.primary)
+                        Spacer()
+                        Text(row.keys).font(Type.mono).foregroundStyle(Ink.secondary)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 11)
                 }
             }
         }
@@ -165,10 +337,12 @@ private struct AboutPane: View {
     }
 
     var body: some View {
-        Pane {
+        PaneTitle(text: "About")
+        SectionHeading("OriCode")
+        SettingsCard {
             VStack(spacing: 10) {
                 RaysMark(lit: RaysMark.rays, litOpacity: 0.62)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 60, height: 60)
                     .padding(.bottom, 4)
                 Text("OriCode").font(.system(size: 20, weight: .semibold)).foregroundStyle(Ink.primary)
                 Text("A native window for Claude Code.").font(Type.body).foregroundStyle(Ink.secondary)
@@ -182,8 +356,7 @@ private struct AboutPane: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+            .padding(.vertical, 24)
         }
     }
 }

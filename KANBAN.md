@@ -104,10 +104,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 After v0.5, Meriç sent the Settings of his earlier app as the reference: a glass window with a sidebar and cards. What it has that OriCode doesn't (token activity, MCP, Models, Source control, Archive, a workspace default, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) is on Linear as REA-138 to REA-148, not here.
 
-#### K-43 · Settings like the reference
-The Settings scene becomes a `NavigationSplitView`: a sidebar of panes (General, Conversation, Notifications, Shortcuts, About) with a search field that narrows the panes to those whose settings match, and a detail of cards under headings, on the main window's glass and tint all the way through. General holds Glass and Node, and a New threads card that says what a new thread starts on and sets its permission mode. Conversation holds K-39's two switches. Shortcuts lists the ⌘/ sheet's shortcuts.
-Done when: Settings opens as a sidebar window with the traffic lights in the sidebar, the whole window is as see-through as the main one, and searching "cost" leaves only Conversation. Needs Meriç's eye for the glass.
-
 #### K-44 · Release v0.6
 As K-12. Tag `v0.6.0`.
 
@@ -371,6 +367,12 @@ Commit: a695482
 Meriç wants the pill a little lower, the way the composer went up in K-36: centred 26pt from the top instead of level with the traffic lights.
 Done when: the capsule's centre is 26pt from the window's top edge.
 Notes: Top padding 4 → 14, so the 24pt capsule centres 26pt down instead of level with the traffic lights at 16. Checked in the accessibility tree: the capsule's text spans y 19 to 34.
+Commit: ca63ddc
+
+#### K-43 · Settings like the reference
+The Settings scene becomes a `NavigationSplitView`: a sidebar of panes (General, Conversation, Notifications, Shortcuts, About) with a search field that narrows the panes to those whose settings match, and a detail of cards under headings, on the main window's glass and tint all the way through. General holds Glass and Node, and a New threads card that says what a new thread starts on and sets its permission mode. Conversation holds K-39's two switches. Shortcuts lists the ⌘/ sheet's shortcuts.
+Done when: Settings opens as a sidebar window with the traffic lights in the sidebar, the whole window is as see-through as the main one, and searching "cost" leaves only Conversation. Needs Meriç's eye for the glass.
+Notes: Why K-40 wasn't glass: its TabView drew its own backing over the window's material. Now the Settings scene holds a NavigationSplitView: the sidebar is the system's own sidebar glass with a searchable field, and the detail is a clear ScrollView over the window's behind-window material and the same black tint as the main window. The toolbar stays, because it carries the traffic lights, with its background hidden and the sidebar toggle and title removed; hiding it outright took the traffic lights with it. Cards are white at 5% with hairlines between rows, under 15pt headings. General gained a New threads card that explains the model and effort and sets the permission mode a new thread starts in (the existing lastPermissionMode), with an icon per mode. Shortcuts shows the same list as the cmd-/ sheet, now one ShortcutList both read. Checked: the window opens as a sidebar with the traffic lights in it and no toolbar buttons, the detail captures as the same material as the main window, and searching "cost" left only Conversation and switched to it; clearing with real keys brought the panes back. Needs Meriç's eye: the glass over a wallpaper, and whether the system's sidebar material reads as the lighter panel in his reference.
 Commit: pending
 
 
