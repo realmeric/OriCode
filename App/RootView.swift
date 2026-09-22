@@ -31,6 +31,8 @@ struct RootView: View {
                     EngineNote()
                         .frame(height: 16)
                 }
+                // A pinned drawer is a list you keep open, so the conversation moves over for it.
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                 .simultaneousGesture(TapGesture().onEnded {
                     if !model.drawerPinned { model.hideDrawer() }
                     if model.goToShown { model.toggleGoTo() }
@@ -77,6 +79,7 @@ struct RootView: View {
             TitleCapsule()
                 .padding(.top, 4)
                 .padding(.horizontal, 90)
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 90 : 0)
                 .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
@@ -107,13 +110,19 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .topLeading) {
+            // Full height and under the title bar, so the traffic lights sit inside its first row.
             Drawer()
-                .padding(.leading, 12)
-                .padding(.top, 40)
-                .padding(.bottom, 12)
-                .offset(x: model.drawerShown ? 0 : -300)
+                .padding(Drawer.inset)
+                .offset(x: model.drawerShown ? 0 : -(Drawer.width + Drawer.inset * 3))
                 .opacity(model.drawerShown ? 1 : 0)
                 .allowsHitTesting(model.drawerShown)
+                .ignoresSafeArea()
+        }
+        .overlay(alignment: .topLeading) {
+            SidebarButton()
+                .padding(.leading, 78)
+                .padding(.top, 5)
+                .ignoresSafeArea()
         }
         .overlay(alignment: .leading) {
             Color.clear
@@ -121,6 +130,33 @@ struct RootView: View {
                 .contentShape(.rect)
                 .onHover { model.hotZone($0) }
         }
+    }
+}
+
+/// Right of the traffic lights: hovering opens the drawer the way the left edge does,
+/// clicking pins it, like ⌘B.
+struct SidebarButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            model.toggleDrawerPin()
+        } label: {
+            Image(systemName: "sidebar.left")
+                .font(.system(size: 14))
+                .foregroundStyle(hovering || model.drawerPinned ? Ink.primary : Ink.secondary)
+                .frame(width: 28, height: 22)
+                .background(hovering ? Surface.hover : .clear, in: .rect(cornerRadius: 6, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            hovering = inside
+            model.hotZone(inside)
+        }
+        .help(model.drawerPinned ? "Hide threads (⌘B)" : "Show threads (⌘B)")
+        .accessibilityLabel(model.drawerPinned ? "Hide threads" : "Show threads")
     }
 }
 

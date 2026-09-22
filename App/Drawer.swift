@@ -2,6 +2,13 @@ import SwiftUI
 
 /// The thread list: a drawer over the glass, never a sidebar.
 struct Drawer: View {
+    static let width: CGFloat = 280
+    /// From the window's top, left and bottom edges; the corners are the window's less this.
+    static let inset: CGFloat = 6
+    static let corner: CGFloat = 12
+    /// The title-bar row the traffic lights and the sidebar button sit in.
+    static let titleRow: CGFloat = 38
+
     @Environment(AppModel.self) private var model
     @State private var hovered: UUID?
     @State private var draft = ""
@@ -9,9 +16,10 @@ struct Drawer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            Color.clear.frame(height: Self.titleRow)
             projectMenu
                 .padding(.horizontal, 12)
-                .padding(.top, 10)
+                .padding(.top, 2)
             List {
                 ForEach(Array(model.chats.enumerated()), id: \.element.id) { index, chat in
                     row(chat, index: index)
@@ -39,9 +47,10 @@ struct Drawer: View {
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
         }
-        .frame(width: 260)
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
-        .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
+        .frame(width: Self.width)
+        .frame(maxHeight: .infinity)
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: Self.corner, style: .continuous))
+        .background(Surface.drawer, in: .rect(cornerRadius: Self.corner, style: .continuous))
         .onHover { model.drawerHover($0) }
     }
 

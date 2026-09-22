@@ -35,7 +35,7 @@ extension AppModel {
     }
 
     func toggleDrawerPin() {
-        drawerPinned.toggle()
+        withAnimation(drawerPinned ? DrawerTiming.slideOut : DrawerTiming.slideIn) { drawerPinned.toggle() }
         if drawerPinned { showDrawer() } else if !mouseInDrawer { hideDrawer() }
     }
 

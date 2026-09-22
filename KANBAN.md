@@ -103,10 +103,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 Meriç's second pass, after using v0.4. His reference images are ChatGPT's sidebar holding the traffic lights, and his earlier composer's row of controls; the usage circle follows his other app, kullanym-notch, in motion and in how it reads, on this app's glass.
 
-#### K-34 · The sidebar button, and a drawer that reaches the top
-Right of the traffic lights, a `sidebar.left` button. Hovering it opens the drawer the way the left edge does; clicking it pins or unpins; ⌘B does the same and replaces ⌘\, which Turkish-QWERTY-PC can't reach. The drawer takes the brief's new numbers: full height, the traffic lights and the button inside its first row.
-Done when: hovering the button opens the drawer with the traffic lights sitting inside it, clicking pins it, and ⌘B toggles it.
-
 #### K-35 · The drawer's foot
 New thread lights on hover like a row, and a gear at the bottom right opens Settings.
 Done when: New thread lights under the mouse, and the gear opens Settings.
@@ -341,6 +337,12 @@ Commit: 171d363
 A thread's heads are its main loop while a turn runs, plus each Agent call that hasn't returned, up to six. The drawer row's state ring becomes a 14pt `RaysMark` with that many rays lit, turning slowly while any are lit; a thread waiting on you pulses its dot. The empty-state mark reads the selected thread the same way.
 Done when: a turn that starts two subagents lights three rays on its row, and they go out as the subagents return.
 Notes: Counting unfinished Agent calls wasn't enough: Claude sends subagents to the background, the Agent call returns at once, and the turn ends while they work. So the engine tracks the CLI's task messages (task_started, task_notification, task_updated, background_tasks_changed) per thread and emits tasks { running } (Architecture updated), and heads = the main loop while a turn runs + tasks, capped at six. A background agent reporting back makes the CLI start a turn nobody sent; the engine now treats that as a turn, so it gets turn.started, Stop and a footer. Checked: a Haiku turn with two parallel subagents traced tasks running 2, then 1, then 0 as they returned, and one subagent's Bash command waited on a card in the thread like any other ask. RaysMark rendered large showed 0, 1, 3 and 6 rays lit clockwise from twelve; at 14pt in the drawer the agent's zoom can't count rays, so the row itself is for Meriç's eye.
+Commit: 30d509b
+
+#### K-34 · The sidebar button, and a drawer that reaches the top
+Right of the traffic lights, a `sidebar.left` button. Hovering it opens the drawer the way the left edge does; clicking it pins or unpins; ⌘B does the same and replaces ⌘\, which Turkish-QWERTY-PC can't reach. The drawer takes the brief's new numbers: full height, the traffic lights and the button inside its first row.
+Done when: hovering the button opens the drawer with the traffic lights sitting inside it, clicking pins it, and ⌘B toggles it.
+Notes: The drawer is 280pt wide, 6pt in from the window's top, left and bottom edges with 12pt corners, and ignores the title bar's safe area, so the traffic lights draw inside its first 38pt row. The sidebar button sits at x 78, level with the traffic lights, and calls the same hotZone(_:) as the left edge, so it opens with the same 120ms delay and grace; clicking toggles the pin. One change beyond the card: while pinned, the conversation and the title capsule move right by the drawer's width, because a pinned list covering the transcript's left edge isn't a list you'd keep open. Checked with real input: hovering the button opened the drawer over the conversation with the traffic lights inside it, a click pinned it and it stayed after the mouse left, and cmd-B unpinned it.
 Commit: pending
 
 

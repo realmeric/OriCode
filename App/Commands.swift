@@ -15,10 +15,8 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut("o")
         }
         CommandGroup(before: .toolbar) {
-            // .custom keeps it on the backslash key; automatic localization moved it onto
-            // the comma on Turkish-QWERTY-PC, on top of Settings.
             Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
-                .keyboardShortcut("\\", modifiers: .command, localization: .custom)
+                .keyboardShortcut("b")
             Button("Go To…") { model.toggleGoTo() }
                 .keyboardShortcut("k")
             Button("Find File…") { model.toggleFileFinder() }

@@ -10,7 +10,7 @@ struct ShortcutsSheet: View {
             ("New thread on its own branch", "⌘⇧N"),
             ("Add project", "⌘O"),
             ("Go to thread 1–9", "⌘1 … ⌘9"),
-            ("Show or hide the thread list", "⌘\\"),
+            ("Show or hide the thread list", "⌘B"),
             ("Rename thread", "⌘R"),
             ("Delete thread", "⌘⌫"),
         ]),
