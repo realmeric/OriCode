@@ -104,10 +104,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 After v0.5, Meriç sent the Settings of his earlier app as the reference: a glass window with a sidebar and cards. What it has that OriCode doesn't (token activity, MCP, Models, Source control, Archive, a workspace default, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) is on Linear as REA-138 to REA-148, not here.
 
-#### K-42 · The title capsule sits lower
-Meriç wants the pill a little lower, the way the composer went up in K-36: centred 26pt from the top instead of level with the traffic lights.
-Done when: the capsule's centre is 26pt from the window's top edge.
-
 #### K-43 · Settings like the reference
 The Settings scene becomes a `NavigationSplitView`: a sidebar of panes (General, Conversation, Notifications, Shortcuts, About) with a search field that narrows the panes to those whose settings match, and a detail of cards under headings, on the main window's glass and tint all the way through. General holds Glass and Node, and a New threads card that says what a new thread starts on and sets its permission mode. Conversation holds K-39's two switches. Shortcuts lists the ⌘/ sheet's shortcuts.
 Done when: Settings opens as a sidebar window with the traffic lights in the sidebar, the whole window is as see-through as the main one, and searching "cost" leaves only Conversation. Needs Meriç's eye for the glass.
@@ -370,6 +366,12 @@ Commit: d0e7fc4
 As K-12. Tag `v0.5.0`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.5.0, launched with an empty environment, opened a new thread with the composer in the middle, and an edit sent in Ask mode waited on its card, was allowed, and landed in the file.
 Commit: a695482
+
+#### K-42 · The title capsule sits lower
+Meriç wants the pill a little lower, the way the composer went up in K-36: centred 26pt from the top instead of level with the traffic lights.
+Done when: the capsule's centre is 26pt from the window's top edge.
+Notes: Top padding 4 → 14, so the 24pt capsule centres 26pt down instead of level with the traffic lights at 16. Checked in the accessibility tree: the capsule's text spans y 19 to 34.
+Commit: pending
 
 
 ## Exceptions

@@ -96,9 +96,9 @@ struct RootView: View {
             ShortcutsSheet()
         }
         .overlay(alignment: .top) {
-            // Traffic lights are centred 16pt from the top; so is this.
+            // Centred 26pt from the top: a little under the traffic lights, as Meriç asked.
             TitleCapsule()
-                .padding(.top, 4)
+                .padding(.top, 14)
                 .padding(.horizontal, 90)
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 90 : 0)
                 .ignoresSafeArea()
