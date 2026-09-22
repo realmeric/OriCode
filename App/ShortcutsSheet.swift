@@ -13,6 +13,10 @@ struct ShortcutsSheet: View {
             ("Rename thread", "⌘R"),
             ("Delete thread", "⌘⌫"),
         ]),
+        ("Git", [
+            ("Changes", "⌘⇧D"),
+            ("Commit", "⌘Return"),
+        ]),
         ("Conversation", [
             ("Send", "Return"),
             ("New line", "⇧Return"),

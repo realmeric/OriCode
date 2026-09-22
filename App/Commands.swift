@@ -16,6 +16,9 @@ struct OriCodeCommands: Commands {
             // the comma on Turkish-QWERTY-PC, on top of Settings.
             Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
                 .keyboardShortcut("\\", modifiers: .command, localization: .custom)
+            Button(model.changesShown ? "Hide Changes" : "Changes") { model.toggleChanges() }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .disabled(model.chat == nil)
             Divider()
         }
         CommandMenu("Thread") {

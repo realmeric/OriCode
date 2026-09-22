@@ -42,6 +42,8 @@ final class AppModel {
     private(set) var revision = 0
     var conversations: [UUID: Conversation] = [:]
     var branches: [UUID: BranchInfo] = [:]
+    var changesShown = false
+    let changes = ChangesState()
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }

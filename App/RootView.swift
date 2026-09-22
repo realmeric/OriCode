@@ -54,6 +54,13 @@ struct RootView: View {
                 .padding(.horizontal, 90)
                 .ignoresSafeArea()
         }
+        .overlay(alignment: .top) {
+            if model.changesShown {
+                ChangesSheet()
+                    .padding(.top, 40)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .overlay(alignment: .topLeading) {
             Drawer()
                 .padding(.leading, 12)

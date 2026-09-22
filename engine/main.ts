@@ -4,7 +4,7 @@ import { query, type PermissionMode, type SDKUserMessage } from "@anthropic-ai/c
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
-import { branch } from "./git.ts";
+import { branch, commit, diffFor, push, status } from "./git.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
@@ -26,6 +26,26 @@ async function supportedModels(claude: string): Promise<Model[]> {
   } finally {
     probe.close();
   }
+}
+
+/// One small Haiku call, no tools and no settings, so hooks and MCP servers stay out of it.
+async function writeMessage(claude: string, cwd: string, diff: string): Promise<string> {
+  const prompt =
+    "Write a git commit message for this diff. Imperative subject under 60 characters, no prefix, " +
+    "then a short body only if the why isn't obvious from the diff. Reply with the message and nothing else.\n\n" +
+    diff;
+  const run = query({
+    prompt,
+    options: { cwd, model: "haiku", tools: [], maxTurns: 1, settingSources: [], pathToClaudeCodeExecutable: claude, env: cleanEnvironment() },
+  });
+  let text = "";
+  for await (const message of run) {
+    if (message.type === "result") {
+      if (message.subtype !== "success") throw new Error("Couldn't write a message just now.");
+      text = message.result;
+    }
+  }
+  return text.trim();
 }
 
 function thread(threadId: string, claude: string): Thread {
@@ -73,6 +93,25 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "git.branch"({ cwd }: { cwd: string }) {
     return branch(cwd);
+  },
+
+  async "git.status"({ cwd }: { cwd: string }) {
+    return { files: await status(cwd) };
+  },
+
+  async "git.commit"({ cwd, paths, message }: { cwd: string; paths: string[]; message: string }) {
+    return { hash: await commit(cwd, paths, message) };
+  },
+
+  async "git.push"({ cwd }: { cwd: string }) {
+    await push(cwd);
+    return { ok: true };
+  },
+
+  async "git.message"({ cwd, paths }: { cwd: string; paths: string[] }) {
+    const diff = await diffFor(cwd, paths);
+    if (!diff.trim()) throw new Error("Nothing to describe.");
+    return { message: await writeMessage(await requireClaude(), cwd, diff) };
   },
 
   async close({ threadId }: { threadId: string }) {
