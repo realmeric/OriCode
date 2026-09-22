@@ -43,7 +43,7 @@ export function findClaude(): Promise<string | null> {
 /// Asks the CLI whether it has a login. The engine never sees the credential itself.
 export async function loggedIn(claude: string): Promise<boolean> {
   try {
-    const { stdout } = await run(claude, ["auth", "status"], { timeout: 10000 });
+    const { stdout } = await run(claude, ["auth", "status"], { timeout: 10000, env: cleanEnvironment() as NodeJS.ProcessEnv });
     return JSON.parse(stdout).loggedIn === true;
   } catch (error) {
     const stdout = (error as { stdout?: string }).stdout;
@@ -53,4 +53,17 @@ export async function loggedIn(claude: string): Promise<boolean> {
       return false;
     }
   }
+}
+
+/// The environment for the CLI. When OriCode is opened from inside a Claude Code session,
+/// it inherits that session's CLAUDE* variables, and a child `claude` that sees them waits
+/// for a host that isn't there. CLAUDE_CONFIG_DIR is the user's own setting and stays.
+export function cleanEnvironment(): Record<string, string | undefined> {
+  const environment: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if ((key.startsWith("CLAUDE") && key !== "CLAUDE_CONFIG_DIR") || key === "AI_AGENT") continue;
+    environment[key] = value;
+  }
+  environment.CLAUDE_AGENT_SDK_CLIENT_APP = "oricode/0.1.0";
+  return environment;
 }

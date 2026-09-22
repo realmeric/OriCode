@@ -2,9 +2,18 @@ import SwiftUI
 
 @main
 struct OriCodeApp: App {
+    @State private var model = AppModel()
+
+    init() {
+        // A write to an engine that just died must fail as an error, not kill the app.
+        signal(SIGPIPE, SIG_IGN)
+    }
+
     var body: some Scene {
         Window("OriCode", id: "main") {
             RootView()
+                .environment(model)
+                .task { await model.boot() }
                 .frame(minWidth: 720, minHeight: 480)
                 .containerBackground(for: .window) { BehindWindowGlass() }
                 .preferredColorScheme(.dark)

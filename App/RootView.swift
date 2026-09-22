@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
+    @Environment(AppModel.self) private var model
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
 
     var body: some View {
@@ -9,6 +10,49 @@ struct RootView: View {
                 .ignoresSafeArea()
             EmptyStateView(line: "Add a project to start.")
         }
+        .overlay(alignment: .bottom) {
+            EngineNote()
+                .padding(.bottom, 24)
+        }
+    }
+}
+
+/// One quiet line when the engine can't run, never an alert.
+struct EngineNote: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Group {
+            switch model.engineState {
+            case .starting, .ready:
+                EmptyView()
+            case .noNode(let message):
+                Text(LocalizedStringKey(message))
+            case .noClaude:
+                Text("Install Claude Code, then run `claude` in Terminal and log in.")
+            case .notLoggedIn:
+                HStack(spacing: 6) {
+                    Text("Run `claude` in Terminal and log in.")
+                    retry
+                }
+            case .stopped:
+                HStack(spacing: 6) {
+                    Text("Engine stopped.")
+                    retry
+                }
+            }
+        }
+        .font(Type.secondary)
+        .foregroundStyle(Ink.secondary)
+        .animation(Motion.fade, value: model.engineState)
+    }
+
+    private var retry: some View {
+        Button("Retry") {
+            Task { await model.startEngine() }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Ink.primary)
     }
 }
 

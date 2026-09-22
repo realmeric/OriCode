@@ -9,6 +9,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { cleanEnvironment } from "./claude.ts";
 import { event, log } from "./wire.ts";
 
 export type Attachment = { mediaType: string; data: string };
@@ -190,7 +191,7 @@ export class Thread {
         settingSources: ["user", "project", "local"],
         systemPrompt: { type: "preset", preset: "claude_code" },
         pathToClaudeCodeExecutable: this.claude,
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "oricode/0.1.0" },
+        env: cleanEnvironment(),
         stderr: (data) => process.stderr.write(data),
         canUseTool: (tool, input, { signal, toolUseID }) => this.ask(tool, input, toolUseID, signal),
       },

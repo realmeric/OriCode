@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-04 · Engine in the app
-`Engine` actor: finds `node`, spawns the bundled engine, reads stdout line by line into `Codable` events on an `AsyncStream`, matches replies to requests by id, restarts on exit with a one-line note in the window ("Engine stopped. Retry."). Distinguishes three failures and says each plainly: no `node`, no `claude` login, engine crashed.
-Done when: the app logs the `hello` reply at launch, and `kill`ing the node process from Terminal shows the note and Retry brings it back.
-
 #### K-05 · Projects and threads
 SwiftData models from the Architecture section. Add project through the native open panel, folders only; refuse anything without a `.git` and say why in the window, not in an alert. Create and delete threads; the current project and thread survive relaunch. No UI for the list yet beyond what K-02 shows; a temporary `Menu` in the empty state is fine for this card and K-10 replaces it.
 Done when: add two projects, make a thread in each, quit, relaunch, and both are there with the last one selected.
@@ -240,6 +236,12 @@ Commit: 5d14bef
 `engine/` with `main.ts`, the SDK, and a `tsconfig` used for checking only. Implements the wire protocol above end to end: `hello`, `send` with streaming (`includePartialMessages`), `interrupt`, `setMode`, `answer`, and every event. Tool calls, permission asks and `AskUserQuestion` go through `canUseTool`. `make engine` runs `tsc --noEmit` and `npm ci --omit=dev`.
 Done when: from Terminal, `printf '{"id":1,"method":"hello"}\n' | node engine/main.ts` answers with the models, and a `send` for "say hi" against any git repo streams `text` events followed by `turn.done` with a cost. No app involved yet.
 Notes: One long-lived SDK query per thread, fed from an open input queue, which is what lets setMode and interrupt reach a running turn. The engine runs the user's own claude (pathToClaudeCodeExecutable) and stages without the SDK's optional 208 MB bundled CLI, so the engine is 47 MB. The wire protocol gained hello's claude and loggedIn, a close method, ask.cancelled, compacted and turn.done's context; the Architecture section says so. make test covers the protocol without starting Claude.
+Commit: 32d33e8
+
+#### K-04 · Engine in the app
+`Engine` actor: finds `node`, spawns the bundled engine, reads stdout line by line into `Codable` events on an `AsyncStream`, matches replies to requests by id, restarts on exit with a one-line note in the window ("Engine stopped. Retry."). Distinguishes three failures and says each plainly: no `node`, no `claude` login, engine crashed.
+Done when: the app logs the `hello` reply at launch, and `kill`ing the node process from Terminal shows the note and Retry brings it back.
+Notes: The engine strips inherited CLAUDE* variables before spawning the CLI: opened from inside a Claude Code session, the app inherited that session's environment and the child claude hung waiting for a host. The engine's stderr goes to ~/Library/Logs/OriCode/engine.log and the hello reply to the unified log (subsystem com.realmeric.oricode). Checked: kill shows "Engine stopped. Retry", Retry relaunches, and a v22 node override shows the no-node line.
 Commit: pending
 
 
