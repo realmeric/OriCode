@@ -98,11 +98,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-### Backlog: v0.4 "Hands"
-
-#### K-31 · Release v0.4
-Tag `v0.4.0`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -293,6 +288,11 @@ Commit: 7971e8e
 Syntax colours in the transcript's code blocks, muted: keyword, string, number, comment, name, and nothing else.
 Done when: a Swift block reads as code and not as a rainbow.
 Notes: Code blocks use the same five muted kinds as the file viewer, through a MarkdownUI CodeSyntaxHighlighter. MarkdownUI asks synchronously from the view update, so it has its own Highlightr behind a lock and keeps a small cache, since a streaming message asks for the same block on every delta. Checked with a Swift snippet from Haiku: faint comment, soft violet keywords, sand strings, peach numbers, and everything else in plain ink.
+Commit: 53ef75f
+
+#### K-31 · Release v0.4
+Tag `v0.4.0`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.4.0, launched with an empty environment, answered hello and ran a Write in Accept edits mode that created the file. No event stored in the last hour is missing its thread, so the K-22 fix holds.
 Commit: pending
 
 

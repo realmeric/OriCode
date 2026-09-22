@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0 "Hands" - 2026-09-22
+
+- cmd-K opens Go to: threads from every project, the projects and the app's actions, fuzzy-matched; arrows move and Return opens.
+- Paste an image, drop one on the composer, or open one onto the app, and it goes out with the next message. The transcript keeps a small preview of what you sent.
+- cmd-P finds a file in the project and opens it read-only with muted syntax colours, and a path in a tool line or a diff card opens the same view.
+- Typing / at the start of a message lists the project's and your own commands and skills; Tab or Return completes one.
+- Code blocks in the transcript are coloured the same muted way: keywords, strings, numbers, comments and names, nothing else.
+- The engine's replies no longer wait in the pipe until it next writes a log line, which was behind the turns that seemed to stall at random, and a turn's cost after a relaunch is its own cost, not the session's running total.
+
 ## v0.3.0 "Git" - 2026-09-22
 
 - A capsule at the top of the window, level with the traffic lights, shows the project, the branch and the thread, with ↑ and a count when there are commits to push.
