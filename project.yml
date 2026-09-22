@@ -24,6 +24,10 @@ targets:
       - App
     dependencies:
       - package: MarkdownUI
+    info:
+      path: App/Info.plist
+      properties:
+        OriCodeSource: $(SRCROOT)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode

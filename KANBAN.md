@@ -95,10 +95,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 The version you can use as your daily Claude window. About a week and a half of evenings. If a card isn't needed to hold a real conversation with Claude in a glass window on your Mac, it isn't here.
 
-#### K-11 · Menu bar and Settings
-Native `.commands` (K-05 already added File › New Thread ⌘N and Add Project… ⌘O, and a Threads menu with ⌘1–9, a Project submenu and Delete Thread; this card finishes the set): File › New Thread ⌘N; View › Threads ⌘\; Threads › 1–9 as ⌘1–9; Thread › Stop ⌘.; and the standard App › Settings… ⌘,. A native `Settings` scene with three tabs: General (Glass slider, Node path with Automatic / Choose…), Notifications (one toggle, wired in K-15; until then it says "Coming in 0.2"), About (version, a link to the repo).
-Done when: every item in the menu bar works from the keyboard, and Settings opens as a real macOS settings window with the slider changing the glass live.
-
 #### K-12 · Release v0.1
 `make app`: Release build, ad-hoc code signature, copy to `/Applications`. `CHANGELOG.md` with a v0.1.0 entry written from the Done column. Tag `v0.1.0`.
 Done when: OriCode is in the Dock, opened from there with Terminal closed, and holds a conversation with an approval in it.
@@ -254,6 +250,12 @@ Commit: 871136d
 Exactly the drawer in the brief: hot zone, delay, slide in and out with those durations, the 400ms grace, ⌘\ to pin, and the ⌘1–9 peek with the row lit and nudged. Rows: state ring (idle, running, waiting on you), title, ⌘digit. Delete with a confirmation sheet. Project `Menu` at the top with "Add project…" (opens K-05's panel). New thread button at the bottom (⌘N).
 Done when: this one is judged by eye. Build it, then stop and ask Meriç to move the mouse to the edge and press ⌘2, and to say what feels off. Iterate on the numbers, not the structure.
 Notes: Built to the brief's numbers and checked by the agent: the 8pt hot zone opens it, it stays while the mouse is over it and leaves after the grace, cmd-2 lights and nudges the second row and slides back on its own, and View › Show Threads pins it. Still waiting on Meriç's eye, which is what this card is judged by: move the mouse to the left edge, press cmd-2, and say what feels off. One thing to check first: on the Turkish layout the cmd-backslash keystroke didn't reach the app from the agent's keyboard, while the menu item worked, so the shortcut may need another key.
+Commit: cf8974b
+
+#### K-11 · Menu bar and Settings
+Native `.commands` (K-05 already added File › New Thread ⌘N and Add Project… ⌘O, and a Threads menu with ⌘1–9, a Project submenu and Delete Thread; this card finishes the set): File › New Thread ⌘N; View › Threads ⌘\; Threads › 1–9 as ⌘1–9; Thread › Stop ⌘.; and the standard App › Settings… ⌘,. A native `Settings` scene with three tabs: General (Glass slider, Node path with Automatic / Choose…), Notifications (one toggle, wired in K-15; until then it says "Coming in 0.2"), About (version, a link to the repo).
+Done when: every item in the menu bar works from the keyboard, and Settings opens as a real macOS settings window with the slider changing the glass live.
+Notes: The thread list and Stop share one Thread menu instead of separate Threads and Thread menus, since both act on threads. The Notifications toggle is live from the start because K-15 is next in line. About links to the local checkout (baked into Info.plist as OriCodeSource), because there's no public repo to link to yet. Checked: Settings opens as a native tabbed settings window, and the slider changed the stored glass from 0.30 to 0.345 with the main window redrawing. cmd-N, cmd-1…9 and cmd-period were pressed with real keys in earlier cards; cmd-comma and cmd-backslash couldn't be, because the agent types US keycodes into a Turkish-QWERTY-PC layout.
 Commit: pending
 
 

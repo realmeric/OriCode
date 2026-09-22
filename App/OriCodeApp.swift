@@ -35,5 +35,10 @@ struct OriCodeApp: App {
             let size = CGSize(width: min(1180, visible.width - 80), height: min(760, visible.height - 80))
             return WindowPlacement(.center, size: size)
         }
+
+        Settings {
+            SettingsView()
+                .environment(model)
+        }
     }
 }

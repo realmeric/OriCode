@@ -16,17 +16,24 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut("\\")
             Divider()
         }
-        CommandMenu("Threads") {
+        CommandMenu("Thread") {
+            Button("Stop") { model.stop() }
+                .keyboardShortcut(".")
+                .disabled(!(model.chat.map { model.conversation(for: $0).running } ?? false))
+            Divider()
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
             }
-            Divider()
-            Menu("Project") {
-                ForEach(model.projects) { project in
-                    Button(project.name) { model.select(project) }
+            if !model.projects.isEmpty {
+                Divider()
+                Menu("Project") {
+                    ForEach(model.projects) { project in
+                        Button(project.name) { model.select(project) }
+                    }
                 }
             }
+            Divider()
             Button("Delete Thread") {
                 if let chat = model.chat { model.delete(chat) }
             }

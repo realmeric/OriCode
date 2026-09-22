@@ -66,7 +66,6 @@ struct Composer: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .keyboardShortcut(running ? KeyboardShortcut(".", modifiers: .command) : nil)
         .disabled(!running && !canSend)
         .help(running ? "Stop (⌘.)" : "Send (Return)")
         .accessibilityLabel(running ? "Stop" : "Send")
