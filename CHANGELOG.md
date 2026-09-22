@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.1 - 2026-09-23
+
+- The traffic lights come down to the title pill's line, with the sidebar button beside them, and sit inside the thread list's first row with room around them instead of in its corner.
+
 ## v0.6.0 "Settings" - 2026-09-23
 
 - Settings is a glass window like the rest of the app: a sidebar of panes with the traffic lights in it and a search field that narrows the panes to what you type, and each pane's settings in cards under headings.
