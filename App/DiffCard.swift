@@ -13,11 +13,16 @@ struct DiffCard: View {
                 withAnimation(Motion.fade) { open.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    Text(diff?.path ?? ToolSummary.line(for: call, cwd: cwd))
-                        .font(Type.mono)
-                        .foregroundStyle(Ink.primary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
+                    if let path = ToolSummary.path(for: call) {
+                        FileLink(path: path, label: diff?.path ?? ToolSummary.relative(path, to: cwd))
+                            .font(Type.mono)
+                            .foregroundStyle(Ink.primary)
+                    } else {
+                        Text(ToolSummary.line(for: call, cwd: cwd))
+                            .font(Type.mono)
+                            .foregroundStyle(Ink.primary)
+                            .lineLimit(1)
+                    }
                     if call.isError {
                         Text("failed").foregroundStyle(Ink.faint)
                     } else if call.result == nil {

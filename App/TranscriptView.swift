@@ -154,26 +154,32 @@ struct ToolLine: View {
     @State private var open = false
 
     var body: some View {
+        let line = ToolSummary.line(for: call, cwd: cwd)
+        let path = ToolSummary.path(for: call)
+        let shown = path.map { ToolSummary.relative($0, to: cwd) }
         VStack(alignment: .leading, spacing: 6) {
-            Button {
-                withAnimation(Motion.fade) { open.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(ToolSummary.line(for: call, cwd: cwd))
+            HStack(spacing: 4) {
+                Button {
+                    withAnimation(Motion.fade) { open.toggle() }
+                } label: {
+                    Text(shown.map { line.hasSuffix($0) ? String(line.dropLast($0.count)) : line } ?? line)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    if call.isError {
-                        Text("failed").foregroundStyle(Ink.faint)
-                    } else if call.result == nil {
-                        ProgressView().controlSize(.mini).tint(Ink.secondary)
-                    }
+                        .contentShape(.rect)
                 }
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
-                .contentShape(.rect)
+                .buttonStyle(.plain)
+                .disabled(call.result == nil)
+                if let path, let shown {
+                    FileLink(path: path, label: shown)
+                }
+                if call.isError {
+                    Text("failed").foregroundStyle(Ink.faint)
+                } else if call.result == nil {
+                    ProgressView().controlSize(.mini).tint(Ink.secondary)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(call.result == nil)
+            .font(Type.secondary)
+            .foregroundStyle(Ink.secondary)
             if open, let result = call.result {
                 ScrollView {
                     Text(result.isEmpty ? "(no output)" : String(result.prefix(20_000)))
@@ -189,6 +195,28 @@ struct ToolLine: View {
                 .transition(.opacity)
             }
         }
+    }
+}
+
+/// A path that opens the file read-only; underlined while the mouse is on it.
+struct FileLink: View {
+    @Environment(AppModel.self) private var model
+    let path: String
+    let label: String
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            model.openFile(path)
+        } label: {
+            Text(label)
+                .underline(hovering)
+                .lineLimit(1)
+                .truncationMode(.head)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Open \(label)")
     }
 }
 

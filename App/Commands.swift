@@ -21,6 +21,9 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut("\\", modifiers: .command, localization: .custom)
             Button("Go To…") { model.toggleGoTo() }
                 .keyboardShortcut("k")
+            Button("Find File…") { model.toggleFileFinder() }
+                .keyboardShortcut("p")
+                .disabled(model.chat == nil)
             Button(model.changesShown ? "Hide Changes" : "Changes") { model.toggleChanges() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
                 .disabled(model.chat == nil)

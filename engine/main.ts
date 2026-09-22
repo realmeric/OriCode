@@ -5,6 +5,7 @@ import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.t
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, commit, diffFor, push, removeWorktree, status, worktreeLoss } from "./git.ts";
+import { listFiles, readProjectFile } from "./files.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
@@ -125,6 +126,14 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "worktree.remove"({ cwd, path, branch: branchName }: { cwd: string; path: string; branch: string }) {
     await removeWorktree(cwd, path, branchName);
     return { ok: true };
+  },
+
+  async "files.list"({ cwd }: { cwd: string }) {
+    return { files: await listFiles(cwd) };
+  },
+
+  async "files.read"({ cwd, path }: { cwd: string; path: string }) {
+    return readProjectFile(cwd, path);
   },
 
   async close({ threadId }: { threadId: string }) {

@@ -16,6 +16,9 @@ packages:
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: 2.4.1
+  Highlightr:
+    url: https://github.com/raspu/Highlightr
+    from: 2.3.0
 targets:
   OriCode:
     type: application
@@ -24,6 +27,7 @@ targets:
       - App
     dependencies:
       - package: MarkdownUI
+      - package: Highlightr
     info:
       path: App/Info.plist
       properties:

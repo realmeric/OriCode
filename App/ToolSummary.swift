@@ -30,6 +30,15 @@ enum ToolSummary {
         }
     }
 
+    /// The file a Read, Edit, MultiEdit, Write or NotebookEdit call touched, as given to the tool.
+    static func path(for call: ToolCall) -> String? {
+        switch call.name {
+        case "Read", "Edit", "MultiEdit", "Write": call.input["file_path"]?.string
+        case "NotebookEdit": call.input["notebook_path"]?.string
+        default: nil
+        }
+    }
+
     static func relative(_ path: String, to cwd: String) -> String {
         let path = (path as NSString).standardizingPath
         let cwd = (cwd as NSString).standardizingPath

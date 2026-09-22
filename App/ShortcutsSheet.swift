@@ -27,6 +27,7 @@ struct ShortcutsSheet: View {
         ]),
         ("App", [
             ("Go to anything", "⌘K"),
+            ("Find a file", "⌘P"),
             ("Settings", "⌘,"),
             ("These shortcuts", "⌘/"),
         ]),

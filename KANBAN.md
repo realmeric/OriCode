@@ -73,6 +73,7 @@ Methods:
 - `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
 - `git.status { cwd }` → `{ files: [{ path, status }] }`, `git.commit { cwd, paths, message }` → `{ hash }`, `git.push { cwd }` → `{ ok }`, and `git.message { cwd, paths }` → `{ message }`, which is one tool-less Haiku call over the diff.
 - `worktree.add { cwd, slug }` → `{ path, branch }`, `worktree.loss { path, branch }` → `{ dirty, unpushed }`, `worktree.remove { cwd, path, branch }` → `{ ok }`. A worktree thread lives in `.worktrees/<slug>` on branch `oricode/<slug>`.
+- `files.list { cwd }` → `{ files }` (tracked plus untracked, not ignored) and `files.read { cwd, path }` → `{ path, content, truncated }`, read-only, inside the project, cut at 1 MB.
 
 Events, each with `threadId`:
 
@@ -97,10 +98,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.4 "Hands"
-
-#### K-28 · Files
-⌘P: find a file in the project with fuzzy matching; open it read-only in a glass sheet with syntax colours from Highlightr, kept muted to the brief. A path in a tool line opens the same sheet.
-Done when: clicking "Edit App/Engine.swift" in the transcript shows the file.
 
 #### K-29 · Slash commands and skills
 Typing `/` at the start of the composer lists the commands and skills the project and `~/.claude` define; picking one inserts it. Sent as text; the engine already understands them.
@@ -285,6 +282,12 @@ Commit: c836baf
 Paste or drop images into the composer; they show as small thumbnails in the capsule and go out as image content blocks.
 Done when: a screenshot pasted into the composer is described by Claude.
 Notes: Three ways in: cmd-V with an image and no text on the pasteboard (a key monitor takes it, since the field editor ignores images), a drop on the capsule, and an image file opened onto the app, the way folders become projects. Images are scaled to 1568px on the long edge and sent as PNG, or as JPEG when the PNG would be over 3.5 MB. The user event keeps a 240px JPEG preview so the transcript shows what was sent; the full image isn't stored. Checked: docs/reference.png opened onto the app showed as a thumbnail in the capsule, and Claude answered that it showed the ChatGPT app with a widget reading İstanbul. The composer now rebuilds its field after each send, because clearing it again on the next runloop didn't always stop the field editor writing the sent text back. Paste and drop weren't driven by the agent, to leave Meriç's clipboard alone.
+Commit: 269cf95
+
+#### K-28 · Files
+⌘P: find a file in the project with fuzzy matching; open it read-only in a glass sheet with syntax colours from Highlightr, kept muted to the brief. A path in a tool line opens the same sheet.
+Done when: clicking "Edit App/Engine.swift" in the transcript shows the file.
+Notes: The engine lists files with git ls-files (tracked plus untracked, not ignored) and reads them read-only, refusing anything outside the project after resolving real paths on both sides, since /tmp and /private/tmp are one folder (Architecture updated). Highlightr can only load its bundled themes, so it renders with Atom One Dark and each of that theme's colours maps onto five muted kinds, keyword, string, number, comment and name, with the rest in plain ink; CodeHighlighter is an actor so the JavaScript context stays on one thread. In a tool line only the path opens the file and the rest of the line still toggles the result; in a diff card the path does the same. Checked: clicking User.swift in a diff card showed the file with line numbers and muted colours, and cmd-P, "welc", Return opened Welcome.swift.
 Commit: pending
 
 

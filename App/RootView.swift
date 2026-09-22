@@ -29,6 +29,8 @@ struct RootView: View {
                 .simultaneousGesture(TapGesture().onEnded {
                     if !model.drawerPinned { model.hideDrawer() }
                     if model.goToShown { model.toggleGoTo() }
+                    if model.fileFinderShown { model.toggleFileFinder() }
+                    if model.openFile != nil { model.closeFile() }
                     if model.changesShown { model.closeChanges() }
                 })
             }
@@ -71,6 +73,19 @@ struct RootView: View {
                 .padding(.top, 4)
                 .padding(.horizontal, 90)
                 .ignoresSafeArea()
+        }
+        .overlay(alignment: .top) {
+            if let file = model.openFile {
+                FileViewer(file: file)
+                    .padding(.top, 40)
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 90)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if model.fileFinderShown {
+                FileFinder()
+                    .padding(.top, 60)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .overlay(alignment: .top) {
             if model.goToShown {

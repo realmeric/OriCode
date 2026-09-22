@@ -33,6 +33,7 @@ extension AppModel {
             GoToEntry(id: "branch", kind: .action, title: "New thread on its own branch", detail: "⌘⇧N") { [weak self] in self?.newWorktreeChat() },
             GoToEntry(id: "add", kind: .action, title: "Add project…", detail: "⌘O") { [weak self] in self?.addProject() },
             GoToEntry(id: "changes", kind: .action, title: "Changes", detail: "⌘⇧D") { [weak self] in self?.openChanges() },
+            GoToEntry(id: "files", kind: .action, title: "Find a file", detail: "⌘P") { [weak self] in self?.toggleFileFinder() },
             GoToEntry(id: "threads", kind: .action, title: drawerPinned ? "Hide threads" : "Show threads", detail: "⌘\\") { [weak self] in self?.toggleDrawerPin() },
             GoToEntry(id: "shortcuts", kind: .action, title: "Keyboard shortcuts", detail: "⌘/") { [weak self] in self?.showingShortcuts = true },
             GoToEntry(id: "settings", kind: .action, title: "Settings", detail: "⌘,") {

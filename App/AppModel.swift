@@ -45,6 +45,9 @@ final class AppModel {
     var changesShown = false
     var goToShown = false
     var draftAttachments: [ImageAttachment] = []
+    var fileFinderShown = false
+    var projectFiles: [String] = []
+    var openFile: OpenFile?
     let changes = ChangesState()
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
