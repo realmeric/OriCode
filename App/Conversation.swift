@@ -146,6 +146,9 @@ final class Conversation {
             } else {
                 record(event.name, ["event": .string(event.name), "delta": .string(delta)], keepOpen: true)
             }
+        case "session.lost":
+            chat.sessionId = nil
+            record("note", ["event": "note", "text": "The earlier session is gone, so this thread carries on in a new one."])
         case "compacted":
             chat.contextUsed = event.body["after"]?.int ?? 0
             record(event.name, event.body)

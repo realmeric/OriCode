@@ -100,6 +100,8 @@ export class Thread {
   private running = false;
   private started = false;
   private interrupted = false;
+  /// The send in flight while the CLI resumes a session, so it can go again fresh if that session is gone.
+  private resuming: SendParams | undefined;
   private streamed = new Set<string>();
   private costSoFar = 0;
   private lastContext = 0;
@@ -128,6 +130,10 @@ export class Thread {
     this.running = true;
     this.started = false;
     this.interrupted = false;
+    this.push(params);
+  }
+
+  private push(params: SendParams): void {
     this.inbox!.push({
       type: "user",
       message: { role: "user", content: content(params) },
@@ -175,6 +181,7 @@ export class Thread {
 
   private start(params: SendParams, key: string): void {
     const resume = params.sessionId ?? this.sessionId;
+    this.resuming = resume ? params : undefined;
     log(`start thread=${this.id} cwd=${params.cwd} resume=${resume ?? "none"}`);
     this.key = key;
     this.mode = params.permissionMode;
@@ -201,6 +208,20 @@ export class Thread {
       },
     });
     this.pump(this.query);
+  }
+
+  /// The session this thread pointed at is gone (deleted, or from another machine). Say so
+  /// once and send the same message again in a new session.
+  private startFresh(params: SendParams): void {
+    log(`session gone for thread=${this.id}, starting fresh`);
+    this.sessionId = undefined;
+    const fresh = { ...params, sessionId: undefined };
+    const key = this.key;
+    this.close();
+    event("session.lost", { threadId: this.id });
+    this.start(fresh, key);
+    this.started = false;
+    this.push(fresh);
   }
 
   private ask(tool: string, input: Record<string, unknown>, toolUseId: string, signal: AbortSignal): Promise<PermissionResult> {
@@ -305,6 +326,11 @@ export class Thread {
         return;
       }
       case "result": {
+        if (this.resuming && message.subtype !== "success" && message.errors.some((error) => error.startsWith("No conversation found"))) {
+          this.startFresh(this.resuming);
+          return;
+        }
+        this.resuming = undefined;
         this.running = false;
         this.streamed.clear();
         // total_cost_usd is the running total of this CLI process, so the turn's cost is the difference.

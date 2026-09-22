@@ -78,6 +78,7 @@ Events, each with `threadId`:
 - `tool.use { toolUseId, name, input }`
 - `tool.result { toolUseId, content, isError, patch? }`. `patch` is the hunks an Edit, MultiEdit or Write applied (`[{ oldStart, newStart, lines }]`, lines prefixed `+`, `-` or a space), from the SDK's structured tool output.
 - `ask { requestId, kind: "permission" | "question", tool, input, options? }`. Permission asks come from the SDK's `canUseTool`; `AskUserQuestion` arrives the same way and is answered through `updatedInput`.
+- `session.lost` when the session a send asked to resume no longer exists; the engine sends the same message again in a new session.
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
 - `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
 - `compacted { before, after }` when Claude Code compacted the conversation, with the token counts on either side.
@@ -92,10 +93,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 (nothing yet)
 
 ### Backlog: v0.2 "See what it did"
-
-#### K-17 · Resume
-`turn.started` and `turn.done` carry a `sessionId`; the thread stores it, and the next `send` passes it. If the engine reports the session is gone, the thread continues fresh with a one-line note.
-Done when: quit mid-conversation, relaunch, ask "what were we doing", and Claude knows.
 
 #### K-18 · Thinking and effort
 Optional "Thinking…" lines, collapsed, showing the delta stream when expanded. The Effort picker from K-07 gains the values the model supports and sends them.
@@ -262,6 +259,12 @@ Commit: 31ba0fa
 A thread's title is its first message, trimmed to 60 characters, until renamed. Double-click a drawer row to rename inline with a native `TextField`. The window's title is the thread's title.
 Done when: ⌘-Tab shows which thread you're going back to.
 Notes: The title is the first line of the first message, cut at 60 characters with an ellipsis. Double-click or the row's context menu renames it inline with a plain TextField, committing on Return or when focus leaves, and titleIsCustom stops later messages from replacing it. The window title follows the selected thread through navigationTitle. Checked: a new thread took its first question as its title, and renaming row two to "Scratch thread" changed the window's title to match. cmd-Tab itself lists apps, not windows, so where the title really shows up is the Window menu and Mission Control.
+Commit: 64326c6
+
+#### K-17 · Resume
+`turn.started` and `turn.done` carry a `sessionId`; the thread stores it, and the next `send` passes it. If the engine reports the session is gone, the thread continues fresh with a one-line note.
+Done when: quit mid-conversation, relaunch, ask "what were we doing", and Claude knows.
+Notes: Storing and passing sessionId landed with K-06; this card adds the lost-session path. When a resumed session is gone, the CLI ends the turn with "No conversation found with session ID"; the engine catches that, emits session.lost (Architecture updated) and sends the same message again in a new session, and the app notes it in one line. Checked from Terminal with a made-up session id (one note, then the reply), and in the app: after a relaunch, "What were we doing?" got the files and commands from before. The first turn after a relaunch costs more (/bin/zsh.34 here), because the prompt cache went with the old CLI process.
 Commit: pending
 
 
