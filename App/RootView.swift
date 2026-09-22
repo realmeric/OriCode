@@ -31,6 +31,7 @@ struct RootView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
+        .navigationTitle(model.chat?.title ?? model.project?.name ?? "OriCode")
         .overlay(alignment: .topLeading) {
             Drawer()
                 .padding(.leading, 12)

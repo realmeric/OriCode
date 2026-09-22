@@ -5,6 +5,9 @@ struct Drawer: View {
     @Environment(AppModel.self) private var model
     @State private var hovered: UUID?
     @State private var deleting: Chat?
+    @State private var renaming: UUID?
+    @State private var draft = ""
+    @FocusState private var renameFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -79,11 +82,21 @@ struct Drawer: View {
         } label: {
             HStack(spacing: 10) {
                 StateRing(state: model.state(of: chat))
-                Text(chat.title)
-                    .font(Type.body)
-                    .foregroundStyle(selected ? Ink.primary : Ink.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                if renaming == chat.id {
+                    TextField("Title", text: $draft)
+                        .textFieldStyle(.plain)
+                        .font(Type.body)
+                        .foregroundStyle(Ink.primary)
+                        .focused($renameFocused)
+                        .onSubmit { finishRename(chat) }
+                        .onChange(of: renameFocused) { _, focused in if !focused { finishRename(chat) } }
+                } else {
+                    Text(chat.title)
+                        .font(Type.body)
+                        .foregroundStyle(selected ? Ink.primary : Ink.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
                 Spacer(minLength: 4)
                 if index < 9 {
                     Text("⌘\(index + 1)")
@@ -101,11 +114,25 @@ struct Drawer: View {
             .animation(Motion.move, value: peeked)
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { startRename(chat) })
         .help(chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : "")
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
+            Button("Rename") { startRename(chat) }
             Button("Delete…") { deleting = chat }
         }
+    }
+
+    private func startRename(_ chat: Chat) {
+        draft = chat.title
+        renaming = chat.id
+        renameFocused = true
+    }
+
+    private func finishRename(_ chat: Chat) {
+        guard renaming == chat.id else { return }
+        renaming = nil
+        if draft != chat.title { model.rename(chat, to: draft) }
     }
 }
 

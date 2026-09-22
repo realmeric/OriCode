@@ -69,6 +69,14 @@ extension AppModel {
         return chat
     }
 
+    func rename(_ chat: Chat, to title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        chat.title = trimmed
+        chat.titleIsCustom = true
+        save()
+    }
+
     func delete(_ chat: Chat) {
         let wasSelected = chat.id == selectedChatID
         let id = chat.id.uuidString

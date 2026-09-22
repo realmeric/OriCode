@@ -93,10 +93,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 ### Backlog: v0.2 "See what it did"
 
-#### K-16 · Titles
-A thread's title is its first message, trimmed to 60 characters, until renamed. Double-click a drawer row to rename inline with a native `TextField`. The window's title is the thread's title.
-Done when: ⌘-Tab shows which thread you're going back to.
-
 #### K-17 · Resume
 `turn.started` and `turn.done` carry a `sessionId`; the thread stores it, and the next `send` passes it. If the engine reports the session is gone, the thread continues fresh with a one-line note.
 Done when: quit mid-conversation, relaunch, ask "what were we doing", and Claude knows.
@@ -260,6 +256,12 @@ Commit: 28a668d
 `UserNotifications`: when a turn ends or asks while the window isn't key, one notification with the thread's title; clicking it opens that thread. Dock badge counts threads waiting on you. The Settings toggle from K-11 goes live.
 Done when: start a long turn, switch to another app, and the notification arrives and lands you on the right thread.
 Notes: A thread counts as away when OriCode isn't active or it isn't the selected thread, so a background thread finishing also notifies. One notification per thread, replaced by the next and cleared when the thread is opened; clicking one opens its project and thread. Checked: the first finished turn in the background made macOS show its "OriCode would like to send notifications" prompt, which is Meriç's to answer. Still for Meriç: after allowing, start a long turn, switch apps, click the notification, and look at the Dock badge while a card waits (the agent's screenshots leave out the Dock).
+Commit: 31ba0fa
+
+#### K-16 · Titles
+A thread's title is its first message, trimmed to 60 characters, until renamed. Double-click a drawer row to rename inline with a native `TextField`. The window's title is the thread's title.
+Done when: ⌘-Tab shows which thread you're going back to.
+Notes: The title is the first line of the first message, cut at 60 characters with an ellipsis. Double-click or the row's context menu renames it inline with a plain TextField, committing on Return or when focus leaves, and titleIsCustom stops later messages from replacing it. The window title follows the selected thread through navigationTitle. Checked: a new thread took its first question as its title, and renaming row two to "Scratch thread" changed the window's title to match. cmd-Tab itself lists apps, not windows, so where the title really shows up is the Window menu and Mission Control.
 Commit: pending
 
 

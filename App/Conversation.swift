@@ -112,6 +112,9 @@ final class Conversation {
     func userSent(_ text: String) {
         turn += 1
         running = true
+        if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {
+            chat.title = Chat.title(from: text)
+        }
         record("user", ["event": "user", "text": .string(text)])
     }
 

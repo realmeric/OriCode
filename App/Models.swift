@@ -34,9 +34,11 @@ final class Chat {
     var contextUsed: Int = 0
     var contextWindow: Int = 0
     var costUSD: Double = 0
+    /// Set once the user renames the thread; until then the title follows the first message.
+    var titleIsCustom: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
-    init(project: Project, title: String = "New thread", permissionMode: String = "default") {
+    init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {
         id = UUID()
         self.project = project
         self.title = title
@@ -66,6 +68,17 @@ final class Event {
         self.kind = kind
         self.payload = payload
         createdAt = .now
+    }
+}
+
+extension Chat {
+    static let untitled = "New thread"
+
+    /// The first message's first line, trimmed to 60 characters.
+    static func title(from message: String) -> String {
+        let line = message.split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        guard !line.isEmpty else { return untitled }
+        return line.count > 60 ? String(line.prefix(59)).trimmingCharacters(in: .whitespaces) + "…" : line
     }
 }
 
