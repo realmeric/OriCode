@@ -31,6 +31,16 @@ enum EffortScale {
         default: 0.94
         }
     }
+
+    /// The stretch before the thumb that burns hotter at the top of the scale: where it starts,
+    /// back from the thumb's centre, and how far toward ember it gets there. Never white.
+    static func core(_ level: String) -> (length: CGFloat, heat: Double)? {
+        switch level {
+        case "max": (56, 0.4)
+        case Effort.ultracode: (96, 0.55)
+        default: nil
+        }
+    }
 }
 
 /// Effort as a rail with a stop for each level. Pressed, the thumb follows the pointer the way
@@ -73,6 +83,7 @@ struct EffortRail: View {
     @State private var live = false
     @State private var calming: Task<Void, Never>?
     @State private var bursts = 0
+    @State private var wakes = 0
     @State private var keyed = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -101,10 +112,13 @@ struct EffortRail: View {
                 fill(level: level, width: stop == nil || !poured ? 0 : centre)
                     .offset(y: (Self.row - Self.rail) / 2)
                 if stop != nil, EffortScale.spendsFaster(level) || fast, !reduceMotion {
-                    // Ends short of the thumb, so nothing ever passes under it.
-                    EffortEffects(motes: EffortScale.spendsFaster(level), streaks: fast, live: live, bursts: bursts)
-                        .frame(width: max(centre - Self.thumb / 2 - 6, 0), height: Self.rail)
-                        .offset(y: (Self.row - Self.rail) / 2)
+                    // Reaches past the thumb and above and below the rail for what's thrown off it,
+                    // placed rather than framed so the rail's hit area doesn't grow with it.
+                    let width = centre + EffortEffects.reach
+                    EffortEffects(heat: level == "max" ? .max : level == Effort.ultracode ? .ultracode : nil,
+                                  streaks: fast, live: live, bursts: bursts, wakes: wakes, thumb: centre, compact: compact)
+                        .frame(width: width, height: Self.rail + 2 * EffortEffects.air)
+                        .position(x: width / 2, y: Self.row / 2)
                         .allowsHitTesting(false)
                 } else if stop != nil, fast, reduceMotion {
                     stillStreaks(width: max(centre - Self.thumb / 2 - 6, 0))
@@ -205,10 +219,21 @@ struct EffortRail: View {
         }
         .onChange(of: effort) { wake() }
         .onChange(of: fast) { wake() }
+        .onChange(of: hovered) { _, now in
+            // A pointer moving along the rail at the top of the scale keeps the heat up; one left
+            // still lets it rest.
+            if now != nil, let index, EffortScale.spendsFaster(stops[index]) { stoke() }
+        }
         .onDisappear { calming?.cancel() }
     }
 
+    /// Wakes what moves in the fill for a change, with the slugs sent again.
     private func wake() {
+        wakes += 1
+        stoke()
+    }
+
+    private func stoke() {
         calming?.cancel()
         live = true
         calming = Task {
@@ -234,11 +259,19 @@ struct EffortRail: View {
     }
 
     /// Claude's orange, since effort is how hard Claude thinks: faint at the rail's start and
-    /// deepening toward the thumb, more at each level.
+    /// deepening toward the thumb, more at each level, and at the top of the scale burning paler
+    /// over its last stretch, as if the thumb were a lamp in it.
     private func fill(level: String, width: CGFloat) -> some View {
-        Capsule()
-            .fill(LinearGradient(colors: [Ink.claude.opacity(0.3), Ink.claude.opacity(EffortScale.strength(level))],
-                                 startPoint: .leading, endPoint: .trailing))
+        let deep = Ink.claude.opacity(EffortScale.strength(level))
+        var stops: [Gradient.Stop] = [.init(color: Ink.claude.opacity(0.3), location: 0)]
+        if let core = EffortScale.core(level), width > 0 {
+            stops.append(.init(color: deep, location: max(0, 1 - core.length / width)))
+            stops.append(.init(color: Ink.claude.mix(with: Ink.ember, by: core.heat, in: .device), location: 1))
+        } else {
+            stops.append(.init(color: deep, location: 1))
+        }
+        return Capsule()
+            .fill(LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing))
             .frame(width: width, height: Self.rail)
             .animation(Motion.fade, value: level)
     }
@@ -291,17 +324,19 @@ struct EffortRail: View {
                 .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
             if ultra {
                 RaysMark(lit: RaysMark.rays, turning: live && !reduceMotion, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
-                         color: .black, stagger: true, layered: true)
+                         color: .black, stagger: true, layered: true, settles: true)
                     .frame(width: 22, height: 22)
                     .transition(.opacity.animation(.easeOut(duration: 0.14)))
             }
         }
         .frame(width: Self.thumb, height: Self.thumb)
         .shadow(color: .black.opacity(0.3), radius: holding ? 7 : 4, y: 1.5)
-        .shadow(color: Ink.claude.opacity(EffortScale.spendsFaster(level) ? 0.6 : 0), radius: 9)
+        // Wider at Ultracode, the corona of six heads rather than one.
+        .shadow(color: Ink.claude.opacity(EffortScale.spendsFaster(level) ? 0.6 : 0), radius: ultra ? 11 : 9)
         .scaleEffect(holding ? 1.08 : 1)
         .animation(Motion.move, value: holding)
         .animation(Motion.fade, value: EffortScale.spendsFaster(level))
+        .animation(Motion.fade, value: ultra)
     }
 
     private func drag(_ track: EffortTrack) -> some Gesture {
@@ -333,6 +368,8 @@ struct EffortRail: View {
                     if rising, EffortScale.spendsFaster(stops[stop]) {
                         Haptics.threshold()
                         bursts += 1
+                        // The arrival's heat runs from here, not from the release.
+                        wake()
                     } else {
                         Haptics.detent()
                     }
@@ -351,7 +388,10 @@ struct EffortRail: View {
                 let holding = heldStop ?? index ?? 0
                 let clicked = abs(drag.translation.width) < 3
                 let target = clicked ? holding : track.settle(drag.location.x + grab, velocity: drag.velocity.width, holding: holding)
-                if clicked, target > (index ?? -1), EffortScale.spendsFaster(stops[target]) { bursts += 1 }
+                if clicked, target > (index ?? -1), EffortScale.spendsFaster(stops[target]) {
+                    bursts += 1
+                    wake()
+                }
                 let xs = track.positions
                 let distance = xs[target] - (thumbX ?? xs[target])
                 // The drag's speed, as a share of the way left, starts the spring; the rail's own
@@ -383,6 +423,11 @@ struct EffortRail: View {
         if blocked, stops[stop] == Effort.ultracode {
             onBlocked()
             return .handled
+        }
+        // A key that lands on the top of the scale arrives there as a drag does, without the tap.
+        if stop > (index ?? -1), EffortScale.spendsFaster(stops[stop]) {
+            bursts += 1
+            wake()
         }
         withAnimation(Motion.move) { choose(stop) }
         return .handled

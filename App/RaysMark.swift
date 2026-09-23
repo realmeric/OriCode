@@ -21,13 +21,16 @@ struct RaysMark: View {
     var stagger = false
     /// Drawn as layers even while still, so a turn that stops stops where it is.
     var layered = false
+    /// A turn that ends coasts on to where the next ray stands, so the mark rests upright: the
+    /// effort thumb's, whose rays stop each time the picker rests.
+    var settles = false
 
     var body: some View {
         Group {
             if turning || waiting || layered {
                 MovingRays(lit: min(lit, Self.rays), turning: turning, waiting: waiting,
                            restingOpacity: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
-                           color: NSColor(color), stagger: stagger)
+                           color: NSColor(color), stagger: stagger, settles: settles)
             } else {
                 GeometryReader { proxy in
                     let side = min(proxy.size.width, proxy.size.height)
@@ -93,13 +96,14 @@ private struct MovingRays: NSViewRepresentable {
     let dotOpacity: Double
     let color: NSColor
     let stagger: Bool
+    let settles: Bool
 
     func makeNSView(context: Context) -> RaysView { RaysView() }
 
     func updateNSView(_ view: RaysView, context: Context) {
         view.paint(color)
         view.show(lit: lit, turning: turning, waiting: waiting, resting: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
-                  stagger: stagger)
+                  stagger: stagger, settles: settles)
     }
 
     final class RaysView: NSView {
@@ -136,7 +140,8 @@ private struct MovingRays: NSViewRepresentable {
             CATransaction.commit()
         }
 
-        func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double, stagger: Bool = false) {
+        func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double, stagger: Bool = false,
+                  settles: Bool = false) {
             let before = max(self.lit, 0)
             CATransaction.begin()
             // A newly lit ray eases in, the way the still mark's spring brings it up.
@@ -160,15 +165,10 @@ private struct MovingRays: NSViewRepresentable {
             }
             self.lit = lit
             if turning, spinner.animation(forKey: "turn") == nil {
-                // One turn in nine seconds, clockwise, which for a layer is the negative way,
-                // from wherever an earlier turn stopped.
-                let from = spinner.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
-                let turn = CABasicAnimation(keyPath: "transform.rotation.z")
-                turn.fromValue = from
-                turn.toValue = from - 2 * Double.pi
-                turn.duration = 9
-                turn.repeatCount = .infinity
-                spinner.add(turn, forKey: "turn")
+                // Clockwise, which for a layer drawn upward is the negative way.
+                spinner.startTurning(clockwise: -1)
+            } else if !turning, settles {
+                spinner.coastToRay(clockwise: -1)
             } else if !turning, spinner.animation(forKey: "turn") != nil {
                 // Stops where it is rather than snapping back to twelve.
                 let angle = spinner.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
@@ -213,5 +213,47 @@ private struct MovingRays: NSViewRepresentable {
             dot.path = CGPath(ellipseIn: dot.bounds, transform: nil)
             CATransaction.commit()
         }
+    }
+}
+
+extension CALayer {
+    /// One turn in nine seconds, clockwise: the negative way for a layer drawn upward and the
+    /// positive way for one drawn downward, which `clockwise` says. It starts from wherever an
+    /// earlier turn stopped or a coast has got to.
+    func startTurning(clockwise: Double) {
+        let from = (animation(forKey: "coast") == nil ? self : presentation() ?? self).value(forKeyPath: "transform.rotation.z") as? Double ?? 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        removeAnimation(forKey: "coast")
+        setValue(from, forKeyPath: "transform.rotation.z")
+        CATransaction.commit()
+        let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+        turn.fromValue = from
+        turn.toValue = from + clockwise * 2 * .pi
+        turn.duration = 9
+        turn.repeatCount = .infinity
+        add(turn, forKey: "turn")
+    }
+
+    /// Ends a turn by coasting on to where the next ray stands, leaving at the turn's own speed
+    /// and easing to a stop there, so the mark rests upright instead of wherever it was.
+    func coastToRay(clockwise: Double) {
+        guard animation(forKey: "turn") != nil else { return }
+        let angle = presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
+        let step = Double.pi / 3
+        // At least a third of a step on, so the coast is never a jolt.
+        let rest = ((angle * clockwise + step / 3) / step).rounded(.up) * step
+        let slope = 2 * Double.pi / 9 / (rest - angle * clockwise)
+        let coast = CABasicAnimation(keyPath: "transform.rotation.z")
+        coast.fromValue = angle
+        coast.toValue = rest * clockwise
+        coast.duration = 1
+        coast.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, Float(0.2 * slope), 0.4, 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        setValue(rest * clockwise, forKeyPath: "transform.rotation.z")
+        removeAnimation(forKey: "turn")
+        CATransaction.commit()
+        add(coast, forKey: "coast")
     }
 }
