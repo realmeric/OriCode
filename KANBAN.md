@@ -110,16 +110,12 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-70 · Idle threads let go
-A thread's CLI stays alive after its turn, about 265MB each. The engine ends a thread's CLI after five idle minutes, or at once when the thread is closed with ⌘W, and the next message resumes the session. The app also lets go of closed, idle threads' transcripts and reloads them when they're opened.
-Done when: after a thread's idle minutes its CLI is gone, and its next message resumes with the thread's history.
-
 #### K-71 · Animations at the rate they need
 The turning rays, the waiting pulse and the usage circle's working arc redraw through TimelineView at the display's rate, up to 120 times a second. They're capped at 30 frames a second, and 60 for the arc, which turns once a second.
 Done when: the app's CPU during a streaming turn is lower than before, with the numbers in the notes.
 
 #### K-72 · Logs that don't pile up
-With tracing on, the engine's CLI debug logs and engine.log grow for good. At start the engine removes CLI logs older than a week and starts engine.log over past 5MB.
+engine.log takes every line the engine prints, traced or not, and tracing adds the CLI's own debug logs; both grow for good. When the engine starts, engine.log starts over past 5MB and CLI logs older than a week are removed.
 Done when: an old log in the CLI folder is gone after a launch.
 
 #### K-73 · A cleaner interface
@@ -547,6 +543,12 @@ Commit: d5b2d49
 The engine has held off App Nap for as long as it runs. It now asks only while a turn is running, so a hidden, idle OriCode can nap.
 Done when: the app's log shows the activity starting with a turn and ending with the last one.
 Notes: The engine's activity used to start with the engine and was never ended, not even when the engine exited. Now Engine.hold(_:) starts it when the app says a turn is running and ends it when none is, or when the engine stops; the app works that out after each send, failed send, event and engine stop. Checked: the log had no hold at launch, then holding off App Nap when a Haiku turn started and letting the app nap again 1.8s later when it ended.
+Commit: 3314259
+
+#### K-70 · Idle threads let go
+A thread's CLI stays alive after its turn, about 265MB each. The engine ends a thread's CLI after five idle minutes, or at once when the thread is closed with ⌘W, and the next message resumes the session. The app also lets go of closed, idle threads' transcripts and reloads them when they're opened.
+Done when: after a thread's idle minutes its CLI is gone, and its next message resumes with the thread's history.
+Notes: The engine checks its threads once a minute and ends the CLI of one idle five minutes, unless it has subagents out or an ask waiting, then sends released so the app can drop that thread's transcript unless it's the open one. ⌘W does the same at once through close when the thread is idle. At the time, two idle CLIs held 294MB and 357MB. Checked: ⌘W on a thread whose CLI was up ended the CLI straight away, and reopening the thread read its transcript back from the store; its next message started a new CLI that resumed the session and answered two, the word from before. Left alone, that CLI went at 13:17:48, 5m15s after its turn, with released in the engine's log, and the thread's next message again resumed and answered two.
 Commit: pending
 
 

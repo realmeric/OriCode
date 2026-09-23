@@ -122,6 +122,8 @@ export class Thread {
   private fast = false;
   /// The fast mode state last told to the app, so results that repeat it aren't sent again.
   private fastTold = "";
+  /// When the last turn ended, for letting an idle CLI go.
+  private idleSince: number | undefined;
 
   constructor(id: string, claude: string) {
     this.id = id;
@@ -196,6 +198,16 @@ export class Thread {
     } catch {
       return false;
     }
+  }
+
+  /// Ends the CLI of a thread idle this long, with no subagents out and nothing asked of the
+  /// user. The next send starts one that resumes the session.
+  releaseIfIdle(idleMs: number): boolean {
+    if (!this.query || this.running || this.tasks.size > 0 || this.idleSince === undefined) return false;
+    if (Date.now() - this.idleSince < idleMs) return false;
+    if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
+    this.close();
+    return true;
   }
 
   /// Applied to the running CLI through its flag settings; with none running it holds for the next start.
@@ -439,6 +451,7 @@ export class Thread {
         }
         this.resuming = undefined;
         this.running = false;
+        this.idleSince = Date.now();
         this.streamed.clear();
         this.tellFast(message);
         // total_cost_usd is the running total of this CLI process, so the turn's cost is the difference.

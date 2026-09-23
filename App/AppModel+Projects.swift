@@ -70,12 +70,25 @@ extension AppModel {
     /// closes a session, and stays in the list. With none open it closes the window.
     func close() {
         if closesThread {
+            if let chat { release(chat) }
             selectedChatID = nil
             return
         }
         let key = NSApp.keyWindow
         let window = key?.styleMask.contains(.titled) == true ? key : NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
         window?.performClose(nil)
+    }
+
+    /// Lets go of a thread that isn't doing anything: its CLI in the engine, and its transcript
+    /// here, which the store has and which is read again when the thread is opened.
+    func release(_ chat: Chat) {
+        guard let conversation = conversations[chat.id],
+              !conversation.running, conversation.tasks == 0, conversation.waitingAsk == nil
+        else { return }
+        conversation.flush()
+        conversations[chat.id] = nil
+        let id = chat.id.uuidString
+        Task { _ = try? await engine.request("close", ["threadId": .string(id)]) }
     }
 
     /// Projects from before badges had colours get theirs the first time the app opens.

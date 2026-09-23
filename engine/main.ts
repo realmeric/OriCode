@@ -232,6 +232,17 @@ async function handle(line: string): Promise<void> {
   }
 }
 
+/// A thread's CLI stays up between turns, a few hundred MB each, so one left idle this long
+/// is let go. The app hears about it and drops the transcript it no longer needs in memory.
+const idleRelease = 5 * 60_000;
+setInterval(() => {
+  for (const [threadId, found] of threads) {
+    if (!found.releaseIfIdle(idleRelease)) continue;
+    log(`released thread=${threadId}`);
+    event("released", { threadId });
+  }
+}, 60_000).unref();
+
 const input = createInterface({ input: process.stdin });
 input.on("line", (line) => {
   if (line.trim()) void handle(line);

@@ -81,6 +81,14 @@ extension AppModel {
             }
             return
         }
+        // The engine let an idle thread's CLI go; its transcript can go too unless it's open.
+        if event.name == "released" {
+            if id != selectedChatID, let conversation = conversations[id], !conversation.running {
+                conversation.flush()
+                conversations[id] = nil
+            }
+            return
+        }
         guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return }
         conversation(for: chat).receive(event)
         holdWhileWorking()
