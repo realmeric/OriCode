@@ -115,6 +115,10 @@ final class AppModel {
     /// ⌘J's terminal, and the shells behind it, one per folder.
     var terminalShown = false
     let terminals = TerminalStore()
+    /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
+    let customActions = CustomActionStore()
+    /// Threads whose session Continue in Claude Code gave to the terminal's claude.
+    var handedOff: Set<UUID> = []
     /// Where the composer's top edge is in the window, which the terminal stops above.
     var composerTop: CGFloat = 0
     /// ⌘K's levels, what's typed at each, and what it's doing.

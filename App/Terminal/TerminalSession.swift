@@ -87,9 +87,26 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         guard !ended, fd >= 0, shell > 0 else { return nil }
         let group = tcgetpgrp(fd)
         if group > 0, group != shell { return Self.name(of: group) }
-        var members = [pid_t](repeating: 0, count: 64)
-        let bytes = proc_listpids(UInt32(PROC_PGRP_ONLY), UInt32(shell), &members, Int32(members.count * MemoryLayout<pid_t>.size))
-        return members.prefix(max(0, Int(bytes) / MemoryLayout<pid_t>.size)).first { $0 > 0 && $0 != shell }.map(Self.name(of:))
+        // The newest member, which is the program rather than the subshell running it.
+        return Self.pids(PROC_PGRP_ONLY, shell).filter { $0 != shell }.max().map(Self.name(of:))
+    }
+
+    /// Everything the shell has going, the foreground program first and then its jobs, including
+    /// ones in the background or stopped, which a hangup ends too.
+    var jobs: [String] {
+        guard !ended, view.process.shellPid > 0 else { return [] }
+        var names = foreground.map { [$0] } ?? []
+        for pid in Self.pids(PROC_PPID_ONLY, view.process.shellPid) {
+            let name = Self.name(of: pid)
+            if !names.contains(name) { names.append(name) }
+        }
+        return names
+    }
+
+    private static func pids(_ kind: Int32, _ of: pid_t) -> [pid_t] {
+        var found = [pid_t](repeating: 0, count: 64)
+        let bytes = proc_listpids(UInt32(kind), UInt32(of), &found, Int32(found.count * MemoryLayout<pid_t>.size))
+        return found.prefix(max(0, Int(bytes) / MemoryLayout<pid_t>.size)).filter { $0 > 0 }
     }
 
     var busy: Bool { foreground != nil }
@@ -203,11 +220,25 @@ final class TerminalStore {
         for session in sessions.values { session.end() }
     }
 
-    /// What's running in the terminals, for the question at quit: "sleep in alpha".
+    /// What's running in the terminals, jobs included, for the question at quit: "sleep in alpha".
     var running: [String] {
-        sessions.values.compactMap { session in
-            session.foreground.map { "\($0) in \(URL(filePath: session.folder).lastPathComponent)" }
+        running(in: Array(sessions.keys))
+    }
+
+    func running(in folders: [String]) -> [String] {
+        let keys = Set(folders.map(Self.key))
+        return sessions.values.filter { keys.contains($0.folder) }.flatMap { session in
+            session.jobs.map { "\($0) in \(URL(filePath: session.folder).lastPathComponent)" }
         }.sorted()
+    }
+
+    /// A sentence for a dialog about something that ends these folders' shells, when anything
+    /// is running in them: "This also stops sleep in alpha."
+    func stopping(in folders: [String]) -> String? {
+        let running = running(in: folders)
+        guard !running.isEmpty else { return nil }
+        let list = running.count == 1 ? running[0] : running.dropLast().joined(separator: ", ") + " and " + running[running.count - 1]
+        return "This also stops \(list)."
     }
 
     /// While a shell is alive the app doesn't nap, so a build left running in the terminal keeps

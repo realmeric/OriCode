@@ -214,9 +214,11 @@ struct CommandCenter: View {
         case .list(let list):
             var items = Palette.rank(level.items, by: level.query, recents: model.paletteRecents)
             let typed = level.query.trimmingCharacters(in: .whitespaces)
-            if !typed.isEmpty, !level.items.contains(where: { $0.title.caseInsensitiveCompare(typed) == .orderedSame }),
-               let made = list.typed?(typed) {
-                items.append(made)
+            let named = level.items.contains { list.typedFirst ? $0.title == typed : $0.title.caseInsensitiveCompare(typed) == .orderedSame }
+            if !typed.isEmpty, !named, let made = list.typed?(typed) {
+                if list.typedFirst { items.insert(made, at: 0) } else { items.append(made) }
+            } else if list.typedFirst, let exact = items.firstIndex(where: { $0.title == typed }) {
+                items.insert(items.remove(at: exact), at: 0)
             }
             return numbered(items)
         case .input:

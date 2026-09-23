@@ -100,7 +100,9 @@ struct RootView: View {
             Button("Cancel", role: .cancel) {}
         } message: { chat in
             if let branch = chat.worktreeBranch, let loss = model.deletingLoss {
-                Text(loss.isEmpty ? "Everything on \(branch) is on another branch or remote, so its worktree can go too." : loss.sentence)
+                let stopping = model.ownFolder(of: chat).flatMap { model.terminals.stopping(in: [$0]) }
+                Text([loss.isEmpty ? "Everything on \(branch) is on another branch or remote, so its worktree can go too." : loss.sentence, stopping]
+                    .compactMap { $0 }.joined(separator: " "))
             } else {
                 Text("Its transcript goes with it.")
             }
@@ -121,7 +123,8 @@ struct RootView: View {
             case 1: "Its thread goes with it."
             default: "Its \(threads) threads go with it."
             }
-            Text("\(goes) The folder stays\(worktrees ? ", and so do its worktrees" : "").")
+            let stopping = model.terminals.stopping(in: [project.path] + project.chats.map(\.cwd))
+            Text("\(goes) The folder stays\(worktrees ? ", and so do its worktrees" : "").\(stopping.map { " " + $0 } ?? "")")
         }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()

@@ -183,13 +183,16 @@ extension AppModel {
         save()
     }
 
+    /// A worktree thread's folder is its own, and so is the shell in it, which goes with it.
+    func ownFolder(of chat: Chat) -> String? {
+        guard chat.worktreeBranch != nil, !projects.flatMap(\.chats).contains(where: { $0.id != chat.id && $0.cwd == chat.cwd }) else { return nil }
+        return chat.cwd
+    }
+
     func delete(_ chat: Chat) {
         let deleted = chat.id
         let wasSelected = deleted == selectedChatID
-        // A worktree thread's folder is its own, and so is the shell in it.
-        if chat.worktreeBranch != nil, !projects.flatMap(\.chats).contains(where: { $0.id != deleted && $0.cwd == chat.cwd }) {
-            terminals.end(folder: chat.cwd)
-        }
+        if let folder = ownFolder(of: chat) { terminals.end(folder: folder) }
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         context.delete(chat)
         save()

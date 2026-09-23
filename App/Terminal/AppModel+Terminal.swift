@@ -62,6 +62,14 @@ extension AppModel {
             say("The terminal is busy; the command wasn't typed.")
             return false
         }
+        // Typed, a control character is a key: ESC ends the paste early, DEL erases the quote
+        // before it, ^U the line, and a tab typed before the shell takes pastes starts completion,
+        // which can rewrite a quote. A command never needs one, so a value that brings one is
+        // refused; a newline inside quotes is only a line break.
+        guard !command.unicodeScalars.contains(where: { ($0.value < 0x20 && $0 != "\n") || $0.value == 0x7F }) else {
+            say("The command has a control character in it, so it wasn't typed.")
+            return false
+        }
         session.type(command)
         return true
     }

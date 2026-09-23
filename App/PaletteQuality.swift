@@ -134,6 +134,7 @@ extension AppModel {
         for folder in Set([project.path] + project.chats.map(\.cwd)) {
             terminals.end(folder: folder)
         }
+        customActions.forget(project: project.id)
         for chat in project.chats {
             let id = chat.id.uuidString
             conversations[chat.id] = nil

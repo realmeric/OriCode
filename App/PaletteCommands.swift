@@ -11,8 +11,9 @@ extension AppModel {
             closeCommandCenter()
         } else {
             palette.reset()
-            // A terminal can move the branch behind the app's back.
+            // A terminal can move the branch behind the app's back, and actions.json can change.
             refreshBranch(for: chat)
+            customActions.refresh()
             withAnimation(Motion.move) { commandCenterShown = true }
         }
     }
@@ -276,8 +277,9 @@ extension AppModel {
         // Git, in the thread's folder
         items += gitCommands
 
-        // The terminal
+        // The terminal, and your own actions
         items += terminalCommands
+        items += customActionCommands
 
         // Projects and files
         items.append(PaletteItem(id: "project.list", kind: .command, title: "Switch project…", subtitle: project?.name, icon: "folder",

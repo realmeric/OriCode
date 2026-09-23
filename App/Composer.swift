@@ -279,7 +279,9 @@ struct Composer: View {
         guard !running, canSend else { return }
         let moving = model.currentConversation?.items.isEmpty ?? true
         // The first message moves the composer from the middle of an empty thread to the bottom.
-        withAnimation(Motion.glide) { model.send(text) }
+        var sent = false
+        withAnimation(Motion.glide) { sent = model.send(text) }
+        guard sent else { return }
         text = ""
         // A new field is inserted at its final place, so while the composer is still sliding
         // it would draw apart from it; rebuild it once the slide is over.

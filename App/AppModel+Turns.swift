@@ -16,12 +16,23 @@ extension AppModel {
         return created
     }
 
-    func send(_ text: String) {
+    /// Starts a turn with what's typed; false when it didn't, so the composer keeps the text.
+    @discardableResult
+    func send(_ text: String) -> Bool {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let images = draftAttachments
-        guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return }
+        guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return false }
         let conversation = conversation(for: chat)
-        guard !conversation.running else { return }
+        guard !conversation.running else { return false }
+        // Continue in Claude Code gave the session to the terminal's claude; a turn from here too
+        // would make two writers and fork it.
+        if handedOff.contains(chat.id) {
+            guard terminals.existing(for: chat.cwd)?.busy != true else {
+                say("This thread is open in Claude Code in the terminal. Quit it there to go on here.")
+                return false
+            }
+            handedOff.remove(chat.id)
+        }
         if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
         draftAttachments = []
         conversation.userSent(trimmed, previews: images.compactMap(\.preview))
@@ -52,6 +63,7 @@ extension AppModel {
                 holdWhileWorking()
             }
         }
+        return true
     }
 
     func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil) {

@@ -7,6 +7,7 @@ import { fallback, fromSDK, newer, older, settled, withDefaults, type Model } fr
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, branches, commit, create, diffFor, previous, pull, push, remote, removeWorktree, status, switchTo, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
+import { run, stopAll } from "./shell.ts";
 import { usage } from "./usage.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
@@ -247,6 +248,11 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     };
   },
 
+  /// A custom action run quietly; the app has already quoted every value in the line.
+  async "shell.run"({ cwd, command }: { cwd: string; command: string }) {
+    return run(cwd, command);
+  },
+
   async "files.list"({ cwd }: { cwd: string }) {
     return { files: await listFiles(cwd) };
   },
@@ -309,7 +315,15 @@ input.on("close", () => {
     // Reparented to launchd means the app died; a turn nobody can see isn't worth finishing.
     const orphaned = process.ppid === 1;
     if (!orphaned && (inFlight > 0 || [...threads.values()].some((found) => found.isRunning))) return;
+    stopAll();
     for (const found of threads.values()) found.close();
     process.exit(0);
   }, 200);
+});
+
+// The app's restart and its quit end the engine with SIGTERM; quiet actions go with it.
+process.on("SIGTERM", () => {
+  stopAll();
+  for (const found of threads.values()) found.close();
+  process.exit(0);
 });

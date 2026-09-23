@@ -48,6 +48,9 @@ struct PaletteList {
     let items: @MainActor () async throws -> [PaletteItem]
     /// A row made of what's typed, when no row is called that: Create branch “name”.
     var typed: (@MainActor (String) -> PaletteItem?)? = nil
+    /// The typed row goes first and is what Return runs, and only a row called exactly that, case
+    /// and all, stands in for it: a command to run mustn't be swapped for a near match.
+    var typedFirst = false
 }
 
 struct PaletteInput {

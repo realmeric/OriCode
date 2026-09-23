@@ -23,7 +23,7 @@ extension AppModel {
                             self?.terminalRecents.map { line in self?.runRow(line, id: "terminal.recent." + line) }.compactMap { $0 } ?? []
                         }, typed: { [weak self] line in
                             self?.runRow(line, title: "Run “\(line)”", id: "terminal.typed")
-                        }))),
+                        }, typedFirst: true))),
             continueInClaudeCode,
         ]
     }
@@ -44,6 +44,8 @@ extension AppModel {
             guard let chat else { return "No thread is open" }
             guard chat.sessionId != nil else { return "Send it a message first" }
             if conversation(for: chat).running { return "Wait for the turn to end" }
+            // Closing the CLI would end its subagents and background commands with it.
+            if conversation(for: chat).tasks > 0 { return "Wait for its tasks to finish" }
             if terminals.existing(for: chat.cwd)?.busy == true { return "The terminal is busy" }
             return nil
         }()
@@ -55,7 +57,9 @@ extension AppModel {
             let folder = chat.cwd
             Task {
                 _ = try? await self.engine.request("close", ["threadId": .string(thread.uuidString)])
-                self.runInTerminal("cd \(folder.shellQuoted) && claude --resume \(session.shellQuoted)", in: folder)
+                if self.runInTerminal("cd \(folder.shellQuoted) && claude --resume \(session.shellQuoted)", in: folder) {
+                    self.handedOff.insert(thread)
+                }
             }
         }
     }

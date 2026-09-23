@@ -41,6 +41,7 @@ struct SettingsView: View {
                     case .general: GeneralPane()
                     case .conversation: ConversationPane()
                     case .notifications: NotificationsPane()
+                    case .actions: ActionsPane()
                     case .shortcuts: ShortcutsPane()
                     case .about: AboutPane()
                     }
@@ -69,7 +70,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, conversation, notifications, shortcuts, about
+    case general, conversation, notifications, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -80,6 +81,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "General"
         case .conversation: "Conversation"
         case .notifications: "Notifications"
+        case .actions: "Actions"
         case .shortcuts: "Shortcuts"
         case .about: "About"
         }
@@ -90,6 +92,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .conversation: "text.bubble"
         case .notifications: "bell"
+        case .actions: "bolt"
         case .shortcuts: "command"
         case .about: "info.circle"
         }
@@ -101,6 +104,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
+        case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
         case .about: ["version", "source", "oricode"]
         }
@@ -116,7 +120,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 // MARK: - Building blocks
 
 /// A heading over a card, quieter than the settings in it.
-private struct SectionHeading: View {
+struct SectionHeading: View {
     let text: String
 
     init(_ text: String) { self.text = text }
@@ -131,7 +135,7 @@ private struct SectionHeading: View {
 }
 
 /// Rows on white at 5%, parted by hairlines inset from the leading edge.
-private struct SettingsCard<Content: View>: View {
+struct SettingsCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -153,7 +157,7 @@ private struct SettingsCard<Content: View>: View {
 }
 
 /// A title with a line under it saying what the setting does, and its control on the right.
-private struct SettingsRow<Control: View>: View {
+struct SettingsRow<Control: View>: View {
     let title: String
     var detail: String?
     @ViewBuilder let control: Control
@@ -249,7 +253,7 @@ extension SettingsRow where Control == EmptyView {
     }
 }
 
-private struct PaneTitle: View {
+struct PaneTitle: View {
     let text: String
 
     var body: some View {
