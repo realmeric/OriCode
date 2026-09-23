@@ -8,9 +8,9 @@ import SwiftUI
 /// light sink into it with the glow round it breathing in as each lands, embers lift off the
 /// fill's hot half and one jet of sparks flies off the rim. At Ultracode the same heat has six
 /// places to go: a wheel of six jets turns with the rays, embers lift off the whole fill and
-/// three quicker slugs land at uneven beats. Fast mode runs streaks back from the thumb at any
-/// level. All of it is Core Animation, so the render server draws it and the app does nothing per
-/// frame, and it moves only briefly after a change, while the picker is on screen.
+/// three quicker slugs land at uneven beats. All of it is Core Animation, so the render server
+/// draws it and the app does nothing per frame, and it moves only briefly after a change, while
+/// the picker is on screen.
 struct EffortEffects: NSViewRepresentable, Animatable {
     enum Heat { case max, ultracode }
 
@@ -24,7 +24,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
     /// The level under the thumb.
     var level: String?
-    var streaks: Bool
     /// False for the first moments after the picker opens, while the fill pours in, and once the
     /// rail has rested.
     var live: Bool
@@ -71,7 +70,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         private let fade = CAGradientLayer()
         private let moteLayer = CAEmitterLayer()
         private let burstLayer = CAEmitterLayer()
-        private let streakLayer = CAEmitterLayer()
         private let emberLayer = CAEmitterLayer()
         private let jetLayer = CAEmitterLayer()
         /// Embers thrown off the hot end as High and Extra high arrive.
@@ -84,7 +82,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         /// Keeps whatever is thrown off the rail away from the text above and below it.
         private let band = CAGradientLayer()
         private var level: String?
-        private var wantsStreaks = false
         private var live = false
         private var bursts = 0
         private var wakes = 0
@@ -98,7 +95,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         private var pendingArrival: Arrival?
         /// Whether the picker's opening has had its moment.
         private var opened = false
-        private var served = false
         /// The wake whose slugs have been sent, so the next one sends its own.
         private var scored = -1
         /// Slugs yet to set off, which the next wake takes back, and the breaths they'd bring.
@@ -130,7 +126,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             fade.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
             tube.mask = fade
             layer?.addSublayer(tube)
-            for emitter in [moteLayer, burstLayer, streakLayer] { tube.addSublayer(emitter) }
+            for emitter in [moteLayer, burstLayer] { tube.addSublayer(emitter) }
             layer?.addSublayer(emberLayer)
             layer?.addSublayer(puffLayer)
             layer?.addSublayer(jetLayer)
@@ -145,7 +141,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
                 jet.seed = UInt32(index + 1) * 7919
                 wheel.addSublayer(jet)
             }
-            for emitter in [moteLayer, burstLayer, streakLayer, emberLayer, jetLayer] + jets {
+            for emitter in [moteLayer, burstLayer, emberLayer, jetLayer] + jets {
                 emitter.renderMode = .additive
                 emitter.birthRate = 0
             }
@@ -153,8 +149,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             moteLayer.emitterMode = .surface
             burstLayer.emitterShape = .point
             burstLayer.emitterCells = [Self.burstCell]
-            streakLayer.emitterShape = .rectangle
-            streakLayer.emitterMode = .surface
             emberLayer.emitterShape = .rectangle
             emberLayer.emitterMode = .surface
             puffLayer.emitterShape = .rectangle
@@ -192,12 +186,10 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             fade.frame = tube.bounds
             let solid = end > 0 ? max(0, 1 - 10 / end) : 0
             fade.locations = [0, NSNumber(value: Double(solid)), 1]
-            for emitter in [moteLayer, burstLayer, streakLayer] { emitter.frame = tube.bounds }
+            for emitter in [moteLayer, burstLayer] { emitter.frame = tube.bounds }
             moteLayer.emitterPosition = CGPoint(x: end / 2, y: rail / 2)
             moteLayer.emitterSize = CGSize(width: end, height: max(rail - 8, 1))
             burstLayer.emitterPosition = CGPoint(x: end, y: rail / 2)
-            streakLayer.emitterPosition = CGPoint(x: end, y: rail / 2)
-            streakLayer.emitterSize = CGSize(width: 1, height: 12)
             // Embers lift off the fill's top edge: its hot half at Max, all of it at Ultracode.
             let from = heat == .ultracode ? rail / 2 : end / 2
             let to = max(end - 4, from)
@@ -264,7 +256,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             }
             let moved = wanted.level != level || wanted.compact != compact || wanted.thumb != thumb
             level = wanted.level
-            wantsStreaks = wanted.streaks
             live = wanted.live
             if wanted.bursts > bursts { pendingBurst = true }
             bursts = wanted.bursts
@@ -282,7 +273,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
         func stop() {
             forget()
-            for emitter in [moteLayer, streakLayer, emberLayer, jetLayer] + jets {
+            for emitter in [moteLayer, emberLayer, jetLayer] + jets {
                 emitter.birthRate = 0
                 emitter.emitterCells = nil
                 emitter.removeAllAnimations()
@@ -319,11 +310,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             for (index, jet) in jets.enumerated() {
                 run(jet, rate: on && heat == .ultracode ? 1 : 0, ramp: false, cells: Self.wheelCells(index))
             }
-            run(streakLayer, rate: on && wantsStreaks ? 1 : 0, prewarm: true, cells: [Self.streakCell])
-            // Fast comes on with one bright band sweeping back from the thumb.
-            let serving = on && wantsStreaks
-            if serving, !served { ignite() }
-            served = serving
             // The wheel turns with the thumb's rays, which don't ask whether the window is covered.
             if live, heat == .ultracode {
                 if wheel.animation(forKey: "turn") == nil { wheel.startTurning(clockwise: 1) }
@@ -376,8 +362,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         }
 
         /// Slugs of heat drawn along the fill into the thumb, the glow breathing in as each lands:
-        /// two slow ones at Max, three quicker ones at uneven beats at Ultracode. They hold while
-        /// fast mode's streaks run the other way.
+        /// two slow ones at Max, three quicker ones at uneven beats at Ultracode.
         private func score() {
             let now = tube.convertTime(CACurrentMediaTime(), from: nil)
             for sent in waiting where sent.start > now {
@@ -391,7 +376,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
                 if !opened { glowUp(peak: 0.35, swell: 0.1, rise: 0.1, fall: 0.5, at: now, key: "open") }
                 return
             }
-            guard !wantsStreaks else { return }
             let starts = heat == .max ? [0.15, 1.95] : [0.2, 1.15, 2.3]
             for (order, start) in starts.enumerated() {
                 // Max's first slug lights the lamps on its way; every one of Ultracode's does.
@@ -456,39 +440,36 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             default: return
             }
             let now = tube.convertTime(CACurrentMediaTime(), from: nil)
-            // While fast mode's streaks run the other way, only the breath and the embers come.
-            if !wantsStreaks {
-                let from = -spec.width / 2
-                let to = landing - EffortRail.thumb / 2 + 2
-                let carrier = CAGradientLayer()
-                if level == "xhigh" {
-                    // A sweep, the CLI's shimmer at Extra high done in heat.
-                    carrier.colors = [Self.ember.copy(alpha: 0)!, Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
-                    carrier.startPoint = CGPoint(x: 0, y: 0.5)
-                    carrier.endPoint = CGPoint(x: 1, y: 0.5)
-                } else {
-                    carrier.type = .radial
-                    carrier.colors = [Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
-                    carrier.startPoint = CGPoint(x: 0.5, y: 0.5)
-                    carrier.endPoint = CGPoint(x: 1, y: 1)
-                }
-                carrier.bounds = CGRect(x: 0, y: 0, width: spec.width, height: spec.height)
-                carrier.position = CGPoint(x: from, y: EffortRail.rail / 2)
-                tube.addSublayer(carrier)
-                let run = CABasicAnimation(keyPath: "position.x")
-                run.fromValue = from
-                run.toValue = to
-                run.duration = spec.travel
-                // Gathering speed toward the thumb, and sinking into the fade in front of it.
-                run.timingFunction = CAMediaTimingFunction(controlPoints: 0.55, 0.085, 0.68, 0.53)
-                run.fillMode = .forwards
-                run.isRemovedOnCompletion = false
-                CATransaction.begin()
-                CATransaction.setCompletionBlock { carrier.removeFromSuperlayer() }
-                carrier.add(run, forKey: "carry")
-                CATransaction.commit()
-                flareLamps(from: from, to: to, start: now, travel: spec.travel, peak: spec.flare)
+            let from = -spec.width / 2
+            let to = landing - EffortRail.thumb / 2 + 2
+            let carrier = CAGradientLayer()
+            if level == "xhigh" {
+                // A sweep, the CLI's shimmer at Extra high done in heat.
+                carrier.colors = [Self.ember.copy(alpha: 0)!, Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
+                carrier.startPoint = CGPoint(x: 0, y: 0.5)
+                carrier.endPoint = CGPoint(x: 1, y: 0.5)
+            } else {
+                carrier.type = .radial
+                carrier.colors = [Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
+                carrier.startPoint = CGPoint(x: 0.5, y: 0.5)
+                carrier.endPoint = CGPoint(x: 1, y: 1)
             }
+            carrier.bounds = CGRect(x: 0, y: 0, width: spec.width, height: spec.height)
+            carrier.position = CGPoint(x: from, y: EffortRail.rail / 2)
+            tube.addSublayer(carrier)
+            let run = CABasicAnimation(keyPath: "position.x")
+            run.fromValue = from
+            run.toValue = to
+            run.duration = spec.travel
+            // Gathering speed toward the thumb, and sinking into the fade in front of it.
+            run.timingFunction = CAMediaTimingFunction(controlPoints: 0.55, 0.085, 0.68, 0.53)
+            run.fillMode = .forwards
+            run.isRemovedOnCompletion = false
+            CATransaction.begin()
+            CATransaction.setCompletionBlock { carrier.removeFromSuperlayer() }
+            carrier.add(run, forKey: "carry")
+            CATransaction.commit()
+            flareLamps(from: from, to: to, start: now, travel: spec.travel, peak: spec.flare)
             glowUp(peak: spec.peak, swell: spec.swell, rise: 0.1, fall: 0.5, at: now + spec.travel - 0.1, key: "arrival")
             if spec.embers > 0 { fire(puffLayer, cell: "puff", rate: spec.embers, at: now + spec.travel, for: 0.1) }
         }
@@ -605,26 +586,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             glow.add(group, forKey: key)
         }
 
-        private func ignite() {
-            let flare = CAGradientLayer()
-            flare.colors = [NSColor.clear.cgColor, Self.ember.copy(alpha: 0.85)!, NSColor.clear.cgColor]
-            flare.startPoint = CGPoint(x: 0, y: 0.5)
-            flare.endPoint = CGPoint(x: 1, y: 0.5)
-            flare.frame = CGRect(x: 0, y: tube.bounds.midY - 7, width: 48, height: 14)
-            tube.addSublayer(flare)
-            CATransaction.begin()
-            CATransaction.setCompletionBlock { flare.removeFromSuperlayer() }
-            let sweep = CABasicAnimation(keyPath: "position.x")
-            sweep.fromValue = tube.bounds.maxX
-            sweep.toValue = -24
-            sweep.duration = 0.35
-            sweep.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            sweep.fillMode = .forwards
-            sweep.isRemovedOnCompletion = false
-            flare.add(sweep, forKey: "sweep")
-            CATransaction.commit()
-        }
-
         private static let dot: CGImage = image(size: CGSize(width: 12, height: 12)) { context, size in
             let colors = [CGColor(gray: 1, alpha: 1), CGColor(gray: 1, alpha: 0)] as CFArray
             let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors, locations: [0, 1])!
@@ -632,17 +593,8 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             context.drawRadialGradient(gradient, startCenter: centre, startRadius: 0, endCenter: centre, endRadius: size.width / 2, options: [])
         }
 
-        /// Bright at its left end, which leads as the streak runs back from the thumb.
-        static let streak: CGImage = image(size: CGSize(width: 28, height: 2)) { context, size in
-            let colors = [CGColor(gray: 1, alpha: 1), CGColor(gray: 1, alpha: 0)] as CFArray
-            let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors, locations: [0, 1])!
-            context.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 1, cornerHeight: 1, transform: nil))
-            context.clip()
-            context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: 0), options: [])
-        }
-
         /// A pale ember: the particles' white, warmed to sit in Claude's orange.
-        static let ember = CGColor(red: 1, green: 0.86, blue: 0.78, alpha: 1)
+        private static let ember = CGColor(red: 1, green: 0.86, blue: 0.78, alpha: 1)
         /// What a spark is born as, before it cools to Claude's orange.
         private static let whiteHot = CGColor(red: 1, green: 0.97, blue: 0.92, alpha: 1)
         private static let claude = CGColor(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255, alpha: 1)
@@ -704,25 +656,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             cell.scaleSpeed = -0.12
             cell.alphaSpeed = -1
             cool(cell, from: whiteHot, over: 0.95)
-            return cell
-        }
-
-        /// Fast mode: streaks running back from the thumb, faster than anything else here.
-        private static var streakCell: CAEmitterCell {
-            let cell = CAEmitterCell()
-            cell.contents = streak
-            cell.contentsScale = 2
-            cell.birthRate = 14
-            cell.lifetime = 0.6
-            cell.lifetimeRange = 0.25
-            cell.velocity = 160
-            cell.velocityRange = 40
-            cell.emissionLongitude = .pi
-            cell.scale = 1
-            cell.scaleRange = 0.4
-            cell.alphaRange = 0.18
-            cell.color = ember.copy(alpha: 0.62)
-            cell.alphaSpeed = -1.2
             return cell
         }
 

@@ -73,8 +73,9 @@ struct EffortRail: View {
     /// title and the line under the rail.
     @Binding var held: String?
     @Binding var hovered: String?
-    /// Fast mode, once the CLI serves it: streaks in the fill.
-    var fast = false
+    /// Fast mode, when it's on, and the look Thread › Fast Look gives it: the bolt in the thumb,
+    /// or afterimages of the thumb behind it.
+    var fast: FastLook?
     var compact = false
     /// Where Back to Defaults would put the thumb, while the pointer is on it.
     var ghost: String?
@@ -91,8 +92,8 @@ struct EffortRail: View {
     @State private var pressedBlocked = false
     @State private var poured = false
     /// Whether what moves in the fill is moving: for a few seconds after the picker opens or the
-    /// level or fast mode changes, then still, since a moving picker makes the window server
-    /// redraw its blur every frame.
+    /// level changes, then still, since a moving picker makes the window server redraw its blur
+    /// every frame.
     @State private var live = false
     @State private var calming: Task<Void, Never>?
     @State private var bursts = 0
@@ -141,18 +142,11 @@ struct EffortRail: View {
                     // The whole rail, reaching past its last stop and above and below it for what's
                     // thrown off, placed rather than framed so the rail's hit area doesn't grow.
                     let width = geometry.size.width - Self.thumb / 2 + EffortEffects.reach
-                    EffortEffects(level: level, streaks: fast, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
+                    EffortEffects(level: level, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
                                   positions: xs, index: stop, arrival: arrival, compact: compact)
                         .frame(width: width, height: Self.rail + 2 * EffortEffects.air)
                         .position(x: width / 2, y: Self.row / 2)
                         .allowsHitTesting(false)
-                }
-                // Fast mode at rest: its streaks stand still behind the thumb, so the rail still
-                // says it once the moving ones have gone, and under Reduce Motion.
-                if stop != nil, fast, reduceMotion || !live {
-                    stillStreaks(width: max(centre - Self.thumb / 2 - 6, 0))
-                        .offset(y: (Self.row - Self.rail) / 2)
-                        .transition(.opacity.animation(Motion.fade))
                 }
                 ForEach(stops.indices, id: \.self) { mark in
                     // The pour lights the stops it passes on the way to the thumb.
@@ -178,6 +172,15 @@ struct EffortRail: View {
                         .accessibilityHidden(true)
                 }
                 if stop != nil {
+                    // Fast mode's afterimages of the bead, left on the fill behind it.
+                    ForEach([(10.0, 0.85, 0.3), (19.0, 0.7, 0.13)], id: \.0) { shift, scale, opacity in
+                        Circle()
+                            .fill(Color.white.opacity(opacity))
+                            .frame(width: Self.thumb * scale, height: Self.thumb * scale)
+                            .position(x: centre - (fast == .echoes ? shift : 0), y: Self.row / 2)
+                            .opacity(fast == .echoes ? 1 : 0)
+                    }
+                    .animation(Motion.move, value: fast)
                     thumb(level: level, holding: thumbX != nil)
                         .position(x: centre, y: Self.row / 2)
                         .transition(.opacity)
@@ -255,7 +258,6 @@ struct EffortRail: View {
             if let from, let to = (new ?? home).flatMap(stops.firstIndex(of:)), to < from { falls += 1 }
             arrive(from: from)
         }
-        .onChange(of: fast) { wake() }
         .onChange(of: hovered) { _, now in
             // A pointer moving along the rail at the top of the scale keeps the heat up; one left
             // still lets it rest.
@@ -344,18 +346,6 @@ struct EffortRail: View {
             .frame(width: width, height: Self.rail)
     }
 
-    /// Fast mode's streaks, drawn once and still, for Reduce Motion.
-    private func stillStreaks(width: CGFloat) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            ForEach([0.5, 0.8, 0.35], id: \.self) { share in
-                Capsule()
-                    .fill(LinearGradient(colors: [Ink.ember.opacity(0.8), .clear], startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(width * share, 0), height: 1.5)
-            }
-        }
-        .frame(width: width, height: Self.rail, alignment: .trailing)
-    }
-
     @ViewBuilder
     private func stopMark(_ mark: Int, onFill: Bool) -> some View {
         let hover = stops[mark] == hovered && thumbX == nil
@@ -400,9 +390,16 @@ struct EffortRail: View {
             Circle()
                 .strokeBorder(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.12)], startPoint: .top, endPoint: .bottom),
                               lineWidth: 1)
-            Circle()
-                .fill(Color.black.opacity(0.85))
-                .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
+            if fast == .bolt {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: ultra ? 9 : 11, weight: .black))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .transition(.scale(scale: 0.3).combined(with: .opacity))
+            } else {
+                Circle()
+                    .fill(Color.black.opacity(0.85))
+                    .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
+            }
             if ultra {
                 RaysMark(lit: RaysMark.rays, turning: live && !reduceMotion, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
                          color: .black, stagger: true, layered: true, settles: true)
