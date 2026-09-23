@@ -110,6 +110,27 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.100 "Your models, your choice"
+
+#### K-96 · Fast lights up when you turn it on
+Meriç asked for a bolt that turns white when clicked, and effects on the slider and the mark while fast is on. Since K-93 both waited on Claude Code's answer, and on this account the answer is no: one real message sent with fast forced on came back from the API as "Usage credits are required for fast mode." and ran at standard speed. So the bolt and the effects follow the click, and whether Claude Code will serve it is said once, under the level, in plain words. The composer's bolt does the same.
+Done when: on this account, clicking Fast lights the bolt white with the zip, the speed lines and the streaks every time, the line under the level says the thread runs at standard speed until usage credits are on, and clicking again puts all of it out.
+
+#### K-97 · Models by their version
+The picker names models by family: Opus, Fable, Sonnet, Haiku. Name them by version the way Claude Code's own catalog does (Opus 5, Fable 5.1, Sonnet 5, Haiku 4.5), in the models page, the picker's model line, the composer button and the Thread menu. The version comes from the catalog Claude Code keeps of the account's models, matched on the model each row resolves to, or else from the start of the SDK's line about the model; Default stays Default, with its line saying which model it runs. The line under a name no longer repeats the version.
+Done when: the models page lists Default, Opus 5, Fable 5.1, Sonnet 5 and Haiku 4.5 with this Mac's Claude Code, and the composer button says Opus 5 on an Opus thread.
+
+#### K-98 · More models
+People keep using older models because they like them. Claude Code's catalog lists the account's older models in an overflow section (today Opus 5, Fable 5, Opus 4.8, Opus 4.7, Opus 4.6 and Sonnet 4.6), and the CLI runs any of them by id, but the SDK's list leaves them out. The engine adds them from the catalog, each with its levels and fast mode, skipping one a main row already runs, and the models page shows them under a More models heading, scrolling when the page runs taller than the effort page.
+Done when: the models page shows More models with Opus 4.8 among them, and a Haiku-sized test turn on one of them (Sonnet 4.6) answers, with the thread's model line saying Sonnet 4.6.
+
+#### K-99 · Favourite models first
+Star a model and it sits at the top of the models page under Favourites, in the order starred; unstar it and it goes back to its place. A star shows on a row under the pointer and stays on a favourite, and each row's context menu has Add to Favourites or Remove from Favourites. Favourites are kept in the app's defaults by model id, and one Claude Code stops listing is left out without being forgotten.
+Done when: starring Opus 4.8 and Sonnet 4.6 puts them at the top under Favourites, the arrow keys walk the rows in the order drawn, and after a relaunch they are still there.
+
+#### K-100 · Release 0.0.100
+As K-12. Tag `v0.0.100`. Only once Meriç has tried the build from K-96 to K-99 and said it's right.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
