@@ -110,6 +110,15 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.90 "Mark and slider"
+
+#### K-89 · The mark over the slider
+Meriç tried the three and wanted B with A's slider, and the Fast button in B. B keeps OriCode's mark on top as the picture of effort, the dot growing and heating with the level and the rays lighting at Ultracode, and A's slider replaces the row of dots under it: the slider sets the level with its drag, detents and heat, and a drag across the mark still walks it. Fast mode sits at the top left on every model, dimmed on one that can't go fast. A and C stay in Thread › Picker Design until the choice is final.
+Done when: in B the slider and the mark move together from Low to Ultracode, the keys drive the slider, and the bolt shows live on Opus and dimmed on Haiku.
+
+#### K-90 · Release 0.0.90
+As K-12. Tag `v0.0.90`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
