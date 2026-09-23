@@ -58,10 +58,10 @@ struct OriCodeCommands: Commands {
                     Text(option.name).tag(option.id)
                 }
             }
-            if let efforts = model.models.first(where: { $0.id == modelBinding.wrappedValue })?.efforts, !efforts.isEmpty {
+            if let option = model.models.first(where: { $0.id == modelBinding.wrappedValue }), !option.levels.isEmpty {
                 Picker("Effort", selection: effortBinding) {
-                    Text("Default").tag("")
-                    ForEach(efforts, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
+                    Text(model.defaultLevel(for: model.chat).map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default").tag("")
+                    ForEach(option.levels, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
                 }
             }
             Toggle("Fast Mode", isOn: fastBinding)
@@ -87,21 +87,21 @@ struct OriCodeCommands: Commands {
 
     private var modelBinding: Binding<String> {
         Binding {
-            model.chat?.model ?? model.lastModel ?? model.models.first?.id ?? ""
+            model.option(for: model.chat)?.id ?? ""
         } set: { id in
             model.setModel(id, for: model.chat)
         }
     }
 
     private var effortBinding: Binding<String> {
-        Binding { model.chat?.effort ?? "" } set: { model.setEffort($0.isEmpty ? nil : $0, for: model.chat) }
+        Binding { (model.chat == nil ? model.startingEffort : model.chat?.effort) ?? "" } set: { model.setEffort($0.isEmpty ? nil : $0, for: model.chat) }
     }
 
     private var modeBinding: Binding<String> {
-        Binding { model.chat?.permissionMode ?? model.lastPermissionMode } set: { model.setPermissionMode($0, for: model.chat) }
+        Binding { model.chat?.permissionMode ?? model.startingPermissionMode } set: { model.setPermissionMode($0, for: model.chat) }
     }
 
     private var fastBinding: Binding<Bool> {
-        Binding { model.chat?.fastMode ?? model.lastFast } set: { model.setFast($0, for: model.chat) }
+        Binding { model.chat?.fastMode ?? model.startingFast } set: { model.setFast($0, for: model.chat) }
     }
 }

@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
-import { fallback, fromSDK, type Model } from "./models.ts";
+import { fallback, fromSDK, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, commit, diffFor, push, removeWorktree, status, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
@@ -51,6 +51,33 @@ async function supportedModels(claude: string): Promise<Model[]> {
     return fromSDK(await Promise.race([probe.supportedModels(), timeout]));
   } finally {
     probe.close();
+  }
+}
+
+/// Each model's default effort and Ultracode, which take a model switch each in two idle CLIs,
+/// the second launched with Ultracode on (about two seconds in all), so hello answers without
+/// them and the list follows as a `models` event. The user's own settings are read, since an
+/// effortLevel there is what a thread's default turns into, but not their hooks, which have no
+/// business with a probe.
+async function learnDefaults(claude: string, base: Model[]): Promise<void> {
+  const probe = query({
+    prompt: idle,
+    options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true }, env: cleanEnvironment() },
+  });
+  const ultraProbe = query({
+    prompt: idle,
+    options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true, ultracode: true }, env: cleanEnvironment() },
+  });
+  try {
+    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
+    const learned = await Promise.race([withDefaults(probe, ultraProbe, base), timeout]);
+    models = learned.models;
+    event("models", { models, settingsEffort: learned.settingsEffort });
+  } catch (error) {
+    log(`model defaults unavailable: ${describe(error)}`);
+  } finally {
+    probe.close();
+    ultraProbe.close();
   }
 }
 
@@ -108,6 +135,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
         log(`supported models unavailable, using the fallback list: ${describe(error)}`);
         return undefined;
       });
+      if (models) void learnDefaults(claude, models);
     }
     return { version, models: models ?? fallback, claude, loggedIn: login };
   },

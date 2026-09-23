@@ -67,10 +67,11 @@ struct ModelMenu: View {
                         .help("Fast mode")
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
-                if let effort = shownEffort {
-                    Text(Self.effortName(effort))
-                        .foregroundStyle(Ink.secondary)
-                        .id(effort)
+                // Default names the level it lands on, fainter than one picked.
+                if let level = shownEffort ?? model.defaultLevel(for: chat) {
+                    Text(Self.effortName(level))
+                        .foregroundStyle(shownEffort == nil ? Ink.faint : Ink.secondary)
+                        .id(level)
                         .transition(.blurReplace)
                 }
                 Image(systemName: "chevron.down")
@@ -97,20 +98,30 @@ struct ModelMenu: View {
         }
         .help("Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
+        .accessibilityValue(accessibilityEffort)
     }
 
-    private var selectedModel: ModelOption? {
-        let id = chat?.model ?? model.lastModel
-        return model.models.first { $0.id == id } ?? model.models.first
-    }
+    private var selectedModel: ModelOption? { model.option(for: chat) }
 
+    /// The thread's level, or with no thread the one the next starts with, if its model has it.
     private var shownEffort: String? {
-        guard let effort = chat?.effort ?? (chat == nil ? model.lastEffort : nil), !effort.isEmpty else { return nil }
+        guard let effort = chat == nil ? model.startingEffort : chat?.effort,
+              selectedModel?.levels.contains(effort) == true
+        else { return nil }
         return effort
     }
 
+    private var accessibilityEffort: String {
+        if let effort = shownEffort { return "Effort \(Self.effortName(effort))" }
+        return model.defaultLevel(for: chat).map { "Effort \(Self.effortName($0)), the default" } ?? ""
+    }
+
     static func effortName(_ effort: String) -> String {
-        effort == "xhigh" ? "Extra high" : effort.capitalized
+        switch effort {
+        case "xhigh": "Extra high"
+        case Effort.ultracode: "Ultracode"
+        default: effort.capitalized
+        }
     }
 
     static func shortName(_ name: String) -> String {
@@ -119,7 +130,7 @@ struct ModelMenu: View {
 
     private var effortBinding: Binding<String> {
         Binding {
-            chat?.effort ?? ""
+            shownEffort ?? ""
         } set: { effort in
             model.setEffort(effort.isEmpty ? nil : effort, for: chat)
         }
@@ -127,7 +138,7 @@ struct ModelMenu: View {
 
     private var fastBinding: Binding<Bool> {
         Binding {
-            chat?.fastMode ?? model.lastFast
+            chat?.fastMode ?? model.startingFast
         } set: { on in
             model.setFast(on, for: chat)
         }
@@ -135,7 +146,7 @@ struct ModelMenu: View {
 
     private var modeBinding: Binding<String> {
         Binding {
-            chat?.permissionMode ?? model.lastPermissionMode
+            chat?.permissionMode ?? model.startingPermissionMode
         } set: { mode in
             model.setPermissionMode(mode, for: chat)
         }
@@ -180,7 +191,7 @@ private struct ModelPanel: View {
                                     .transition(.opacity)
                             }
                         }
-                        EffortMeter(levels: levels, effort: $effort)
+                        EffortMeter(levels: levels, defaultLevel: selectedModel?.defaultEffort, effort: $effort)
                     }
                     .transition(section)
                 }
@@ -280,11 +291,13 @@ private struct ModelRow: View {
 /// lit up to the chosen one.
 private struct EffortMeter: View {
     let levels: [String]
+    /// Where Default lands, lit fainter than a level picked.
+    let defaultLevel: String?
     @Binding var effort: String
     @State private var hovered: String?
 
     var body: some View {
-        let chosen = levels.firstIndex(of: effort) ?? -1
+        let chosen = levels.firstIndex(of: effort) ?? defaultLevel.flatMap(levels.firstIndex(of:)) ?? -1
         HStack(alignment: .bottom, spacing: 2) {
             Button {
                 effort = ""
@@ -305,7 +318,7 @@ private struct EffortMeter: View {
                     effort = level
                 } label: {
                     RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                        .fill(index <= chosen ? Ink.primary : Color.white.opacity(hovered == level ? 0.3 : 0.15))
+                        .fill(index <= chosen ? (effort.isEmpty ? Ink.secondary : Ink.primary) : Color.white.opacity(hovered == level ? 0.3 : 0.15))
                         .frame(width: 10, height: 8 + CGFloat(index) * 16 / CGFloat(max(levels.count - 1, 1)))
                         // A wider, full-height target than the bar it holds.
                         .frame(width: 22, height: 28, alignment: .bottom)

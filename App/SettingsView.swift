@@ -226,6 +226,15 @@ private struct SliderRow: View {
     }
 }
 
+extension View {
+    /// A pop-up menu sized to its choice, at the right of a settings row.
+    fileprivate func menuRow() -> some View {
+        labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+    }
+}
+
 extension SettingsRow where Control == EmptyView {
     init(title: String, detail: String?) {
         self.init(title: title, detail: detail) { EmptyView() }
@@ -249,7 +258,14 @@ private struct GeneralPane: View {
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
     @AppStorage(Glass.transparencyKey) private var transparency = Glass.defaultTransparency
     @AppStorage("nodePath") private var nodePath = ""
-    @AppStorage("lastPermissionMode") private var permissionMode = "default"
+    @AppStorage(NewThreads.model) private var newModel = ""
+    @AppStorage(NewThreads.effort) private var newEffort = ""
+    @AppStorage(NewThreads.fast) private var newFast = ""
+    @AppStorage(NewThreads.permissionMode) private var newMode = ""
+    @AppStorage("lastModel") private var lastModel = ""
+    @AppStorage("lastEffort") private var lastEffort = ""
+    @AppStorage("lastFast") private var lastFast = false
+    @AppStorage("lastPermissionMode") private var lastMode = "default"
 
     var body: some View {
         PaneTitle(text: "General")
@@ -262,18 +278,46 @@ private struct GeneralPane: View {
         }
         SectionHeading("New threads")
         SettingsCard {
-            SettingsRow(
-                title: "Model, effort and speed",
-                detail: "A new thread starts on the model, effort and fast mode you last picked in the composer.")
-            SettingsRow(title: "Permissions", detail: selectedMode.summary) {
-                Picker("Permissions", selection: $permissionMode) {
+            SettingsRow(title: "Model", detail: "Each of these can follow what you last picked in the composer.") {
+                Picker("Model", selection: $newModel) {
+                    Text(lastPicked(model.models.first { $0.id == lastModel }?.name)).tag("")
+                    Divider()
+                    ForEach(model.models) { option in
+                        Text(option.name).tag(option.id)
+                    }
+                }
+                .menuRow()
+            }
+            SettingsRow(title: "Effort", detail: effortDetail) {
+                Picker("Effort", selection: $newEffort) {
+                    Text(lastPicked(lastEffort.nonEmpty.map(ModelMenu.effortName) ?? "Default")).tag("")
+                    Divider()
+                    Text(startingOption?.defaultEffort.map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default").tag(NewThreads.claudeDefault)
+                    ForEach(levels, id: \.self) { level in
+                        Text(ModelMenu.effortName(level)).tag(level)
+                    }
+                }
+                .menuRow()
+                .disabled(startingOption?.efforts.isEmpty == true)
+            }
+            SettingsRow(title: "Fast mode", detail: "Only on models that have it.") {
+                Picker("Fast mode", selection: $newFast) {
+                    Text(lastPicked(lastFast ? "On" : "Off")).tag("")
+                    Divider()
+                    Text("On").tag(NewThreads.on)
+                    Text("Off").tag(NewThreads.off)
+                }
+                .menuRow()
+            }
+            SettingsRow(title: "Permissions", detail: startingMode.summary) {
+                Picker("Permissions", selection: $newMode) {
+                    Text(lastPicked(PermissionModeOption(rawValue: lastMode)?.title)).tag("")
+                    Divider()
                     ForEach(PermissionModeOption.allCases) { option in
                         Label(option.title, systemImage: option.icon).tag(option.rawValue)
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
+                .menuRow()
             }
         }
         SectionHeading("Engine")
@@ -289,8 +333,37 @@ private struct GeneralPane: View {
         }
     }
 
-    private var selectedMode: PermissionModeOption {
-        PermissionModeOption(rawValue: permissionMode) ?? .ask
+    private var startingMode: PermissionModeOption {
+        PermissionModeOption(rawValue: newMode.nonEmpty ?? lastMode) ?? .ask
+    }
+
+    private func lastPicked(_ current: String?) -> String {
+        current.map { "Last picked (\($0))" } ?? "Last picked"
+    }
+
+    /// The fixed model's levels, or every level some model has while the model follows the last
+    /// pick. Never Ultracode, which a new thread doesn't start in.
+    private var levels: [String] {
+        let options = model.models.filter { newModel.isEmpty || $0.id == newModel }
+        let order = ["low", "medium", "high", "xhigh", "max"]
+        return order.filter { level in options.contains { $0.levels.contains(level) } }
+    }
+
+    /// The model a new thread starts on.
+    private var startingOption: ModelOption? {
+        model.models.first { $0.id == (newModel.nonEmpty ?? lastModel) }
+    }
+
+    /// Where Claude Code's default lands for the model a new thread starts on.
+    private var effortDetail: String {
+        let starting = startingOption
+        if let starting, starting.levels.isEmpty {
+            return "\(ModelMenu.shortName(starting.name)) has one reasoning level."
+        }
+        guard let starting, let level = starting.defaultEffort else {
+            return "Claude Code's default is the model's own, unless your Claude Code settings pick one."
+        }
+        return "Claude Code's default on \(ModelMenu.shortName(starting.name)) is \(ModelMenu.effortName(level))."
     }
 
     private func choose() {

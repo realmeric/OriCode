@@ -10,6 +10,45 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let efforts: [String]
     /// Whether the SDK says the model can run in fast mode.
     let fast: Bool
+    /// The level a thread gets when it picks none: the model's own, or the effortLevel in the
+    /// user's Claude Code settings. Nil when the model has no levels, or until the engine knows.
+    let defaultEffort: String?
+    /// Whether the thread can run as Ultracode on this model.
+    let ultra: Bool
+    /// Why it can't when it nearly could: "workflows" while dynamic workflows are off.
+    let ultraBlocked: String?
+
+    /// The SDK's id for Default (recommended), the model Claude Code picks.
+    static let claudeDefault = "default"
+
+    /// Levels the picker offers, low to high, with Ultracode last where the model can run it,
+    /// the way Claude Code's own picker has it.
+    var levels: [String] {
+        efforts + (ultra ? [Effort.ultracode] : [])
+    }
+
+    /// The stops the picker draws: Ultracode shows, dimmed, when only workflows keep it off.
+    var stops: [String] {
+        efforts + (ultra || ultraBlocked != nil ? [Effort.ultracode] : [])
+    }
+}
+
+/// Settings › New threads. Each setting is fixed there, or left empty to follow the last pick.
+enum NewThreads {
+    static let model = "newThreadModel"
+    static let effort = "newThreadEffort"
+    static let fast = "newThreadFast"
+    static let permissionMode = "newThreadPermissionMode"
+    /// The effort setting's value for Claude Code's own default: the thread picks no level.
+    static let claudeDefault = "default"
+    static let on = "on"
+    static let off = "off"
+}
+
+/// Effort as the wire has it: nil is Claude Code's default, and `ultracode` rides the same
+/// field as the levels even though it's a session setting underneath.
+enum Effort {
+    static let ultracode = "ultracode"
 }
 
 struct Hello: Codable, Sendable {
@@ -33,6 +72,11 @@ final class AppModel {
 
     var engineState: EngineState = .starting
     var models: [ModelOption] = []
+    /// The effortLevel in the user's Claude Code settings, which is where Default lands when set.
+    var settingsEffort: String?
+    /// Bumped whenever the app's defaults change, so what reads them there (a new thread's
+    /// starting choices, which Settings can change) redraws.
+    private(set) var defaultsRevision = 0
     /// A transient line under the composer, for things the user did that didn't work.
     private(set) var note: String?
     /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.
@@ -110,6 +154,43 @@ final class AppModel {
         set { UserDefaults.standard.set(newValue, forKey: "lastFast") }
     }
 
+    /// What the next new thread starts with: what Settings › New threads fixes, and the last
+    /// pick in the composer for what it leaves to that.
+    var startingModel: String? {
+        _ = defaultsRevision
+        return UserDefaults.standard.string(forKey: NewThreads.model)?.nonEmpty ?? lastModel
+    }
+
+    var startingEffort: String? {
+        _ = defaultsRevision
+        return switch UserDefaults.standard.string(forKey: NewThreads.effort) ?? "" {
+        case "": lastEffort
+        case NewThreads.claudeDefault: String?.none
+        case let level: level
+        }
+    }
+
+    var startingFast: Bool {
+        _ = defaultsRevision
+        return switch UserDefaults.standard.string(forKey: NewThreads.fast) ?? "" {
+        case NewThreads.on: true
+        case NewThreads.off: false
+        default: lastFast
+        }
+    }
+
+    var startingPermissionMode: String {
+        _ = defaultsRevision
+        return UserDefaults.standard.string(forKey: NewThreads.permissionMode)?.nonEmpty ?? lastPermissionMode
+    }
+
+    /// The model a thread runs on: its own, or with no thread the one the next starts on, or
+    /// the first the SDK lists, which is Claude Code's default.
+    func option(for chat: Chat?) -> ModelOption? {
+        let id = chat == nil ? startingModel : chat?.model
+        return models.first { $0.id == id } ?? models.first
+    }
+
     init(container: ModelContainer) {
         context = container.mainContext
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
@@ -118,6 +199,9 @@ final class AppModel {
         loadSelectedConversation()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.defaultsRevision += 1 }
+        }
         // Titled windows only: text input puts borderless helper windows in the key spot too.
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
             guard let window = note.object as? NSWindow, window.styleMask.contains(.titled) else { return }

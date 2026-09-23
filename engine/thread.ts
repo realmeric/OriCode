@@ -14,7 +14,7 @@ import {
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
-import { adaptive } from "./models.ts";
+import { adaptive, applied, type Applied } from "./models.ts";
 import { event, log } from "./wire.ts";
 
 export type Attachment = { mediaType: string; data: string };
@@ -25,7 +25,8 @@ export type SendParams = {
   cwd: string;
   text: string;
   model?: string;
-  effort?: EffortLevel;
+  /// A level, or `ultracode`: xhigh with Claude Code's standing multi-agent workflows.
+  effort?: EffortLevel | "ultracode";
   permissionMode: PermissionMode;
   attachments?: Attachment[];
   /// Fast mode for the thread. SDK sessions get it only when their flag settings ask for it.
@@ -49,6 +50,10 @@ export type Answer = {
   answers?: Record<string, string>;
   message?: string;
 };
+
+/// What an `effort` event tells the app: the level the session sends, null for none, and
+/// whether it runs as Ultracode.
+type Effort = { level: string | null; ultracode: boolean };
 
 const asks = new Map<string, Ask>();
 
@@ -122,6 +127,11 @@ export class Thread {
   private fast = false;
   /// The fast mode state last told to the app, so results that repeat it aren't sent again.
   private fastTold = "";
+  /// The effort last told to the app, so readings that repeat it aren't sent again.
+  private effortTold: Effort | undefined;
+  /// The effort this CLI was started with, sent beside each reading so the app can tell a
+  /// reading taken on Default, or under Ultracode, from one taken under another pick.
+  private asked: string | null = null;
   /// When the last turn ended, for letting an idle CLI go.
   private idleSince: number | undefined;
 
@@ -237,19 +247,27 @@ export class Thread {
     this.mode = params.permissionMode;
     this.fast = params.fast ?? false;
     this.costSoFar = resume ? (params.costSoFar ?? 0) : 0;
+    // A new CLI reports its first readings again: the app may have let go of the thread's
+    // transcript, and what it knew with it, since the last one.
+    this.fastTold = "";
+    this.effortTold = undefined;
+    this.asked = params.effort ?? null;
     const inbox = new Inbox();
     this.inbox = inbox;
+    const ultra = params.effort === "ultracode";
     this.query = query({
       prompt: inbox,
       options: {
         cwd: params.cwd,
         model: params.model,
-        effort: params.effort,
+        // Ultracode sets its own effort, xhigh.
+        effort: ultra ? undefined : (params.effort as EffortLevel | undefined),
         // Summarized, so the thinking deltas carry text the app can show when asked.
         thinking: adaptive.has(params.model ?? "default") ? { type: "adaptive", display: "summarized" } : undefined,
         permissionMode: params.permissionMode,
-        // The opt-in the CLI asks of SDK sessions before it serves them fast.
-        settings: this.fast ? { fastMode: true } : undefined,
+        // Fast mode's is the opt-in the CLI asks of SDK sessions before it serves them fast;
+        // Ultracode is a session setting that only flag settings can turn on.
+        settings: this.fast || ultra ? { ...(this.fast ? { fastMode: true } : {}), ...(ultra ? { ultracode: true } : {}) } : undefined,
         allowDangerouslySkipPermissions: true,
         resume,
         includePartialMessages: true,
@@ -263,6 +281,7 @@ export class Thread {
       },
     });
     this.pump(this.query);
+    void this.tellEffort(this.query);
   }
 
   /// Whether fast mode is on for the thread, or why it can't be, when that changes.
@@ -273,6 +292,22 @@ export class Thread {
     if (told === this.fastTold) return;
     this.fastTold = told;
     event("fast", { threadId: this.id, state, reason });
+  }
+
+  /// The level the session will actually send and whether it runs as Ultracode, when either
+  /// changes: a cap in the user's settings, or a model without the level, can make them differ
+  /// from the thread's pick. Read beside the turn once the CLI is up; a CLI that can't say
+  /// tells the app nothing.
+  private async tellEffort(running: Query): Promise<void> {
+    try {
+      await running.initializationResult();
+      const now = await applied(running);
+      if (running !== this.query) return;
+      const told = changedEffort(this.effortTold, now);
+      if (!told) return;
+      this.effortTold = told;
+      event("effort", { threadId: this.id, ...told, asked: this.asked });
+    } catch {}
   }
 
   /// Keeps `tasks` in step with the CLI's task messages and tells the app how many are out.
@@ -454,6 +489,7 @@ export class Thread {
         this.idleSince = Date.now();
         this.streamed.clear();
         this.tellFast(message);
+        if (this.query) void this.tellEffort(this.query);
         // total_cost_usd is the running total of this CLI process, so the turn's cost is the difference.
         const cost = message.total_cost_usd - this.costSoFar;
         this.costSoFar = message.total_cost_usd;
@@ -483,6 +519,15 @@ export class Thread {
 }
 
 const emptyUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+/// The effort a reading of the session's settings shows, or undefined when the app was last
+/// told the same.
+export function changedEffort(told: Effort | undefined, now: Applied): Effort | undefined {
+  const level = now.effort ?? null;
+  const ultracode = now.ultracode === true;
+  if (told && told.level === level && told.ultracode === ultracode) return undefined;
+  return { level, ultracode };
+}
 
 function content(params: SendParams): SDKUserMessage["message"]["content"] {
   if (!params.attachments?.length) return params.text;

@@ -79,6 +79,16 @@ final class Conversation {
     /// Fast mode as the CLI last reported it: on, off or cooldown, and why it can't be on.
     private(set) var fastState: String?
     private(set) var fastReason: String?
+    /// What the thread's own CLI says it runs at, once it has started: the level (nil when the
+    /// model has none) and whether Ultracode came on.
+    private(set) var appliedEffort: String??
+    private(set) var appliedUltracode: Bool?
+    /// Whether the CLI that gave that reading was started as Ultracode.
+    private(set) var askedUltracode = false
+    /// The level read while the thread picked none, and for which model: where Default really
+    /// lands, project settings included, which the engine's first reading with the user's
+    /// settings alone can't know.
+    private(set) var defaultReading: (model: String?, level: String?)?
     private(set) var turn = 0
     private let chat: Chat
     private let context: ModelContext
@@ -146,6 +156,13 @@ final class Conversation {
         case "fast":
             fastState = event.body["state"]?.string
             fastReason = event.body["reason"]?.string
+        case "effort":
+            let level = event.body["level"]?.string
+            let asked = event.body["asked"]?.string
+            appliedEffort = .some(level)
+            appliedUltracode = event.body["ultracode"]?.bool ?? false
+            askedUltracode = asked == Effort.ultracode
+            if asked == nil { defaultReading = (chat.model, level) }
         case "tasks":
             tasks = event.body["running"]?.int ?? 0
         case "retrying":

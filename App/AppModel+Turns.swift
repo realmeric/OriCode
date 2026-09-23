@@ -35,7 +35,9 @@ extension AppModel {
         ]
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = chat.model { params["model"] = .string(model) }
-        if let effort = chat.effort { params["effort"] = .string(effort) }
+        // Only a level the model has now, the way the picker shows it: an Ultracode left on after
+        // workflows were turned off would still start the CLI at xhigh.
+        if let effort = chat.effort, option(for: chat)?.levels.contains(effort) ?? true { params["effort"] = .string(effort) }
         params["fast"] = .bool(fastMode(of: chat))
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
@@ -79,6 +81,11 @@ extension AppModel {
         guard let threadId = event.threadId, let id = UUID(uuidString: threadId) else {
             if event.name == "error", let message = event.body["message"]?.string {
                 say(message)
+            }
+            // The same models as hello's, now with each one's default effort and Ultracode.
+            if event.name == "models", let list = try? event.body["models"]?.decode([ModelOption].self), !list.isEmpty {
+                models = list
+                settingsEffort = event.body["settingsEffort"]?.string
             }
             return
         }
@@ -135,20 +142,24 @@ extension AppModel {
 }
 
 extension AppModel {
+    /// With no thread open, a pick is for the thread about to start, and a default fixed in
+    /// Settings would win over it there; so that thread starts now, empty, with the pick.
     func setModel(_ id: String, for chat: Chat?) {
         lastModel = id
-        guard let chat else { return }
+        guard let chat = chat ?? (id == startingModel ? nil : newChat()) else { return }
         chat.model = id
-        if let efforts = models.first(where: { $0.id == id })?.efforts, let effort = chat.effort, !efforts.contains(effort) {
+        if let levels = models.first(where: { $0.id == id })?.levels, let effort = chat.effort, !levels.contains(effort) {
             chat.effort = nil
         }
         save()
         if fastMode(of: chat) { checkFast(chat) }
     }
 
+    /// Ultracode stays with the thread it was picked in: a new thread never starts in it.
     func setEffort(_ effort: String?, for chat: Chat?) {
-        lastEffort = effort
-        guard let chat else { return }
+        let unchanged = chat == nil && effort == startingEffort
+        if effort != Effort.ultracode { lastEffort = effort }
+        guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.effort = effort
         save()
     }
@@ -156,14 +167,13 @@ extension AppModel {
     /// On when the thread asks for it and its model can do it; a switch to a model that can't
     /// leaves the thread's choice alone for when it switches back.
     func fastMode(of chat: Chat) -> Bool {
-        let id = chat.model ?? lastModel
-        let model = models.first { $0.id == id } ?? models.first
-        return chat.fastMode && model?.fast == true
+        chat.fastMode && option(for: chat)?.fast == true
     }
 
     func setFast(_ on: Bool, for chat: Chat?) {
+        let unchanged = chat == nil && on == startingFast
         lastFast = on
-        guard let chat else { return }
+        guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.fastMode = on
         save()
         let fast = fastMode(of: chat)
@@ -175,13 +185,14 @@ extension AppModel {
     /// so the switch can say why not before a turn is spent finding out.
     func checkFast(_ chat: Chat) {
         var params: [String: JSON] = ["threadId": .string(chat.id.uuidString)]
-        if let model = chat.model ?? lastModel { params["model"] = .string(model) }
+        if let model = chat.model { params["model"] = .string(model) }
         Task { _ = try? await engine.request("fast.check", .object(params)) }
     }
 
     func setPermissionMode(_ mode: String, for chat: Chat?) {
+        let unchanged = chat == nil && mode == startingPermissionMode
         lastPermissionMode = mode
-        guard let chat else { return }
+        guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.permissionMode = mode
         save()
         let running = conversation(for: chat).running
@@ -193,5 +204,18 @@ extension AppModel {
                 modeNote = nil
             }
         }
+    }
+}
+
+extension AppModel {
+    /// Where Default lands for a thread: what its own CLI reported while it picked no level, for
+    /// the model it's on now, which counts a project's settings; or what the engine read.
+    func defaultLevel(for chat: Chat?) -> String? {
+        guard let option = option(for: chat), !option.efforts.isEmpty else { return nil }
+        if let chat, let reading = conversations[chat.id]?.defaultReading, reading.model == chat.model,
+           let level = reading.level, option.efforts.contains(level) {
+            return level
+        }
+        return option.defaultEffort
     }
 }
