@@ -45,7 +45,7 @@ struct Drawer: View {
             .environment(\.defaultMinListRowHeight, 34)
             HStack(spacing: 4) {
                 Button {
-                    model.newChat()
+                    model.openNewThread()
                 } label: {
                     Label("New thread", systemImage: "square.and.pencil")
                         .font(Type.secondary)

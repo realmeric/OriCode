@@ -89,6 +89,9 @@ final class AppModel {
     /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
     /// thread that hasn't asked yet, or no thread at all, shows what's already known.
     var fastReadings: [String: FastReading] = [:]
+    /// Bumped to put the cursor in the composer when nothing else would move it there: ⌘N on the
+    /// draft that's already open.
+    var composerFocus = 0
     /// The models the user starred, by id, in the order starred; the models page and the model
     /// pickers put them first. One Claude Code stops listing stays here, unseen, in case it's back.
     var favoriteModels = UserDefaults.standard.stringArray(forKey: "favoriteModels") ?? [] {
@@ -215,6 +218,7 @@ final class AppModel {
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
+        clearDrafts()
         loadSelectedConversation()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()

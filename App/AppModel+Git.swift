@@ -144,6 +144,8 @@ extension AppModel {
                 guard let chat = newChat() else { return }
                 chat.cwd = path
                 chat.worktreeBranch = branch
+                // It has a worktree to come back to, so it's in the list from the start.
+                chat.started = true
                 save()
                 refreshBranch(for: chat)
             } catch {

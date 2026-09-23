@@ -42,6 +42,9 @@ final class Chat {
     var worktreeBranch: String?
     /// Fast mode, which the CLI serves only for models that support it.
     var fastMode: Bool = false
+    /// Whether it has had its first message. Until then it's a draft: out of the drawer, and the
+    /// thread ⌘N comes back to instead of making another.
+    var started: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

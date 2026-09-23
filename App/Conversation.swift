@@ -131,6 +131,7 @@ final class Conversation {
     func userSent(_ text: String, previews: [Data] = []) {
         turn += 1
         running = true
+        chat.started = true
         if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {
             chat.title = Chat.title(from: text)
         }

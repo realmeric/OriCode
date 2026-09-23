@@ -14,8 +14,9 @@ extension AppModel {
     }
 
     /// Every project's threads in one list, newest first: the drawer, ⌘1–9 and the Thread menu.
+    /// A draft isn't one of them until its first message.
     var chats: [Chat] {
-        projects.flatMap(\.chats).sorted { $0.createdAt > $1.createdAt }
+        projects.flatMap(\.chats).filter(\.started).sorted { $0.createdAt > $1.createdAt }
     }
 
     var chat: Chat? {
@@ -91,6 +92,21 @@ extension AppModel {
         Task { _ = try? await engine.request("close", ["threadId": .string(id)]) }
     }
 
+    /// At launch: threads from before drafts count as started when they have messages or their
+    /// own worktree, and the drafts left from last time go, being empty.
+    func clearDrafts() {
+        let drafts = projects.flatMap(\.chats).filter { !$0.started }
+        guard !drafts.isEmpty else { return }
+        for chat in drafts {
+            if !chat.events.isEmpty || chat.worktreeBranch != nil {
+                chat.started = true
+            } else {
+                context.delete(chat)
+            }
+        }
+        save()
+    }
+
     /// Projects from before badges had colours get theirs the first time the app opens.
     func colourProjects() {
         let uncoloured = projects.filter { $0.colorIndex == nil }
@@ -101,9 +117,26 @@ extension AppModel {
         save()
     }
 
+    /// ⌘N and New thread: the project's draft when it has one, so pressing it again and again
+    /// doesn't pile up empty threads.
+    func openNewThread() {
+        if let draft = project?.chats.first(where: { !$0.started }) {
+            selectedChatID = draft.id
+        } else {
+            newChat()
+        }
+        composerFocus += 1
+    }
+
+    /// A new thread, which stays a draft until its first message. A project keeps one draft at
+    /// most: an older one is empty, and goes.
     @discardableResult
     func newChat() -> Chat? {
         guard let project else { return nil }
+        for draft in project.chats where !draft.started {
+            conversations[draft.id] = nil
+            context.delete(draft)
+        }
         let chat = Chat(project: project, permissionMode: startingPermissionMode)
         chat.model = startingModel
         let levels = option(for: chat)?.levels ?? []

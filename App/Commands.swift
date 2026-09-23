@@ -6,7 +6,7 @@ struct OriCodeCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Thread") { model.newChat() }
+            Button("New Thread") { model.openNewThread() }
                 .keyboardShortcut("n")
                 .disabled(model.project == nil)
             Button("New Thread on Its Own Branch") { model.newWorktreeChat() }

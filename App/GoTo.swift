@@ -18,7 +18,7 @@ struct GoToEntry: Identifiable {
 extension AppModel {
     var goToEntries: [GoToEntry] {
         let threads = projects
-            .flatMap { project in project.chats.map { (project, $0) } }
+            .flatMap { project in project.chats.filter(\.started).map { (project, $0) } }
             .sorted { $0.1.updatedAt > $1.1.updatedAt }
             .map { project, chat in
                 GoToEntry(id: chat.id.uuidString, kind: .thread, title: chat.title, detail: project.name, project: project) { [weak self] in
@@ -31,7 +31,7 @@ extension AppModel {
             }
         }
         var actions: [GoToEntry] = [
-            GoToEntry(id: "new", kind: .action, title: "New thread", detail: "⌘N") { [weak self] in self?.newChat() },
+            GoToEntry(id: "new", kind: .action, title: "New thread", detail: "⌘N") { [weak self] in self?.openNewThread() },
             GoToEntry(id: "branch", kind: .action, title: "New thread on its own branch", detail: "⌘⇧N") { [weak self] in self?.newWorktreeChat() },
             GoToEntry(id: "add", kind: .action, title: "Add project…", detail: "⌘O") { [weak self] in self?.addProject() },
             GoToEntry(id: "changes", kind: .action, title: "Changes", detail: "⌘⇧D") { [weak self] in self?.openChanges() },

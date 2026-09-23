@@ -81,6 +81,7 @@ struct Composer: View {
             if over { Haptics.detent() }
         }
         .onAppear { focused = true }
+        .onChange(of: model.composerFocus) { focused = true }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
             focused = waiting == nil
