@@ -110,10 +110,30 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
-### Todo: 0.0.100 "Your models, your choice"
+### Todo: 0.0.105 "Yours, in order"
 
-#### K-100 · Release 0.0.100
-As K-12. Tag `v0.0.100`. Only once Meriç has tried the build from K-96 to K-99 and said it's right.
+#### K-100 · Three ways to show fast is on
+Meriç likes the Fast button but finds the rest of fast mode's look bad: the speed lines, the zip, and the streaks through the mark and along the slider. They go, and three quieter candidates replace them, switched from Thread › Fast Look until Meriç picks one. A, Tag: a Fast tag with a bolt beside the level's name, lit like the button. B, Bolt: the bolt cut out of the head, and drawn in the slider's thumb in place of its dot. C, Echoes: the head and the thumb each leave two still afterimages behind them. The button, the composer's bolt and the standard-speed line stay in all three.
+Done when: Thread › Fast Look switches the three, frames show each with fast on and with it off, and none of the old effects is left.
+
+#### K-101 · A new thread waits for its first message
+⌘N makes a thread and puts it in the drawer at once, so pressing it again and again fills the list with empty New threads. A thread now shows in the drawer, in ⌘1–9 and in the Thread menu from its first message; ⌘N on a project that already has an empty thread opens that one instead of making another; and the empty ones already made are cleared at launch. A thread on its own branch still shows at once, since it has a worktree to come back to.
+Done when: pressing ⌘N ten times leaves the drawer as it was with one empty thread open, sending a line there puts it at the top of the drawer, and after a relaunch no empty New thread is left in the store.
+
+#### K-102 · Models that need a newer Claude Code
+The models page shows Opus 5 and no Opus 5.5 because the Terminal claude is 2.1.278 with autoUpdates off in ~/.claude.json, while the Claude app's own copy is 2.1.280. Claude Code's catalog marks Opus 5.5 as needing 2.1.280. A catalog model that needs a newer Claude Code than the one OriCode runs shows after the models it can run, dimmed and not pickable, with why: needs Claude Code 2.1.280, run claude update in Terminal.
+Done when: with this Mac's 2.1.278 the models page shows Opus 5.5 dimmed with that line, neither a click nor the arrow keys pick it, and an engine test shows the row is left out once a model row runs it.
+
+#### K-103 · Pinned threads, in your order
+Meriç wants to reorder threads and to pin them, without two kinds of pin. One pin does both: pinned threads stay at the top of the drawer in the order they're dragged into, and the rest sit below them, a new thread on top, each where it's dragged. Pin and Unpin are in each row's context menu; dragging a thread in among the pinned ones pins it there, and dragging a pinned one below them unpins it. A pinned row shows a pin, and ⌘1–9 follow the drawer's order.
+Done when: pinning two threads puts them on top with pins, dragging swaps them, dragging an unpinned thread between them pins it in the middle, dragging one out unpins it, the order survives a relaunch, and ⌘1 opens the top pinned thread.
+
+#### K-104 · Fast, the one Meriç picks
+When Meriç has tried the three looks from K-100, keep the one they pick and take out the others and Thread › Fast Look.
+Done when: the picker shows the chosen look and the menu is gone.
+
+#### K-105 · Release 0.0.105
+As K-12. Tag `v0.0.105`. Only once Meriç has tried the build from K-96 to K-104 and said it's right.
 
 ### Parking lot
 
@@ -698,7 +718,7 @@ Commit: 3059d00
 Star a model and it sits at the top of the models page under Favourites, in the order starred; unstar it and it goes back to its place. A star shows on a row under the pointer and stays on a favourite, and each row's context menu has Add to Favourites or Remove from Favourites. Favourites are kept in the app's defaults by model id, and one Claude Code stops listing is left out without being forgotten.
 Done when: starring Opus 4.8 and Sonnet 4.6 puts them at the top under Favourites, the arrow keys walk the rows in the order drawn, and after a relaunch they are still there.
 Notes: AppModel.favoriteModels keeps the starred ids in the order starred under the defaults key favoriteModels, and toggleFavorite adds or drops one. ModelsPage.groups makes Favorites (those still listed, in that order), then Claude Code's own models, headed Models once there are favorites, then More models, leaving out an empty group; AppModel.modelGroups is what the page, its height, its arrow keys, Thread › Model and Settings › New threads all draw, with a divider between groups in the menus. The UI says Favorites, the Mac's spelling. The star is a button of its own beside the row's button, 18pt plus the row's end padding, shown on the row under the pointer or the arrow keys and on a favorite, filled in secondary ink on a favorite and outlined in faint ink otherwise; laid over the row as an overlay it was a child of the row's button, and an accessibility press on it picked the model instead. Each row also has Add to Favorites or Remove from Favorites in its context menu and as a named accessibility action. A group's first row scrolls its heading into view with it, so arrowing up to the top shows Favorites. Checked on the Debug build: the star on the row the arrow keys were on starred Opus 4.8, which moved under Favorites with the list headed Models below it; nine downs took the keys to Sonnet 4.6 and its star put it second under Favorites; defaults showed both ids; after a relaunch the page opened with Favorites, Opus 4.8 and Sonnet 4.6 filled-starred at the top, and Thread › Model listed Opus 4.8, Sonnet 4.6, then the rest. The context menu wasn't opened, since the agent's background tools refuse context menus.
-Commit: pending
+Commit: ef344e9
 
 
 ## Exceptions
