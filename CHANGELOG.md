@@ -2,6 +2,16 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.79 "Feel" - 2026-09-23
+
+- A new thread or ⌘W no longer drops the composer and the mark over the old conversation. The old transcript fades first, the composer glides up to the middle, and the mark settles in last; switching threads never shows two conversations at once.
+- Default effort says where it lands. The model button names the level Claude Code will use, which is your own effortLevel when your Claude Code settings set one, and Settings › New threads can fix the model, effort, fast mode and permissions a new thread starts with, or keep following your last pick.
+- The model picker is built around an effort rail. The thumb sticks to each level, settles with the speed of the drag, and writes the thread when you let go; the ringed stop is Default, and Back to Defaults shows what it will change before you press it. The models are a second page, opened from the model's name, and ⌘⇧M opens the picker.
+- Ultracode, Claude Code's mode that runs multi-agent workflows on every task, is a stop past Max on the models that can run it, behind a gate so it isn't reached by accident. It stays with the thread it was picked in.
+- Max and Ultracode get drifting motes and a halo, fast mode gets streaks, and the cost of the top two shows in your session's usage colour. It all runs in Core Animation, and only while the picker is open.
+- The trackpad taps under a dragging finger: at each effort level, harder at Max and Ultracode, when something you drag can drop into the composer, and when Tint or Transparency passes its default.
+- Send turns into Stop in place, a message you send rises out of the composer, and a permission card folds into its one line when you answer it.
+
 ## v0.0.74 "Lighter" - 2026-09-23
 
 - OriCode is 7.4MB instead of 65MB. The engine carries only the Agent SDK file it runs, and the app is built for Apple silicon without its symbols.

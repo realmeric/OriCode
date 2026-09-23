@@ -112,9 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.79 "Feel"
 
-#### K-79 · Release 0.0.79
-As K-12. Tag `v0.0.79`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -586,6 +583,11 @@ Commit: 0d25513
 Motes drift toward the thumb at Max and Ultracode, a burst is thrown back as the thumb arrives there, and streaks run back from it while the CLI serves fast mode, with one bright sweep as fast comes on. All Core Animation, only while the picker is open and visible, never under Reduce Motion. The thumb gets a halo at the top of the scale, the fill pours in as the picker opens, and the cost clause under Max and Ultracode takes the usage circle's band for the session. The brief's Ink and Motion lines say so.
 Done when: frames show motes at Max and nothing moving below Max without fast; with the picker open at Ultracode, OriCode reads 0.0% CPU, and WindowServer's CPU with the picker open and closed is in the notes.
 Notes: EffortEffects is one view of Core Animation layers over the fill, ending 6pt short of the thumb under a mask that fades its last 10pt: an emitter of motes drifting toward the thumb at Max and Ultracode, a burst of about two dozen thrown back from the thumb as it arrives there on the way up, an emitter of streaks running back from the thumb while the CLI serves fast mode, and one bright band sweeping back as fast comes on. It runs only while the picker is in a window that's on screen, never with Reduce Motion on (fast then draws three still lines instead), and removes its observers and emitters when the picker closes. The thumb has a white halo at the top of the scale, the fill pours in as the picker opens, the rays in the Ultracode thumb turn, and the cost clause under Max and Ultracode takes the usage circle's band for the session. Measured with the picker open at Ultracode and fast served: OriCode 0.0% CPU with about one idle wakeup in ten seconds, but WindowServer at about 39% against 16 to 22% with the picker still or closed, because anything moving in a popover makes it redraw the popover's blur every frame. So what moves runs for four seconds after the picker opens or the level or fast mode changes, then rests, the rays stopping where they are: after that, with the picker still open at Max, WindowServer was back at 16%. Checked with frames: Medium with fast off has nothing moving, Max shows its halo, motes and the cost clause in the session's green, and Ultracode with fast served shows the rays, the motes and the streaks together.
+Commit: 2abc7ce
+
+#### K-79 · Release 0.0.79
+As K-12. Tag `v0.0.79`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.79 is 7.7MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a Haiku thread set to Ask from the new picker sent an edit that waited on its card, folded into Allowed · Edit greet.swift when allowed, and landed in greet.swift.
 Commit: pending
 
 
