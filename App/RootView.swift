@@ -65,7 +65,7 @@ struct RootView: View {
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                 .simultaneousGesture(TapGesture().onEnded {
                     if !model.drawerPinned { model.hideDrawer() }
-                    if model.goToShown { model.toggleGoTo() }
+                    if model.commandCenterShown { model.closeCommandCenter() }
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.openFile != nil { model.closeFile() }
                     if model.changesShown { model.closeChanges() }
@@ -130,8 +130,8 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) {
-            if model.goToShown {
-                GoToSheet()
+            if model.commandCenterShown {
+                CommandCenter()
                     .padding(.top, 40)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }

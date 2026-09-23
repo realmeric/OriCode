@@ -49,6 +49,15 @@ extension AppModel {
         scheduleHide(after: DrawerTiming.peek)
     }
 
+    /// ⌃Tab and ⌃⇧Tab: the thread after or before the open one in the drawer's order, round the
+    /// end, peeking the drawer like ⌘1–9.
+    func stepThread(_ by: Int) {
+        let visible = chats
+        guard !visible.isEmpty else { return }
+        let at = visible.firstIndex { $0.id == chat?.id } ?? (by > 0 ? -1 : 0)
+        pick(threadAt: ((at + by) % visible.count + visible.count) % visible.count)
+    }
+
     func showDrawer() {
         drawerTask?.cancel()
         guard !drawerShown else { return }

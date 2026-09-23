@@ -23,7 +23,7 @@ struct OriCodeCommands: Commands {
         CommandGroup(before: .toolbar) {
             Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
                 .keyboardShortcut("b")
-            Button("Go To…") { model.toggleGoTo() }
+            Button("Command Center…") { model.toggleCommandCenter() }
                 .keyboardShortcut("k")
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut("p")
@@ -40,6 +40,12 @@ struct OriCodeCommands: Commands {
             Button("Compact") { model.send("/compact") }
                 .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))
             Divider()
+            Button("Next Thread") { model.stepThread(1) }
+                .keyboardShortcut(.tab, modifiers: .control)
+                .disabled(model.chats.count < 2)
+            Button("Previous Thread") { model.stepThread(-1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                .disabled(model.chats.count < 2)
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))

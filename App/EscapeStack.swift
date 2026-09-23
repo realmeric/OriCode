@@ -16,8 +16,9 @@ extension AppModel {
             toggleFileFinder()
             return true
         }
-        if goToShown {
-            toggleGoTo()
+        if commandCenterShown {
+            // Back one level, and at the top, away.
+            if !palette.pop() { closeCommandCenter() }
             return true
         }
         if changesShown {

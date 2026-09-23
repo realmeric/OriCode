@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The window's title made visible: project · branch · thread, level with the traffic lights.
-/// Clicking it opens Go to, as ⌘K does.
+/// Clicking it opens the command center, as ⌘K does.
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
     @State private var hovering = false
@@ -9,7 +9,7 @@ struct TitleCapsule: View {
     var body: some View {
         if let project = model.project {
             Button {
-                model.toggleGoTo()
+                model.toggleCommandCenter()
             } label: {
                 HStack(spacing: 6) {
                     Text(project.name)
@@ -42,7 +42,7 @@ struct TitleCapsule: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help("Go to (⌘K)")
+            .help("Command center (⌘K)")
             .frame(maxWidth: 520)
             .fixedSize(horizontal: false, vertical: true)
         }

@@ -111,7 +111,9 @@ final class AppModel {
     var conversations: [UUID: Conversation] = [:]
     var branches: [UUID: BranchInfo] = [:]
     var changesShown = false
-    var goToShown = false
+    var commandCenterShown = false
+    /// ⌘K's levels, what's typed at each, and what it's doing.
+    let palette = PaletteState()
     /// The model button's picker, here so Esc can close it before anything under it.
     var modelPickerShown = false
     /// Where the model button is in the window, so a click on it is left to the button.

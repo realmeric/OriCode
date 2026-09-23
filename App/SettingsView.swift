@@ -5,8 +5,14 @@ import SwiftUI
 /// each pane's settings in cards under quiet headings, all on the main window's glass.
 struct SettingsView: View {
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
-    @State private var pane: SettingsPane? = .general
+    /// The pane on show, kept so ⌘K can open Settings on one.
+    @AppStorage(SettingsPane.key) private var paneName = SettingsPane.general.rawValue
     @State private var query = ""
+
+    private var pane: SettingsPane? {
+        get { SettingsPane(rawValue: paneName) }
+        nonmutating set { paneName = (newValue ?? .general).rawValue }
+    }
 
     private var panes: [SettingsPane] {
         SettingsPane.allCases.filter { $0.matches(query) }
@@ -14,7 +20,7 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(panes, selection: $pane) { pane in
+            List(panes, selection: Binding(get: { pane }, set: { pane = $0 })) { pane in
                 Label(pane.title, systemImage: pane.icon)
                     .font(Type.body)
                     .padding(.vertical, 3)
@@ -64,6 +70,8 @@ struct SettingsView: View {
 
 enum SettingsPane: String, CaseIterable, Identifiable {
     case general, conversation, notifications, shortcuts, about
+
+    static let key = "settingsPane"
 
     var id: String { rawValue }
 
