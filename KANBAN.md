@@ -553,7 +553,7 @@ Commit: b7cc302
 #### K-74 · Release 0.0.74
 As K-12. Tag `v0.0.74`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.74 is 7.5MB, arm64 only, with a 2.5MB binary and a 1.7MB engine; launched with an empty environment, an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
-Commit: pending
+Commit: 3128066
 
 
 ## Exceptions
