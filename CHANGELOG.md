@@ -2,6 +2,10 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.94 "Fast, the same every time" - 2026-09-23
+
+- Fast mode says the same thing every time. OriCode keeps Claude Code's answer about fast mode for each model and asks as soon as the picker opens, so the bolt and its effects light only when Claude Code will run fast, and otherwise the bolt is struck through with the reason straight away, in every thread and before any thread starts.
+
 ## v0.0.92 "Fast you can see" - 2026-09-23
 
 - The picker is the mark over the slider; the other two designs are gone.

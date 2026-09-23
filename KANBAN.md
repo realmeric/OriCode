@@ -112,9 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.94 "Fast, the same every time"
 
-#### K-94 · Release 0.0.94
-As K-12. Tag `v0.0.94`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -669,6 +666,11 @@ Commit: 87825c9
 Meriç found the bolt and the effects sometimes worked and sometimes didn't. On this account Claude Code turns fast mode down ("Needs usage credits on your Claude account"), and the app kept that answer per thread and only after asking: the first time a thread turned fast on it lit up for a second before the answer came, after that the same thread showed the refusal at once, and a thread that hadn't asked showed fast as on. The answer belongs to the account and the model, not the thread, so the app keeps it per model and asks as the picker opens; the bolt and the effects then say what Claude Code will do, the same way every time.
 Done when: on this account, opening the picker on a thread with fast on settles on the struck bolt and the reason, turning fast off and on again shows the refusal straight away with no effects, and a thread that hasn't asked shows the same.
 Notes: AppModel.fastReadings holds the last answer per model id: every fast event updates it, a check's for the model it names (the engine now puts model in the event) and a thread's own CLI's for the model the thread is on. PickerState, the Fast button, the line under the level and the composer's bolt read it through fastReading(for:), and the thread's own fastState and fastReason are gone. The picker asks for its model as it opens when there's no answer yet, with a threadId no thread has, so the answer is usually in before the bolt is clicked; turning fast on still asks again, which is how credits added later would show. Checked with frames on this account: a thread with fast on showed Checking fast mode for a moment after launch, then the struck bolt and 'Needs usage credits on your Claude account'; turning fast off gave the outline bolt and the level's own line, and on again the refusal at once with no streaks or speed lines.
+Commit: 3757413
+
+#### K-94 · Release 0.0.94
+As K-12. Tag `v0.0.94`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.94 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread with fast asked opened the picker and settled on the struck bolt and 'Needs usage credits on your Claude account' within two seconds, before any turn; set to Haiku and Ask it sent an edit that waited on its card and landed in greet.swift when allowed.
 Commit: pending
 
 
