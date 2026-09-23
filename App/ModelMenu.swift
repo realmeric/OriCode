@@ -23,7 +23,7 @@ enum PermissionModeOption: String, CaseIterable, Identifiable {
         switch self {
         case .ask: "hand.raised"
         case .acceptEdits: "pencil"
-        case .auto: "sparkles"
+        case .auto: "checkmark.shield"
         case .plan: "list.bullet.clipboard"
         case .dontAsk: "lock.open"
         }

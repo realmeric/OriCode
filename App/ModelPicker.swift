@@ -131,6 +131,7 @@ private struct EffortPage: View {
     @State private var resetTurns = 0
     /// A click on Ultracode while workflows keep it off, said for a moment.
     @State private var blockedNote = false
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private var state: PickerState { PickerState(model: model, chat: chat) }
 
@@ -196,7 +197,7 @@ private struct EffortPage: View {
                     let shown = held ?? state.level
                     Text(title(state))
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(Ink.primary)
+                        .foregroundStyle(titleInk(state))
                         .id(title(state))
                         // The new word comes up from below as effort rises and down from above as
                         // it falls; the old one blurs out where it is, since it leaves with the
@@ -234,6 +235,13 @@ private struct EffortPage: View {
     private func title(_ state: PickerState) -> String {
         guard let option = state.option, !option.efforts.isEmpty else { return "Standard" }
         return (held ?? state.level).map(ModelMenu.effortName) ?? "Default"
+    }
+
+    /// The level's name in its own heat, the way the rail burns at it; white where there's no
+    /// level to name, and under Increase Contrast.
+    private func titleInk(_ state: PickerState) -> Color {
+        guard contrast != .increased, state.option?.efforts.isEmpty == false, let level = held ?? state.level else { return Ink.primary }
+        return EffortScale.ink(level)
     }
 
     /// Whether the title's new word comes up from below, as effort rises, or down from above.

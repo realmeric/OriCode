@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// What each effort level says about itself, and how bright its part of the rail is.
+/// What each effort level says about itself, and how hot its part of the rail burns.
 enum EffortScale {
     /// One line each, from Claude Code's own /effort wording. The clause after the dot under Max
     /// and Ultracode is what they cost, drawn in the session's usage band.
@@ -21,25 +21,38 @@ enum EffortScale {
         level == "max" || level == Effort.ultracode
     }
 
-    /// How strong Claude's orange is at the thumb: deeper the harder Claude thinks.
-    static func strength(_ level: String) -> Double {
+    /// How a level burns. The fill is Claude's orange at full strength at every level, since
+    /// thinned orange mixes with the glass behind it and reads brown; what rises with the level
+    /// is how far back from the thumb it starts to pale (`core`), how far toward ember it gets
+    /// there (`heat`), how white the thumb is (`white`), and how far its glow reaches.
+    struct Burn {
+        let core: CGFloat
+        let heat: Double
+        let white: Double
+        let glow: Double
+        let reach: CGFloat
+    }
+
+    static func burn(_ level: String) -> Burn {
         switch level {
-        case "low": 0.45
-        case "medium": 0.56
-        case "high": 0.68
-        case "xhigh": 0.8
-        default: 0.94
+        case "low": Burn(core: 0, heat: 0.06, white: 0.45, glow: 0.2, reach: 5)
+        case "medium": Burn(core: 22, heat: 0.12, white: 0.5, glow: 0.26, reach: 6)
+        case "high": Burn(core: 32, heat: 0.2, white: 0.56, glow: 0.32, reach: 7)
+        case "xhigh": Burn(core: 44, heat: 0.3, white: 0.63, glow: 0.4, reach: 8)
+        case "max": Burn(core: 56, heat: 0.4, white: 0.8, glow: 0.6, reach: 9)
+        case Effort.ultracode: Burn(core: 96, heat: 0.55, white: 0.84, glow: 0.6, reach: 11)
+        default: Burn(core: 0, heat: 0, white: 0.8, glow: 0, reach: 0)
         }
     }
 
-    /// The stretch before the thumb that burns hotter at the top of the scale: where it starts,
-    /// back from the thumb's centre, and how far toward ember it gets there. Never white.
-    static func core(_ level: String) -> (length: CGFloat, heat: Double)? {
-        switch level {
-        case "max": (56, 0.4)
-        case Effort.ultracode: (96, 0.55)
-        default: nil
-        }
+    /// The fill at the thumb: Claude's orange paled toward ember by the level's heat.
+    static func hot(_ level: String) -> Color {
+        Ink.claude.mix(with: Ink.ember, by: burn(level).heat, in: .device)
+    }
+
+    /// The level's name, a little paler than the rail at its thumb so it reads on the glass.
+    static func ink(_ level: String) -> Color {
+        Ink.claude.mix(with: Ink.ember, by: min(1, burn(level).heat * 1.25 + 0.05), in: .device)
     }
 }
 
@@ -91,6 +104,8 @@ struct EffortRail: View {
     static let row: CGFloat = 32
     static let rail: CGFloat = 24
     static let thumb: CGFloat = 32
+    /// How much fill shows left of the thumb at the lowest level, so Low reads as lit too.
+    static let cap: CGFloat = 13
 
     var height: CGFloat { compact ? Self.row : Self.row + 16 }
 
@@ -99,7 +114,7 @@ struct EffortRail: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let track = EffortTrack(levels: stops, start: Self.thumb / 2, end: geometry.size.width - Self.thumb / 2, blocked: blocked)
+            let track = EffortTrack(levels: stops, start: Self.thumb / 2 + Self.cap, end: geometry.size.width - Self.thumb / 2, blocked: blocked)
             let xs = track.positions
             let stop = heldStop ?? index
             let centre = thumbX ?? stop.map { xs[$0] } ?? track.start
@@ -125,12 +140,14 @@ struct EffortRail: View {
                         .offset(y: (Self.row - Self.rail) / 2)
                 }
                 ForEach(stops.indices, id: \.self) { mark in
-                    stopMark(mark, onFill: stop != nil && xs[mark] <= centre)
+                    // The pour lights the stops it passes on the way to the thumb.
+                    stopMark(mark, onFill: stop != nil && poured && xs[mark] <= centre)
+                        .animation(.easeOut(duration: 0.14).delay(0.05 + 0.4 * xs[mark] / max(centre, 1)), value: poured)
                         .position(x: xs[mark], y: Self.row / 2)
                 }
                 if let ghost, let at = stops.firstIndex(of: ghost), at != stop {
                     Circle()
-                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 1.5)
+                        .fill(Color.white.opacity(0.12))
                         .frame(width: Self.thumb, height: Self.thumb)
                         .position(x: xs[at], y: Self.row / 2)
                         .transition(.opacity.animation(Motion.fade))
@@ -258,22 +275,36 @@ struct EffortRail: View {
         return ModelMenu.effortName(level) + (effort == nil ? ", default" : "")
     }
 
-    /// Claude's orange, since effort is how hard Claude thinks: faint at the rail's start and
-    /// deepening toward the thumb, more at each level, and at the top of the scale burning paler
-    /// over its last stretch, as if the thumb were a lamp in it.
+    /// Claude's orange, since effort is how hard Claude thinks, lit like a tube: full strength
+    /// at every level, paling toward ember over a stretch before the thumb that grows with the
+    /// level, brighter along its top and shaded along its bottom, with a line of light under the
+    /// top edge like the composer's. Its colours move with the thumb's own spring.
     private func fill(level: String, width: CGFloat) -> some View {
-        let deep = Ink.claude.opacity(EffortScale.strength(level))
-        var stops: [Gradient.Stop] = [.init(color: Ink.claude.opacity(0.3), location: 0)]
-        if let core = EffortScale.core(level), width > 0 {
-            stops.append(.init(color: deep, location: max(0, 1 - core.length / width)))
-            stops.append(.init(color: Ink.claude.mix(with: Ink.ember, by: core.heat, in: .device), location: 1))
-        } else {
-            stops.append(.init(color: deep, location: 1))
-        }
+        let burn = EffortScale.burn(level)
+        let stops: [Gradient.Stop] = [
+            .init(color: Ink.claude, location: 0),
+            .init(color: Ink.claude, location: width > 0 ? max(0, 1 - burn.core / width) : 1),
+            .init(color: EffortScale.hot(level), location: 1),
+        ]
+        let edge = width > 16 ? min(0.5, 10 / (width - 16)) : 0.5
         return Capsule()
             .fill(LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing))
+            .overlay {
+                Capsule()
+                    .fill(LinearGradient(stops: [.init(color: .white.opacity(0.14), location: 0), .init(color: .clear, location: 0.45),
+                                                 .init(color: .black.opacity(0.12), location: 1)],
+                                         startPoint: .top, endPoint: .bottom))
+            }
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .white.opacity(0.28), location: edge),
+                                                 .init(color: .white.opacity(0.28), location: 1 - edge), .init(color: .clear, location: 1)],
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 1)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 2)
+            }
             .frame(width: width, height: Self.rail)
-            .animation(Motion.fade, value: level)
     }
 
     /// Fast mode's streaks, drawn once and still, for Reduce Motion.
@@ -298,26 +329,36 @@ struct EffortRail: View {
                 .scaleEffect(hover ? 1.2 : 1)
         } else if mark == homeIndex {
             Circle()
-                .strokeBorder(onFill ? Color.black.opacity(0.3) : Color.white.opacity(0.55), lineWidth: 1.5)
+                .strokeBorder(onFill ? Ink.ember.opacity(0.9) : Color.white.opacity(0.5), lineWidth: 1.5)
                 .frame(width: hover ? 11 : 9, height: hover ? 11 : 9)
+                .shadow(color: Ink.ember.opacity(onFill ? 0.8 : 0), radius: 2)
         } else {
+            // A stop the fill has passed is a lamp, lit ember; one ahead of it is a faint point.
             Circle()
-                .fill(onFill ? Color.black.opacity(0.25) : Color.white.opacity(0.3))
-                .frame(width: hover ? 6 : 4, height: hover ? 6 : 4)
+                .fill(onFill ? Ink.ember.opacity(0.9) : Color.white.opacity(0.24))
+                .frame(width: hover ? 6 : onFill ? 4.5 : 4, height: hover ? 6 : onFill ? 4.5 : 4)
+                .shadow(color: Ink.ember.opacity(onFill ? 0.9 : 0), radius: 2)
         }
     }
 
-    /// The part you hold, in the send button's white, carrying OriCode's dot: the main head.
+    /// The part you hold: a bead of the rail's own heat carrying OriCode's dot, the main head.
     /// At Ultracode six rays light around it, the heads it runs on every task.
     private func thumb(level: String, holding: Bool) -> some View {
         let ultra = level == Effort.ultracode
+        let burn = EffortScale.burn(level)
+        let hot = EffortScale.hot(level)
+        // Lit from below by the level's heat: pale at the top, warm at the bottom, and white only
+        // where the top of the scale earns it. No highlight spot: round a black dot it reads as an eye.
+        let body = LinearGradient(stops: [
+            .init(color: hot.mix(with: .white, by: burn.white + (1 - burn.white) * 0.75, in: .device), location: 0),
+            .init(color: hot.mix(with: .white, by: burn.white + (1 - burn.white) * 0.56, in: .device), location: 0.45),
+            .init(color: hot.mix(with: .white, by: burn.white, in: .device), location: 1),
+        ], startPoint: .top, endPoint: .bottom)
         return ZStack {
             Circle()
-                .fill(RadialGradient(colors: [Color(red: 0xF7 / 255, green: 0xF7 / 255, blue: 0xF9 / 255),
-                                              Color(red: 0xD1 / 255, green: 0xD1 / 255, blue: 0xD6 / 255)],
-                                     center: .init(x: 0.3, y: 0.25), startRadius: 1, endRadius: Self.thumb * 0.75))
+                .fill(body)
             Circle()
-                .strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.1)], startPoint: .top, endPoint: .bottom),
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.6), .white.opacity(0.08)], startPoint: .top, endPoint: .bottom),
                               lineWidth: 1)
             Circle()
                 .fill(Color.black.opacity(0.85))
@@ -331,12 +372,10 @@ struct EffortRail: View {
         }
         .frame(width: Self.thumb, height: Self.thumb)
         .shadow(color: .black.opacity(0.3), radius: holding ? 7 : 4, y: 1.5)
-        // Wider at Ultracode, the corona of six heads rather than one.
-        .shadow(color: Ink.claude.opacity(EffortScale.spendsFaster(level) ? 0.6 : 0), radius: ultra ? 11 : 9)
+        // A glow that reaches further at each level, widest at Ultracode, the corona of six heads.
+        .shadow(color: Ink.claude.opacity(burn.glow + (holding ? 0.06 : 0)), radius: burn.reach + (holding ? 1 : 0))
         .scaleEffect(holding ? 1.08 : 1)
         .animation(Motion.move, value: holding)
-        .animation(Motion.fade, value: EffortScale.spendsFaster(level))
-        .animation(Motion.fade, value: ultra)
     }
 
     private func drag(_ track: EffortTrack) -> some Gesture {
