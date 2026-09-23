@@ -109,6 +109,7 @@ actor Engine {
             for await line in replies { await self?.receive(line) }
         }
         try? FileManager.default.createDirectory(at: Self.logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        Self.tidyLogs()
         if !FileManager.default.fileExists(atPath: Self.logFile.path) {
             FileManager.default.createFile(atPath: Self.logFile.path, contents: nil)
         }
@@ -116,6 +117,21 @@ actor Engine {
         _ = try? log?.seekToEnd()
         Self.lines(from: errors.fileHandleForReading, onEnd: {}) { line in
             try? log?.write(contentsOf: Data((line + "\n").utf8))
+        }
+    }
+
+    /// engine.log takes every line the engine prints, and tracing adds the CLI's own debug logs,
+    /// so neither is left to grow: the first starts over past 5MB, the others go after a week.
+    private nonisolated static func tidyLogs() {
+        let files = FileManager.default
+        if let size = (try? files.attributesOfItem(atPath: logFile.path))?[.size] as? Int, size > 5_000_000 {
+            try? files.removeItem(at: logFile)
+        }
+        let cli = logFile.deletingLastPathComponent().appending(path: "cli")
+        let weekAgo = Date.now.addingTimeInterval(-7 * 86_400)
+        let logs = (try? files.contentsOfDirectory(at: cli, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for log in logs where ((try? log.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .now) < weekAgo {
+            try? files.removeItem(at: log)
         }
     }
 
