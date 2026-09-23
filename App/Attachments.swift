@@ -78,7 +78,9 @@ extension AppModel {
     func installPasteMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                  event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, project != nil
+                  event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, project != nil,
+                  // A paste in the terminal is the terminal's.
+                  terminals.owner(of: event.window?.firstResponder) == nil
             else { return event }
             let board = NSPasteboard.general
             guard board.string(forType: .string) == nil,

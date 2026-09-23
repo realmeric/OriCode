@@ -42,7 +42,10 @@ struct Composer: View {
                 .allowsHitTesting(false)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+            top = $0
+            model.composerTop = $0
+        }
         // The model button's picker rises out of the composer's right end, the way the slash
         // menu rises out of its left; with the composer in the middle of an empty thread there
         // isn't room above it under the title bar, so it drops below instead.
@@ -81,10 +84,13 @@ struct Composer: View {
             if over { Haptics.detent() }
         }
         .onAppear { focused = true }
-        .onChange(of: model.composerFocus) { focused = true }
+        // Not while the terminal is up, which has the keyboard until it goes.
+        .onChange(of: model.composerFocus) {
+            if !model.terminalShown { focused = true }
+        }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
-            focused = waiting == nil
+            if !model.terminalShown { focused = waiting == nil }
         }
     }
 

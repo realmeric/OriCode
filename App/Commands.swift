@@ -25,6 +25,9 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut("b")
             Button("Command Center…") { model.toggleCommandCenter() }
                 .keyboardShortcut("k")
+            Button(model.terminalShown ? "Hide Terminal" : "Terminal") { model.toggleTerminal() }
+                .keyboardShortcut("j")
+                .disabled(model.project == nil)
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut("p")
                 .disabled(model.chat == nil)

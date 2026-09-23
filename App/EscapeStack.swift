@@ -10,23 +10,36 @@ extension AppModel {
         }
         if openFile != nil {
             closeFile()
+            focusTerminal()
             return true
         }
         if fileFinderShown {
             toggleFileFinder()
+            focusTerminal()
             return true
         }
         if commandCenterShown {
             // Back one level, and at the top, away.
-            if !palette.pop() { closeCommandCenter() }
+            if !palette.pop() {
+                closeCommandCenter()
+                focusTerminal()
+            }
             return true
         }
         if changesShown {
             closeChanges()
+            focusTerminal()
             return true
         }
+        // The drawer's rename field sits over the terminal.
         if renamingChatID != nil {
             renamingChatID = nil
+            return true
+        }
+        if terminalShown {
+            // While a program holds the shell (vim, fzf, claude), Esc is that program's.
+            if terminals.owner(of: NSApp.mainWindow?.firstResponder)?.busy == true { return false }
+            closeTerminal()
             return true
         }
         if drawerShown {

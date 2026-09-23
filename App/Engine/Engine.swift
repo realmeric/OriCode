@@ -96,6 +96,12 @@ actor Engine {
             Task { await self?.exited(generation: current, status: status) }
         }
         try process.run()
+        // The app's ends of the pipes stay out of the terminal's shells, which inherit whatever
+        // isn't marked: a job left running there would otherwise hold the engine's stdin open
+        // after the app quits, and the engine lives until stdin ends.
+        for end in [input.fileHandleForWriting, output.fileHandleForReading, errors.fileHandleForReading] {
+            Self.closeOnExec(end)
+        }
         self.process = process
         stdin = input.fileHandleForWriting
         Self.logger.notice("engine started with \(node.path, privacy: .public)")
@@ -114,10 +120,16 @@ actor Engine {
             FileManager.default.createFile(atPath: Self.logFile.path, contents: nil)
         }
         let log = try? FileHandle(forWritingTo: Self.logFile)
+        if let log { Self.closeOnExec(log) }
         _ = try? log?.seekToEnd()
         Self.lines(from: errors.fileHandleForReading, onEnd: {}) { line in
             try? log?.write(contentsOf: Data((line + "\n").utf8))
         }
+    }
+
+    private nonisolated static func closeOnExec(_ handle: FileHandle) {
+        let fd = handle.fileDescriptor
+        _ = fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC)
     }
 
     /// engine.log takes every line the engine prints, and tracing adds the CLI's own debug logs,

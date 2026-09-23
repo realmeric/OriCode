@@ -3,6 +3,7 @@ import MarkdownUI
 import SwiftUI
 
 struct TranscriptView: View {
+    @Environment(AppModel.self) private var model
     let conversation: Conversation
     let cwd: String
     // Starting at .bottom scrolled past a long transcript's lazily measured content and left the
@@ -31,7 +32,8 @@ struct TranscriptView: View {
                 }
                 ForEach(Array(zip(shown.indices, shown)), id: \.1.id) { index, item in
                     ItemView(
-                        item: item, cwd: cwd, listening: conversation.waitingAsk?.requestId,
+                        // Not while the terminal is up: Return typed there mustn't answer the card.
+                        item: item, cwd: cwd, listening: model.terminalShown ? nil : conversation.waitingAsk?.requestId,
                         live: conversation.running && index == conversation.items.count - 1)
                         .padding(.top, index == shown.startIndex ? 0 : spacing(before: item, after: conversation.items[index - 1]))
                         .transition(Self.arrival(of: item))

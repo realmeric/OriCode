@@ -69,10 +69,15 @@ struct RootView: View {
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.openFile != nil { model.closeFile() }
                     if model.changesShown { model.closeChanges() }
+                    if model.terminalShown { model.closeTerminal() }
                 })
             }
         }
         .ignoresSafeArea(edges: .top)
+        // The picker rises out of the composer into the terminal's place, and can't draw over it.
+        .onChange(of: model.modelPickerShown) { _, shown in
+            if shown { model.closeTerminal() }
+        }
         .confirmationDialog(
             "Delete “\(model.deletingChat?.title ?? "")”?",
             isPresented: Binding(get: { model.deletingChat != nil }, set: { if !$0 { model.deletingChat = nil } }),
@@ -133,6 +138,22 @@ struct RootView: View {
                 .padding(.horizontal, 90)
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 90 : 0)
                 .ignoresSafeArea()
+        }
+        .overlay(alignment: .top) {
+            if model.terminalShown {
+                // Over the conversation's side of the window, down to 12pt above the composer
+                // however tall it has grown, and under the other panels, which can open over it.
+                GeometryReader { area in
+                    TerminalOverlay()
+                        .frame(maxWidth: 900)
+                        .frame(height: max(60, model.composerTop - area.frame(in: .global).minY - 24))
+                        .padding(.top, 12)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal, 40)
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .overlay(alignment: .top) {
             if let file = model.openFile {

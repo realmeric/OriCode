@@ -112,6 +112,11 @@ final class AppModel {
     var branches: [UUID: BranchInfo] = [:]
     var changesShown = false
     var commandCenterShown = false
+    /// ⌘J's terminal, and the shells behind it, one per folder.
+    var terminalShown = false
+    let terminals = TerminalStore()
+    /// Where the composer's top edge is in the window, which the terminal stops above.
+    var composerTop: CGFloat = 0
     /// ⌘K's levels, what's typed at each, and what it's doing.
     let palette = PaletteState()
     /// The model button's picker, here so Esc can close it before anything under it.
