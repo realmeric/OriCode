@@ -21,14 +21,14 @@ enum EffortScale {
         level == "max" || level == Effort.ultracode
     }
 
-    /// How bright the fill's head is at the thumb: light gathering as Claude thinks harder.
-    static func brightness(_ level: String) -> Double {
+    /// How strong Claude's orange is at the thumb: deeper the harder Claude thinks.
+    static func strength(_ level: String) -> Double {
         switch level {
-        case "low": 0.36
-        case "medium": 0.44
-        case "high": 0.52
-        case "xhigh": 0.60
-        default: 0.72
+        case "low": 0.45
+        case "medium": 0.56
+        case "high": 0.68
+        case "xhigh": 0.8
+        default: 0.94
         }
     }
 }
@@ -233,10 +233,11 @@ struct EffortRail: View {
         return ModelMenu.effortName(level) + (effort == nil ? ", default" : "")
     }
 
-    /// Light gathering toward the thumb, brighter the harder Claude thinks.
+    /// Claude's orange, since effort is how hard Claude thinks: faint at the rail's start and
+    /// deepening toward the thumb, more at each level.
     private func fill(level: String, width: CGFloat) -> some View {
         Capsule()
-            .fill(LinearGradient(colors: [Color.white.opacity(0.16), Color.white.opacity(EffortScale.brightness(level))],
+            .fill(LinearGradient(colors: [Ink.claude.opacity(0.3), Ink.claude.opacity(EffortScale.strength(level))],
                                  startPoint: .leading, endPoint: .trailing))
             .frame(width: width, height: Self.rail)
             .animation(Motion.fade, value: level)
@@ -247,7 +248,7 @@ struct EffortRail: View {
         VStack(alignment: .trailing, spacing: 4) {
             ForEach([0.5, 0.8, 0.35], id: \.self) { share in
                 Capsule()
-                    .fill(LinearGradient(colors: [Color.white.opacity(0.7), .clear], startPoint: .leading, endPoint: .trailing))
+                    .fill(LinearGradient(colors: [Ink.ember.opacity(0.8), .clear], startPoint: .leading, endPoint: .trailing))
                     .frame(width: max(width * share, 0), height: 1.5)
             }
         }
@@ -297,7 +298,7 @@ struct EffortRail: View {
         }
         .frame(width: Self.thumb, height: Self.thumb)
         .shadow(color: .black.opacity(0.3), radius: holding ? 7 : 4, y: 1.5)
-        .shadow(color: .white.opacity(EffortScale.spendsFaster(level) ? 0.35 : 0), radius: 9)
+        .shadow(color: Ink.claude.opacity(EffortScale.spendsFaster(level) ? 0.6 : 0), radius: 9)
         .scaleEffect(holding ? 1.08 : 1)
         .animation(Motion.move, value: holding)
         .animation(Motion.fade, value: EffortScale.spendsFaster(level))

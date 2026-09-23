@@ -19,8 +19,11 @@ enum Ink {
     static let faint = Color.white.opacity(0.30)
     static let added = Color(red: 0.55, green: 0.85, blue: 0.60)
     static let deleted = Color(red: 0.95, green: 0.55, blue: 0.55)
-    /// Claude's orange, #D97757, on Claude's mark beside the model's name and nowhere else.
+    /// Claude's orange, #D97757, on Claude's mark beside the model's name and on the effort rail,
+    /// which is Claude thinking, and nowhere else.
     static let claude = Color(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255)
+    /// The rail's particles and still streaks: white warmed toward Claude's orange.
+    static let ember = Color(red: 1, green: 0.86, blue: 0.78)
 }
 
 enum Type {

@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// What moves inside the effort rail's fill: motes drifting toward the thumb at Max and
-/// Ultracode, a burst thrown back as the thumb arrives there, and streaks running back from the
-/// thumb while the CLI serves the thread fast. All of it is Core Animation, so the render server
+/// What moves inside the effort rail's fill, warm against Claude's orange: motes drifting toward
+/// the thumb at Max and Ultracode, a burst thrown back as the thumb arrives there, and streaks
+/// running back from the thumb while the CLI serves the thread fast. All of it is Core Animation, so the render server
 /// draws it and the app does nothing per frame, and it runs only while the picker is on screen.
 struct EffortEffects: NSViewRepresentable {
     var motes: Bool
@@ -179,7 +179,7 @@ struct EffortEffects: NSViewRepresentable {
 
         private func ignite() {
             let band = CAGradientLayer()
-            band.colors = [NSColor.clear.cgColor, NSColor.white.withAlphaComponent(0.8).cgColor, NSColor.clear.cgColor]
+            band.colors = [NSColor.clear.cgColor, Self.ember.copy(alpha: 0.85)!, NSColor.clear.cgColor]
             band.startPoint = CGPoint(x: 0, y: 0.5)
             band.endPoint = CGPoint(x: 1, y: 0.5)
             band.frame = CGRect(x: 0, y: bounds.midY - 7, width: 48, height: 14)
@@ -213,10 +213,14 @@ struct EffortEffects: NSViewRepresentable {
             context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: 0), options: [])
         }
 
+        /// A pale ember: the particles' white, warmed to sit in Claude's orange.
+        private static let ember = CGColor(red: 1, green: 0.86, blue: 0.78, alpha: 1)
+
         /// The reasoning at the top of the scale: soft points drifting toward the thumb.
         private static var moteCell: CAEmitterCell {
             let cell = CAEmitterCell()
             cell.contents = dot
+            cell.color = ember
             cell.contentsScale = 2
             cell.birthRate = 8
             cell.lifetime = 2.2
@@ -236,6 +240,7 @@ struct EffortEffects: NSViewRepresentable {
             let cell = CAEmitterCell()
             cell.name = "burst"
             cell.contents = dot
+            cell.color = ember
             cell.contentsScale = 2
             cell.birthRate = 0
             cell.lifetime = 0.5
@@ -264,7 +269,7 @@ struct EffortEffects: NSViewRepresentable {
             cell.scale = 1
             cell.scaleRange = 0.4
             cell.alphaRange = 0.18
-            cell.color = CGColor(gray: 1, alpha: 0.62)
+            cell.color = ember.copy(alpha: 0.62)
             cell.alphaSpeed = -1.2
             return cell
         }
