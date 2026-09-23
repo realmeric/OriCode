@@ -110,8 +110,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
-### Todo: 0.0.81 "Orange"
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -599,7 +597,7 @@ Commit: 359d5b7
 #### K-81 · Release 0.0.81
 As K-12. Tag `v0.0.81`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.81 is 7.7MB, arm64 only, with a 2.7MB binary and a 1.7MB engine; launched with an empty environment, a new thread opened on Opus (1M) at Max showed the rail in orange with its halo, then set to Haiku and Ask from the picker it sent an edit that waited on its card and landed in greet.swift when allowed.
-Commit: pending
+Commit: 1d4fae0
 
 
 ## Exceptions
