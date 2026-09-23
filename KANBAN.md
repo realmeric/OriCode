@@ -110,6 +110,15 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.83 "Heat"
+
+#### K-82 · Heat at the top of the scale
+The top of the rail only drifted motes, and Max and Ultracode looked alike apart from the rays in the thumb; Meriç asked for more. Now the heat goes somewhere. At Max, slugs of light run along the fill and sink into the thumb with the glow round it breathing in as each lands, embers lift off the fill's hot half, a jet of sparks flies off the rim, born white-hot and cooling to Claude's orange, and the fill's last stretch burns paler toward the thumb. Arriving throws embers back out of the thumb that slow and are drawn in again, with a flash of the glow and a spit of sparks. At Ultracode the same heat has six places to go: a wheel of six jets turns with the rays, embers lift off the whole fill, three quicker slugs land at uneven beats, the halo widens, and arriving lights the six jets one after another. When the few seconds of motion end, the rays coast on to where the next ray stands instead of stopping where they are, so the mark rests upright, and the wheel with them. A pointer moving along the rail at the top keeps the heat up and a still one lets it rest. What's thrown off stays about the rail, under a mask that keeps it off the text. The brief's Ink and Motion lines say so.
+Done when: frames at Max and Ultracode show the slugs, embers, sparks and the arrival, and at rest the hot core and an upright mark with nothing moving; OriCode reads 0.0% CPU with the picker open.
+
+#### K-83 · Release 0.0.83
+As K-12. Tag `v0.0.83`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
