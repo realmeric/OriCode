@@ -100,9 +100,19 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
-    /// Types a line into the shell and runs it; ^U first clears anything half typed.
+    /// Types a line into the shell and runs it: ^U first clears anything half typed, and a shell
+    /// that takes bracketed paste gets the line as a paste, so nothing in it acts as a key.
     func type(_ command: String) {
-        view.send(txt: "\u{15}" + command + "\r")
+        Task { @MainActor in
+            // A shell that has only just started gets the line once it has drawn its prompt:
+            // typed sooner, the terminal echoes it once above the prompt.
+            if !view.spoken {
+                for _ in 0..<40 where !view.spoken { try? await Task.sleep(for: .milliseconds(50)) }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            let line = view.getTerminal().bracketedPasteMode ? "\u{1b}[200~" + command + "\u{1b}[201~" : command
+            view.send(txt: "\u{15}" + line + "\r")
+        }
     }
 
     /// Hangs the shell up, as closing a terminal window does, and zsh passes the hangup on to its
@@ -127,7 +137,15 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
 /// The window moves by its background, and a view drawn on clear counts as background, so a drag
 /// to select text would move the window instead.
 final class ShellView: LocalProcessTerminalView {
+    /// Whether the shell has written anything yet.
+    private(set) var spoken = false
+
     override var mouseDownCanMoveWindow: Bool { false }
+
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        spoken = true
+        super.dataReceived(slice: slice)
+    }
 }
 
 /// The shells, one per folder, made the first time a folder's terminal opens.

@@ -276,6 +276,9 @@ extension AppModel {
         // Git, in the thread's folder
         items += gitCommands
 
+        // The terminal
+        items += terminalCommands
+
         // Projects and files
         items.append(PaletteItem(id: "project.list", kind: .command, title: "Switch project…", subtitle: project?.name, icon: "folder",
                                  unavailable: projects.count > 1 ? nil : "There's only one project",
