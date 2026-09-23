@@ -474,7 +474,7 @@ Commit: a50dd35
 #### K-61 · Release v0.7
 As K-12. Tag `v0.7.0`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.7.0, launched with an empty environment, came up as a window named OriCode, and an edit sent in Ask mode on Haiku in a new thread waited on its card, was allowed, and landed in greet.swift.
-Commit: pending
+Commit: 75d2e3a
 
 
 ## Exceptions
