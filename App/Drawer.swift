@@ -33,12 +33,17 @@ struct Drawer: View {
             .padding(.trailing, 8)
             .padding(.top, 2)
             List {
-                ForEach(Array(model.chats.enumerated()), id: \.element.id) { index, chat in
+                let chats = model.chats
+                let pinned = chats.filter(\.pinned).count
+                ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
                     row(chat, index: index)
+                        // Space, not a line, parts the pinned threads from the rest.
+                        .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
                         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
+                .onMove { model.moveThreads(from: $0, to: $1) }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -126,78 +131,87 @@ struct Drawer: View {
     private func row(_ chat: Chat, index: Int) -> some View {
         let selected = chat.id == model.chat?.id
         let peeked = chat.id == model.peekedChatID
-        return Button {
-            model.select(chat)
-        } label: {
-            HStack(spacing: 10) {
-                if let project = chat.project {
-                    ProjectBadge(project: project)
-                }
-                if model.renamingChatID == chat.id {
-                    TextField("Title", text: $draft)
-                        .textFieldStyle(.plain)
-                        .font(Type.body)
-                        .foregroundStyle(Ink.primary)
-                        .focused($renameFocused)
-                        .onSubmit { model.finishRename(chat, to: draft) }
-                        .onChange(of: renameFocused) { _, focused in if !focused { model.finishRename(chat, to: draft) } }
-                        .onAppear {
-                            draft = chat.title
-                            renameFocused = true
-                        }
-                } else {
-                    let missing = !FileManager.default.fileExists(atPath: chat.cwd)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) {
-                            Text(chat.title)
-                                .font(Type.body)
-                                .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            if chat.worktreeBranch != nil {
-                                Image(systemName: "arrow.triangle.branch")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Ink.faint)
-                                    .help(chat.worktreeBranch ?? "")
-                            }
-                        }
-                        if missing {
-                            Text("folder missing")
-                                .font(.system(size: 11))
+        // A row of the list's own rather than a button, which would keep the mouse and leave the
+        // list no drag to reorder with.
+        return HStack(spacing: 10) {
+            if let project = chat.project {
+                ProjectBadge(project: project)
+            }
+            if model.renamingChatID == chat.id {
+                TextField("Title", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(Type.body)
+                    .foregroundStyle(Ink.primary)
+                    .focused($renameFocused)
+                    .onSubmit { model.finishRename(chat, to: draft) }
+                    .onChange(of: renameFocused) { _, focused in if !focused { model.finishRename(chat, to: draft) } }
+                    .onAppear {
+                        draft = chat.title
+                        renameFocused = true
+                    }
+            } else {
+                let missing = !FileManager.default.fileExists(atPath: chat.cwd)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text(chat.title)
+                            .font(Type.body)
+                            .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if chat.worktreeBranch != nil {
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 10))
                                 .foregroundStyle(Ink.faint)
+                                .help(chat.worktreeBranch ?? "")
                         }
                     }
-                }
-                Spacer(minLength: 4)
-                // Only while the thread works or waits, so an idle row gives its title the room.
-                let heads = model.heads(of: chat)
-                let waiting = model.state(of: chat) == .waiting
-                if heads > 0 || waiting {
-                    // Still while the drawer is away: hidden, it stays in the tree, and a turning
-                    // mark would redraw thirty times a second for nobody.
-                    RaysMark(lit: heads, turning: heads > 0 && model.drawerShown, waiting: waiting && model.drawerShown, restingOpacity: 0.28)
-                        .frame(width: 14, height: 14)
-                }
-                if index < 9 {
-                    Text("⌘\(index + 1)")
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.faint)
+                    if missing {
+                        Text("folder missing")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Ink.faint)
+                    }
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(height: 34)
-            .background(
-                selected || peeked ? Surface.selected : hovered == chat.id ? Surface.hover : .clear,
-                in: .rect(cornerRadius: 8, style: .continuous))
-            .contentShape(.rect)
-            .offset(x: peeked ? 6 : 0)
-            .animation(Motion.move, value: peeked)
+            Spacer(minLength: 4)
+            // Only while the thread works or waits, so an idle row gives its title the room.
+            let heads = model.heads(of: chat)
+            let waiting = model.state(of: chat) == .waiting
+            if heads > 0 || waiting {
+                // Still while the drawer is away: hidden, it stays in the tree, and a turning
+                // mark would redraw thirty times a second for nobody.
+                RaysMark(lit: heads, turning: heads > 0 && model.drawerShown, waiting: waiting && model.drawerShown, restingOpacity: 0.28)
+                    .frame(width: 14, height: 14)
+            }
+            if chat.pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9))
+                    .rotationEffect(.degrees(45))
+                    .foregroundStyle(Ink.faint)
+                    .help("Pinned")
+            }
+            if index < 9 {
+                Text("⌘\(index + 1)")
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.faint)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(
+            selected || peeked ? Surface.selected : hovered == chat.id ? Surface.hover : .clear,
+            in: .rect(cornerRadius: 8, style: .continuous))
+        .contentShape(.rect)
+        .offset(x: peeked ? 6 : 0)
+        .animation(Motion.move, value: peeked)
+        .onTapGesture { model.select(chat) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
+        .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { model.select(chat) }
         .help(chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : "")
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
+            Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
             Button("Rename") { model.startRename(chat) }
             Button("Delete…") { model.askToDelete(chat) }
         }

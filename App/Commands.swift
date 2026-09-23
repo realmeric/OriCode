@@ -82,6 +82,10 @@ struct OriCodeCommands: Commands {
                 ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
             }
             Divider()
+            Button(model.chat?.pinned == true ? "Unpin Thread" : "Pin Thread") {
+                if let chat = model.chat { withAnimation(Motion.move) { model.togglePin(chat) } }
+            }
+            .disabled(model.chat?.started != true)
             Button("Rename Thread…") {
                 if let chat = model.chat { model.startRename(chat) }
             }

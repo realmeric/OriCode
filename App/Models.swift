@@ -45,6 +45,11 @@ final class Chat {
     /// Whether it has had its first message. Until then it's a draft: out of the drawer, and the
     /// thread ⌘N comes back to instead of making another.
     var started: Bool = false
+    /// Pinned threads stay at the top of the drawer.
+    var pinned: Bool = false
+    /// Where it was put among the pinned threads, or among the rest once one of them was dragged;
+    /// nil for a thread that never was, which sits above those that were, newest first.
+    var position: Double?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {
@@ -101,6 +106,20 @@ enum Store {
             return try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: configuration)
         } catch {
             fatalError("The store at \(folder.path) can't be opened: \(error)")
+        }
+    }
+}
+
+extension Chat {
+    /// The drawer's order: pinned threads first, as they were put, then the rest, a thread never
+    /// placed on top and newest first, the others as they were dragged.
+    static func drawerOrder(_ a: Chat, _ b: Chat) -> Bool {
+        if a.pinned != b.pinned { return a.pinned }
+        switch (a.position, b.position) {
+        case let (x?, y?) where x != y: return x < y
+        case (nil, _?): return true
+        case (_?, nil): return false
+        default: return a.createdAt > b.createdAt
         }
     }
 }

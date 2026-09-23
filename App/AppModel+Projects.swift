@@ -13,10 +13,37 @@ extension AppModel {
         return projects.first { $0.id == selectedProjectID }
     }
 
-    /// Every project's threads in one list, newest first: the drawer, ⌘1–9 and the Thread menu.
-    /// A draft isn't one of them until its first message.
+    /// Every project's threads in one list, in the drawer's order: the drawer, ⌘1–9 and the
+    /// Thread menu. A draft isn't one of them until its first message.
     var chats: [Chat] {
-        projects.flatMap(\.chats).filter(\.started).sorted { $0.createdAt > $1.createdAt }
+        projects.flatMap(\.chats).filter(\.started).sorted(by: Chat.drawerOrder)
+    }
+
+    /// Pinning puts a thread after the pinned ones; unpinning puts it back on top of the rest.
+    func togglePin(_ chat: Chat) {
+        if chat.pinned {
+            chat.pinned = false
+            chat.position = nil
+        } else {
+            chat.position = (chats.filter(\.pinned).compactMap(\.position).max() ?? -1) + 1
+            chat.pinned = true
+        }
+        save()
+    }
+
+    /// A drag in the drawer. A row moves within the pinned threads or within the rest; one dropped
+    /// above a pinned thread is pinned there, and a pinned one dropped below the rest's first row
+    /// isn't pinned any more. Both groups then keep the order the drag left.
+    func moveThreads(from source: IndexSet, to destination: Int) {
+        var list = chats
+        guard let first = source.first, list.indices.contains(first) else { return }
+        let moving = list[first]
+        let pinnedCount = list.filter(\.pinned).count
+        moving.pinned = moving.pinned ? destination <= pinnedCount : destination < pinnedCount
+        list.move(fromOffsets: source, toOffset: destination)
+        for (index, chat) in list.filter(\.pinned).enumerated() { chat.position = Double(index) }
+        for (index, chat) in list.filter({ !$0.pinned }).enumerated() { chat.position = Double(index) }
+        save()
     }
 
     var chat: Chat? {
