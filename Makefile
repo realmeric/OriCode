@@ -21,13 +21,18 @@ run: project
 
 engine: $(BUILD)/engine/.stamp
 
+# Staged for the app: no dev tools, no platform binaries (the app runs the user's own claude),
+# no peer dependencies, which sdk.mjs never imports, and none of the SDK's files but sdk.mjs
+# that it needs; the import at the end fails the build if a new SDK does need one.
 $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 	@if [ -f engine/package.json ]; then \
 		set -e; \
 		( cd engine && { [ -d node_modules ] || npm ci --silent; } && npx tsc --noEmit -p . ); \
 		rm -rf $(BUILD)/engine && mkdir -p $(BUILD)/engine; \
 		cp engine/*.ts engine/package.json engine/package-lock.json $(BUILD)/engine/; \
-		cd $(BUILD)/engine && npm ci --omit=dev --omit=optional --silent; \
+		cd $(BUILD)/engine && npm ci --omit=dev --omit=optional --omit=peer --silent; \
+		( cd node_modules/@anthropic-ai/claude-agent-sdk && rm -f bridge.* browser-sdk.* extractFromBunfs.* *.d.ts README.md ); \
+		node --input-type=module -e "await import('@anthropic-ai/claude-agent-sdk')"; \
 	else mkdir -p $(BUILD)/engine; fi
 	@touch $@
 

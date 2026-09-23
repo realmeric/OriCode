@@ -110,10 +110,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-67 · An engine without what it never loads
-The Agent SDK's code imports nothing but Node's own modules. The 42MB beside it are its peer dependencies (Anthropic's API SDK, the MCP SDK, zod and theirs), which npm installs and the engine never loads. The engine is staged without them.
-Done when: the app's engine folder is under 6MB and a turn still runs.
-
 #### K-68 · A smaller binary
 Release builds are Apple silicon only and stripped of symbols: the 12.8MB universal binary becomes about 2.6MB.
 Done when: the installed binary is arm64 only and under 4MB, and the app runs.
@@ -541,6 +537,12 @@ Commit: 6e8af1a
 An MIT license, as T3 Code has; a README that says what OriCode is and isn't (not made or endorsed by Anthropic, runs on your own Claude Code login, never touches a credential); third-party notices for MarkdownUI, Highlightr and highlight.js, the Agent SDK (Anthropic's terms, installed from npm, not relicensed) and Claude's logo (from simple-icons, Anthropic's trademark). The repo stops tracking what shouldn't go out: `OriCode 2.xcodeproj`, an iCloud copy of the generated project, and `docs/reference.png`, a screenshot of another company's app. About's Show the source hides when that folder isn't on the Mac.
 Done when: the repo has LICENSE, README and THIRD_PARTY_NOTICES, tracks no generated project or third-party screenshot, and a fresh clone builds.
 Notes: LICENSE is MIT with realmeric as the holder. The README says what the app needs, how to build it and how it reaches Claude, and that it isn't made or endorsed by Anthropic; THIRD_PARTY_NOTICES lists MarkdownUI, NetworkImage, swift-cmark, Highlightr and highlight.js with their licenses, the Agent SDK as Anthropic's and outside the repo's license, and the Claude logo as Simple Icons' CC0 file of Anthropic's mark. The repo stopped tracking OriCode 2.xcodeproj, which came in with K-33, and docs/reference.png, which stays on disk and in .gitignore; *.xcodeproj/ is ignored now, so iCloud's numbered copies can't come back in. A scan of the tracked files found no keys, tokens or home-folder paths. Both files are still in the history, and every commit carries the author's email; rewriting that is Meriç's call before the repo goes public. Checked: a fresh clone in a scratch folder, with no docs folder and no project file, generated the project with XcodeGen, installed the engine and built the app.
+Commit: f605b3b
+
+#### K-67 · An engine without what it never loads
+The Agent SDK's code imports nothing but Node's own modules. The 42MB beside it are its peer dependencies (Anthropic's API SDK, the MCP SDK, zod and theirs), which npm installs and the engine never loads. The engine is staged without them.
+Done when: the app's engine folder is under 6MB and a turn still runs.
+Notes: npm ci now also omits peer dependencies, and the staging step keeps only sdk.mjs, package.json, the manifests and the license of the SDK: its bridge, browser build and type declarations were another 3.5MB that sdk.mjs never references. The step ends by importing the SDK, so a version that needs a removed file fails the build instead of the app. The engine folder went from 47MB to 1.6MB, beating the card's 6MB. Checked: a Haiku turn through the staged copy started the CLI and got its answer, and the rebuilt app carried the 1.6MB engine, which answered hello with the models.
 Commit: pending
 
 
