@@ -110,6 +110,19 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.86 "Lit"
+
+#### K-84 · Every level lit
+Below Max the rail looked unfinished. Claude's orange thinned to between 30 and 56% mixed with whatever was behind the glass and read brown, Low's whole fill sat under the thumb so it showed no orange at all, the stops on the fill were black specks and the thumb was the same grey knob at every level. Meriç said the picker was dragging the app back. The fill becomes Claude's orange at full strength at every level, lit like a tube, paling toward ember over a stretch before the thumb that grows with the level. Low's stop moves in so a cap of fill always shows. Stops the fill has passed light as ember lamps, and the pour lights them in order as the picker opens. The thumb becomes a bead lit from below by its level's heat, white only at the top of the scale, with a glow that reaches further at each level, and the level's name takes its colour. Back to Defaults' ghost becomes a faint disc, and Auto's icon stops using sparkles, which belong to the rail now. The brief's Ink line says so.
+Done when: frames at Low, Medium, High, Extra high, Max and Ultracode show solid orange with lit lamps, Low's cap, each level's bead and the title in the level's colour.
+
+#### K-85 · Every level arrives
+Moving to a level below Max changed a word and nothing else. Now light runs up the fill into the bead when the level rises, sized to the level: a slug at Medium, a brighter one and a few embers at High, a sweep and lingering motes at Extra high, and the lamps it passes flare. When the level falls, the heat drains back into the bead and the lamps go out behind it. Held arrow keys play one arrival for the level they stop on. Below Extra high a change moves for under a second. The brief's Motion line says so.
+Done when: frames catch an arrival at Medium, High and Extra high and the cooling on the way down, nothing moves in the still frame after each, and OriCode reads 0.0% CPU with the picker open.
+
+#### K-86 · Release 0.0.86
+As K-12. Tag `v0.0.86`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
