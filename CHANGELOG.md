@@ -2,6 +2,12 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.83 "Heat" - 2026-09-23
+
+- Max and Ultracode run hot. At Max, slugs of light glide along the rail and sink into the thumb as its glow breathes in, embers lift off the fill, and sparks fly off the thumb, born white-hot and cooling to Claude's orange. Arriving throws embers out of the thumb and draws them back in.
+- At Ultracode a wheel of six jets of sparks turns with the rays, embers rise along the whole rail and the glow round the thumb is wider. When the motion ends the rays coast to rest upright instead of stopping wherever they were.
+- Moving the pointer along the rail at Max or Ultracode keeps it going, and arriving there with the arrow keys gets the same entrance as a drag.
+
 ## v0.0.81 "Orange" - 2026-09-23
 
 - The effort rail is Claude's orange instead of white: it deepens as effort rises, and its motes, streaks and halo glow warm.
