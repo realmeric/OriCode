@@ -19,6 +19,9 @@ export type Model = {
   /// One of the account's older models, from the catalog's overflow section; the app lists
   /// them under More models. Absent on the SDK's own rows.
   more?: boolean;
+  /// The Claude Code version a catalog model needs, when the running one is older: the app
+  /// shows it dimmed and doesn't pick it.
+  needs?: string;
 };
 
 /// Models that take adaptive thinking, filled from the SDK's list. Asking one that doesn't
@@ -61,6 +64,25 @@ export function older(catalog: CatalogModel[], models: ModelInfo[]): Model[] {
         more: true,
       };
     });
+}
+
+/// The catalog's models this Claude Code can't run yet: one from the main section that names the
+/// version it needs, which no row of the SDK's runs. Once Claude Code is updated a row runs it.
+export function newer(catalog: CatalogModel[], models: ModelInfo[]): Model[] {
+  const running = new Set(models.map((model) => model.resolvedModel?.replace(/\[1m\]$/i, "")));
+  return catalog
+    .filter((row) => !row.more && row.minVersion && !running.has(row.id))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: `Needs Claude Code ${row.minVersion}`,
+      efforts: [],
+      fast: false,
+      defaultEffort: null,
+      ultra: false,
+      ultraBlocked: null,
+      needs: row.minVersion ?? undefined,
+    }));
 }
 
 /// Where Default lands on an older model: the effortLevel in the user's settings when the model

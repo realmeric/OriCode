@@ -283,7 +283,7 @@ private struct GeneralPane: View {
                     Text(lastPicked(model.models.first { $0.id == lastModel }?.name)).tag("")
                     ForEach(model.modelGroups) { group in
                         Divider()
-                        ForEach(group.models) { option in
+                        ForEach(group.models.filter { $0.needs == nil }) { option in
                             Text(option.name).tag(option.id)
                         }
                     }

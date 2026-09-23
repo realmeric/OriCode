@@ -57,7 +57,7 @@ struct OriCodeCommands: Commands {
             Picker("Model", selection: modelBinding) {
                 ForEach(model.modelGroups) { group in
                     if group.id != model.modelGroups.first?.id { Divider() }
-                    ForEach(group.models) { option in
+                    ForEach(group.models.filter { $0.needs == nil }) { option in
                         Text(option.name).tag(option.id)
                     }
                 }

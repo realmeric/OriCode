@@ -301,7 +301,7 @@ struct ModelsPage: View {
     }
 
     private func move(_ by: Int) -> KeyPress.Result {
-        let ids = model.modelGroups.flatMap(\.models).map(\.id)
+        let ids = model.modelGroups.flatMap(\.models).filter { $0.needs == nil }.map(\.id)
         let at = keyed.flatMap(ids.firstIndex(of:)) ?? -1
         guard ids.indices.contains(at + by) else { return .ignored }
         keyed = ids[at + by]
@@ -332,7 +332,8 @@ struct ModelRow: View {
     @State private var hovering = false
 
     var body: some View {
-        let starShown = favorite || hovering || keyed
+        let unavailable = option.needs != nil
+        let starShown = !unavailable && (favorite || hovering || keyed)
         HStack(spacing: 0) {
             Button(action: action) {
                 HStack(spacing: 10) {
@@ -366,12 +367,15 @@ struct ModelRow: View {
                 .padding(.leading, 10)
                 .padding(.trailing, 6)
                 .frame(height: 40)
+                .opacity(unavailable ? 0.45 : 1)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .help(option.description.isEmpty ? option.name : option.description)
+            .disabled(unavailable)
+            .help(option.needs.map { "Run claude update in Terminal to use \(option.name), which needs Claude Code \($0)" }
+                ?? (option.description.isEmpty ? option.name : option.description))
             .accessibilityAddTraits(chosen ? .isSelected : [])
-            .accessibilityAction(named: favorite ? "Remove from Favorites" : "Add to Favorites", star)
+            .accessibilityAction(named: favorite ? "Remove from Favorites" : "Add to Favorites") { if !unavailable { star() } }
             Button(action: star) {
                 Image(systemName: favorite ? "star.fill" : "star")
                     .font(.system(size: 11, weight: .medium))
@@ -383,6 +387,7 @@ struct ModelRow: View {
             }
             .buttonStyle(.plain)
             .opacity(starShown ? 1 : 0)
+            .disabled(unavailable)
             .animation(Motion.fade, value: starShown)
             .help(favorite ? "Remove from Favorites" : "Add to Favorites")
             .accessibilityLabel(favorite ? "Remove from Favorites" : "Add to Favorites")
@@ -393,14 +398,16 @@ struct ModelRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Surface.selected)
                     .matchedGeometryEffect(id: "model", in: glide)
-            } else if hovering || keyed {
+            } else if !unavailable, hovering || keyed {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Surface.hover)
             }
         }
         .onHover { hovering = $0 }
         .contextMenu {
-            Button(favorite ? "Remove from Favorites" : "Add to Favorites", action: star)
+            if !unavailable {
+                Button(favorite ? "Remove from Favorites" : "Add to Favorites", action: star)
+            }
         }
     }
 }

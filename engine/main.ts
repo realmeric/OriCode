@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { readCatalog } from "./catalog.ts";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
-import { fallback, fromSDK, older, settled, withDefaults, type Model } from "./models.ts";
+import { fallback, fromSDK, newer, older, settled, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, commit, diffFor, push, removeWorktree, status, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
@@ -45,12 +45,17 @@ function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
   return found;
 }
 
+/// Claude Code is moving its list of models to the catalog it caches, behind a flag, and serves
+/// that list only while its copy is fresh: the rows and their ids change from one launch to the
+/// next. With the catalog off the probe lists the same rows every time, and the engine adds the
+/// catalog's names, older models and newer ones itself.
 async function supportedModels(claude: string): Promise<Model[]> {
-  const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
+  const env = { ...cleanEnvironment(), CLAUDE_CODE_MODEL_CATALOG: "0" };
+  const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env, stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
     const [list, catalog] = await Promise.all([Promise.race([probe.supportedModels(), timeout]), readCatalog()]);
-    return [...fromSDK(list, catalog), ...older(catalog, list)];
+    return [...fromSDK(list, catalog), ...newer(catalog, list), ...older(catalog, list)];
   } finally {
     probe.close();
   }
@@ -72,8 +77,9 @@ async function learnDefaults(claude: string, base: Model[]): Promise<void> {
   });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    const learned = await Promise.race([withDefaults(probe, ultraProbe, base.filter((model) => !model.more)), timeout]);
-    models = [...learned.models, ...base.filter((model) => model.more).map((model) => settled(model, learned.settingsEffort))];
+    const learned = await Promise.race([withDefaults(probe, ultraProbe, base.filter((model) => !model.more && !model.needs)), timeout]);
+    const read = new Map(learned.models.map((model) => [model.id, model]));
+    models = base.map((model) => read.get(model.id) ?? (model.more ? settled(model, learned.settingsEffort) : model));
     event("models", { models, settingsEffort: learned.settingsEffort });
   } catch (error) {
     log(`model defaults unavailable: ${describe(error)}`);

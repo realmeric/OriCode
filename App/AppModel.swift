@@ -19,6 +19,8 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let ultraBlocked: String?
     /// One of the account's older models, which Claude Code lists under More models.
     let more: Bool?
+    /// The Claude Code version the model needs, when the one here is older: listed, not picked.
+    let needs: String?
 
     /// The SDK's id for Default (recommended), the model Claude Code picks.
     static let claudeDefault = "default"

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { readCatalog, type CatalogModel } from "../catalog.ts";
-import { adaptive, fromSDK, older, settled } from "../models.ts";
+import { adaptive, fromSDK, newer, older, settled } from "../models.ts";
 
 const every = ["low", "medium", "high", "xhigh", "max"];
 
@@ -123,4 +123,15 @@ test("Default on an older model lands on the settings' level when the model has 
   assert.equal(settled(opus, "xhigh").defaultEffort, "xhigh");
   assert.equal(settled(sonnet, "xhigh").defaultEffort, "high");
   assert.equal(settled(sonnet, null).defaultEffort, "high");
+});
+
+test("a catalog model that needs a newer Claude Code is listed with the version, until a row runs it", () => {
+  assert.deepEqual(newer(catalog, sdk), [
+    {
+      id: "claude-opus-5-5", name: "Opus 5.5", description: "Needs Claude Code 2.1.280", efforts: [], fast: false,
+      defaultEffort: null, ultra: false, ultraBlocked: null, needs: "2.1.280",
+    },
+  ]);
+  const updated = sdk.map((model) => ({ ...model, resolvedModel: model.resolvedModel?.replace("claude-opus-5", "claude-opus-5-5") }));
+  assert.deepEqual(newer(catalog, updated), []);
 });
