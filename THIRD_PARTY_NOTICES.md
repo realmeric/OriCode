@@ -9,6 +9,7 @@ OriCode's own code is under the MIT license in LICENSE. It builds on the followi
 - [swift-cmark](https://github.com/swiftlang/swift-cmark) 0.9.0, BSD 2-Clause and the other notices in its COPYING file, © 2014 John MacFarlane
 - [Highlightr](https://github.com/raspu/Highlightr) 2.3.0, MIT, © 2016 Juan Pablo Illanes
 - [highlight.js](https://github.com/highlightjs/highlight.js), which Highlightr bundles, BSD 3-Clause, © 2006 Ivan Sagalaev
+- [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) 1.11.2, MIT, © 2019-2026 Miguel de Icaza; portions © 2017-2019 the xterm.js authors, © 2014-2016 SourceLair Private Company and © 2012-2013 Christopher Jeffrey
 
 ## Used by the engine
 

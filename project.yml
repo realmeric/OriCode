@@ -19,6 +19,11 @@ packages:
   Highlightr:
     url: https://github.com/raspu/Highlightr
     from: 2.3.0
+  # Pinned: 1.12 and later need Xcode's Metal Toolchain, a separate download, and 1.19 adds a
+  # build-tool plugin that every xcodebuild line would have to skip validating.
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.11.2
 targets:
   OriCode:
     type: application
@@ -28,6 +33,7 @@ targets:
     dependencies:
       - package: MarkdownUI
       - package: Highlightr
+      - package: SwiftTerm
     info:
       path: App/Info.plist
       properties:
