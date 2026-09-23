@@ -13,6 +13,7 @@ struct Drawer: View {
     @State private var hovered: UUID?
     @State private var draft = ""
     @State private var footHover: Foot?
+    @State private var addHovered = false
     @FocusState private var renameFocused: Bool
     @Environment(\.openSettings) private var openSettings
 
@@ -23,9 +24,14 @@ struct Drawer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             TitleBarGlass().frame(height: Self.titleRow)
-            projectMenu
-                .padding(.horizontal, 12)
-                .padding(.top, 2)
+            HStack(spacing: 8) {
+                projectMenu
+                Spacer(minLength: 0)
+                addProjectButton
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 8)
+            .padding(.top, 2)
             List {
                 ForEach(Array(model.chats.enumerated()), id: \.element.id) { index, chat in
                     row(chat, index: index)
@@ -76,6 +82,23 @@ struct Drawer: View {
         .background(.ultraThinMaterial, in: .rect(cornerRadius: Self.corner, style: .continuous))
         .background(Surface.drawer, in: .rect(cornerRadius: Self.corner, style: .continuous))
         .onHover { model.drawerHover($0) }
+    }
+
+    private var addProjectButton: some View {
+        Button {
+            model.addProject()
+        } label: {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 13))
+                .foregroundStyle(addHovered ? Ink.primary : Ink.secondary)
+                .frame(width: 28, height: 24)
+                .background(addHovered ? Surface.hover : .clear, in: .rect(cornerRadius: 6, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { addHovered = $0 }
+        .help("Add project (⌘O)")
+        .accessibilityLabel("Add project")
     }
 
     private var projectMenu: some View {
