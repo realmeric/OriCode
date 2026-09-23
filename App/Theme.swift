@@ -43,10 +43,11 @@ enum Motion {
 }
 
 enum Glass {
-    /// The black layer over the material: how light or dark the glass is.
-    static let key = "glass"
-    static let defaultTint = 0.30
-    static let range = 0.15...0.60
+    /// The black layer over the material, from none, where the glass is the system's own, to half.
+    /// A key of its own: the old one held a tint over the old material, 30% by default.
+    static let key = "glassTint"
+    static let defaultTint = 0.0
+    static let range = 0.0...0.5
     /// How far the material fades so the desktop shows through sharp, 0 to 1.
     static let transparencyKey = "transparency"
     static let defaultTransparency = 0.0

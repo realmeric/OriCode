@@ -1,25 +1,22 @@
 import AppKit
 import SwiftUI
 
-/// The window's material. SwiftUI's `.ultraThinMaterial` goes flat grey whenever the
-/// window isn't key; this one stays blurred, which is what makes the glass read as glass.
-/// `.underWindowBackground` rather than `.hudWindow`, because window captures (AltTab,
-/// Mission Control, screenshots) leave out what's behind the window, and `.hudWindow` comes
-/// out of them a light grey.
+/// The window's material: Liquid Glass, so with nothing set OriCode looks like the rest of the
+/// Mac and follows System Settings › Appearance › Liquid Glass. It stays live while the window
+/// isn't key, and window captures (AltTab, Mission Control, screenshots) show it dark.
 /// Settings' Transparency fades it, so more of the desktop shows through unblurred.
 struct BehindWindowGlass: NSViewRepresentable {
     @AppStorage(Glass.transparencyKey) private var transparency = Glass.defaultTransparency
 
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .underWindowBackground
-        view.blendingMode = .behindWindow
-        view.state = .active
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let view = NSGlassEffectView()
+        view.style = .regular
+        view.cornerRadius = 0
         view.alphaValue = Glass.materialOpacity(transparency)
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+    func updateNSView(_ view: NSGlassEffectView, context: Context) {
         view.alphaValue = Glass.materialOpacity(transparency)
     }
 }

@@ -90,7 +90,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// The words a search can find a pane by: its title and what its settings are called.
     private var words: [String] {
         switch self {
-        case .general: ["glass", "window", "tint", "light", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
+        case .general: ["glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
@@ -271,8 +271,8 @@ private struct GeneralPane: View {
         PaneTitle(text: "General")
         SectionHeading("Window")
         SettingsCard {
-            SliderRow(title: "Tint", detail: "How light or dark the glass is.",
-                      value: $glass, range: Glass.range, low: "Light", high: "Dark", standard: Glass.defaultTint)
+            SliderRow(title: "Glass", detail: "At System it's your Mac's own Liquid Glass. Slide right to darken it.",
+                      value: $glass, range: Glass.range, low: "System", high: "Dark", standard: Glass.defaultTint)
             SliderRow(title: "Transparency", detail: "How much of the desktop shows through sharp instead of frosted.",
                       value: $transparency, range: 0...1, low: "Frosted", high: "Clear", standard: Glass.defaultTransparency)
         }
