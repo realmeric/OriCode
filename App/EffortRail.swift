@@ -146,9 +146,13 @@ struct EffortRail: View {
                         .frame(width: width, height: Self.rail + 2 * EffortEffects.air)
                         .position(x: width / 2, y: Self.row / 2)
                         .allowsHitTesting(false)
-                } else if stop != nil, fast, reduceMotion {
+                }
+                // Fast mode at rest: its streaks stand still behind the thumb, so the rail still
+                // says it once the moving ones have gone, and under Reduce Motion.
+                if stop != nil, fast, reduceMotion || !live {
                     stillStreaks(width: max(centre - Self.thumb / 2 - 6, 0))
                         .offset(y: (Self.row - Self.rail) / 2)
+                        .transition(.opacity.animation(Motion.fade))
                 }
                 ForEach(stops.indices, id: \.self) { mark in
                     // The pour lights the stops it passes on the way to the thumb.

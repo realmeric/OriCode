@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Candidate B: OriCode's mark over the slider. The dot is the main head: it grows and heats as
@@ -26,6 +27,12 @@ struct MarkPicker: View {
         }
         .frame(width: 320, height: page == .effort ? 308 : CGFloat(model.models.count) * 42 + 16)
         .animation(Motion.glide, value: page)
+        .onAppear {
+            // Fast mode left on from an earlier launch hasn't been checked in this one.
+            if let chat, model.fastMode(of: chat), model.conversations[chat.id]?.fastState == nil {
+                model.checkFast(chat)
+            }
+        }
     }
 }
 
@@ -45,8 +52,9 @@ private struct MarkPage: View {
     /// For a few seconds after a change the rays turn at Ultracode, then rest upright.
     @State private var live = false
     @State private var calming: Task<Void, Never>?
-    /// Bumped as a level lands, for the dot's pop.
+    /// Bumped as a level lands, for the dot's pop, and as fast mode comes on, for its zip.
     @State private var pops = 0
+    @State private var zips = 0
 
     /// How far a drag across the mark goes for each level.
     private static let step: CGFloat = 26
@@ -63,7 +71,7 @@ private struct MarkPage: View {
         VStack(spacing: 0) {
             header(state)
                 .frame(height: 30)
-            HeadMark(level: stops.isEmpty ? nil : level, live: live, pops: pops)
+            HeadMark(level: stops.isEmpty ? nil : level, fast: state.fastOn, live: live, pops: pops, zips: zips)
                 .frame(maxWidth: .infinity)
                 .frame(height: 92)
                 .contentShape(.rect)
@@ -79,7 +87,7 @@ private struct MarkPage: View {
             if let option = state.option, !option.efforts.isEmpty {
                 EffortRail(stops: option.stops, home: state.home, blocked: blocked(state),
                            effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                           held: $held, hovered: $hovered, fast: state.fastServed, compact: true,
+                           held: $held, hovered: $hovered, fast: state.fastOn, compact: true,
                            ghost: previewingReset ? resetTarget(state) : nil,
                            onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
                     .padding(.top, 10)
@@ -97,6 +105,10 @@ private struct MarkPage: View {
         }
         .onChange(of: state.effort) {
             pops += 1
+            wake()
+        }
+        .onChange(of: state.fastOn) { _, on in
+            if on { zips += 1 }
             wake()
         }
         .onAppear { wake() }
@@ -123,7 +135,9 @@ private struct MarkPage: View {
                     ResetButton(turns: resetTurns, previewing: $previewingReset) {
                         resetTurns += 1
                         previewingReset = false
-                        withAnimation(Motion.move) { model.resetToDefaults(for: chat) }
+                        var wave = Transaction(animation: Motion.move)
+                        wave[ResetWave.self] = true
+                        withTransaction(wave) { model.resetToDefaults(for: chat) }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.6)).animation(Motion.move))
                 } else {
@@ -245,20 +259,33 @@ private struct MarkPage: View {
 
 /// OriCode's mark, large. The dot is the main head, and how hard it thinks is how big and how hot
 /// it is: a small white point at Low, Claude's orange burning at Max. The rays are heads, idle and
-/// faint until Ultracode lights all six.
+/// faint until Ultracode lights all six. In fast mode the head trails speed lines, zips forward as
+/// fast comes on, and streaks run through the mark for the few seconds after.
 private struct HeadMark: View {
     let level: String?
+    let fast: Bool
     let live: Bool
     let pops: Int
+    let zips: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let ultra = level == Effort.ultracode
         let heat = Heat(level)
         ZStack {
+            if fast, live, !reduceMotion {
+                FastWind()
+                    .frame(width: 150, height: 80)
+                    .allowsHitTesting(false)
+                    .transition(.opacity.animation(Motion.fade))
+            }
             RaysMark(lit: ultra ? RaysMark.rays : 0, turning: live && ultra && !reduceMotion, restingOpacity: 0.13, litOpacity: 0.9,
                      dotOpacity: 0, color: .white, stagger: true, layered: true, settles: true)
                 .frame(width: 88, height: 88)
+            if fast {
+                speedLines(behind: heat.size)
+                    .transition(.opacity.combined(with: .offset(x: 10)).animation(Motion.move))
+            }
             Circle()
                 .fill(RadialGradient(colors: [heat.core, heat.rim], center: UnitPoint(x: 0.45, y: 0.38), startRadius: 0, endRadius: heat.size * 0.62))
                 .frame(width: heat.size, height: heat.size)
@@ -269,12 +296,44 @@ private struct HeadMark: View {
                     CubicKeyframe(1.16, duration: 0.1)
                     SpringKeyframe(1, duration: 0.45, spring: .bouncy)
                 }
+                // Fast mode coming on: the head darts forward, stretched, and springs back.
+                .keyframeAnimator(initialValue: Zip(), trigger: reduceMotion ? 0 : zips) { dot, zip in
+                    dot.scaleEffect(x: zip.stretch, y: 1 / zip.stretch).offset(x: zip.shift)
+                } keyframes: { _ in
+                    KeyframeTrack(\.shift) {
+                        CubicKeyframe(8, duration: 0.12)
+                        SpringKeyframe(0, duration: 0.5, spring: .bouncy)
+                    }
+                    KeyframeTrack(\.stretch) {
+                        CubicKeyframe(1.35, duration: 0.12)
+                        SpringKeyframe(1, duration: 0.5, spring: .bouncy)
+                    }
+                }
         }
         .animation(.spring(duration: 0.35, bounce: 0.3), value: level)
+        .animation(Motion.move, value: fast)
+    }
+
+    private struct Zip {
+        var shift: CGFloat = 0
+        var stretch: CGFloat = 1
+    }
+
+    /// Three lines trailing the head, the way a thing drawn moving has them, ending just short of it.
+    private func speedLines(behind size: CGFloat) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ForEach([(10.0, 0.35), (16.0, 0.75), (10.0, 0.35)], id: \.0.self) { line in
+                Capsule()
+                    .fill(Ink.ember.opacity(line.1))
+                    .frame(width: line.0, height: 2)
+            }
+        }
+        .frame(width: 16, alignment: .trailing)
+        .offset(x: -(size / 2 + 12))
     }
 
     /// How big the dot is and how hot it burns at a level.
-    private struct Heat {
+    fileprivate struct Heat {
         let size: CGFloat
         let core: Color
         let rim: Color
@@ -300,6 +359,69 @@ private struct HeadMark: View {
             self.rim = rim
             self.glow = glow
             self.reach = reach
+        }
+    }
+}
+
+/// Fast mode's streaks running through the mark, the way they run back along the slider, for the
+/// few seconds after it comes on: Core Animation, so nothing is drawn per frame by the app.
+private struct FastWind: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindView { WindView() }
+
+    func updateNSView(_ view: WindView, context: Context) {}
+
+    final class WindView: NSView {
+        private let emitter = CAEmitterLayer()
+        private let fade = CAGradientLayer()
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            emitter.emitterShape = .rectangle
+            emitter.emitterMode = .surface
+            emitter.renderMode = .additive
+            emitter.emitterCells = [Self.streak]
+            emitter.beginTime = CACurrentMediaTime() - 0.6
+            layer?.addSublayer(emitter)
+            // They come out of the glass and go back into it rather than starting and stopping at an edge.
+            fade.startPoint = CGPoint(x: 0, y: 0.5)
+            fade.endPoint = CGPoint(x: 1, y: 0.5)
+            fade.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+            fade.locations = [0, 0.3, 0.7, 1]
+            layer?.mask = fade
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            emitter.frame = bounds
+            fade.frame = bounds
+            emitter.emitterPosition = CGPoint(x: bounds.maxX, y: bounds.midY)
+            emitter.emitterSize = CGSize(width: 1, height: bounds.height * 0.7)
+            CATransaction.commit()
+        }
+
+        private static var streak: CAEmitterCell {
+            let cell = CAEmitterCell()
+            cell.contents = EffortEffects.EffectsView.streak
+            cell.contentsScale = 2
+            cell.birthRate = 14
+            cell.lifetime = 1
+            cell.lifetimeRange = 0.3
+            cell.velocity = 170
+            cell.velocityRange = 50
+            cell.emissionLongitude = .pi
+            cell.scale = 0.9
+            cell.scaleRange = 0.4
+            cell.color = EffortEffects.EffectsView.ember.copy(alpha: 0.5)
+            cell.alphaRange = 0.2
+            cell.alphaSpeed = -0.5
+            return cell
         }
     }
 }

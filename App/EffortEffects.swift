@@ -633,7 +633,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         }
 
         /// Bright at its left end, which leads as the streak runs back from the thumb.
-        private static let streak: CGImage = image(size: CGSize(width: 28, height: 2)) { context, size in
+        static let streak: CGImage = image(size: CGSize(width: 28, height: 2)) { context, size in
             let colors = [CGColor(gray: 1, alpha: 1), CGColor(gray: 1, alpha: 0)] as CFArray
             let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors, locations: [0, 1])!
             context.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 1, cornerHeight: 1, transform: nil))
@@ -642,7 +642,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         }
 
         /// A pale ember: the particles' white, warmed to sit in Claude's orange.
-        private static let ember = CGColor(red: 1, green: 0.86, blue: 0.78, alpha: 1)
+        static let ember = CGColor(red: 1, green: 0.86, blue: 0.78, alpha: 1)
         /// What a spark is born as, before it cools to Claude's orange.
         private static let whiteHot = CGColor(red: 1, green: 0.97, blue: 0.92, alpha: 1)
         private static let claude = CGColor(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255, alpha: 1)

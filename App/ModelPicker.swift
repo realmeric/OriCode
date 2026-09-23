@@ -1,52 +1,5 @@
 import SwiftUI
 
-/// Candidate A: the reference's slider on the composer's glass. One page says how Claude runs the
-/// thread: how hard it thinks, whether it's served fast, and what it may do without asking. The
-/// other lists the models and opens from the model's name; the card springs between their sizes.
-struct SliderPicker: View {
-    @Environment(AppModel.self) private var model
-    let chat: Chat?
-    @State private var page = Page.effort
-
-    enum Page { case effort, models }
-
-    static let width: CGFloat = 320
-
-    private let compact = false
-
-    var body: some View {
-        ZStack {
-            switch page {
-            case .effort:
-                EffortPage(chat: chat, compact: compact) { turn(to: .models) }
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: -24)).animation(Motion.move),
-                                            removal: .opacity.combined(with: .offset(x: -24)).animation(Motion.fade)))
-            case .models:
-                ModelsPage(chat: chat) { turn(to: .effort) }
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 24)).animation(Motion.move),
-                                            removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
-            }
-        }
-        .frame(width: Self.width, height: page == .effort ? 208 : CGFloat(model.models.count) * 42 + 16)
-        .animation(Motion.glide, value: page)
-        .onAppear {
-            // Fast mode left on from an earlier launch hasn't been checked in this one.
-            if let chat, model.fastMode(of: chat), model.conversations[chat.id]?.fastState == nil {
-                model.checkFast(chat)
-            }
-        }
-        .onKeyPress(.escape) {
-            guard page == .models else { return .ignored }
-            turn(to: .effort)
-            return .handled
-        }
-    }
-
-    private func turn(to next: Page) {
-        page = next
-    }
-}
-
 /// The thread's choices, or with no thread open the ones the next thread starts with.
 @MainActor
 struct PickerState {
@@ -76,6 +29,9 @@ struct PickerState {
 
     var fastServed: Bool { fastAsked && fastState == "on" }
 
+    /// Asked for and not turned down: on while the CLI checks, and on once it serves it.
+    var fastOn: Bool { fastAsked && (fastState == nil || fastState == "on") }
+
     var mode: PermissionModeOption {
         PermissionModeOption(rawValue: chat?.permissionMode ?? model.startingPermissionMode) ?? .ask
     }
@@ -101,229 +57,17 @@ struct PickerState {
 }
 
 /// Marks what Back to Defaults moves, so its changes can land one after another.
-private struct ResetWave: TransactionKey {
+struct ResetWave: TransactionKey {
     static let defaultValue = false
 }
 
 extension View {
     /// In a Back to Defaults, this lands `order` steps of 40ms after the first.
-    fileprivate func resetWave(_ order: Int, glide: Bool = false) -> some View {
+    func resetWave(_ order: Int, glide: Bool = false) -> some View {
         transaction { transaction in
             guard transaction[ResetWave.self] else { return }
             transaction.animation = (glide ? Motion.glide : Motion.move).delay(Double(order) * 0.04)
         }
-    }
-}
-
-private struct EffortPage: View {
-    @Environment(AppModel.self) private var model
-    let chat: Chat?
-    let compact: Bool
-    let openModels: () -> Void
-    @State private var held: String?
-    @State private var hovered: String?
-    /// The level the title showed last, for which way the next word comes in.
-    @State private var lastLevel: String?
-    @State private var previewingReset = false
-    @State private var resetTurns = 0
-    /// A click on Ultracode while workflows keep it off, said for a moment.
-    @State private var blockedNote = false
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    private var state: PickerState { PickerState(model: model, chat: chat) }
-
-    var body: some View {
-        let state = state
-        VStack(spacing: 0) {
-            header(state)
-                .frame(height: 48)
-            Group {
-                if let option = state.option, !option.efforts.isEmpty {
-                    EffortRail(stops: option.stops, home: state.home, blocked: option.ultraBlocked != nil && !option.ultra,
-                               effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                               held: $held, hovered: $hovered, fast: state.fastServed, compact: true,
-                               ghost: previewingReset ? resetTarget(state) : nil,
-                               onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
-                        .resetWave(1, glide: true)
-                        .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.14)), removal: .identity))
-                } else {
-                    Text("\(ModelMenu.shortName(state.option?.name ?? "This model")) has one reasoning level.")
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.secondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: EffortRail.row)
-                        .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.14)), removal: .identity))
-                }
-            }
-            .padding(.top, 12)
-            levelLine(state)
-                .frame(height: 16)
-                .padding(.top, 6)
-            ModeTiles(mode: Binding(get: { state.mode.rawValue }, set: { model.setPermissionMode($0, for: chat) }),
-                      preview: previewingReset ? PermissionModeOption(rawValue: model.threadDefaults.permissionMode) : nil,
-                      compact: compact)
-                .resetWave(3)
-                .padding(.top, 14)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .animation(Motion.move, value: state.option?.id)
-        .onChange(of: held ?? state.level, initial: true) { _, now in lastLevel = now }
-    }
-
-    private func header(_ state: PickerState) -> some View {
-        HStack(spacing: 0) {
-            Group {
-                if state.option?.fast == true {
-                    FastButton(asked: state.fastAsked, state: state.fastState, dimmed: previewingReset && !model.threadDefaults.fast) {
-                        model.setFast(!state.fastAsked, for: chat)
-                    }
-                    .resetWave(2)
-                    .transition(.opacity.animation(Motion.fade))
-                } else {
-                    Color.clear
-                }
-            }
-            .frame(width: 30, height: 30)
-            Spacer(minLength: 8)
-            VStack(spacing: 2) {
-                HStack(spacing: 6) {
-                    let shown = held ?? state.level
-                    Text(title(state))
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(titleInk(state))
-                        .id(title(state))
-                        // The new word comes up from below as effort rises and down from above as
-                        // it falls; the old one blurs out where it is, since it leaves with the
-                        // transition it was last drawn with, before the direction was known.
-                        .transition(.asymmetric(insertion: AnyTransition(.blurReplace).combined(with: .offset(y: rising ? 6 : -6)),
-                                                removal: AnyTransition(.blurReplace)))
-                    if shown == Effort.ultracode {
-                        Tag(text: "This thread")
-                            .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)).animation(Motion.fade))
-                    } else if shown != nil, held == nil ? state.effort == nil : held == state.home {
-                        Tag(text: "Default")
-                            .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)).animation(Motion.fade))
-                    }
-                }
-                .frame(height: 24)
-                .animation(Motion.move, value: title(state))
-                ModelLine(option: state.option, preview: previewingReset ? model.models.first { $0.id == model.threadDefaults.model } : nil,
-                          action: openModels)
-                    .resetWave(0)
-            }
-            Spacer(minLength: 8)
-            Group {
-                if !model.atDefaults(chat) {
-                    ResetButton(turns: resetTurns, previewing: $previewingReset) { reset() }
-                        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.6)).animation(Motion.move),
-                                                removal: .opacity.animation(Motion.fade)))
-                } else {
-                    Color.clear
-                }
-            }
-            .frame(width: 30, height: 30)
-        }
-    }
-
-    private func title(_ state: PickerState) -> String {
-        guard let option = state.option, !option.efforts.isEmpty else { return "Standard" }
-        return (held ?? state.level).map(ModelMenu.effortName) ?? "Default"
-    }
-
-    /// The level's name in its own heat, the way the rail burns at it; white where there's no
-    /// level to name, and under Increase Contrast.
-    private func titleInk(_ state: PickerState) -> Color {
-        guard contrast != .increased, state.option?.efforts.isEmpty == false, let level = held ?? state.level else { return Ink.primary }
-        return EffortScale.ink(level)
-    }
-
-    /// Whether the title's new word comes up from below, as effort rises, or down from above.
-    private var rising: Bool {
-        let stops = state.option?.stops ?? []
-        guard let now = held ?? state.level else { return true }
-        return (stops.firstIndex(of: now) ?? 0) >= (stops.firstIndex(of: lastLevel ?? now) ?? 0)
-    }
-
-    /// Where the thumb lands after Back to Defaults, when the model stays the same.
-    private func resetTarget(_ state: PickerState) -> String? {
-        let target = model.threadDefaults
-        guard target.model == state.option?.id else { return nil }
-        return target.effort ?? state.home
-    }
-
-    /// One line under the rail: a preview while the pointer is on a stop, then fast mode's
-    /// trouble, then an Ultracode that didn't come on, then what the level does.
-    private func levelLine(_ state: PickerState) -> some View {
-        let line: (words: String, cost: String?, preview: Bool)
-        let blocked = state.option.map { $0.ultraBlocked != nil && !$0.ultra } ?? false
-        if blockedNote || (hovered == Effort.ultracode && blocked) {
-            line = (Self.needsWorkflows, nil, false)
-        } else if let previewed = held ?? hovered {
-            if previewed == state.home, held == nil {
-                line = ("\(ModelMenu.effortName(previewed)) · \(homeReason(state))", nil, true)
-            } else {
-                let own = EffortScale.line(previewed)
-                line = (own.words, own.cost, held == nil)
-            }
-        } else if let problem = state.fastProblem {
-            line = (problem, nil, false)
-        } else if let missing = state.ultracodeMissing {
-            line = (missing, nil, false)
-        } else if let level = state.level {
-            let own = EffortScale.line(level)
-            line = (own.words, own.cost, false)
-        } else if state.option?.efforts.isEmpty == false {
-            // Before the engine has read where Default lands.
-            line = ("Claude Code picks the level for this model", nil, false)
-        } else {
-            line = ("", nil, false)
-        }
-        return Group {
-            if let cost = line.cost {
-                // What it costs, in the colour the usage circle has for the session right now.
-                let band = model.usage?.headline?.used.map { Band.of($0).color } ?? Ink.secondary
-                Text("\(line.words) · \(Text(cost).foregroundStyle(band))")
-            } else {
-                Text(line.words)
-            }
-        }
-        .font(Type.secondary)
-        .foregroundStyle(Ink.secondary)
-        .lineLimit(1)
-        .id(line.words)
-        .transition(.opacity.animation(line.preview ? .easeOut(duration: 0.12) : Motion.fade))
-    }
-
-    /// Why Default lands where it does.
-    private func homeReason(_ state: PickerState) -> String {
-        if let reading = state.conversation?.defaultReading, reading.model == chat?.model, reading.level != state.option?.defaultEffort {
-            return "Claude Code's default for this thread"
-        }
-        if model.settingsEffort != nil, model.settingsEffort == state.option?.defaultEffort {
-            return "Claude Code's default, from your settings"
-        }
-        return "Claude Code's default for this model"
-    }
-
-    static let needsWorkflows = "Needs dynamic workflows, see /config in Claude Code"
-
-    private func showBlocked() {
-        AccessibilityNotification.Announcement(Self.needsWorkflows).post()
-        blockedNote = true
-        Task {
-            try? await Task.sleep(for: .seconds(3))
-            blockedNote = false
-        }
-    }
-
-    private func reset() {
-        resetTurns += 1
-        previewingReset = false
-        var wave = Transaction(animation: Motion.move)
-        wave[ResetWave.self] = true
-        withTransaction(wave) { model.resetToDefaults(for: chat) }
     }
 }
 
@@ -378,7 +122,8 @@ struct ModelLine: View {
     }
 }
 
-/// Fast mode: off, asked, served, paused or refused, all in white.
+/// Fast mode: a bolt that lights up white on a lit circle once it's on, faint while it's off,
+/// quieter while a rate limit pauses it, and struck through when the CLI turns it down.
 struct FastButton: View {
     let asked: Bool
     /// What the CLI last said: on, off or cooldown; nil while it hasn't answered.
@@ -389,18 +134,18 @@ struct FastButton: View {
     @State private var hovering = false
 
     var body: some View {
-        let served = asked && state == "on"
         let refused = asked && state != nil && state != "on" && state != "cooldown"
+        let on = asked && !refused && state != "cooldown"
         Button(action: action) {
             Image(systemName: refused ? "bolt.slash" : asked ? "bolt.fill" : "bolt")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(asked && !refused && state != "cooldown" ? Ink.primary : Ink.secondary)
+                .font(.system(size: 13, weight: on ? .semibold : .medium))
+                .foregroundStyle(on ? Color.white : asked ? Ink.secondary : hovering ? Ink.secondary : Ink.faint)
                 .opacity(dimmed && asked ? 0.45 : 1)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: asked)
                 .frame(width: 30, height: 30)
-                .background(fill(asked: asked, served: served, refused: refused), in: .circle)
-                .shadow(color: .white.opacity(served ? 0.22 : 0), radius: 6)
+                .background(fill(on: on, asked: asked), in: .circle)
+                .shadow(color: .white.opacity(on ? 0.35 : 0), radius: 8)
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
@@ -409,12 +154,12 @@ struct FastButton: View {
         .animation(Motion.fade, value: dimmed)
         .help(asked ? "Fast mode is on" : "Fast mode: faster output from the same model")
         .accessibilityLabel("Fast mode")
-        .accessibilityValue(served ? "On" : refused ? "Not available" : asked ? "Asked for" : "Off")
+        .accessibilityValue(asked && state == "on" ? "On" : refused ? "Not available" : state == "cooldown" && asked ? "Paused" : asked ? "On, checking" : "Off")
     }
 
-    private func fill(asked: Bool, served: Bool, refused: Bool) -> Color {
-        if served { return Color.white.opacity(0.16) }
-        if asked, !refused { return Color.white.opacity(0.12) }
+    private func fill(on: Bool, asked: Bool) -> Color {
+        if on { return Color.white.opacity(0.2) }
+        if asked { return Color.white.opacity(0.08) }
         return hovering ? Surface.hover : Surface.card
     }
 }

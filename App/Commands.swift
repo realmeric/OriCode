@@ -2,7 +2,6 @@ import SwiftUI
 
 struct OriCodeCommands: Commands {
     let model: AppModel
-    @AppStorage(PickerDesign.key) private var pickerDesign = PickerDesign.slider.rawValue
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -68,10 +67,6 @@ struct OriCodeCommands: Commands {
             Button(model.modelPickerShown ? "Hide Model and Effort" : "Model and Effort…") { model.modelPickerShown.toggle() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
                 .disabled(model.project == nil)
-            // While Meriç picks one of the three.
-            Picker("Picker Design", selection: $pickerDesign) {
-                ForEach(PickerDesign.allCases) { Text($0.title).tag($0.rawValue) }
-            }
             Button("Back to Defaults") { model.resetToDefaults(for: model.chat) }
                 .disabled(model.project == nil || model.atDefaults(model.chat))
             Toggle("Fast Mode", isOn: fastBinding)
