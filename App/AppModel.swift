@@ -92,6 +92,8 @@ final class AppModel {
     var goToShown = false
     /// The model button's picker, here so Esc can close it before anything under it.
     var modelPickerShown = false
+    /// Where the model button is in the window, so a click on it is left to the button.
+    var modelButtonFrame = CGRect.zero
     /// Whether the last titled window to become key is the main one, for what ⌘W closes.
     var mainWindowKey = true
     /// Whether the engine has been told a turn is running, so it keeps App Nap off.

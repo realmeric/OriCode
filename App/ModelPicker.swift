@@ -1,22 +1,18 @@
 import SwiftUI
 
-/// What the model button opens. One page says how Claude runs the thread: how hard it thinks,
-/// whether it's served fast, and what it may do without asking. The other lists the models and
-/// opens from the model's name. Both are the same size, because a popover that changes size
-/// while it's open jumps, or opens off to the side.
-struct ModelPicker: View {
+/// Candidate A: the reference's slider on the composer's glass. One page says how Claude runs the
+/// thread: how hard it thinks, whether it's served fast, and what it may do without asking. The
+/// other lists the models and opens from the model's name; the card springs between their sizes.
+struct SliderPicker: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
-    /// Without the lines under the rail and the tiles, for when there's too little room above
-    /// the composer for the whole picker.
-    let compact: Bool
     @State private var page = Page.effort
 
     enum Page { case effort, models }
 
-    static let width: CGFloat = 360
-    static let height: CGFloat = 226
-    static let compactHeight: CGFloat = 168
+    static let width: CGFloat = 320
+
+    private let compact = false
 
     var body: some View {
         ZStack {
@@ -31,7 +27,8 @@ struct ModelPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: Self.width, height: compact ? Self.compactHeight : Self.height)
+        .frame(width: Self.width, height: page == .effort ? 208 : CGFloat(model.models.count) * 42 + 16)
+        .animation(Motion.glide, value: page)
         .onAppear {
             // Fast mode left on from an earlier launch hasn't been checked in this one.
             if let chat, model.fastMode(of: chat), model.conversations[chat.id]?.fastState == nil {
@@ -144,7 +141,7 @@ private struct EffortPage: View {
                 if let option = state.option, !option.efforts.isEmpty {
                     EffortRail(stops: option.stops, home: state.home, blocked: option.ultraBlocked != nil && !option.ultra,
                                effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                               held: $held, hovered: $hovered, fast: state.fastServed, compact: compact,
+                               held: $held, hovered: $hovered, fast: state.fastServed, compact: true,
                                ghost: previewingReset ? resetTarget(state) : nil,
                                onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
                         .resetWave(1, glide: true)
@@ -154,16 +151,14 @@ private struct EffortPage: View {
                         .font(Type.secondary)
                         .foregroundStyle(Ink.secondary)
                         .frame(maxWidth: .infinity)
-                        .frame(height: compact ? EffortRail.row : EffortRail.row + 16)
+                        .frame(height: EffortRail.row)
                         .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.14)), removal: .identity))
                 }
             }
             .padding(.top, 12)
-            if !compact {
-                levelLine(state)
-                    .frame(height: 16)
-                    .padding(.top, 4)
-            }
+            levelLine(state)
+                .frame(height: 16)
+                .padding(.top, 6)
             ModeTiles(mode: Binding(get: { state.mode.rawValue }, set: { model.setPermissionMode($0, for: chat) }),
                       preview: previewingReset ? PermissionModeOption(rawValue: model.threadDefaults.permissionMode) : nil,
                       compact: compact)
@@ -207,7 +202,7 @@ private struct EffortPage: View {
                     if shown == Effort.ultracode {
                         Tag(text: "This thread")
                             .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)).animation(Motion.fade))
-                    } else if compact, shown != nil, held == nil ? state.effort == nil : held == state.home {
+                    } else if shown != nil, held == nil ? state.effort == nil : held == state.home {
                         Tag(text: "Default")
                             .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .leading)).animation(Motion.fade))
                     }
@@ -333,7 +328,7 @@ private struct EffortPage: View {
 }
 
 /// A word beside a choice that says what it is: Default, or This thread for Ultracode.
-private struct Tag: View {
+struct Tag: View {
     let text: String
 
     var body: some View {
@@ -347,7 +342,7 @@ private struct Tag: View {
 }
 
 /// Claude's mark and the model's name: the way to the list of models.
-private struct ModelLine: View {
+struct ModelLine: View {
     let option: ModelOption?
     /// The model Back to Defaults would pick, while the pointer is on it.
     let preview: ModelOption?
@@ -384,7 +379,7 @@ private struct ModelLine: View {
 }
 
 /// Fast mode: off, asked, served, paused or refused, all in white.
-private struct FastButton: View {
+struct FastButton: View {
     let asked: Bool
     /// What the CLI last said: on, off or cooldown; nil while it hasn't answered.
     let state: String?
@@ -426,7 +421,7 @@ private struct FastButton: View {
 
 /// Everything back to its default, previewed while the pointer is on it, turning back once as
 /// it goes.
-private struct ResetButton: View {
+struct ResetButton: View {
     let turns: Int
     @Binding var previewing: Bool
     let action: () -> Void
@@ -448,7 +443,7 @@ private struct ResetButton: View {
     }
 }
 
-private struct ModelsPage: View {
+struct ModelsPage: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     let back: () -> Void
@@ -517,7 +512,7 @@ private struct ModelsPage: View {
 
 /// A model: its name and the SDK's line about it, a bolt if it can go fast, on the gliding
 /// highlight when it's the one.
-private struct ModelRow: View {
+struct ModelRow: View {
     let option: ModelOption
     let chosen: Bool
     let keyed: Bool
@@ -576,7 +571,7 @@ private struct ModelRow: View {
 
 /// The permission modes as five tiles, the highlight moving to the chosen one, with its name
 /// and line under them; a hovered tile previews its line.
-private struct ModeTiles: View {
+struct ModeTiles: View {
     @Binding var mode: String
     /// The mode Back to Defaults would pick, lit as if hovered.
     let preview: PermissionModeOption?

@@ -36,6 +36,21 @@ struct Composer: View {
                 .allowsHitTesting(false)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        // The model button's picker rises out of the composer's right end, the way the slash
+        // menu rises out of its left.
+        .overlay(alignment: .bottomTrailing) {
+            if model.modelPickerShown {
+                PickerCard(chat: model.chat)
+                    .padding(.bottom, height + 10)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.92, anchor: .bottomTrailing).combined(with: .opacity).combined(with: .offset(y: 8))
+                            .animation(Motion.glide),
+                        removal: .scale(scale: 0.97, anchor: .bottomTrailing).combined(with: .opacity).animation(Motion.fade)))
+            }
+        }
+        .onChange(of: model.modelPickerShown) { _, shown in
+            if !shown { focused = true }
+        }
         .overlay(alignment: .bottomLeading) {
             if !slashMatches.isEmpty {
                 SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }

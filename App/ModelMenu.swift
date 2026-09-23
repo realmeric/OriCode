@@ -47,8 +47,6 @@ struct ModelMenu: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     @State private var hovering = false
-    /// The button's frame in the window, for how much room the picker has above it.
-    @State private var frame = CGRect.zero
 
     var body: some View {
         Button {
@@ -95,14 +93,7 @@ struct ModelMenu: View {
         .buttonStyle(.plain)
         .fixedSize()
         .onHover { hovering = $0 }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
-        // From the button's right end, which stays put while its label grows leftwards with
-        // the effort and the bolt, so the picker doesn't drift as choices change.
-        .popover(isPresented: Binding(get: { model.modelPickerShown }, set: { model.modelPickerShown = $0 }),
-                 attachmentAnchor: .point(.trailing), arrowEdge: .top) {
-            // The whole picker, its arrow and a little margin, or the compact one.
-            ModelPicker(chat: chat, compact: roomAbove < ModelPicker.height + 13 + 8)
-        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.modelButtonFrame = $0 }
         .help("Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
         .accessibilityValue(accessibilityEffort)
@@ -110,15 +101,6 @@ struct ModelMenu: View {
 
     private var fast: Bool {
         chat.map(model.fastMode(of:)) ?? false
-    }
-
-    /// Between the button's top and the top of the screen: a popover taller than that opens off
-    /// to the side, clipped.
-    private var roomAbove: CGFloat {
-        guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }),
-              let screen = window.screen
-        else { return .infinity }
-        return screen.visibleFrame.maxY - (window.frame.maxY - frame.minY)
     }
 
     /// What the CLI last said about fast mode for the thread.

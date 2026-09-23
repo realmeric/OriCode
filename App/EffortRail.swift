@@ -388,10 +388,13 @@ struct EffortRail: View {
             .init(color: hot.mix(with: .white, by: burn.white, in: .device), location: 1),
         ], startPoint: .top, endPoint: .bottom)
         return ZStack {
+            // Frosted glass the fill shows through, warmed a little by the level's heat.
             Circle()
-                .fill(body)
+                .fill(.ultraThinMaterial)
             Circle()
-                .strokeBorder(LinearGradient(colors: [.white.opacity(0.6), .white.opacity(0.08)], startPoint: .top, endPoint: .bottom),
+                .fill(body.opacity(0.55))
+            Circle()
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.12)], startPoint: .top, endPoint: .bottom),
                               lineWidth: 1)
             Circle()
                 .fill(Color.black.opacity(0.85))
