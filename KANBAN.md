@@ -112,9 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.86 "Lit"
 
-#### K-86 · Release 0.0.86
-As K-12. Tag `v0.0.86`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -625,6 +622,11 @@ Commit: c503e18
 Moving to a level below Max changed a word and nothing else. Now light runs up the fill into the bead when the level rises, sized to the level: a slug at Medium, a brighter one and a few embers at High, a sweep and lingering motes at Extra high, and the lamps it passes flare. When the level falls, the heat drains back into the bead and the lamps go out behind it. Held arrow keys play one arrival for the level they stop on. Below Extra high a change moves for under a second. The brief's Motion line says so.
 Done when: frames catch an arrival at Medium, High and Extra high and the cooling on the way down, nothing moves in the still frame after each, and OriCode reads 0.0% CPU with the picker open.
 Notes: EffortEffects now exists at every level. It spans the whole rail and reaches past its end, and takes the thumb's position as animatable data, so every step of the thumb's spring reaches it and the heat a fall gives up stays inside it. The rail passes it the stops' positions, the stop under the thumb and an arrival: bumped 180ms after a run of changes stops, with the stop the run began from, so a held key crossing three levels arrives once. Rising: a slug of 30 by 13pt at 40% over 0.5s at Medium, 34 by 14pt at 48% over 0.48s at High, and a 26 by 22pt band at 80% over 0.42s at Extra high, each on an ease-in from the rail's start into the fade before the bead. Each lit lamp flares, a 12pt ember sprite scaling 0.5 to 1.3 to 1 over 0.32s, when the carrier reaches it (the travel time times the square root of its share of the way). The glow breathes as it lands, and High and Extra high throw 4 and 8 embers from a puff emitter at the hot end; Extra high keeps motes at 4 a second for the live window. Falling by key, click or Delete: a capsule of Claude's orange from 55% at the bead to 30% at the old thumb shrinks into the bead over 0.45s and fades over 0.5s; a fall a drag made plays only the bead's dip. The bead pulses to 1.05 for each stop a drag crosses and dips to 0.95 on a fall. Max's first slug and each of Ultracode's now flare the lamps, and below Max the picker's opening breathes the glow once. While fast mode's streaks run, the carrier and flares hold and the breath and embers stay. Checked with frames: four lefts from Ultracode to Medium drain once, from the old thumb into the bead; a right to High sends a slug and flares the Low lamp; a right to Extra high sweeps, flares the lamps one after another and throws embers; two lefts back to Medium drain again. At rest nothing moved and OriCode read 0.0% CPU with the picker open. WindowServer read 40% at rest, as it did with the picker closed during 0.0.83's check, so the picker's share still can't be read on this machine today. A stash used to split the plan from K-84 left three iCloud copies of the changed files in App/, which XcodeGen compiled twice; they were identical to the committed files and were moved out.
+Commit: 11d3358
+
+#### K-86 · Release 0.0.86
+As K-12. Tag `v0.0.86`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.86 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread's picker opened on High with the lit rail and the shield for Auto, and set to Haiku and Ask it sent an edit that waited on its card and landed in greet.swift when allowed.
 Commit: pending
 
 

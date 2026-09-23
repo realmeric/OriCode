@@ -2,6 +2,12 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.86 "Lit" - 2026-09-23
+
+- Every effort level is lit. The rail is Claude's orange at full strength all the way down, so Low and Medium no longer look brown against the glass, and a little of the fill always shows beside the thumb at Low. Stops the fill has passed glow as lamps, the thumb is a warm bead that pales toward white as the level rises, and the level's name takes its colour.
+- Every level arrives. Moving up sends light along the rail into the thumb, flaring each lamp it passes: a slug at Medium, a brighter one with embers at High, a sweep at Extra high. Moving down drains the heat back into the thumb. A held arrow key plays it once, for the level it stops on.
+- Auto's icon is a shield; the sparkles belong to the rail now.
+
 ## v0.0.83 "Heat" - 2026-09-23
 
 - Max and Ultracode run hot. At Max, slugs of light glide along the rail and sink into the thumb as its glow breathes in, embers lift off the fill, and sparks fly off the thumb, born white-hot and cooling to Claude's orange. Arriving throws embers out of the thumb and draws them back in.
