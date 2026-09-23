@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.0 "Projects" - 2026-09-23
+
+- Threads from every project share the drawer's list, each starting with its project's badge: the first and last letters of the name on a colour the project gets at random. An Add project button sits at the top of the list.
+- A double-click on the top row zooms the window the way a title bar does, and clicking the title pill opens Go to.
+- Settings has Transparency beside Tint. Tint makes the glass lighter or darker; Transparency lets the desktop through sharp instead of frosted. AltTab and other window captures now show the glass dark, and name the window OriCode.
+- The model button opens a picker of the app's own: the models, effort, the permission modes, and fast mode for the models that have it, with the reason when Claude Code can't serve it.
+- The composer stands further out from the glass, and the drawer opens from a wider strip at the window's left edge.
+
 ## v0.6.2 - 2026-09-23
 
 - The paperclip and the model menu light up under the pointer, like the app's other buttons.

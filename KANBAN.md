@@ -104,13 +104,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
-### Todo: v0.7 "Projects"
-
-After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
-
-#### K-61 · Release v0.7
-As K-12. Tag `v0.7.0`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -476,6 +469,11 @@ Commit: 2d2ffa4
 A Fast switch in the picker, for the models the SDK says support it. It belongs to the thread, and new threads start with the last choice, like the model. The engine passes `fastMode` in the session's flag settings, which is the opt-in the CLI asks of SDK sessions, and applies a change to a running thread with `applyFlagSettings`. It forwards `fast_mode_state` and `fast_mode_disabled_reason`, so the switch can say why fast mode isn't on. The Thread menu gets Fast Mode too.
 Done when: turning Fast on for an Opus thread shows what the CLI reports: on, or the reason it can't be.
 Notes: The SDK marks Default and the two Opus entries as fast-capable, not Fable, Sonnet or Haiku. A probe CLI from a scratch script, which makes no model call, reported fast mode off with sdk_opt_in_required on its own and on once its flag settings carried fastMode: true, so that is what send passes and what setFast applies to a running CLI. Turning Fast on also runs that probe as fast.check, so the switch can say on, or why not, before a turn is spent finding out; turns then keep it current from their init and result messages. Two changes to K-59 came with it: the picker is two columns (models left; effort, speed and permissions right), because one column with Speed added was about 640pt tall and AppKit opened it off to the side, and the effort segments share one width, so Extra high reads X-high there. Checked: with Default picked, Thread › Fast Mode put a bolt on the model button and the picker read Fast mode, On for this model, from the CLI's check; turning it off and going back to Haiku left the thread as it was. No fast turn was run, to keep plan usage out of the check. make test passes on both suites.
+Commit: a50dd35
+
+#### K-61 · Release v0.7
+As K-12. Tag `v0.7.0`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.7.0, launched with an empty environment, came up as a window named OriCode, and an edit sent in Ask mode on Haiku in a new thread waited on its card, was allowed, and landed in greet.swift.
 Commit: pending
 
 
