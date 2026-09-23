@@ -102,6 +102,57 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: v0.7 "Projects"
+
+After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
+
+#### K-50 · The window says OriCode
+The main window's title is "OriCode" rather than the open thread's, so AltTab, Mission Control and the Window menu name the app. The thread's title is already in the capsule.
+Done when: the window list names the main window "OriCode" whichever thread is open.
+
+#### K-51 · A wider edge for the drawer
+The hot zone at the window's left edge grows from 8pt to 20pt, which is the room the transcript column always leaves there.
+Done when: the pointer 18pt in from the left edge opens the drawer.
+
+#### K-52 · Double-click the top to zoom
+A double-click on empty glass in the top row does what System Settings says a title bar double-click does: zoom by default, or minimize, or nothing. The toolbar draws nothing and the content runs under it, so the click reaches the content, which doesn't know the gesture.
+Done when: double-clicking empty glass in the top row zooms the window, and doing it again restores it.
+
+#### K-53 · The pill opens Go to
+Clicking the title capsule opens Go to, as ⌘K does, and clicking it again closes it. The capsule lights on hover like the other buttons.
+Done when: a click on the capsule opens Go to.
+
+#### K-54 · A composer that stands out
+The composer's surface goes from white at 8% to white at 12%. Over a dark backdrop that puts about 24 levels of light between it and the glass, the same as the bar in Meriç's screenshot has over its background.
+Done when: a capture shows the composer that much lighter than the glass around it.
+
+#### K-55 · Glass that captures dark
+AltTab, Mission Control and screenshots capture a window without what is behind it, and the `.hudWindow` material comes out of that a flat light grey, which is why AltTab shows OriCode lighter than Meriç's other glass apps. The window moves to `.underWindowBackground`, the material DroppyKit's glass uses.
+Done when: a capture of the main window comes out dark instead of mid grey. Needs Meriç's eye for the glass itself.
+
+#### K-56 · Transparency apart from tint
+Settings › General › Window gets two sliders. Tint is the one called Glass until now: the black layer from 15% to 60%, lighter to darker. Transparency is new and fades the material itself, from frosted (all of it) to clear (a quarter of it), so more of the desktop shows through sharp. Both windows follow both.
+Done when: moving Transparency changes how much material a capture of either window shows, and Tint still lightens and darkens them. Needs Meriç's eye over a wallpaper.
+
+#### K-57 · Every project's threads in one list
+The drawer lists the threads of all projects, newest first, and each row starts with its project's badge: the first and last letters of the name (OriCode is OE) in the project's colour. A project gets its colour at random when it's added, from eight that read on the glass, skipping those other projects have until all eight are taken; projects from before this get one the first time the app opens. The rays mark moves to the row's other end, before the ⌘digit. Picking a thread picks its project, ⌘1–9 follow the one list, and Go to shows the badges too. The project menu at the top stays, as the project new threads start in, with its badge beside the name.
+Done when: with threads in two projects the drawer shows them together, each badge in its project's letters and colour, and picking one switches the capsule to its project.
+
+#### K-58 · An Add project button
+A folder-plus button at the right of the drawer's header, lit on hover, opens the same panel as ⌘O.
+Done when: the button opens the Add Project panel.
+
+#### K-59 · A model picker of our own
+The model button opens a popover of the app's own rows instead of a system menu: the models with their descriptions, effort as a segmented control, and the permission modes with their one-liners, each row lit on hover and the chosen one checked. This breaks rule 1 on purpose, because Meriç wants the picker to look like the app. The popover and the segmented control stay native, and the Thread menu keeps its native pickers for the keyboard.
+Done when: choosing a model, an effort and a mode in the popover changes the thread's, and the button shows them.
+
+#### K-60 · Fast mode
+A Fast switch in the picker, for the models the SDK says support it. It belongs to the thread, and new threads start with the last choice, like the model. The engine passes `fastMode` in the session's flag settings, which is the opt-in the CLI asks of SDK sessions, and applies a change to a running thread with `applyFlagSettings`. It forwards `fast_mode_state` and `fast_mode_disabled_reason`, so the switch can say why fast mode isn't on. The Thread menu gets Fast Mode too.
+Done when: turning Fast on for an Opus thread shows what the CLI reports: on, or the reason it can't be.
+
+#### K-61 · Release v0.7
+As K-12. Tag `v0.7.0`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
