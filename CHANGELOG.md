@@ -2,6 +2,10 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.88 "Three pickers" - 2026-09-23
+
+- The model button's picker is a card of the composer's own glass that rises out of the composer, instead of a system popover. It comes in three designs to try, switched in Thread › Picker Design: A · Slider, the level over the model with one slider; B · Mark, OriCode's mark, whose dot grows and heats as Claude thinks harder and whose rays light at Ultracode; and C · Columns, model, effort and permissions as three columns of words. One of them stays.
+
 ## v0.0.86 "Lit" - 2026-09-23
 
 - Every effort level is lit. The rail is Claude's orange at full strength all the way down, so Low and Medium no longer look brown against the glass, and a little of the fill always shows beside the thumb at Low. Stops the fill has passed glow as lamps, the thumb is a warm bead that pales toward white as the level rises, and the level's name takes its colour.

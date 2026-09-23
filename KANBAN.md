@@ -112,9 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.88 "Three pickers"
 
-#### K-88 · Release 0.0.88
-As K-12. Tag `v0.0.88`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -636,6 +633,11 @@ Commit: b12296a
 Meriç didn't like the picker as a whole and asked for a few designs built from the ground up, to choose one. All three open as a card of the composer's own glass rising out of its right end, the way the slash menu rises out of its left, instead of a system popover with a material and an arrow of its own; a click anywhere else, Esc or Return puts it away. A · Slider keeps the reference's structure: the level over the model, one slider with a frosted glass thumb, the permission modes as tiles. B · Mark makes OriCode's mark the control: the dot, the main head, grows and heats from a small white point at Low to Claude's orange at Max as you drag across it or press the arrows, and at Ultracode the six rays light around it as heads. C · Columns lays model, effort and permissions out as three columns of words, a highlight gliding to each choice and a small meter on every level. Thread › Picker Design switches between them until one is chosen; the other two go then.
 Done when: each of the three opens from the model button and from ⌘⇧M, sets the thread's model, effort, fast mode and permission mode, and closes on a click outside; frames show all three.
 Notes: PickerCard draws the picker as an overlay of the Composer, bottom-trailing and 10pt above it, in Surface.composer over ultraThinMaterial with the composer's top highlight and a black 28% shadow; it rises on Motion.glide from 0.92 and 8pt down and leaves on a fade. A local mouse-down monitor puts it away for a click outside it that isn't on the model button (whose frame AppModel now keeps), and focus goes back to the composer's field when it closes. ModelMenu lost its popover and the room-above check that picked the compact one. A is the old page in the card at 320 by 208: the rail without its Default label (a tag by the title says it), the line under the rail always shown, and a frosted thumb of ultraThinMaterial under the level's bead colour at 55%. B is PickerMark.swift at 320 by 300: an 88pt RaysMark with its rays at 13% until Ultracode lights them clockwise and turns them for four seconds, a dot of 16, 20, 24, 28, 32 and 28pt from Low to Ultracode going from white through ember to Claude's orange with a glow to match and a pop on each change; a drag across the mark steps a level every 26pt with the trackpad's detents and needs 22pt more to pass into Ultracode, and a row of dots under the name picks directly, the chosen one a gliding capsule. C is PickerColumns.swift at 500 by 252: Model, Effort and Permissions columns of 25pt rows with one gliding Surface.selected highlight each, a five-bar meter per level (Max's in Claude's orange) filling bar by bar as it's chosen, Ultracode 4pt apart under the rays, the hovered row's line at the foot beside Fast and Back to Defaults; left and right move between columns and up and down choose. Thread › Picker Design holds the choice in pickerDesign. Checked with frames: A in the card at Medium; B from Low through Max, the dot growing and heating, and into Ultracode with the rays lighting; C with Opus, Ultracode and Ask highlighted, then Medium chosen by a click, and a click on the transcript closing the card.
+Commit: abbf42b
+
+#### K-88 · Release 0.0.88
+As K-12. Tag `v0.0.88`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.88 is 7.9MB, arm64 only, with a 3.0MB binary and a 1.7MB engine; launched with an empty environment, a new thread's picker rose above the composer as A, turned to the models page and back as Haiku was picked, took Ask, closed on a click outside, and the thread sent an edit that waited on its card and landed in greet.swift when allowed.
 Commit: pending
 
 
