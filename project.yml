@@ -50,6 +50,15 @@ targets:
         INFOPLIST_KEY_NSDownloadsFolderUsageDescription: Claude reads and edits the projects you add, and some of them live in Downloads.
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_APP_SANDBOX: NO
+      configs:
+        # Apple silicon only, and stripped as an archive would be: a quarter the size of the
+        # universal binary with its symbols. The dSYM beside the app keeps them for crashes.
+        Release:
+          ARCHS: arm64
+          DEAD_CODE_STRIPPING: YES
+          DEPLOYMENT_POSTPROCESSING: YES
+          STRIP_INSTALLED_PRODUCT: YES
+          STRIP_STYLE: all
     preBuildScripts:
       - name: Engine
         script: |

@@ -110,10 +110,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-68 · A smaller binary
-Release builds are Apple silicon only and stripped of symbols: the 12.8MB universal binary becomes about 2.6MB.
-Done when: the installed binary is arm64 only and under 4MB, and the app runs.
-
 #### K-69 · Awake only while Claude works
 The engine has held off App Nap for as long as it runs. It now asks only while a turn is running, so a hidden, idle OriCode can nap.
 Done when: the app's log shows the activity starting with a turn and ending with the last one.
@@ -543,6 +539,12 @@ Commit: f605b3b
 The Agent SDK's code imports nothing but Node's own modules. The 42MB beside it are its peer dependencies (Anthropic's API SDK, the MCP SDK, zod and theirs), which npm installs and the engine never loads. The engine is staged without them.
 Done when: the app's engine folder is under 6MB and a turn still runs.
 Notes: npm ci now also omits peer dependencies, and the staging step keeps only sdk.mjs, package.json, the manifests and the license of the SDK: its bridge, browser build and type declarations were another 3.5MB that sdk.mjs never references. The step ends by importing the SDK, so a version that needs a removed file fails the build instead of the app. The engine folder went from 47MB to 1.6MB, beating the card's 6MB. Checked: a Haiku turn through the staged copy started the CLI and got its answer, and the rebuilt app carried the 1.6MB engine, which answered hello with the models.
+Commit: 046f2fe
+
+#### K-68 · A smaller binary
+Release builds are Apple silicon only and stripped of symbols: the 12.8MB universal binary becomes about 2.6MB.
+Done when: the installed binary is arm64 only and under 4MB, and the app runs.
+Notes: Release is arm64 only and strips as an archive would: DEPLOYMENT_POSTPROCESSING with STRIP_INSTALLED_PRODUCT and STRIP_STYLE all, plus dead-code stripping, with the symbols kept in the dSYM beside the app. The binary went from 12.8MB to 2.5MB, and with K-67 the whole app from 65MB to 7.4MB. Debug builds are untouched. Checked: the Release product is arm64 only, its signature verifies after stripping, and launched with an empty environment it opened its window and its engine answered with the models.
 Commit: pending
 
 
