@@ -1,19 +1,29 @@
 import AppKit
 import SwiftUI
 
-/// What moves in and around the effort rail at the top of the scale: Claude's heat, and where
-/// it goes. At Max, motes drift toward the thumb, slugs of light run along the fill and sink into
-/// it with the glow round the thumb breathing in as each lands, embers lift off the fill's hot
-/// half and one jet of sparks flies off the rim. At Ultracode the same heat has six places to go:
-/// a wheel of six jets turns with the rays, embers lift off the whole fill and three quicker
-/// slugs land at uneven beats. Fast mode runs streaks back from the thumb at any level. All of it
-/// is Core Animation, so the render server draws it and the app does nothing per frame, and it
-/// moves only for a few seconds after a change, while the picker is on screen.
-struct EffortEffects: NSViewRepresentable {
+/// What moves in and around the effort rail: Claude's heat, and where it goes. At every level a
+/// change arrives: rising, light runs up the fill into the thumb and flares the lamps it passes,
+/// a slug at Medium, a brighter one with embers at High, a sweep at Extra high; falling, the heat
+/// the fill gave up drains back into the thumb. At Max, motes drift toward the thumb, slugs of
+/// light sink into it with the glow round it breathing in as each lands, embers lift off the
+/// fill's hot half and one jet of sparks flies off the rim. At Ultracode the same heat has six
+/// places to go: a wheel of six jets turns with the rays, embers lift off the whole fill and
+/// three quicker slugs land at uneven beats. Fast mode runs streaks back from the thumb at any
+/// level. All of it is Core Animation, so the render server draws it and the app does nothing per
+/// frame, and it moves only briefly after a change, while the picker is on screen.
+struct EffortEffects: NSViewRepresentable, Animatable {
     enum Heat { case max, ultracode }
 
-    /// Nil below Max, where only fast mode's streaks run.
-    var heat: Heat?
+    /// A change of level that has come to rest: bumped once a run of changes stops, with the stop
+    /// the thumb left and whether a drag put it where it is.
+    struct Arrival: Equatable {
+        var count = 0
+        var from: Int?
+        var dragged = false
+    }
+
+    /// The level under the thumb.
+    var level: String?
     var streaks: Bool
     /// False for the first moments after the picker opens, while the fill pours in, and once the
     /// rail has rested.
@@ -22,10 +32,22 @@ struct EffortEffects: NSViewRepresentable {
     var bursts: Int
     /// Bumped each time the rail wakes for a change, which starts the slugs over.
     var wakes: Int
-    /// Where the thumb's centre is going, from the rail's start, which is where the slugs sink in.
-    var thumb: CGFloat
+    /// Where the thumb's centre is drawn, from the rail's start, following its spring: SwiftUI
+    /// hands the view each step of the thumb's animation through `animatableData`.
+    nonisolated var thumb: CGFloat
+    /// Where it's going, which is where what runs up the fill sinks in.
+    var landing: CGFloat
+    /// The rail's stops, and the one under the thumb; the stops before it are lit lamps.
+    var positions: [CGFloat]
+    var index: Int?
+    var arrival: Arrival
     /// The picker without the line under the rail, where the tiles come up closer.
     var compact: Bool
+
+    nonisolated var animatableData: CGFloat {
+        get { thumb }
+        set { thumb = newValue }
+    }
 
     /// How far past the thumb's centre the view reaches, and how far above and below the rail,
     /// for what the thumb and the fill throw off.
@@ -35,7 +57,7 @@ struct EffortEffects: NSViewRepresentable {
     func makeNSView(context: Context) -> EffectsView { EffectsView() }
 
     func updateNSView(_ view: EffectsView, context: Context) {
-        view.want(heat: heat, streaks: streaks, live: live, bursts: bursts, wakes: wakes, thumb: thumb, compact: compact)
+        view.want(self)
     }
 
     static func dismantleNSView(_ view: EffectsView, coordinator: ()) {
@@ -52,6 +74,8 @@ struct EffortEffects: NSViewRepresentable {
         private let streakLayer = CAEmitterLayer()
         private let emberLayer = CAEmitterLayer()
         private let jetLayer = CAEmitterLayer()
+        /// Embers thrown off the hot end as High and Extra high arrive.
+        private let puffLayer = CAEmitterLayer()
         /// Turns with the rays in the thumb at Ultracode, carrying a jet at each ray.
         private let wheel = CALayer()
         private let jets = (0..<RaysMark.rays).map { _ in CAEmitterLayer() }
@@ -59,13 +83,21 @@ struct EffortEffects: NSViewRepresentable {
         private let glow = CAGradientLayer()
         /// Keeps whatever is thrown off the rail away from the text above and below it.
         private let band = CAGradientLayer()
-        private var heat: Heat?
+        private var level: String?
         private var wantsStreaks = false
         private var live = false
         private var bursts = 0
         private var wakes = 0
         private var thumb: CGFloat = 0
+        private var landing: CGFloat = 0
+        private var positions: [CGFloat] = []
+        private var index: Int?
+        private var arrival = Arrival()
         private var compact = false
+        /// An arrival asked for before the view was on screen, played as soon as it is.
+        private var pendingArrival: Arrival?
+        /// Whether the picker's opening has had its moment.
+        private var opened = false
         private var served = false
         /// The wake whose slugs have been sent, so the next one sends its own.
         private var scored = -1
@@ -100,6 +132,7 @@ struct EffortEffects: NSViewRepresentable {
             layer?.addSublayer(tube)
             for emitter in [moteLayer, burstLayer, streakLayer] { tube.addSublayer(emitter) }
             layer?.addSublayer(emberLayer)
+            layer?.addSublayer(puffLayer)
             layer?.addSublayer(jetLayer)
             layer?.addSublayer(wheel)
             wheel.bounds = CGRect(x: 0, y: 0, width: 60, height: 60)
@@ -124,6 +157,10 @@ struct EffortEffects: NSViewRepresentable {
             streakLayer.emitterMode = .surface
             emberLayer.emitterShape = .rectangle
             emberLayer.emitterMode = .surface
+            puffLayer.emitterShape = .rectangle
+            puffLayer.emitterMode = .surface
+            puffLayer.renderMode = .additive
+            puffLayer.emitterCells = [Self.puffCell]
             jetLayer.emitterShape = .point
         }
 
@@ -143,7 +180,7 @@ struct EffortEffects: NSViewRepresentable {
             CATransaction.setDisableActions(true)
             let air = EffortEffects.air
             let rail = EffortRail.rail
-            let centre = bounds.width - EffortEffects.reach
+            let centre = thumb
             let mid = air + rail / 2
             let end = max(centre - EffortRail.thumb / 2 - 6, 0)
             band.frame = bounds
@@ -167,6 +204,10 @@ struct EffortEffects: NSViewRepresentable {
             emberLayer.frame = bounds
             emberLayer.emitterPosition = CGPoint(x: (from + to) / 2, y: air + 4)
             emberLayer.emitterSize = CGSize(width: to - from, height: 8)
+            let puffFrom = max(centre - 44, 0)
+            puffLayer.frame = bounds
+            puffLayer.emitterPosition = CGPoint(x: (puffFrom + max(centre - 18, puffFrom)) / 2, y: air + 4)
+            puffLayer.emitterSize = CGSize(width: max(centre - 18, puffFrom) - puffFrom, height: 8)
             // Half past ten on the rim, 17pt out from the thumb's centre. Only births follow the
             // thumb: sparks already thrown stay where they were thrown.
             jetLayer.frame = bounds
@@ -193,7 +234,26 @@ struct EffortEffects: NSViewRepresentable {
             apply()
         }
 
-        func want(heat: Heat?, streaks: Bool, live: Bool, bursts: Int, wakes: Int, thumb: CGFloat, compact: Bool) {
+        /// Max and Ultracode, the two levels with heat of their own; nil below them.
+        private var heat: Heat? {
+            switch level {
+            case "max": .max
+            case Effort.ultracode: .ultracode
+            default: nil
+            }
+        }
+
+        /// The stops the thumb has passed, where the lamps are lit.
+        private var lamps: [CGFloat] {
+            Array(positions.prefix(index ?? 0))
+        }
+
+        func want(_ wanted: EffortEffects) {
+            let heat: Heat? = switch wanted.level {
+            case "max": .max
+            case Effort.ultracode: .ultracode
+            default: nil
+            }
             if heat == .ultracode, self.heat != .ultracode {
                 // The thumb's rays are drawn anew at twelve, so the wheel starts there with them.
                 CATransaction.begin()
@@ -202,15 +262,20 @@ struct EffortEffects: NSViewRepresentable {
                 wheel.setValue(0, forKeyPath: "transform.rotation.z")
                 CATransaction.commit()
             }
-            let moved = heat != self.heat || compact != self.compact
-            self.heat = heat
-            wantsStreaks = streaks
-            self.live = live
-            if bursts > self.bursts { pendingBurst = true }
-            self.bursts = bursts
-            self.wakes = wakes
-            self.thumb = thumb
-            self.compact = compact
+            let moved = wanted.level != level || wanted.compact != compact || wanted.thumb != thumb
+            level = wanted.level
+            wantsStreaks = wanted.streaks
+            live = wanted.live
+            if wanted.bursts > bursts { pendingBurst = true }
+            bursts = wanted.bursts
+            wakes = wanted.wakes
+            thumb = wanted.thumb
+            landing = wanted.landing
+            positions = wanted.positions
+            index = wanted.index
+            if wanted.arrival.count > arrival.count { pendingArrival = wanted.arrival }
+            arrival = wanted.arrival
+            compact = wanted.compact
             if moved { place() }
             apply()
         }
@@ -246,7 +311,9 @@ struct EffortEffects: NSViewRepresentable {
             case .ultracode: 2
             case nil: 0
             }
-            run(moteLayer, rate: on && heat != nil ? 1 : 0, prewarm: true, cells: [Self.moteCell])
+            // Extra high is the first level where heat lingers: a few motes, no more.
+            let motes: Float = heat != nil ? 1 : level == "xhigh" ? 0.4 : 0
+            run(moteLayer, rate: on ? motes : 0, prewarm: heat != nil, cells: [Self.moteCell])
             run(emberLayer, rate: on ? embers : 0, cells: [Self.emberCell])
             run(jetLayer, rate: on && heat == .max ? 1 : 0, ramp: false, cells: Self.jetCells)
             for (index, jet) in jets.enumerated() {
@@ -271,6 +338,10 @@ struct EffortEffects: NSViewRepresentable {
             if pendingBurst, visible {
                 pendingBurst = false
                 arrive()
+            }
+            if let pending = pendingArrival, visible {
+                pendingArrival = nil
+                play(pending)
             }
         }
 
@@ -314,12 +385,21 @@ struct EffortEffects: NSViewRepresentable {
                 glow.removeAnimation(forKey: sent.breath)
             }
             waiting.removeAll()
-            guard let heat, !wantsStreaks else { return }
+            defer { opened = true }
+            guard let heat else {
+                // Below Max the picker's opening is the moment: the glow breathes as the pour lands.
+                if !opened { glowUp(peak: 0.35, swell: 0.1, rise: 0.1, fall: 0.5, at: now, key: "open") }
+                return
+            }
+            guard !wantsStreaks else { return }
             let starts = heat == .max ? [0.15, 1.95] : [0.2, 1.15, 2.3]
-            for start in starts { send(at: now + start, heat: heat) }
+            for (order, start) in starts.enumerated() {
+                // Max's first slug lights the lamps on its way; every one of Ultracode's does.
+                send(at: now + start, heat: heat, flaring: heat == .ultracode || order == 0)
+            }
         }
 
-        private func send(at start: CFTimeInterval, heat: Heat) {
+        private func send(at start: CFTimeInterval, heat: Heat, flaring: Bool) {
             let atMax = heat == .max
             let travel = atMax ? 1.35 : 1.0
             let slug = CAGradientLayer()
@@ -334,8 +414,9 @@ struct EffortEffects: NSViewRepresentable {
             // Gathers speed and light toward the thumb, and sinks into the fade in front of it.
             let move = CABasicAnimation(keyPath: "position.x")
             move.fromValue = -slug.bounds.width / 2
-            move.toValue = thumb - EffortRail.thumb / 2 + 2
+            move.toValue = landing - EffortRail.thumb / 2 + 2
             move.timingFunction = CAMediaTimingFunction(controlPoints: 0.55, 0, 0.9, 0.55)
+            if flaring { flareLamps(from: -slug.bounds.width / 2, to: landing - EffortRail.thumb / 2 + 2, start: start, travel: travel, peak: 0.9) }
             let light = CAKeyframeAnimation(keyPath: "opacity")
             light.values = [0, 0.5, 1]
             light.keyTimes = [0, 0.35, 1]
@@ -351,6 +432,124 @@ struct EffortEffects: NSViewRepresentable {
             let breath = "breath\(breaths)"
             glowUp(peak: atMax ? 0.5 : 0.4, swell: 0.15, rise: 0.5, fall: 0.9, at: start + travel - 0.5, key: breath)
             waiting.append((slug, start, breath))
+        }
+
+        /// A level come to rest below the top. Rising, light runs up the fill into the thumb, sized to
+        /// the level, and the lamps it passes flare as it reaches them; falling, the heat the fill gave
+        /// up drains back into the thumb. Max and Ultracode arrive through their bursts, and a fall a
+        /// drag made has already drained under the finger.
+        private func play(_ arrival: Arrival) {
+            guard let from = arrival.from, positions.indices.contains(from), let index else { return }
+            if from < index {
+                carry()
+            } else if from > index, !arrival.dragged {
+                drain(from: positions[from])
+            }
+        }
+
+        private func carry() {
+            let spec: (width: CGFloat, height: CGFloat, light: CGFloat, travel: CFTimeInterval, flare: Float, peak: Double, swell: Double, embers: Float)
+            switch level {
+            case "medium": spec = (30, 13, 0.4, 0.5, 0.7, 0.35, 0.1, 0)
+            case "high": spec = (34, 14, 0.48, 0.48, 0.8, 0.45, 0.14, 40)
+            case "xhigh": spec = (26, 22, 0.8, 0.42, 0.95, 0.55, 0.18, 80)
+            default: return
+            }
+            let now = tube.convertTime(CACurrentMediaTime(), from: nil)
+            // While fast mode's streaks run the other way, only the breath and the embers come.
+            if !wantsStreaks {
+                let from = -spec.width / 2
+                let to = landing - EffortRail.thumb / 2 + 2
+                let carrier = CAGradientLayer()
+                if level == "xhigh" {
+                    // A sweep, the CLI's shimmer at Extra high done in heat.
+                    carrier.colors = [Self.ember.copy(alpha: 0)!, Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
+                    carrier.startPoint = CGPoint(x: 0, y: 0.5)
+                    carrier.endPoint = CGPoint(x: 1, y: 0.5)
+                } else {
+                    carrier.type = .radial
+                    carrier.colors = [Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
+                    carrier.startPoint = CGPoint(x: 0.5, y: 0.5)
+                    carrier.endPoint = CGPoint(x: 1, y: 1)
+                }
+                carrier.bounds = CGRect(x: 0, y: 0, width: spec.width, height: spec.height)
+                carrier.position = CGPoint(x: from, y: EffortRail.rail / 2)
+                tube.addSublayer(carrier)
+                let run = CABasicAnimation(keyPath: "position.x")
+                run.fromValue = from
+                run.toValue = to
+                run.duration = spec.travel
+                // Gathering speed toward the thumb, and sinking into the fade in front of it.
+                run.timingFunction = CAMediaTimingFunction(controlPoints: 0.55, 0.085, 0.68, 0.53)
+                run.fillMode = .forwards
+                run.isRemovedOnCompletion = false
+                CATransaction.begin()
+                CATransaction.setCompletionBlock { carrier.removeFromSuperlayer() }
+                carrier.add(run, forKey: "carry")
+                CATransaction.commit()
+                flareLamps(from: from, to: to, start: now, travel: spec.travel, peak: spec.flare)
+            }
+            glowUp(peak: spec.peak, swell: spec.swell, rise: 0.1, fall: 0.5, at: now + spec.travel - 0.1, key: "arrival")
+            if spec.embers > 0 { fire(puffLayer, cell: "puff", rate: spec.embers, at: now + spec.travel, for: 0.1) }
+        }
+
+        /// Flares each lit lamp as light running from `from` to `to` on an ease-in reaches it.
+        private func flareLamps(from: CGFloat, to: CGFloat, start: CFTimeInterval, travel: CFTimeInterval, peak: Float) {
+            for lamp in lamps where lamp > from && lamp < to {
+                let flare = CAGradientLayer()
+                flare.type = .radial
+                flare.colors = [Self.ember.copy(alpha: 0.9)!, Self.ember.copy(alpha: 0)!]
+                flare.startPoint = CGPoint(x: 0.5, y: 0.5)
+                flare.endPoint = CGPoint(x: 1, y: 1)
+                flare.bounds = CGRect(x: 0, y: 0, width: 12, height: 12)
+                flare.position = CGPoint(x: lamp, y: EffortEffects.air + EffortRail.rail / 2)
+                flare.opacity = 0
+                layer?.addSublayer(flare)
+                let light = CAKeyframeAnimation(keyPath: "opacity")
+                light.values = [0, peak, 0]
+                let grow = CAKeyframeAnimation(keyPath: "transform.scale")
+                grow.values = [0.5, 1.3, 1]
+                for animation in [light, grow] { animation.keyTimes = [0, 0.3, 1] }
+                let strike = CAAnimationGroup()
+                strike.animations = [light, grow]
+                strike.duration = 0.32
+                strike.beginTime = start + travel * sqrt(Double((lamp - from) / (to - from)))
+                CATransaction.begin()
+                CATransaction.setCompletionBlock { flare.removeFromSuperlayer() }
+                flare.add(strike, forKey: "strike")
+                CATransaction.commit()
+            }
+        }
+
+        /// The fill a fall gave up, glowing where it was and draining back into the thumb.
+        private func drain(from: CGFloat) {
+            guard from > landing else { return }
+            let heat = CAGradientLayer()
+            heat.colors = [Self.claude.copy(alpha: 0.55)!, Self.claude.copy(alpha: 0.3)!]
+            heat.startPoint = CGPoint(x: 0, y: 0.5)
+            heat.endPoint = CGPoint(x: 1, y: 0.5)
+            heat.cornerRadius = EffortRail.rail / 2
+            heat.anchorPoint = CGPoint(x: 0, y: 0.5)
+            heat.bounds = CGRect(x: 0, y: 0, width: from - landing + EffortRail.rail / 2, height: EffortRail.rail)
+            heat.position = CGPoint(x: landing, y: EffortEffects.air + EffortRail.rail / 2)
+            layer?.insertSublayer(heat, below: tube)
+            let shrink = CABasicAnimation(keyPath: "bounds.size.width")
+            shrink.toValue = 0
+            shrink.duration = 0.45
+            shrink.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.toValue = 0
+            fade.duration = 0.5
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            let group = CAAnimationGroup()
+            group.animations = [shrink, fade]
+            group.duration = 0.5
+            group.fillMode = .forwards
+            group.isRemovedOnCompletion = false
+            CATransaction.begin()
+            CATransaction.setCompletionBlock { heat.removeFromSuperlayer() }
+            heat.add(group, forKey: "drain")
+            CATransaction.commit()
         }
 
         /// Arriving at the top: embers thrown back out of the thumb and drawn in again, a flash of
@@ -524,6 +723,14 @@ struct EffortEffects: NSViewRepresentable {
             cell.alphaRange = 0.18
             cell.color = ember.copy(alpha: 0.62)
             cell.alphaSpeed = -1.2
+            return cell
+        }
+
+        /// The same embers, thrown in a handful as High and Extra high arrive.
+        private static var puffCell: CAEmitterCell {
+            let cell = emberCell
+            cell.name = "puff"
+            cell.birthRate = 0
             return cell
         }
 

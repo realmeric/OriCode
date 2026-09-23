@@ -97,6 +97,17 @@ struct EffortRail: View {
     @State private var calming: Task<Void, Never>?
     @State private var bursts = 0
     @State private var wakes = 0
+    @State private var arrival = EffortEffects.Arrival()
+    /// Where a run of changes began, while one is going: a held key crossing three levels arrives
+    /// once, at the last.
+    @State private var runFrom: Int?
+    @State private var running = false
+    @State private var arriving: Task<Void, Never>?
+    /// The change came from letting go of a drag, where the fill already followed the finger.
+    @State private var dragged = false
+    /// Bumped for each stop a drag crosses, and each fall, for the bead's pulse and dip.
+    @State private var crossings = 0
+    @State private var falls = 0
     @State private var keyed = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -126,12 +137,12 @@ struct EffortRail: View {
                     .offset(y: (Self.row - Self.rail) / 2)
                 fill(level: level, width: stop == nil || !poured ? 0 : centre)
                     .offset(y: (Self.row - Self.rail) / 2)
-                if stop != nil, EffortScale.spendsFaster(level) || fast, !reduceMotion {
-                    // Reaches past the thumb and above and below the rail for what's thrown off it,
-                    // placed rather than framed so the rail's hit area doesn't grow with it.
-                    let width = centre + EffortEffects.reach
-                    EffortEffects(heat: level == "max" ? .max : level == Effort.ultracode ? .ultracode : nil,
-                                  streaks: fast, live: live, bursts: bursts, wakes: wakes, thumb: centre, compact: compact)
+                if stop != nil, !reduceMotion {
+                    // The whole rail, reaching past its last stop and above and below it for what's
+                    // thrown off, placed rather than framed so the rail's hit area doesn't grow.
+                    let width = geometry.size.width - Self.thumb / 2 + EffortEffects.reach
+                    EffortEffects(level: level, streaks: fast, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
+                                  positions: xs, index: stop, arrival: arrival, compact: compact)
                         .frame(width: width, height: Self.rail + 2 * EffortEffects.air)
                         .position(x: width / 2, y: Self.row / 2)
                         .allowsHitTesting(false)
@@ -234,7 +245,12 @@ struct EffortRail: View {
                 wake()
             }
         }
-        .onChange(of: effort) { wake() }
+        .onChange(of: effort) { old, new in
+            wake()
+            let from = (old ?? home).flatMap(stops.firstIndex(of:))
+            if let from, let to = (new ?? home).flatMap(stops.firstIndex(of:)), to < from { falls += 1 }
+            arrive(from: from)
+        }
         .onChange(of: fast) { wake() }
         .onChange(of: hovered) { _, now in
             // A pointer moving along the rail at the top of the scale keeps the heat up; one left
@@ -248,6 +264,23 @@ struct EffortRail: View {
     private func wake() {
         wakes += 1
         stoke()
+    }
+
+    /// Tells EffortEffects the thumb has come to rest, once a run of changes has stopped for 180ms,
+    /// with the stop the run began from.
+    private func arrive(from: Int?) {
+        if !running {
+            runFrom = from
+            running = true
+        }
+        arriving?.cancel()
+        arriving = Task {
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            arrival = EffortEffects.Arrival(count: arrival.count + 1, from: runFrom, dragged: dragged)
+            running = false
+            dragged = false
+        }
     }
 
     private func stoke() {
@@ -376,6 +409,20 @@ struct EffortRail: View {
         .shadow(color: Ink.claude.opacity(burn.glow + (holding ? 0.06 : 0)), radius: burn.reach + (holding ? 1 : 0))
         .scaleEffect(holding ? 1.08 : 1)
         .animation(Motion.move, value: holding)
+        // A pulse for each stop a drag crosses, in step with the trackpad's tap, and a dip as a
+        // fall lets the heat out.
+        .keyframeAnimator(initialValue: 1.0, trigger: reduceMotion ? 0 : crossings) { bead, scale in
+            bead.scaleEffect(scale)
+        } keyframes: { _ in
+            CubicKeyframe(1.05, duration: 0.08)
+            CubicKeyframe(1, duration: 0.12)
+        }
+        .keyframeAnimator(initialValue: 1.0, trigger: reduceMotion ? 0 : falls) { bead, scale in
+            bead.scaleEffect(scale)
+        } keyframes: { _ in
+            CubicKeyframe(0.95, duration: 0.12)
+            CubicKeyframe(1, duration: 0.18)
+        }
     }
 
     private func drag(_ track: EffortTrack) -> some Gesture {
@@ -403,6 +450,7 @@ struct EffortRail: View {
                     withTransaction(still) { thumbX = x }
                 }
                 if stop != was, abs(drag.translation.width) >= 3 {
+                    crossings += 1
                     let rising = stop > (was ?? -1)
                     if rising, EffortScale.spendsFaster(stops[stop]) {
                         Haptics.threshold()
@@ -438,6 +486,7 @@ struct EffortRail: View {
                 let push = abs(distance) < 1 ? 0 : max(min(drag.velocity.width / distance, 8), -8)
                 var settle = Transaction(animation: reduceMotion ? Motion.fade : .interpolatingSpring(duration: 0.28, bounce: 0.12, initialVelocity: push))
                 settle.disablesAnimations = true
+                dragged = !clicked
                 withTransaction(settle) {
                     thumbX = nil
                     heldStop = nil
