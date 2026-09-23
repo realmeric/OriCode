@@ -79,17 +79,25 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         self.watcher = watcher
     }
 
-    /// Something other than the shell at its prompt holds the terminal: vim, a build, claude, or
+    /// What holds the terminal when it isn't the shell at its prompt: vim, a build, claude, or
     /// fzf, which zsh's key bindings run as $(…) inside the shell's own process group.
-    var busy: Bool {
+    var foreground: String? {
         let fd = view.process.childfd
         let shell = view.process.shellPid
-        guard !ended, fd >= 0, shell > 0 else { return false }
+        guard !ended, fd >= 0, shell > 0 else { return nil }
         let group = tcgetpgrp(fd)
-        if group > 0, group != shell { return true }
+        if group > 0, group != shell { return Self.name(of: group) }
         var members = [pid_t](repeating: 0, count: 64)
         let bytes = proc_listpids(UInt32(PROC_PGRP_ONLY), UInt32(shell), &members, Int32(members.count * MemoryLayout<pid_t>.size))
-        return members.prefix(max(0, Int(bytes) / MemoryLayout<pid_t>.size)).contains { $0 > 0 && $0 != shell }
+        return members.prefix(max(0, Int(bytes) / MemoryLayout<pid_t>.size)).first { $0 > 0 && $0 != shell }.map(Self.name(of:))
+    }
+
+    var busy: Bool { foreground != nil }
+
+    private static func name(of pid: pid_t) -> String {
+        var buffer = [CChar](repeating: 0, count: 64)
+        guard proc_name(pid, &buffer, UInt32(buffer.count)) > 0 else { return "A command" }
+        return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     /// Types a line into the shell and runs it; ^U first clears anything half typed.
@@ -129,6 +137,7 @@ final class TerminalStore {
     private(set) var sessions: [String: TerminalSession] = [:]
     /// A shell ended by itself (`exit`), with its folder.
     @ObservationIgnored var onExit: ((String) -> Void)?
+    @ObservationIgnored private var activity: NSObjectProtocol?
 
     static func key(_ folder: String) -> String {
         URL(filePath: folder).standardizedFileURL.path
@@ -140,20 +149,34 @@ final class TerminalStore {
     }
 
     /// The folder's shell, started if there's none or it has exited. Nil for a folder that isn't
-    /// there any more, since a failed chdir would leave the shell somewhere else.
+    /// there any more, since a failed chdir would leave the shell somewhere else, and when the
+    /// shell couldn't start.
     func session(for folder: String) -> TerminalSession? {
         let key = Self.key(folder)
         if let found = sessions[key], !found.ended { return found }
         var directory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: key, isDirectory: &directory), directory.boolValue else { return nil }
         let session = TerminalSession(folder: key)
-        session.onExit = { [weak self] in self?.onExit?(key) }
+        guard !session.ended else { return nil }
+        session.onExit = { [weak self, weak session] in
+            guard let self else { return }
+            hold()
+            onExit?(key)
+            // Let go of it once the terminal has slid away showing its last screen, so a folder
+            // that's gone doesn't keep a dead shell's terminal open until quit.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, let session, sessions[key] === session else { return }
+                sessions[key] = nil
+            }
+        }
         sessions[key] = session
+        hold()
         return session
     }
 
-    /// The session stays until its shell has gone, so its watcher can reap it; the next shell
-    /// for the folder replaces it.
+    /// Hangs the folder's shell up. The session stays until its shell has gone, so its watcher
+    /// can reap it; the next shell for the folder replaces it.
     func end(folder: String) {
         sessions[Self.key(folder)]?.end()
     }
@@ -162,8 +185,23 @@ final class TerminalStore {
         for session in sessions.values { session.end() }
     }
 
-    var anyBusy: Bool {
-        sessions.values.contains { $0.busy }
+    /// What's running in the terminals, for the question at quit: "sleep in alpha".
+    var running: [String] {
+        sessions.values.compactMap { session in
+            session.foreground.map { "\($0) in \(URL(filePath: session.folder).lastPathComponent)" }
+        }.sorted()
+    }
+
+    /// While a shell is alive the app doesn't nap, so a build left running in the terminal keeps
+    /// its speed and its output keeps arriving.
+    private func hold() {
+        let alive = sessions.values.contains { !$0.ended }
+        if alive, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "A shell is open in the terminal")
+        } else if !alive, let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+        }
     }
 
     /// The shell whose view has the keyboard, if one does.

@@ -85,6 +85,15 @@ actor Engine {
         process.qualityOfService = .userInitiated
 
         let input = Pipe(), output = Pipe(), errors = Pipe()
+        // The pipes stay out of the terminal's shells, which inherit whatever isn't marked: a job
+        // left running there would otherwise hold the engine's stdin open after the app quits,
+        // and the engine lives until stdin ends. Marked before the engine starts, so a shell
+        // forked meanwhile gets none of them; the engine's own ends become its stdin, stdout
+        // and stderr, which exec keeps.
+        for pipe in [input, output, errors] {
+            Self.closeOnExec(pipe.fileHandleForReading)
+            Self.closeOnExec(pipe.fileHandleForWriting)
+        }
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
@@ -96,12 +105,6 @@ actor Engine {
             Task { await self?.exited(generation: current, status: status) }
         }
         try process.run()
-        // The app's ends of the pipes stay out of the terminal's shells, which inherit whatever
-        // isn't marked: a job left running there would otherwise hold the engine's stdin open
-        // after the app quits, and the engine lives until stdin ends.
-        for end in [input.fileHandleForWriting, output.fileHandleForReading, errors.fileHandleForReading] {
-            Self.closeOnExec(end)
-        }
         self.process = process
         stdin = input.fileHandleForWriting
         Self.logger.notice("engine started with \(node.path, privacy: .public)")

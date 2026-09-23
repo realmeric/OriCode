@@ -24,6 +24,8 @@ struct OriCodeApp: App {
                         model.addProject(at: url)
                     }
                     delegate.deliverEarlyFolders()
+                    delegate.runningInTerminal = { [model] in model.terminals.running }
+                    delegate.endTerminals = { [model] in model.terminals.endAll() }
                     await model.boot()
                 }
                 .frame(minWidth: 720, minHeight: 480)

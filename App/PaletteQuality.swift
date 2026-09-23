@@ -130,6 +130,10 @@ extension AppModel {
 
     /// Takes a project and its threads out of OriCode. Its folder stays, and so do any worktrees.
     func remove(_ project: Project) {
+        // Its shells go with it: the project's own, and each worktree thread's.
+        for folder in Set([project.path] + project.chats.map(\.cwd)) {
+            terminals.end(folder: folder)
+        }
         for chat in project.chats {
             let id = chat.id.uuidString
             conversations[chat.id] = nil

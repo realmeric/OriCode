@@ -49,8 +49,12 @@ extension AppModel {
     func runInTerminal(_ command: String, in folder: String? = nil) -> Bool {
         guard let folder = folder ?? workingFolder else { return false }
         // A live shell can outlast its folder, and a command meant for the folder mustn't run there.
-        guard FileManager.default.fileExists(atPath: folder), let session = terminals.session(for: folder) else {
+        guard FileManager.default.fileExists(atPath: folder) else {
             say("The folder isn't there any more.")
+            return false
+        }
+        guard let session = terminals.session(for: folder) else {
+            say("The terminal couldn't start a shell.")
             return false
         }
         openTerminal()
