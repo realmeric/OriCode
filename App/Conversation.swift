@@ -213,10 +213,14 @@ final class Conversation {
         flush()
     }
 
+    /// Tools that never got their result, because the turn was stopped or the engine went away,
+    /// didn't happen: marked failed, so an edit shows as the failed line a denied one gets rather
+    /// than a card with its change counted, and stays out of the turn's files.
     private func finishOpenTools() {
         for index in items.indices {
             if case .tool(let id, var call) = items[index], call.result == nil {
                 call.result = ""
+                call.isError = true
                 items[index] = .tool(id: id, call: call)
             }
         }

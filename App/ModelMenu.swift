@@ -158,23 +158,29 @@ private struct ModelPanel: View {
             .frame(width: 250)
             VStack(alignment: .leading, spacing: 4) {
                 if let levels = selectedModel?.efforts, !levels.isEmpty {
-                    HStack {
-                        heading("Effort")
-                        Spacer()
-                        // The bars don't say which level they are; Default says so on its pill.
-                        if !effort.isEmpty {
-                            Text(ModelMenu.effortName(effort))
-                                .font(Type.secondary)
-                                .foregroundStyle(Ink.secondary)
-                                .padding(.top, 6)
-                                .transition(.opacity)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            heading("Effort")
+                            Spacer()
+                            // The bars don't say which level they are; Default says so on its pill.
+                            if !effort.isEmpty {
+                                Text(ModelMenu.effortName(effort))
+                                    .font(Type.secondary)
+                                    .foregroundStyle(Ink.secondary)
+                                    .padding(.top, 6)
+                                    .transition(.opacity)
+                            }
                         }
+                        EffortMeter(levels: levels, effort: $effort)
                     }
-                    EffortMeter(levels: levels, effort: $effort)
+                    .transition(section)
                 }
                 if selectedModel?.fast == true {
-                    heading("Speed")
-                    FastChip(on: $fast, status: fastStatus)
+                    VStack(alignment: .leading, spacing: 4) {
+                        heading("Speed")
+                        FastChip(on: $fast, status: fastStatus)
+                    }
+                    .transition(section)
                 }
                 heading("Permissions")
                 ModeTiles(mode: $mode, glide: glide)
@@ -190,6 +196,12 @@ private struct ModelPanel: View {
                 model.checkFast(chat)
             }
         }
+    }
+
+    /// A section that comes and goes with the model: gone at once when it leaves, so what's
+    /// under it doesn't slide over it, and fading in once the rest has made room.
+    private var section: AnyTransition {
+        .asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.14)), removal: .identity)
     }
 
     /// What the CLI last said about fast mode for the thread, in the app's words.

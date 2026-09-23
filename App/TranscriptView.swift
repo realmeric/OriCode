@@ -61,7 +61,11 @@ struct TranscriptView: View {
         .mask {
             // Fades under the top edge and above the composer instead of ending at a line.
             VStack(spacing: 0) {
-                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 44)
+                // Clear through the capsule and fading in under it, so nothing reads behind the
+                // traffic lights and the capsule in the toolbar's row.
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.45), .init(color: .black, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: TitleBar.height + 20)
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
             }

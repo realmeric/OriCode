@@ -250,8 +250,8 @@ private struct GeneralPane: View {
         SectionHeading("New threads")
         SettingsCard {
             SettingsRow(
-                title: "Model and effort",
-                detail: "A new thread starts on the model and effort you last picked in the composer.")
+                title: "Model, effort and speed",
+                detail: "A new thread starts on the model, effort and fast mode you last picked in the composer.")
             SettingsRow(title: "Permissions", detail: selectedMode.summary) {
                 Picker("Permissions", selection: $permissionMode) {
                     ForEach(PermissionModeOption.allCases) { option in
