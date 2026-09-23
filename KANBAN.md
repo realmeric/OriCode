@@ -106,6 +106,27 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.79 "Feel"
+
+#### K-75 · Threads that hand over
+A new thread opened from one with messages, or ⌘W, left the old transcript on the glass for 0.22s and slid it away for half a second more, while the composer jumped to the middle and the mark came up over it. Now the old transcript fades in a tenth of a second, the composer waits for it and glides up to the middle the way the first message sends it down, and the mark settles in last. A switch between two threads with messages goes out, then in. The same care goes to the smaller changes: the model button's words and Send change in place, a message you send rises out of the composer, an ask card rises into place and folds into its line when answered. Two trackpad taps come with it, both under a moving finger: something dragged over the composer that can be dropped there, and Tint or Transparency caught at its default.
+Done when: frames taken just after ⌘N, ⌘W and a switch between two threads show no line of the old transcript under the composer or the mark, and never two transcripts at once.
+
+#### K-76 · Default lands somewhere
+Default effort sends no level, so Claude Code picks one: the model's own, or the effortLevel in the user's Claude Code settings. Nothing said which, so choosing Default looked like choosing nothing. The engine reads each model's default from an idle CLI with the user's settings and no model call, along with whether the model can run Ultracode, why not when only workflows are off, and any effort cap, and sends them after hello. Each thread's own CLI then reports the level it runs at, so a project's settings count too. The model button names the level Default lands on, fainter than a level picked, and the Thread menu says Default (Medium) and lists Ultracode above Max. Settings › New threads gets a menu each for model, effort, fast mode and permissions, fixed to one choice or left on Last picked, which is what all four do today. With no thread open, a pick in the composer starts the thread it's for, so a fixed default can't overrule it. Ultracode never carries over to a new thread.
+Done when: on Meriç's settings an Opus thread on Default reads Opus Medium and the Thread menu's Effort says Default (Medium) with Ultracode listed; with Sonnet and High fixed in Settings, ⌘N starts a Sonnet thread on High while the last pick was Haiku; make test covers the engine's readings on a stubbed CLI.
+
+#### K-77 · Effort on a rail
+The picker becomes one column of fixed size with a second page for the models, opened from the model's name under the level. Effort is a rail with a stop per level: the thumb sticks near a stop, follows between them, settles with the drag's speed and writes the thread once, on release. Default is the ringed stop with Default under it, and landing there is Default. Ultracode is a stop past Max behind a gate the pointer has to push through, with the rays lighting in the thumb, a This thread tag and a warning, and it never carries over. Fast mode and Back to Defaults sit either side of the title; Back to Defaults shows what it will change before it's pressed. The trackpad taps at each stop under a dragging finger, harder at Max and Ultracode. Thread › Model and Effort… opens it with ⌘⇧M. The K-59 and K-65 exception names the rail.
+Done when: arrow keys and clicks move the rail and the thread takes the level; landing on the ring leaves the thread on Default with the word lit; Ultracode shows on Opus and not on Haiku; the model page picks a model and turns back; the drag's feel is in Meriç's hand.
+
+#### K-78 · Light at the top of the scale
+Motes drift toward the thumb at Max and Ultracode, a burst is thrown back as the thumb arrives there, and streaks run back from it while the CLI serves fast mode, with one bright sweep as fast comes on. All Core Animation, only while the picker is open and visible, never under Reduce Motion. The thumb gets a halo at the top of the scale, the fill pours in as the picker opens, and the cost clause under Max and Ultracode takes the usage circle's band for the session. The brief's Ink and Motion lines say so.
+Done when: frames show motes at Max and nothing moving below Max without fast; with the picker open at Ultracode, OriCode reads 0.0% CPU, and WindowServer's CPU with the picker open and closed is in the notes.
+
+#### K-79 · Release 0.0.79
+As K-12. Tag `v0.0.79`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
