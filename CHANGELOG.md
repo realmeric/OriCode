@@ -2,6 +2,10 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.90 "Mark and slider" - 2026-09-23
+
+- B · Mark now has the slider under the mark: the mark shows how hard Claude is thinking, the dot growing and heating and the rays lighting at Ultracode, and the slider underneath sets it. Fast mode's button is always at the top left, dimmed on a model that can't go fast. A and C are still in Thread › Picker Design.
+
 ## v0.0.88 "Three pickers" - 2026-09-23
 
 - The model button's picker is a card of the composer's own glass that rises out of the composer, instead of a system popover. It comes in three designs to try, switched in Thread › Picker Design: A · Slider, the level over the model with one slider; B · Mark, OriCode's mark, whose dot grows and heats as Claude thinks harder and whose rays light at Ultracode; and C · Columns, model, effort and permissions as three columns of words. One of them stays.
