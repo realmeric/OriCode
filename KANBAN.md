@@ -110,8 +110,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
-### Todo: 0.0.92 "Fast you can see"
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -660,7 +658,7 @@ Commit: 2623625
 #### K-92 · Release 0.0.92
 As K-12. Tag `v0.0.92`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.92 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread (fast on from Settings) opened B below the composer with the CLI's 'Needs usage credits on your Claude account' under the level, turned to the models page and back as Haiku was picked, took Ask, closed on a click outside, and the thread sent an edit that waited on its card and landed in greet.swift when allowed. The engine's model-defaults probe failed once today on an unconfirmed claude-fable-5-1[1m], which drops every model's defaults; that is a task of its own.
-Commit: pending
+Commit: 87825c9
 
 
 ## Exceptions
