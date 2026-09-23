@@ -112,9 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.92 "Fast you can see"
 
-#### K-92 · Release 0.0.92
-As K-12. Tag `v0.0.92`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -658,6 +655,11 @@ Commit: a35088a
 Meriç chose B, the mark over the slider, so A and C go, with Thread › Picker Design. The Fast button didn't say clearly enough whether it was on, and nothing else did either, because the slider's streaks waited for the CLI to confirm fast mode before running. Once clicked, the bolt lights up white on a lit circle with a glow, faint when it's off, struck through when the CLI turns fast mode down. While it's on, the slider's streaks run for a few seconds and then stand still behind the thumb; the mark's head trails speed lines, darts forward as fast comes on, and streaks run through the mark for those same seconds. The brief's Layout, Motion and Exceptions lines describe the one picker.
 Done when: A and C are gone and the picker opens as B; frames show the lit bolt with the streaks and speed lines while fast is on or being checked, and the struck bolt with the CLI's reason when it's turned down.
 Notes: A's page and card, C's columns, the PickerDesign switch and its menu went; PickerCard always shows B, which keeps Back to Defaults' 40ms wave and the fast check on opening that A's card carried. FastButton: on (asked and not turned down or paused) is a semibold bolt.fill in pure white on white 20% with a white 35% glow at 8pt; off is the outline bolt in white 30%, 55% on hover; paused by a rate limit keeps the filled bolt in secondary on white 8%; refused is bolt.slash. PickerState.fastOn counts fast as on while the CLI checks as well as once it serves it, and B passes that to the slider, whose streaks and ignite sweep now start with the click; when the four seconds end, three still streaks fade in behind the thumb. The mark: three ember speed lines of 10, 16 and 10pt trail 4pt behind the dot, sliding in with the switch; the dot darts 8pt forward stretched to 1.35 and springs back as fast comes on; and a Core Animation emitter of the slider's streaks runs through a 150 by 80pt band round the mark, faded at both ends, for the live window. Checked with frames: on a thread with fast on, the lit bolt, the speed lines, the streaks through the mark and along the slider while the CLI checked; then the CLI's answer on this account, 'Needs usage credits on your Claude account', with the bolt struck through and the effects gone.
+Commit: 2623625
+
+#### K-92 · Release 0.0.92
+As K-12. Tag `v0.0.92`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.92 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread (fast on from Settings) opened B below the composer with the CLI's 'Needs usage credits on your Claude account' under the level, turned to the models page and back as Haiku was picked, took Ask, closed on a click outside, and the thread sent an edit that waited on its card and landed in greet.swift when allowed. The engine's model-defaults probe failed once today on an unconfirmed claude-fable-5-1[1m], which drops every model's defaults; that is a task of its own.
 Commit: pending
 
 

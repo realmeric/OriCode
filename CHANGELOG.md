@@ -2,6 +2,11 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.92 "Fast you can see" - 2026-09-23
+
+- The picker is the mark over the slider; the other two designs are gone.
+- The Fast button lights up white on a lit circle once it's on, and fast mode shows in the picker: streaks run along the slider and through the mark, and the mark's head trails speed lines and darts forward as it comes on. When Claude Code turns fast mode down, the bolt is struck through and the line under the level says why.
+
 ## v0.0.90 "Mark and slider" - 2026-09-23
 
 - B · Mark now has the slider under the mark: the mark shows how hard Claude is thinking, the dot growing and heating and the rays lighting at Ultracode, and the slider underneath sets it. Fast mode's button is always at the top left, dimmed on a model that can't go fast. A and C are still in Thread › Picker Design.
