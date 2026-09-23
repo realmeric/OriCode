@@ -373,7 +373,8 @@ private struct AboutPane: View {
                 Text("OriCode").font(.system(size: 20, weight: .semibold)).foregroundStyle(Ink.primary)
                 Text("A native window for Claude Code.").font(Type.body).foregroundStyle(Ink.secondary)
                 Text(version).font(Type.secondary).foregroundStyle(Ink.faint)
-                if let source {
+                // The folder it was built from, which a copy built elsewhere doesn't have.
+                if let source, FileManager.default.fileExists(atPath: source.path) {
                     Button("Show the source") { NSWorkspace.shared.activateFileViewerSelecting([source]) }
                         .buttonStyle(.link)
                         .foregroundStyle(Ink.secondary)
