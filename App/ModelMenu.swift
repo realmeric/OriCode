@@ -80,7 +80,10 @@ struct ModelMenu: View {
         .buttonStyle(.plain)
         .fixedSize()
         .onHover { hovering = $0 }
-        .popover(isPresented: Binding(get: { model.modelPickerShown }, set: { model.modelPickerShown = $0 }), arrowEdge: .top) {
+        // From the button's right end, which stays put while its label grows leftwards with
+        // the effort and the bolt, so the picker doesn't drift as choices change.
+        .popover(isPresented: Binding(get: { model.modelPickerShown }, set: { model.modelPickerShown = $0 }),
+                 attachmentAnchor: .point(.trailing), arrowEdge: .top) {
             ModelPanel(chat: chat, selectedModel: selectedModel, effort: effortBinding, mode: modeBinding, fast: fastBinding)
         }
         .help("Model and permission mode")
@@ -130,7 +133,8 @@ struct ModelMenu: View {
     }
 }
 
-/// What the model button opens.
+/// What the model button opens: models on the left; effort, speed and permissions on the right.
+/// Two columns, so it stays short enough to open above the composer.
 private struct ModelPanel: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
@@ -138,49 +142,48 @@ private struct ModelPanel: View {
     @Binding var effort: String
     @Binding var mode: String
     @Binding var fast: Bool
+    /// The chosen model's and mode's highlights move between choices instead of jumping.
+    @Namespace private var glide
 
     var body: some View {
-        // Two columns, so the picker stays short enough to open above the composer.
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 heading("Model")
                 ForEach(model.models) { option in
-                    PickerRow(title: option.name, detail: option.description, chosen: option.id == selectedModel?.id) {
+                    ModelRow(option: option, chosen: option.id == selectedModel?.id, glide: glide) {
                         model.setModel(option.id, for: chat)
                     }
                 }
             }
             .frame(width: 250)
-            VStack(alignment: .leading, spacing: 2) {
-                if let efforts = selectedModel?.efforts, !efforts.isEmpty {
-                    heading("Effort")
-                    Picker("Effort", selection: $effort) {
-                        Text("Default").tag("")
-                        // Segments share one width, so the longest name is shortened here.
-                        ForEach(efforts, id: \.self) { Text($0 == "xhigh" ? "X-high" : ModelMenu.effortName($0)).tag($0) }
+            VStack(alignment: .leading, spacing: 4) {
+                if let levels = selectedModel?.efforts, !levels.isEmpty {
+                    HStack {
+                        heading("Effort")
+                        Spacer()
+                        // The bars don't say which level they are; Default says so on its pill.
+                        if !effort.isEmpty {
+                            Text(ModelMenu.effortName(effort))
+                                .font(Type.secondary)
+                                .foregroundStyle(Ink.secondary)
+                                .padding(.top, 6)
+                                .transition(.opacity)
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 4)
+                    EffortMeter(levels: levels, effort: $effort)
                 }
                 if selectedModel?.fast == true {
                     heading("Speed")
-                    FastRow(on: $fast, conversation: chat.flatMap { model.conversations[$0.id] })
+                    FastChip(on: $fast, status: fastStatus)
                 }
                 heading("Permissions")
-                ForEach(PermissionModeOption.allCases) { option in
-                    PickerRow(icon: option.icon, title: option.title, detail: option.summary, chosen: option.rawValue == mode) {
-                        mode = option.rawValue
-                    }
-                }
+                ModeTiles(mode: $mode, glide: glide)
             }
-            // Wide enough for six effort levels side by side.
-            .frame(width: 380)
+            .frame(width: 292)
         }
-        .padding(8)
+        .padding(10)
+        .animation(Motion.move, value: selectedModel?.id)
+        .animation(Motion.move, value: mode)
         .onAppear {
             // Fast mode left on from an earlier launch hasn't been checked in this one.
             if let chat, model.fastMode(of: chat), model.conversations[chat.id]?.fastState == nil {
@@ -189,101 +192,151 @@ private struct ModelPanel: View {
         }
     }
 
+    /// What the CLI last said about fast mode for the thread, in the app's words.
+    private var fastStatus: String {
+        guard fast else { return "Faster output from the same model" }
+        let conversation = chat.flatMap { model.conversations[$0.id] }
+        guard let state = conversation?.fastState else { return "Checking…" }
+        switch state {
+        case "on": return "On for this model"
+        case "cooldown": return "Paused after a rate limit, back shortly"
+        default: return conversation?.fastReason.map(FastChip.why) ?? "Not available right now"
+        }
+    }
+
     private func heading(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Ink.faint)
-            .padding(.horizontal, 8)
-            .padding(.top, 8)
+            .padding(.horizontal, 4)
+            .padding(.top, 6)
             .padding(.bottom, 2)
     }
 }
 
-/// One choice in the picker: lit on hover like the drawer's rows, checked when it's the one.
-private struct PickerRow: View {
-    var icon: String?
-    let title: String
-    let detail: String
+/// A model: its name and the SDK's line about it, on the gliding highlight when it's the one.
+private struct ModelRow: View {
+    let option: ModelOption
     let chosen: Bool
+    let glide: Namespace.ID
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Ink.secondary)
-                        .frame(width: 16)
-                }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(Type.body)
-                        .foregroundStyle(Ink.primary)
-                    if !detail.isEmpty {
-                        Text(detail)
-                            .font(Type.secondary)
-                            .foregroundStyle(Ink.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 8)
-                if chosen {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Ink.primary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(hovering ? Surface.hover : .clear, in: .rect(cornerRadius: 8, style: .continuous))
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .accessibilityAddTraits(chosen ? .isSelected : [])
-    }
-}
-
-/// Fast mode's switch, saying why it isn't on when the CLI can't serve it.
-private struct FastRow: View {
-    @Binding var on: Bool
-    let conversation: Conversation?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "bolt")
-                .font(.system(size: 12))
-                .foregroundStyle(Ink.secondary)
-                .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Fast mode")
+                Text(option.name)
                     .font(Type.body)
-                    .foregroundStyle(Ink.primary)
-                Text(detail)
+                    .foregroundStyle(chosen ? Ink.primary : Ink.primary.opacity(0.8))
+                Text(option.description)
                     .font(Type.secondary)
                     .foregroundStyle(Ink.secondary)
                     .lineLimit(1)
             }
-            Spacer(minLength: 8)
-            Toggle("Fast mode", isOn: $on)
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background {
+                if chosen {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Surface.selected)
+                        .matchedGeometryEffect(id: "model", in: glide)
+                } else if hovering {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Surface.hover)
+                }
+            }
+            .contentShape(.rect)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(option.description)
+        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
+}
 
-    private var detail: String {
-        guard on else { return "Faster output from the same model" }
-        guard let state = conversation?.fastState else { return "Checking…" }
-        switch state {
-        case "on": return "On for this model"
-        case "cooldown": return "Paused after a rate limit, back shortly"
-        default: return conversation?.fastReason.map(Self.why) ?? "Not available right now"
+/// Effort as a meter: Default, then a bar for each level the model has, taller as they go,
+/// lit up to the chosen one.
+private struct EffortMeter: View {
+    let levels: [String]
+    @Binding var effort: String
+    @State private var hovered: String?
+
+    var body: some View {
+        let chosen = levels.firstIndex(of: effort) ?? -1
+        HStack(alignment: .bottom, spacing: 2) {
+            Button {
+                effort = ""
+            } label: {
+                Text("Default")
+                    .font(Type.secondary)
+                    .foregroundStyle(effort.isEmpty ? Ink.primary : Ink.secondary)
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
+                    .background(effort.isEmpty ? Surface.selected : hovered == "" ? Surface.hover : Surface.card, in: .capsule)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovered = $0 ? "" : (hovered == "" ? nil : hovered) }
+            .padding(.trailing, 8)
+            ForEach(Array(levels.enumerated()), id: \.element) { index, level in
+                Button {
+                    effort = level
+                } label: {
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(index <= chosen ? Ink.primary : Color.white.opacity(hovered == level ? 0.3 : 0.15))
+                        .frame(width: 10, height: 8 + CGFloat(index) * 16 / CGFloat(max(levels.count - 1, 1)))
+                        // A wider, full-height target than the bar it holds.
+                        .frame(width: 22, height: 28, alignment: .bottom)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .onHover { hovered = $0 ? level : (hovered == level ? nil : hovered) }
+                .help(ModelMenu.effortName(level))
+                .accessibilityLabel("Effort \(ModelMenu.effortName(level))")
+                .accessibilityAddTraits(level == effort ? .isSelected : [])
+            }
         }
+        .padding(.horizontal, 4)
+        .animation(Motion.move, value: effort)
+    }
+}
+
+/// Fast mode as a bolt chip that lights when it's on, with what the CLI said beside it.
+private struct FastChip: View {
+    @Binding var on: Bool
+    let status: String
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                on.toggle()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: on ? "bolt.fill" : "bolt")
+                        .symbolEffect(.bounce, value: on)
+                    Text("Fast")
+                }
+                .font(Type.secondary.weight(.medium))
+                .foregroundStyle(on ? Ink.primary : Ink.secondary)
+                .padding(.horizontal, 11)
+                .frame(height: 26)
+                .background(on ? Color.white.opacity(0.18) : hovering ? Surface.hover : Surface.card, in: .capsule)
+                .shadow(color: .white.opacity(on ? 0.22 : 0), radius: 6)
+                .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .accessibilityLabel("Fast mode")
+            .accessibilityValue(on ? "On" : "Off")
+            Text(status)
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 4)
+        .animation(Motion.move, value: on)
     }
 
     /// The CLI's reasons, in the app's words.
@@ -298,6 +351,60 @@ private struct FastRow: View {
         case "network_error": "Couldn't check just now"
         case "pending": "Checking…"
         default: "Not available right now"
+        }
+    }
+}
+
+/// The permission modes as five tiles, the highlight moving to the chosen one, with its name
+/// and line under them.
+private struct ModeTiles: View {
+    @Binding var mode: String
+    let glide: Namespace.ID
+    @State private var hovered: String?
+
+    var body: some View {
+        let current = PermissionModeOption(rawValue: mode) ?? .ask
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                ForEach(PermissionModeOption.allCases) { option in
+                    let chosen = option == current
+                    Button {
+                        mode = option.rawValue
+                    } label: {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 15))
+                            .foregroundStyle(chosen ? Ink.primary : Ink.secondary)
+                            .frame(width: 52, height: 40)
+                            .background {
+                                if chosen {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Surface.selected)
+                                        .matchedGeometryEffect(id: "mode", in: glide)
+                                } else if hovered == option.rawValue {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Surface.hover)
+                                }
+                            }
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovered = $0 ? option.rawValue : (hovered == option.rawValue ? nil : hovered) }
+                    .help(option.title)
+                    .accessibilityLabel(option.title)
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                }
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(current.title)
+                    .font(Type.body)
+                    .foregroundStyle(Ink.primary)
+                Text(current.summary)
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.secondary)
+            }
+            .padding(.horizontal, 4)
+            .id(current)
+            .transition(.opacity)
         }
     }
 }

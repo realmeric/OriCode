@@ -110,10 +110,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-65 · A picker with some life in it
-The model picker keeps its two columns and stops looking like a settings pane. The chosen model's highlight glides from row to row. Effort becomes a meter of bars, one per level the model has, lit up to the chosen one, with Auto for no level. Fast mode is a bolt chip that lights when it's on. The permission modes are a row of five icon tiles with the chosen one's name and line under them, the highlight gliding between tiles. The motion is the app's spring. K-59's exception to rule 1 now covers the meter, the chip and the tiles.
-Done when: every choice changes the thread as before, the highlights move rather than jump, and the picker still opens above the composer in an empty thread.
-
 #### K-66 · Ready to go public
 An MIT license, as T3 Code has; a README that says what OriCode is and isn't (not made or endorsed by Anthropic, runs on your own Claude Code login, never touches a credential); third-party notices for MarkdownUI, Highlightr and highlight.js, the Agent SDK (Anthropic's terms, installed from npm, not relicensed) and Claude's logo (from simple-icons, Anthropic's trademark). The repo stops tracking what shouldn't go out: `OriCode 2.xcodeproj`, an iCloud copy of the generated project, and `docs/reference.png`, a screenshot of another company's app. About's Show the source hides when that folder isn't on the Mac.
 Done when: the repo has LICENSE, README and THIRD_PARTY_NOTICES, tracks no generated project or third-party screenshot, and a fresh clone builds.
@@ -537,6 +533,12 @@ Commit: 961a28c
 Until the first public release on GitHub, which will be 0.1.0, a release is 0.0.N where N is its release card's number. The tags v0.1.0 to v0.7.0 become v0.0.12, v0.0.21, v0.0.25, v0.0.31, v0.0.41, v0.0.44, v0.0.46, v0.0.49 and v0.0.61, on the same commits, and the changelog's headings follow.
 Done when: git tag lists only v0.0.N tags, each on its old commit, and the changelog uses the same numbers.
 Notes: The six annotated tags kept their names in their messages (v0.0.12 One window and so on) and v0.0.61 became annotated as Projects; the other two stay plain. The app, the engine and its package now say 0.0.61, the last release, until 0.0.74. The rule is under How to work this board, and the changelog opens with it. Checked: git tag lists v0.0.12 to v0.0.61 only, each on the K-NN release commit its old tag was on.
+Commit: 98b3019
+
+#### K-65 · A picker with some life in it
+The model picker keeps its two columns and stops looking like a settings pane. The chosen model's highlight glides from row to row. Effort becomes a meter of bars, one per level the model has, lit up to the chosen one, with Auto for no level. Fast mode is a bolt chip that lights when it's on. The permission modes are a row of five icon tiles with the chosen one's name and line under them, the highlight gliding between tiles. The motion is the app's spring. K-59's exception to rule 1 now covers the meter, the chip and the tiles.
+Done when: every choice changes the thread as before, the highlights move rather than jump, and the picker still opens above the composer in an empty thread.
+Notes: The chosen model and the chosen mode share a namespace for their highlights, so each glides with the app's spring. Effort is a Default pill and one bar per level, 10pt wide in a 22pt target, from 8 to 24pt tall, lit up to the choice; the level's name shows at the column's top only when there is one, since the pill already says Default. Fast is a capsule with a bolt that fills and bounces (the SF Symbols bounce) and glows when it's on, with the CLI's status beside it. The picker now hangs from the button's right end: anchored at its middle, it drifted about 8pt each time the label grew with the effort or the bolt. Checked with the real pointer on Opus 1M: the fourth bar set Extra high and lit four bars, Fast came on and read On for this model, a tile moved the mode highlight, Sonnet took the model highlight and the Speed row stepped aside, and the thread went back to Opus 1M, Default, Fast off and Ask, as it was; Meriç's new-thread effort, High, was written back after the clicks cleared it.
 Commit: pending
 
 
@@ -544,4 +546,4 @@ Commit: pending
 
 Times rule 1 was broken, with the reason. Keep this short.
 
-- K-59: the model button opens a popover of the app's own rows instead of a `Menu`, because Meriç wants the picker to look like the app. The popover and the effort's segmented control are native, and the Thread menu keeps the native pickers for the keyboard.
+- K-59 and K-65: the model button opens a popover of the app's own instead of a `Menu`: model rows, an effort meter, a Fast chip and mode tiles where a segmented control, a switch and rows would do, because Meriç wants the picker to look like the app and have some life in it. The popover is native, and the Thread menu keeps the native pickers for the keyboard.
