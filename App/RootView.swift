@@ -100,6 +100,24 @@ struct RootView: View {
                 Text("Its transcript goes with it.")
             }
         }
+        .confirmationDialog(
+            "Remove “\(model.removingProject?.name ?? "")” from OriCode?",
+            isPresented: Binding(get: { model.removingProject != nil }, set: { if !$0 { model.removingProject = nil } }),
+            presenting: model.removingProject
+        ) { project in
+            Button("Remove", role: .destructive) { model.remove(project) }
+                .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: { project in
+            let threads = project.chats.filter(\.started).count
+            let worktrees = project.chats.contains { $0.worktreeBranch != nil }
+            let goes = switch threads {
+            case 0: "It has no threads."
+            case 1: "Its thread goes with it."
+            default: "Its \(threads) threads go with it."
+            }
+            Text("\(goes) The folder stays\(worktrees ? ", and so do its worktrees" : "").")
+        }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()
         }

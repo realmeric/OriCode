@@ -98,7 +98,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// The words a search can find a pane by: its title and what its settings are called.
     private var words: [String] {
         switch self {
-        case .general: ["glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
+        case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
@@ -266,6 +266,7 @@ private struct GeneralPane: View {
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
     @AppStorage(Glass.transparencyKey) private var transparency = Glass.defaultTransparency
     @AppStorage("nodePath") private var nodePath = ""
+    @AppStorage(Editor.key) private var editor = ""
     @AppStorage(NewThreads.model) private var newModel = ""
     @AppStorage(NewThreads.effort) private var newEffort = ""
     @AppStorage(NewThreads.fast) private var newFast = ""
@@ -283,6 +284,21 @@ private struct GeneralPane: View {
                       value: $glass, range: Glass.range, low: "System", high: "Dark", standard: Glass.defaultTint)
             SliderRow(title: "Transparency", detail: "How much of the desktop shows through sharp instead of frosted.",
                       value: $transparency, range: 0...1, low: "Frosted", high: "Clear", standard: Glass.defaultTransparency)
+        }
+        SectionHeading("Editor")
+        SettingsCard {
+            SettingsRow(title: "Open projects in", detail: "What ⌘K's Open in uses.") {
+                let apps = Editor.installed
+                if apps.isEmpty {
+                    Text("None installed").font(Type.secondary).foregroundStyle(Ink.secondary)
+                } else {
+                    Picker("Editor", selection: Binding(get: { Editor.chosen?.id ?? "" }, set: { editor = $0 })) {
+                        ForEach(apps, id: \.id) { Text($0.name).tag($0.id) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+            }
         }
         SectionHeading("New threads")
         SettingsCard {

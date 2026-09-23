@@ -287,6 +287,9 @@ extension AppModel {
         items.append(command("changes", "Changes", icon: "plusminus", shortcut: "⌘⇧D", keywords: ["commit", "diff", "stage", "git"],
                              unavailable: noThread) { [weak self] in self?.openChanges() })
 
+        // Quality of life
+        items += qualityCommands
+
         // The app
         items.append(command("settings", "Settings", icon: "gearshape", shortcut: "⌘,") { [weak self] in self?.openSettings(nil) })
         items.append(command("shortcuts", "Keyboard shortcuts", icon: "keyboard", shortcut: "⌘/", keywords: ["keys"]) { [weak self] in
