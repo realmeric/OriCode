@@ -44,6 +44,8 @@ final class AppModel {
     var branches: [UUID: BranchInfo] = [:]
     var changesShown = false
     var goToShown = false
+    /// The model button's picker, here so Esc can close it before anything under it.
+    var modelPickerShown = false
     var draftAttachments: [ImageAttachment] = []
     var usage: PlanUsage?
     var usageAt: Date?

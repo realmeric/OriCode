@@ -40,39 +40,17 @@ enum PermissionModeOption: String, CaseIterable, Identifiable {
     }
 }
 
-/// The small menu at the capsule's left end: model, effort and permission mode.
+/// The model button in the composer and the picker it opens: model, effort and permission mode
+/// as rows of the app's own rather than a system menu. That breaks rule 1 on purpose (see the
+/// board's Exceptions); the Thread menu keeps the native pickers for the keyboard.
 struct ModelMenu: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     @State private var hovering = false
 
     var body: some View {
-        Menu {
-            Picker("Model", selection: modelBinding) {
-                ForEach(model.models) { option in
-                    Text(option.name).tag(option.id)
-                }
-            }
-            .pickerStyle(.inline)
-            if let efforts = selectedModel?.efforts, !efforts.isEmpty {
-                Picker("Effort", selection: effortBinding) {
-                    Text("Default").tag("")
-                    ForEach(efforts, id: \.self) { effort in
-                        Text(Self.effortName(effort)).tag(effort)
-                    }
-                }
-                .pickerStyle(.inline)
-            }
-            Picker("Permission mode", selection: modeBinding) {
-                ForEach(PermissionModeOption.allCases) { option in
-                    Button {} label: {
-                        Text(option.title)
-                        Text(option.summary)
-                    }
-                    .tag(option.rawValue)
-                }
-            }
-            .pickerStyle(.inline)
+        Button {
+            model.modelPickerShown.toggle()
         } label: {
             HStack(spacing: 6) {
                 ClaudeMark()
@@ -90,15 +68,17 @@ struct ModelMenu: View {
             .font(Type.secondary)
             .padding(.horizontal, 8)
             .frame(height: 30)
-            .background(hovering ? Surface.hover : .clear, in: .capsule)
+            .background(hovering || model.modelPickerShown ? Surface.hover : .clear, in: .capsule)
             .contentShape(.rect)
         }
-        .menuStyle(.button)
         .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .fixedSize()
         .onHover { hovering = $0 }
+        .popover(isPresented: Binding(get: { model.modelPickerShown }, set: { model.modelPickerShown = $0 }), arrowEdge: .top) {
+            ModelPanel(chat: chat, selectedModel: selectedModel, effort: effortBinding, mode: modeBinding)
+        }
         .help("Model and permission mode")
+        .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
     }
 
     private var selectedModel: ModelOption? {
@@ -119,14 +99,6 @@ struct ModelMenu: View {
         String(name.split(separator: " (").first ?? Substring(name))
     }
 
-    private var modelBinding: Binding<String> {
-        Binding {
-            selectedModel?.id ?? ""
-        } set: { id in
-            model.setModel(id, for: chat)
-        }
-    }
-
     private var effortBinding: Binding<String> {
         Binding {
             chat?.effort ?? ""
@@ -141,5 +113,103 @@ struct ModelMenu: View {
         } set: { mode in
             model.setPermissionMode(mode, for: chat)
         }
+    }
+}
+
+/// What the model button opens.
+private struct ModelPanel: View {
+    @Environment(AppModel.self) private var model
+    let chat: Chat?
+    let selectedModel: ModelOption?
+    @Binding var effort: String
+    @Binding var mode: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            heading("Model")
+            ForEach(model.models) { option in
+                PickerRow(title: option.name, detail: option.description, chosen: option.id == selectedModel?.id) {
+                    model.setModel(option.id, for: chat)
+                }
+            }
+            if let efforts = selectedModel?.efforts, !efforts.isEmpty {
+                heading("Effort")
+                Picker("Effort", selection: $effort) {
+                    Text("Default").tag("")
+                    ForEach(efforts, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
+            }
+            heading("Permissions")
+            ForEach(PermissionModeOption.allCases) { option in
+                PickerRow(icon: option.icon, title: option.title, detail: option.summary, chosen: option.rawValue == mode) {
+                    mode = option.rawValue
+                }
+            }
+        }
+        .padding(8)
+        // Wide enough for six effort levels side by side.
+        .frame(width: 380)
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Ink.faint)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+    }
+}
+
+/// One choice in the picker: lit on hover like the drawer's rows, checked when it's the one.
+private struct PickerRow: View {
+    var icon: String?
+    let title: String
+    let detail: String
+    let chosen: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Ink.secondary)
+                        .frame(width: 16)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(Type.body)
+                        .foregroundStyle(Ink.primary)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(Type.secondary)
+                            .foregroundStyle(Ink.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                if chosen {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Ink.primary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(hovering ? Surface.hover : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }

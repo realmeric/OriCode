@@ -40,7 +40,7 @@ The reference is the empty Codex window: a rounded pane of glass with the wallpa
 
 **Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Colour carries meaning and nothing else does: a soft green for added lines and a soft red for deleted ones; the usage circle's three bands from kullanym-notch (green, amber, red), because they say how close a limit is; each project's badge colour, picked at random from eight when the project is added, because it says whose thread a row is; and Claude's orange on Claude's own mark beside the model's name. No accent colour. A running thread lights rays on its mark in the drawer, in white.
 
-**Layout.** Transcript is a centred column, max 760pt wide, with 20pt side padding at narrower widths. The composer is a capsule at the bottom of that column, 28pt from the window's bottom edge, minimum height 48pt, radius 24pt, and it grows with the text up to 40% of the window. In a thread with nothing in it, the composer sits in the middle of the window under the mark, and the first message sends it down to its place. Left to right it holds the text, an attach button, the model menu (Claude's mark, the model's short name and its effort), the usage circle, and send: a 36pt circle that becomes Stop while a turn runs. Under a turn, a footer says how many files it changed and by how much; the time it took and what it cost are there only if Settings asks for them.
+**Layout.** Transcript is a centred column, max 760pt wide, with 20pt side padding at narrower widths. The composer is a capsule at the bottom of that column, 28pt from the window's bottom edge, minimum height 48pt, radius 24pt, and it grows with the text up to 40% of the window. In a thread with nothing in it, the composer sits in the middle of the window under the mark, and the first message sends it down to its place. Left to right it holds the text, an attach button, the model button (Claude's mark, the model's short name and its effort, opening a picker of models, effort and permission modes), the usage circle, and send: a 36pt circle that becomes Stop while a turn runs. Under a turn, a footer says how many files it changed and by how much; the time it took and what it cost are there only if Settings asks for them.
 
 **The drawer.** The thread list is a drawer, not a sidebar. Closed, the window is only the conversation. Bring the mouse to the left edge, or onto the sidebar button right of the traffic lights, and it slides in over the glass; move away and it slides back. Press ⌘1–9 and it slides in just long enough to show the thread you picked: that row lit and nudged 6pt to the right, the way one card stands proud of a drawer of index cards, then it slides back on its own. Clicking the sidebar button, or ⌘B, pins it open for people who want a list.
 
@@ -105,10 +105,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: v0.7 "Projects"
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
-
-#### K-59 · A model picker of our own
-The model button opens a popover of the app's own rows instead of a system menu: the models with their descriptions, effort as a segmented control, and the permission modes with their one-liners, each row lit on hover and the chosen one checked. This breaks rule 1 on purpose, because Meriç wants the picker to look like the app. The popover and the segmented control stay native, and the Thread menu keeps its native pickers for the keyboard.
-Done when: choosing a model, an effort and a mode in the popover changes the thread's, and the button shows them.
 
 #### K-60 · Fast mode
 A Fast switch in the picker, for the models the SDK says support it. It belongs to the thread, and new threads start with the last choice, like the model. The engine passes `fastMode` in the session's flag settings, which is the opt-in the CLI asks of SDK sessions, and applies a change to a running thread with `applyFlagSettings`. It forwards `fast_mode_state` and `fast_mode_disabled_reason`, so the switch can say why fast mode isn't on. The Thread menu gets Fast Mode too.
@@ -470,6 +466,12 @@ Commit: 61cfe7f
 A folder-plus button at the right of the drawer's header, lit on hover, opens the same panel as ⌘O.
 Done when: the button opens the Add Project panel.
 Notes: Checked: the button sits at the right of the drawer's header, lit under the real pointer, and pressing it opened the Add Project panel, which was cancelled.
+Commit: 8361eae
+
+#### K-59 · A model picker of our own
+The model button opens a popover of the app's own rows instead of a system menu: the models with their descriptions, effort as a segmented control, and the permission modes with their one-liners, each row lit on hover and the chosen one checked. This breaks rule 1 on purpose, because Meriç wants the picker to look like the app. The popover and the segmented control stay native, and the Thread menu keeps its native pickers for the keyboard.
+Done when: choosing a model, an effort and a mode in the popover changes the thread's, and the button shows them.
+Notes: The button keeps K-47's look and opens a transient popover, 380pt wide so six effort levels fit side by side; at 320 they spilled past both edges. Models show the SDK's description on one line, effort is a small segmented control that appears for models that have levels, and each permission mode has its icon and one-liner. The picker's open state lives in the app model, so Esc closes it before anything else in the main window hears the key, such as a waiting ask. Checked with the real pointer: the button opened the picker, Sonnet brought the effort control and High showed on the button as Sonnet High, Plan and then Accept edits moved the check, and choosing Haiku took the effort row away; a click outside closed it. Esc couldn't be checked here, because the agent's Escape never reaches the app.
 Commit: pending
 
 
@@ -477,4 +479,4 @@ Commit: pending
 
 Times rule 1 was broken, with the reason. Keep this short.
 
-(none)
+- K-59: the model button opens a popover of the app's own rows instead of a `Menu`, because Meriç wants the picker to look like the app. The popover and the effort's segmented control are native, and the Thread menu keeps the native pickers for the keyboard.
