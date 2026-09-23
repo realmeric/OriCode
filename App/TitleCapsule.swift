@@ -1,38 +1,48 @@
 import SwiftUI
 
 /// The window's title made visible: project · branch · thread, level with the traffic lights.
+/// Clicking it opens Go to, as ⌘K does.
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
+    @State private var hovering = false
 
     var body: some View {
         if let project = model.project {
-            HStack(spacing: 6) {
-                Text(project.name)
-                    .foregroundStyle(Ink.secondary)
-                if let info = model.currentBranch {
-                    Text("·").foregroundStyle(Ink.faint)
-                    Text(info.branch)
-                        .font(Type.mono)
+            Button {
+                model.toggleGoTo()
+            } label: {
+                HStack(spacing: 6) {
+                    Text(project.name)
                         .foregroundStyle(Ink.secondary)
-                    if info.ahead > 0 {
-                        Text("↑\(info.ahead)")
+                    if let info = model.currentBranch {
+                        Text("·").foregroundStyle(Ink.faint)
+                        Text(info.branch)
                             .font(Type.mono)
-                            .foregroundStyle(Ink.faint)
+                            .foregroundStyle(Ink.secondary)
+                        if info.ahead > 0 {
+                            Text("↑\(info.ahead)")
+                                .font(Type.mono)
+                                .foregroundStyle(Ink.faint)
+                        }
+                    }
+                    if let chat = model.chat {
+                        Text("·").foregroundStyle(Ink.faint)
+                        Text(chat.title)
+                            .foregroundStyle(Ink.primary)
+                            .truncationMode(.tail)
+                            .layoutPriority(-1)
                     }
                 }
-                if let chat = model.chat {
-                    Text("·").foregroundStyle(Ink.faint)
-                    Text(chat.title)
-                        .foregroundStyle(Ink.primary)
-                        .truncationMode(.tail)
-                        .layoutPriority(-1)
-                }
+                .font(Type.secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(height: 24)
+                .background(hovering ? Surface.selected : Surface.drawer, in: .capsule)
+                .contentShape(.capsule)
             }
-            .font(Type.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .frame(height: 24)
-            .background(Surface.drawer, in: .capsule)
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help("Go to (⌘K)")
             .frame(maxWidth: 520)
             .fixedSize(horizontal: false, vertical: true)
         }

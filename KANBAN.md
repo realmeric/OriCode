@@ -106,10 +106,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
 
-#### K-53 · The pill opens Go to
-Clicking the title capsule opens Go to, as ⌘K does, and clicking it again closes it. The capsule lights on hover like the other buttons.
-Done when: a click on the capsule opens Go to.
-
 #### K-54 · A composer that stands out
 The composer's surface goes from white at 8% to white at 12%. Over a dark backdrop that puts about 24 levels of light between it and the glass, the same as the bar in Meriç's screenshot has over its background.
 Done when: a capture shows the composer that much lighter than the glass around it.
@@ -458,6 +454,12 @@ Commit: a6ce7a3
 A double-click on empty glass in the top row does what System Settings says a title bar double-click does: zoom by default, or minimize, or nothing. The toolbar draws nothing and the content runs under it, so the click reaches the content, which doesn't know the gesture.
 Done when: double-clicking empty glass in the top row zooms the window, and doing it again restores it.
 Notes: Checked first that a double-click on the top row did nothing. Now empty glass in the top row, and the drawer's first row, is a small AppKit view: a press hands the drag to performDrag, so the row still moves the window, and a double-click reads AppleActionOnDoubleClick and minimizes on Minimize, does nothing on None, and zooms otherwise, which covers the default when the key isn't set, as on this Mac. The capsule, the drawer and the toolbar's button sit above it and keep their clicks. Checked with the real pointer: a double-click at the row's left end zoomed the window to 1710 by 1074 and a second one brought it back to 1198 by 752, the same from the drawer's first row, and a drag on the row moved the window 13pt and back. The two notch apps keep windows over the top of the screen, so the middle of the row couldn't be clicked from here.
+Commit: 0b186b0
+
+#### K-53 · The pill opens Go to
+Clicking the title capsule opens Go to, as ⌘K does, and clicking it again closes it. The capsule lights on hover like the other buttons.
+Done when: a click on the capsule opens Go to.
+Notes: The capsule is a plain button sitting above the top row's glass: a click toggles Go to, and on hover its fill goes from white at 6% to 10%. Checked: pressing it opened Go to and pressing it again closed it. Droppy keeps a window over the middle of the screen's top edge, so the real pointer couldn't reach the capsule here and the presses went through accessibility; the row's glass beside it takes real clicks, as K-52 showed.
 Commit: pending
 
 
