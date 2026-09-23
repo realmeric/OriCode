@@ -35,6 +35,7 @@ extension AppModel {
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = chat.model { params["model"] = .string(model) }
         if let effort = chat.effort { params["effort"] = .string(effort) }
+        params["fast"] = .bool(fastMode(of: chat))
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
@@ -121,6 +122,7 @@ extension AppModel {
             chat.effort = nil
         }
         save()
+        if fastMode(of: chat) { checkFast(chat) }
     }
 
     func setEffort(_ effort: String?, for chat: Chat?) {
@@ -128,6 +130,32 @@ extension AppModel {
         guard let chat else { return }
         chat.effort = effort
         save()
+    }
+
+    /// On when the thread asks for it and its model can do it; a switch to a model that can't
+    /// leaves the thread's choice alone for when it switches back.
+    func fastMode(of chat: Chat) -> Bool {
+        let id = chat.model ?? lastModel
+        let model = models.first { $0.id == id } ?? models.first
+        return chat.fastMode && model?.fast == true
+    }
+
+    func setFast(_ on: Bool, for chat: Chat?) {
+        lastFast = on
+        guard let chat else { return }
+        chat.fastMode = on
+        save()
+        let fast = fastMode(of: chat)
+        Task { _ = try? await engine.request("setFast", ["threadId": .string(chat.id.uuidString), "fast": .bool(fast)]) }
+        if fast { checkFast(chat) }
+    }
+
+    /// Asks the CLI, without sending it anything, whether it would serve the thread's model fast,
+    /// so the switch can say why not before a turn is spent finding out.
+    func checkFast(_ chat: Chat) {
+        var params: [String: JSON] = ["threadId": .string(chat.id.uuidString)]
+        if let model = chat.model ?? lastModel { params["model"] = .string(model) }
+        Task { _ = try? await engine.request("fast.check", .object(params)) }
     }
 
     func setPermissionMode(_ mode: String, for chat: Chat?) {

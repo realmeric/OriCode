@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
-import { query, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
@@ -49,6 +49,21 @@ async function supportedModels(claude: string): Promise<Model[]> {
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
     return fromSDK(await Promise.race([probe.supportedModels(), timeout]));
+  } finally {
+    probe.close();
+  }
+}
+
+/// Whether the user's CLI would serve a model fast, asked without sending it anything: the
+/// initialize handshake carries the state, and the reason when it can't be on.
+async function fastCheck(claude: string, model: string | undefined): Promise<{ state: FastModeState; reason: FastModeDisabledReason | null }> {
+  const probe = query({
+    prompt: idle,
+    options: { cwd: homedir(), model, pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), settings: { fastMode: true } },
+  });
+  try {
+    const init = await probe.initializationResult();
+    return { state: init.fast_mode_state ?? "off", reason: init.fast_mode_disabled_reason ?? null };
   } finally {
     probe.close();
   }
@@ -110,6 +125,18 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async setMode({ threadId, permissionMode }: { threadId: string; permissionMode: PermissionMode }) {
     const found = threads.get(threadId);
     return { applied: found ? await found.setMode(permissionMode) : true };
+  },
+
+  async setFast({ threadId, fast }: { threadId: string; fast: boolean }) {
+    const found = threads.get(threadId);
+    return { applied: found ? await found.setFast(fast) : true };
+  },
+
+  /// Tells the thread, as a `fast` event, what its CLI would say about fast mode for the model.
+  async "fast.check"({ threadId, model }: { threadId: string; model?: string }) {
+    const result = await fastCheck(await requireClaude(), model);
+    event("fast", { threadId, ...result });
+    return result;
   },
 
   async answer(params: Answer) {

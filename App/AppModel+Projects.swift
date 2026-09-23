@@ -78,6 +78,7 @@ extension AppModel {
         chat.model = lastModel
         let efforts = models.first { $0.id == lastModel }?.efforts ?? []
         chat.effort = lastEffort.flatMap { efforts.contains($0) ? $0 : nil }
+        chat.fastMode = lastFast
         context.insert(chat)
         save()
         selectedChatID = chat.id

@@ -8,6 +8,8 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let name: String
     let description: String
     let efforts: [String]
+    /// Whether the SDK says the model can run in fast mode.
+    let fast: Bool
 }
 
 struct Hello: Codable, Sendable {
@@ -97,6 +99,11 @@ final class AppModel {
     var lastEffort: String? {
         get { UserDefaults.standard.string(forKey: "lastEffort") }
         set { UserDefaults.standard.set(newValue, forKey: "lastEffort") }
+    }
+
+    var lastFast: Bool {
+        get { UserDefaults.standard.bool(forKey: "lastFast") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastFast") }
     }
 
     init(container: ModelContainer) {

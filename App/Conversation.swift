@@ -76,6 +76,9 @@ final class Conversation {
     private(set) var tasks = 0
     /// "Can't reach Claude…" while the CLI retries; a live line, never stored.
     private(set) var retrying: String?
+    /// Fast mode as the CLI last reported it: on, off or cooldown, and why it can't be on.
+    private(set) var fastState: String?
+    private(set) var fastReason: String?
     private(set) var turn = 0
     private let chat: Chat
     private let context: ModelContext
@@ -140,6 +143,9 @@ final class Conversation {
     func receive(_ event: EngineEvent) {
         if event.name != "retrying" { retrying = nil }
         switch event.name {
+        case "fast":
+            fastState = event.body["state"]?.string
+            fastReason = event.body["reason"]?.string
         case "tasks":
             tasks = event.body["running"]?.int ?? 0
         case "retrying":

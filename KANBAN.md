@@ -40,7 +40,7 @@ The reference is the empty Codex window: a rounded pane of glass with the wallpa
 
 **Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Colour carries meaning and nothing else does: a soft green for added lines and a soft red for deleted ones; the usage circle's three bands from kullanym-notch (green, amber, red), because they say how close a limit is; each project's badge colour, picked at random from eight when the project is added, because it says whose thread a row is; and Claude's orange on Claude's own mark beside the model's name. No accent colour. A running thread lights rays on its mark in the drawer, in white.
 
-**Layout.** Transcript is a centred column, max 760pt wide, with 20pt side padding at narrower widths. The composer is a capsule at the bottom of that column, 28pt from the window's bottom edge, minimum height 48pt, radius 24pt, and it grows with the text up to 40% of the window. In a thread with nothing in it, the composer sits in the middle of the window under the mark, and the first message sends it down to its place. Left to right it holds the text, an attach button, the model button (Claude's mark, the model's short name and its effort, opening a picker of models, effort and permission modes), the usage circle, and send: a 36pt circle that becomes Stop while a turn runs. Under a turn, a footer says how many files it changed and by how much; the time it took and what it cost are there only if Settings asks for them.
+**Layout.** Transcript is a centred column, max 760pt wide, with 20pt side padding at narrower widths. The composer is a capsule at the bottom of that column, 28pt from the window's bottom edge, minimum height 48pt, radius 24pt, and it grows with the text up to 40% of the window. In a thread with nothing in it, the composer sits in the middle of the window under the mark, and the first message sends it down to its place. Left to right it holds the text, an attach button, the model button (Claude's mark, the model's short name, a bolt in fast mode and its effort, opening a picker of models, effort, fast mode and permission modes), the usage circle, and send: a 36pt circle that becomes Stop while a turn runs. Under a turn, a footer says how many files it changed and by how much; the time it took and what it cost are there only if Settings asks for them.
 
 **The drawer.** The thread list is a drawer, not a sidebar. Closed, the window is only the conversation. Bring the mouse to the left edge, or onto the sidebar button right of the traffic lights, and it slides in over the glass; move away and it slides back. Press ⌘1–9 and it slides in just long enough to show the thread you picked: that row lit and nudged 6pt to the right, the way one card stands proud of a drawer of index cards, then it slides back on its own. Clicking the sidebar button, or ⌘B, pins it open for people who want a list.
 
@@ -64,10 +64,11 @@ Requests from the app: `{"id": 7, "method": "...", "params": {...}}`. The engine
 
 Methods:
 
-- `hello` → `{ version, models: [{ id, name, description, efforts: [...] }], claude, loggedIn }`. `claude` is the path of the CLI the engine found (null when there is none) and `loggedIn` comes from `claude auth status`, so the app can tell the three failures apart without touching a credential. Models come from the SDK's supported-models call; if that isn't available, a list in `engine/models.ts` marked as a fallback.
-- `send { threadId, sessionId?, cwd, text, model?, effort?, permissionMode, attachments?, costSoFar? }` → `{ ok }`. Starts a turn; `sessionId` resumes an earlier one. `costSoFar` is what the thread has cost, because a resumed CLI's first result carries the session's saved running total.
+- `hello` → `{ version, models: [{ id, name, description, efforts: [...], fast }], claude, loggedIn }`. `claude` is the path of the CLI the engine found (null when there is none) and `loggedIn` comes from `claude auth status`, so the app can tell the three failures apart without touching a credential. Models come from the SDK's supported-models call; if that isn't available, a list in `engine/models.ts` marked as a fallback.
+- `send { threadId, sessionId?, cwd, text, model?, effort?, permissionMode, fast?, attachments?, costSoFar? }` → `{ ok }`. Starts a turn; `sessionId` resumes an earlier one. `fast` puts `fastMode` in the session's flag settings, the opt-in the CLI asks of SDK sessions. `costSoFar` is what the thread has cost, because a resumed CLI's first result carries the session's saved running total.
 - `interrupt { threadId }` → `{ ok }`.
 - `setMode { threadId, permissionMode }` → `{ applied }`. `applied` is false when the running turn can't take it and it will hold from the next one.
+- `setFast { threadId, fast }` → `{ applied }`, applied to a running CLI with `applyFlagSettings`. `fast.check { threadId, model? }` → `{ state, reason }` asks a probe CLI through its initialize handshake, with no model call, and also sends the answer as the thread's `fast` event.
 - `answer { requestId, allow, updatedInput?, answers?, message? }` → `{ ok }`. Resolves a pending `ask`.
 - `close { threadId }` → `{ ok }`. Ends the thread's CLI process; the app calls it when a thread is deleted.
 - `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
@@ -90,6 +91,7 @@ Events, each with `threadId`:
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
 - `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
 - `compacted { before, after }` when Claude Code compacted the conversation, with the token counts on either side.
+- `fast { state, reason }` when fast mode changes for the thread: `state` is `on`, `off` or `cooldown`, and `reason` is the SDK's why-not (`free`, `extra_usage_disabled`, `model_not_allowed` and so on) or null.
 - `error { message }`, and without a threadId when the engine itself is in trouble.
 
 Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypassPermissions`. The app names them Ask, Accept edits, Plan, Auto, Don't ask.
@@ -105,10 +107,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: v0.7 "Projects"
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
-
-#### K-60 · Fast mode
-A Fast switch in the picker, for the models the SDK says support it. It belongs to the thread, and new threads start with the last choice, like the model. The engine passes `fastMode` in the session's flag settings, which is the opt-in the CLI asks of SDK sessions, and applies a change to a running thread with `applyFlagSettings`. It forwards `fast_mode_state` and `fast_mode_disabled_reason`, so the switch can say why fast mode isn't on. The Thread menu gets Fast Mode too.
-Done when: turning Fast on for an Opus thread shows what the CLI reports: on, or the reason it can't be.
 
 #### K-61 · Release v0.7
 As K-12. Tag `v0.7.0`.
@@ -472,6 +470,12 @@ Commit: 8361eae
 The model button opens a popover of the app's own rows instead of a system menu: the models with their descriptions, effort as a segmented control, and the permission modes with their one-liners, each row lit on hover and the chosen one checked. This breaks rule 1 on purpose, because Meriç wants the picker to look like the app. The popover and the segmented control stay native, and the Thread menu keeps its native pickers for the keyboard.
 Done when: choosing a model, an effort and a mode in the popover changes the thread's, and the button shows them.
 Notes: The button keeps K-47's look and opens a transient popover, 380pt wide so six effort levels fit side by side; at 320 they spilled past both edges. Models show the SDK's description on one line, effort is a small segmented control that appears for models that have levels, and each permission mode has its icon and one-liner. The picker's open state lives in the app model, so Esc closes it before anything else in the main window hears the key, such as a waiting ask. Checked with the real pointer: the button opened the picker, Sonnet brought the effort control and High showed on the button as Sonnet High, Plan and then Accept edits moved the check, and choosing Haiku took the effort row away; a click outside closed it. Esc couldn't be checked here, because the agent's Escape never reaches the app.
+Commit: 2d2ffa4
+
+#### K-60 · Fast mode
+A Fast switch in the picker, for the models the SDK says support it. It belongs to the thread, and new threads start with the last choice, like the model. The engine passes `fastMode` in the session's flag settings, which is the opt-in the CLI asks of SDK sessions, and applies a change to a running thread with `applyFlagSettings`. It forwards `fast_mode_state` and `fast_mode_disabled_reason`, so the switch can say why fast mode isn't on. The Thread menu gets Fast Mode too.
+Done when: turning Fast on for an Opus thread shows what the CLI reports: on, or the reason it can't be.
+Notes: The SDK marks Default and the two Opus entries as fast-capable, not Fable, Sonnet or Haiku. A probe CLI from a scratch script, which makes no model call, reported fast mode off with sdk_opt_in_required on its own and on once its flag settings carried fastMode: true, so that is what send passes and what setFast applies to a running CLI. Turning Fast on also runs that probe as fast.check, so the switch can say on, or why not, before a turn is spent finding out; turns then keep it current from their init and result messages. Two changes to K-59 came with it: the picker is two columns (models left; effort, speed and permissions right), because one column with Speed added was about 640pt tall and AppKit opened it off to the side, and the effort segments share one width, so Extra high reads X-high there. Checked: with Default picked, Thread › Fast Mode put a bolt on the model button and the picker read Fast mode, On for this model, from the CLI's check; turning it off and going back to Haiku left the thread as it was. No fast turn was run, to keep plan usage out of the check. make test passes on both suites.
 Commit: pending
 
 

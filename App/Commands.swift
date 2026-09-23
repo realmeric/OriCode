@@ -58,6 +58,8 @@ struct OriCodeCommands: Commands {
                     ForEach(efforts, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
                 }
             }
+            Toggle("Fast Mode", isOn: fastBinding)
+                .disabled(!(model.models.first { $0.id == modelBinding.wrappedValue }?.fast ?? false))
             Picker("Permission Mode", selection: modeBinding) {
                 ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
             }
@@ -91,5 +93,9 @@ struct OriCodeCommands: Commands {
 
     private var modeBinding: Binding<String> {
         Binding { model.chat?.permissionMode ?? model.lastPermissionMode } set: { model.setPermissionMode($0, for: model.chat) }
+    }
+
+    private var fastBinding: Binding<Bool> {
+        Binding { model.chat?.fastMode ?? model.lastFast } set: { model.setFast($0, for: model.chat) }
     }
 }

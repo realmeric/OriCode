@@ -4,6 +4,8 @@ import { basename } from "node:path";
 import {
   query,
   type EffortLevel,
+  type FastModeDisabledReason,
+  type FastModeState,
   type PermissionMode,
   type PermissionResult,
   type Query,
@@ -26,6 +28,8 @@ export type SendParams = {
   effort?: EffortLevel;
   permissionMode: PermissionMode;
   attachments?: Attachment[];
+  /// Fast mode for the thread. SDK sessions get it only when their flag settings ask for it.
+  fast?: boolean;
   /// What the thread's turns have cost so far. A resumed CLI reports the session's saved
   /// running total in its first result, so this is the baseline a turn's cost is taken from.
   costSoFar?: number;
@@ -115,6 +119,9 @@ export class Thread {
   private tasks = new Map<string, { description: string; background: boolean }>();
   private costSoFar = 0;
   private lastContext = 0;
+  private fast = false;
+  /// The fast mode state last told to the app, so results that repeat it aren't sent again.
+  private fastTold = "";
 
   constructor(id: string, claude: string) {
     this.id = id;
@@ -137,9 +144,12 @@ export class Thread {
     if (!this.query || key !== this.key) {
       this.close();
       this.start(params, key);
-    } else if (params.permissionMode !== this.mode) {
-      await this.query.setPermissionMode(params.permissionMode);
-      this.mode = params.permissionMode;
+    } else {
+      if (params.permissionMode !== this.mode) {
+        await this.query.setPermissionMode(params.permissionMode);
+        this.mode = params.permissionMode;
+      }
+      if ((params.fast ?? false) !== this.fast) await this.setFast(params.fast ?? false);
     }
     log(`send thread=${this.id} model=${params.model ?? "default"} effort=${params.effort ?? "default"} mode=${params.permissionMode}`);
     this.running = true;
@@ -188,6 +198,18 @@ export class Thread {
     }
   }
 
+  /// Applied to the running CLI through its flag settings; with none running it holds for the next start.
+  async setFast(fast: boolean): Promise<boolean> {
+    this.fast = fast;
+    if (!this.query) return true;
+    try {
+      await this.query.applyFlagSettings({ fastMode: fast ? true : null });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   close(): void {
     this.inbox?.close();
     this.query?.close();
@@ -201,6 +223,7 @@ export class Thread {
     log(`start thread=${this.id} cwd=${params.cwd} resume=${resume ?? "none"}`);
     this.key = key;
     this.mode = params.permissionMode;
+    this.fast = params.fast ?? false;
     this.costSoFar = resume ? (params.costSoFar ?? 0) : 0;
     const inbox = new Inbox();
     this.inbox = inbox;
@@ -213,6 +236,8 @@ export class Thread {
         // Summarized, so the thinking deltas carry text the app can show when asked.
         thinking: adaptive.has(params.model ?? "default") ? { type: "adaptive", display: "summarized" } : undefined,
         permissionMode: params.permissionMode,
+        // The opt-in the CLI asks of SDK sessions before it serves them fast.
+        settings: this.fast ? { fastMode: true } : undefined,
         allowDangerouslySkipPermissions: true,
         resume,
         includePartialMessages: true,
@@ -226,6 +251,16 @@ export class Thread {
       },
     });
     this.pump(this.query);
+  }
+
+  /// Whether fast mode is on for the thread, or why it can't be, when that changes.
+  private tellFast(message: { fast_mode_state?: FastModeState; fast_mode_disabled_reason?: FastModeDisabledReason }): void {
+    const state = message.fast_mode_state ?? "off";
+    const reason = message.fast_mode_disabled_reason ?? null;
+    const told = `${state} ${reason}`;
+    if (told === this.fastTold) return;
+    this.fastTold = told;
+    event("fast", { threadId: this.id, state, reason });
   }
 
   /// Keeps `tasks` in step with the CLI's task messages and tells the app how many are out.
@@ -384,6 +419,7 @@ export class Thread {
         return;
       }
       case "system": {
+        if (message.subtype === "init") this.tellFast(message);
         if (this.trackTask(message)) return;
         if (message.subtype === "api_retry") {
           event("retrying", { threadId: this.id, attempt: message.attempt, max: message.max_retries, error: message.error });
@@ -404,6 +440,7 @@ export class Thread {
         this.resuming = undefined;
         this.running = false;
         this.streamed.clear();
+        this.tellFast(message);
         // total_cost_usd is the running total of this CLI process, so the turn's cost is the difference.
         const cost = message.total_cost_usd - this.costSoFar;
         this.costSoFar = message.total_cost_usd;
