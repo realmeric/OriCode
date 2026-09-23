@@ -106,13 +106,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
-### Todo: 0.0.74 "Lighter"
-
-After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
-
-#### K-74 · Release 0.0.74
-As K-12. Tag `v0.0.74`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -555,6 +548,11 @@ Commit: cc48915
 A pass over the empty window, a transcript, the drawer, the picker and Settings, looking for anything that repeats itself, doesn't line up, or reads as something it isn't, with each fix noted.
 Done when: screenshots of each surface after the pass are in the notes' checks, and every change is listed.
 Notes: Four things came out of the pass. The transcript read behind the traffic lights and the capsule, because its top fade was 44pt while the toolbar's row has been 52pt since K-45; it now stays clear through the capsule and fades in under it. An edit cut off by Stop or by the engine going away drew a diff card counting a change that never landed, while a denied one showed a failed line; unfinished tools are now marked failed, so both read the same and neither counts in the turn's files. In the picker, a section leaving with the model faded in place while Permissions slid up over it; a leaving section now goes at once and an arriving one fades in once the rest has made room. And Settings' New threads line now says the new thread starts on the model, effort and fast mode you last picked. Checked with screenshots: the capsule's row over a long transcript shows nothing behind it, the edits from the engine restarts read Edit greet.swift failed with no card, and frames 0.06s and 0.08s into switching the picker between Haiku and Opus show Permissions moving with nothing over it. The drawer, the empty window and Settings had nothing else to take out.
+Commit: b7cc302
+
+#### K-74 · Release 0.0.74
+As K-12. Tag `v0.0.74`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.74 is 7.5MB, arm64 only, with a 2.5MB binary and a 1.7MB engine; launched with an empty environment, an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
 Commit: pending
 
 

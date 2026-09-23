@@ -2,6 +2,16 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.74 "Lighter" - 2026-09-23
+
+- OriCode is 7.4MB instead of 65MB. The engine carries only the Agent SDK file it runs, and the app is built for Apple silicon without its symbols.
+- It only works as hard as Claude does. The turning rays, the waiting pulse and the usage circle's arc run in Core Animation, so a turn no longer costs a tenth of a core just to animate. App Nap is held off only while a turn runs, and a thread's Claude Code process closes after five idle minutes or when you close the thread, then resumes with its next message.
+- ⌘W closes the open thread first and the window after that.
+- Tint and Transparency each have a Default button.
+- The model picker has more life in it: an effort meter, a Fast chip, tiles for the permission modes, and highlights that glide between choices.
+- The repository is ready to go public, with an MIT license, a README and third-party notices.
+- Versions stay under 0.1.0 until the first public release, so the releases so far are now 0.0.12 to 0.0.61.
+
 ## v0.0.61 "Projects" - 2026-09-23
 
 - Threads from every project share the drawer's list, each starting with its project's badge: the first and last letters of the name on a colour the project gets at random. An Add project button sits at the top of the list.
