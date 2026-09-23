@@ -15,18 +15,25 @@ struct RaysMark: View {
     var restingOpacity = 0.3
     var litOpacity = 0.92
     var dotOpacity = 0.92
+    /// White on the glass; the effort thumb draws it dark on its white disc.
+    var color = Color.white
+    /// Rays that light come up one after another, clockwise, instead of together.
+    var stagger = false
+    /// Drawn as layers even while still, so a turn that stops stops where it is.
+    var layered = false
 
     var body: some View {
         Group {
-            if turning || waiting {
+            if turning || waiting || layered {
                 MovingRays(lit: min(lit, Self.rays), turning: turning, waiting: waiting,
-                           restingOpacity: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity)
+                           restingOpacity: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
+                           color: NSColor(color), stagger: stagger)
             } else {
                 GeometryReader { proxy in
                     let side = min(proxy.size.width, proxy.size.height)
                     ZStack {
                         rays(side: side)
-                        Circle().fill(Color.white).opacity(dotOpacity)
+                        Circle().fill(color).opacity(dotOpacity)
                             .frame(width: side * 0.3, height: side * 0.3)
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -43,7 +50,7 @@ struct RaysMark: View {
         return ZStack {
             ForEach(0..<Self.rays, id: \.self) { index in
                 Ray(index: index, count: Self.rays)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
                     .opacity(index < min(lit, Self.rays) ? litOpacity : restingOpacity)
                     .padding(width / 2)
                     .animation(.spring(response: 0.9, dampingFraction: 0.9), value: lit)
@@ -84,11 +91,15 @@ private struct MovingRays: NSViewRepresentable {
     let restingOpacity: Double
     let litOpacity: Double
     let dotOpacity: Double
+    let color: NSColor
+    let stagger: Bool
 
     func makeNSView(context: Context) -> RaysView { RaysView() }
 
     func updateNSView(_ view: RaysView, context: Context) {
-        view.show(lit: lit, turning: turning, waiting: waiting, resting: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity)
+        view.paint(color)
+        view.show(lit: lit, turning: turning, waiting: waiting, resting: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
+                  stagger: stagger)
     }
 
     final class RaysView: NSView {
@@ -117,25 +128,55 @@ private struct MovingRays: NSViewRepresentable {
 
         required init?(coder: NSCoder) { nil }
 
-        func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double) {
+        func paint(_ color: NSColor) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for ray in rays { ray.strokeColor = color.cgColor }
+            dot.fillColor = color.cgColor
+            CATransaction.commit()
+        }
+
+        func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double, stagger: Bool = false) {
+            let before = max(self.lit, 0)
             CATransaction.begin()
             // A newly lit ray eases in, the way the still mark's spring brings it up.
-            CATransaction.setAnimationDuration(lit == self.lit || self.lit < 0 ? 0 : 0.6)
+            CATransaction.setAnimationDuration(lit == self.lit || self.lit < 0 || stagger ? 0 : 0.6)
             for (index, ray) in rays.enumerated() {
                 ray.opacity = Float(index < lit ? litOpacity : resting)
             }
             CATransaction.commit()
+            if stagger, lit > before {
+                // Clockwise from twelve, each 0.16s and 0.04s after the one before.
+                let now = CACurrentMediaTime()
+                for index in before..<min(lit, rays.count) {
+                    let light = CABasicAnimation(keyPath: "opacity")
+                    light.fromValue = resting
+                    light.toValue = litOpacity
+                    light.duration = 0.16
+                    light.beginTime = now + Double(index - before) * 0.04
+                    light.fillMode = .backwards
+                    rays[index].add(light, forKey: "light")
+                }
+            }
             self.lit = lit
             if turning, spinner.animation(forKey: "turn") == nil {
-                // One turn in nine seconds, clockwise, which for a layer is the negative way.
+                // One turn in nine seconds, clockwise, which for a layer is the negative way,
+                // from wherever an earlier turn stopped.
+                let from = spinner.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
                 let turn = CABasicAnimation(keyPath: "transform.rotation.z")
-                turn.fromValue = 0
-                turn.toValue = -2 * Double.pi
+                turn.fromValue = from
+                turn.toValue = from - 2 * Double.pi
                 turn.duration = 9
                 turn.repeatCount = .infinity
                 spinner.add(turn, forKey: "turn")
-            } else if !turning {
+            } else if !turning, spinner.animation(forKey: "turn") != nil {
+                // Stops where it is rather than snapping back to twelve.
+                let angle = spinner.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                spinner.setValue(angle, forKeyPath: "transform.rotation.z")
                 spinner.removeAnimation(forKey: "turn")
+                CATransaction.commit()
             }
             dot.opacity = Float(dotOpacity)
             if waiting, dot.animation(forKey: "pulse") == nil {

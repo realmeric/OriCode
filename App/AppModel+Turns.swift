@@ -208,6 +208,53 @@ extension AppModel {
 }
 
 extension AppModel {
+    /// Where Back to Defaults takes a thread: what Settings › New threads fixes for each choice,
+    /// and Claude Code's own default for each it leaves to the last pick.
+    struct ThreadDefaults {
+        let model: String
+        let effort: String?
+        let fast: Bool
+        let permissionMode: String
+    }
+
+    var threadDefaults: ThreadDefaults {
+        let fixed = UserDefaults.standard
+        let effort = fixed.string(forKey: NewThreads.effort) ?? ""
+        return ThreadDefaults(
+            model: fixed.string(forKey: NewThreads.model)?.nonEmpty ?? ModelOption.claudeDefault,
+            effort: effort.isEmpty || effort == NewThreads.claudeDefault ? nil : effort,
+            fast: fixed.string(forKey: NewThreads.fast) == NewThreads.on,
+            permissionMode: fixed.string(forKey: NewThreads.permissionMode)?.nonEmpty ?? PermissionModeOption.ask.rawValue)
+    }
+
+    /// Whether a thread, or with none open the next one, already sits on its defaults. Effort is
+    /// compared by the level it runs at, so a level picked that equals Default's counts.
+    func atDefaults(_ chat: Chat?) -> Bool {
+        let target = threadDefaults
+        let option = option(for: chat)
+        let targetOption = models.first { $0.id == target.model }
+        let effort = chat == nil ? startingEffort : chat?.effort
+        let fast = (chat?.fastMode ?? startingFast) && option?.fast == true
+        let targetHome = target.model == option?.id ? defaultLevel(for: chat) : targetOption?.defaultEffort
+        return option?.id == target.model
+            && (effort ?? defaultLevel(for: chat)) == (target.effort ?? targetHome)
+            && fast == (target.fast && targetOption?.fast == true)
+            && (chat?.permissionMode ?? startingPermissionMode) == target.permissionMode
+    }
+
+    /// Everything back to its default through the same calls a pick makes, so the last picks
+    /// follow and a new thread starts where this one went back to.
+    func resetToDefaults(for chat: Chat?) {
+        let target = threadDefaults
+        guard let chat = chat ?? newChat() else { return }
+        if chat.model != target.model { setModel(target.model, for: chat) }
+        setEffort(target.effort, for: chat)
+        if chat.fastMode != target.fast { setFast(target.fast, for: chat) }
+        if chat.permissionMode != target.permissionMode { setPermissionMode(target.permissionMode, for: chat) }
+    }
+}
+
+extension AppModel {
     /// Where Default lands for a thread: what its own CLI reported while it picked no level, for
     /// the model it's on now, which counts a project's settings; or what the engine read.
     func defaultLevel(for chat: Chat?) -> String? {

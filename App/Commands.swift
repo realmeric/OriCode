@@ -64,6 +64,11 @@ struct OriCodeCommands: Commands {
                     ForEach(option.levels, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
                 }
             }
+            Button(model.modelPickerShown ? "Hide Model and Effort" : "Model and Effort…") { model.modelPickerShown.toggle() }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(model.project == nil)
+            Button("Back to Defaults") { model.resetToDefaults(for: model.chat) }
+                .disabled(model.project == nil || model.atDefaults(model.chat))
             Toggle("Fast Mode", isOn: fastBinding)
                 .disabled(!(model.models.first { $0.id == modelBinding.wrappedValue }?.fast ?? false))
             Picker("Permission Mode", selection: modeBinding) {

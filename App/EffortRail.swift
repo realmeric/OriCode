@@ -1,0 +1,330 @@
+import SwiftUI
+
+/// What each effort level says about itself, and how bright its part of the rail is.
+enum EffortScale {
+    /// One line each, from Claude Code's own /effort wording. The clause after the dot under Max
+    /// and Ultracode is what they cost.
+    static func line(_ level: String) -> (words: String, cost: String?) {
+        switch level {
+        case "low": ("Quick, simple work", nil)
+        case "medium": ("Balanced, with standard testing", nil)
+        case "high": ("Thorough, with extensive testing", nil)
+        case "xhigh": ("Extended reasoning, thorough analysis", nil)
+        case "max": ("Deepest reasoning", "uses more of your plan")
+        case Effort.ultracode: ("Workflows on every task", "far more of your plan")
+        default: ("", nil)
+        }
+    }
+
+    /// The two that spend the plan faster, and get the heavier tap.
+    static func spendsFaster(_ level: String) -> Bool {
+        level == "max" || level == Effort.ultracode
+    }
+
+    /// How bright the fill's head is at the thumb: light gathering as Claude thinks harder.
+    static func brightness(_ level: String) -> Double {
+        switch level {
+        case "low": 0.36
+        case "medium": 0.44
+        case "high": 0.52
+        case "xhigh": 0.60
+        default: 0.72
+        }
+    }
+}
+
+/// Effort as a rail with a stop for each level. Pressed, the thumb follows the pointer the way
+/// EffortTrack says and the trackpad taps as it crosses a level; let go, it settles on a stop on
+/// the app's spring, carrying the drag's speed, and only then is the thread's effort written.
+/// The level Default lands on wears a ring with Default under it, and landing there is Default:
+/// the thread sends no level and Claude Code picks the same one.
+struct EffortRail: View {
+    let stops: [String]
+    /// Where Default lands; nil until the engine has read it.
+    let home: String?
+    /// Ultracode is drawn, dimmed, but dynamic workflows are off.
+    let blocked: Bool
+    /// The thread's choice; nil is Default.
+    @Binding var effort: String?
+    /// The level under the thumb while it's pressed, and the stop under the pointer, for the
+    /// title and the line under the rail.
+    @Binding var held: String?
+    @Binding var hovered: String?
+    var compact = false
+    /// Where Back to Defaults would put the thumb, while the pointer is on it.
+    var ghost: String?
+    /// A click on Ultracode while workflows keep it off.
+    var onBlocked: () -> Void = {}
+    /// Return, which closes the picker.
+    var onReturn: () -> Void = {}
+
+    @State private var thumbX: CGFloat?
+    @State private var heldStop: Int?
+    /// Where on the thumb the press landed, so grabbing it doesn't make it jump.
+    @State private var grab: CGFloat = 0
+    /// A press that began on a dimmed Ultracode: it only says why, and moves nothing.
+    @State private var pressedBlocked = false
+    @State private var keyed = false
+    @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static let row: CGFloat = 32
+    static let rail: CGFloat = 24
+    static let thumb: CGFloat = 32
+
+    var height: CGFloat { compact ? Self.row : Self.row + 16 }
+
+    private var index: Int? { (effort ?? home).flatMap(stops.firstIndex(of:)) }
+    private var homeIndex: Int? { home.flatMap(stops.firstIndex(of:)) }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let track = EffortTrack(levels: stops, start: Self.thumb / 2, end: geometry.size.width - Self.thumb / 2, blocked: blocked)
+            let xs = track.positions
+            let stop = heldStop ?? index
+            let centre = thumbX ?? stop.map { xs[$0] } ?? track.start
+            let level = stop.map { stops[$0] } ?? ""
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(Surface.selected)
+                    .frame(height: Self.rail)
+                    .offset(y: (Self.row - Self.rail) / 2)
+                fill(level: level, width: stop == nil ? 0 : centre)
+                    .offset(y: (Self.row - Self.rail) / 2)
+                ForEach(stops.indices, id: \.self) { mark in
+                    stopMark(mark, onFill: stop != nil && xs[mark] <= centre)
+                        .position(x: xs[mark], y: Self.row / 2)
+                }
+                if let ghost, let at = stops.firstIndex(of: ghost), at != stop {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 1.5)
+                        .frame(width: Self.thumb, height: Self.thumb)
+                        .position(x: xs[at], y: Self.row / 2)
+                        .transition(.opacity.animation(Motion.fade))
+                }
+                if !compact, let homeIndex {
+                    Text("Default")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(onDefault ? Ink.primary : Ink.faint)
+                        .fixedSize()
+                        // Kept inside the row when the ring is an end stop.
+                        .position(x: min(max(xs[homeIndex], 22), geometry.size.width - 22), y: Self.row + 9)
+                        .onTapGesture { withAnimation(Motion.move) { effort = nil } }
+                        .accessibilityHidden(true)
+                }
+                if stop != nil {
+                    thumb(level: level, holding: thumbX != nil)
+                        .position(x: centre, y: Self.row / 2)
+                        .transition(.opacity)
+                }
+            }
+            .contentShape(.rect)
+            .gesture(drag(track))
+            .onContinuousHover { phase in
+                guard thumbX == nil else { return }
+                if case .active(let point) = phase, point.y < Self.row + 4 {
+                    hovered = stops[track.nearest(point.x)]
+                } else {
+                    hovered = nil
+                }
+            }
+        }
+        .frame(height: height)
+        .animation(Motion.fade, value: hovered)
+        .animation(Motion.reading, value: home)
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled(!keyed)
+        .contentShape(.focusEffect, .capsule)
+        .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
+            keyed = true
+            let up = press.key == .rightArrow
+            if press.modifiers.contains(.option) { return go(up ? maxIndex : 0) }
+            // A held key stops at Max: Ultracode takes a press of its own.
+            if press.phase == .repeat, up, let index, stops.indices.contains(index + 1), stops[index + 1] == Effort.ultracode {
+                return .handled
+            }
+            return step(up ? 1 : -1)
+        }
+        .onKeyPress(.home) {
+            keyed = true
+            return go(0)
+        }
+        .onKeyPress(.end) {
+            keyed = true
+            return go(maxIndex)
+        }
+        .onKeyPress(.delete) {
+            keyed = true
+            withAnimation(Motion.move) { effort = nil }
+            return .handled
+        }
+        .onKeyPress(.return) {
+            onReturn()
+            return .handled
+        }
+        // VoiceOver and Full Keyboard Access meet a native slider over the same stops.
+        .accessibilityRepresentation {
+            Slider(value: Binding(get: { Double(index ?? 0) }, set: { _ = go(Int($0.rounded())) }),
+                   in: 0...Double(max(stops.count - 1, 1)), step: 1) {
+                Text("Effort")
+            }
+            .accessibilityValue(spoken)
+        }
+        .onAppear { focused = true }
+    }
+
+    private var onDefault: Bool {
+        guard let heldStop else { return effort == nil }
+        return stops[heldStop] == home
+    }
+
+    private var maxIndex: Int {
+        stops.lastIndex { $0 != Effort.ultracode } ?? 0
+    }
+
+    private var spoken: String {
+        guard let index else { return "Default" }
+        let level = stops[index]
+        if level == Effort.ultracode { return "Ultracode, this thread only" }
+        return ModelMenu.effortName(level) + (effort == nil ? ", default" : "")
+    }
+
+    /// Light gathering toward the thumb, brighter the harder Claude thinks.
+    private func fill(level: String, width: CGFloat) -> some View {
+        Capsule()
+            .fill(LinearGradient(colors: [Color.white.opacity(0.16), Color.white.opacity(EffortScale.brightness(level))],
+                                 startPoint: .leading, endPoint: .trailing))
+            .frame(width: width, height: Self.rail)
+            .animation(Motion.fade, value: level)
+    }
+
+    @ViewBuilder
+    private func stopMark(_ mark: Int, onFill: Bool) -> some View {
+        let hover = stops[mark] == hovered && thumbX == nil
+        if stops[mark] == Effort.ultracode {
+            RaysMark(lit: RaysMark.rays, litOpacity: 1, dotOpacity: 1)
+                .frame(width: 10, height: 10)
+                .opacity(blocked ? 0.18 : 0.45)
+                .scaleEffect(hover ? 1.2 : 1)
+        } else if mark == homeIndex {
+            Circle()
+                .strokeBorder(onFill ? Color.black.opacity(0.3) : Color.white.opacity(0.55), lineWidth: 1.5)
+                .frame(width: hover ? 11 : 9, height: hover ? 11 : 9)
+        } else {
+            Circle()
+                .fill(onFill ? Color.black.opacity(0.25) : Color.white.opacity(0.3))
+                .frame(width: hover ? 6 : 4, height: hover ? 6 : 4)
+        }
+    }
+
+    /// The part you hold, in the send button's white, carrying OriCode's dot: the main head.
+    /// At Ultracode six rays light around it, the heads it runs on every task.
+    private func thumb(level: String, holding: Bool) -> some View {
+        let ultra = level == Effort.ultracode
+        return ZStack {
+            Circle()
+                .fill(RadialGradient(colors: [Color(red: 0xF7 / 255, green: 0xF7 / 255, blue: 0xF9 / 255),
+                                              Color(red: 0xD1 / 255, green: 0xD1 / 255, blue: 0xD6 / 255)],
+                                     center: .init(x: 0.3, y: 0.25), startRadius: 1, endRadius: Self.thumb * 0.75))
+            Circle()
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.1)], startPoint: .top, endPoint: .bottom),
+                              lineWidth: 1)
+            Circle()
+                .fill(Color.black.opacity(0.85))
+                .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
+            if ultra {
+                RaysMark(lit: RaysMark.rays, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
+                         color: .black, stagger: true, layered: true)
+                    .frame(width: 22, height: 22)
+                    .transition(.opacity.animation(.easeOut(duration: 0.14)))
+            }
+        }
+        .frame(width: Self.thumb, height: Self.thumb)
+        .shadow(color: .black.opacity(0.3), radius: holding ? 7 : 4, y: 1.5)
+        .scaleEffect(holding ? 1.08 : 1)
+        .animation(Motion.move, value: holding)
+    }
+
+    private func drag(_ track: EffortTrack) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { drag in
+                let xs = track.positions
+                let was = heldStop ?? index
+                if thumbX == nil, blocked, stops[track.nearest(drag.startLocation.x)] == Effort.ultracode,
+                   abs(drag.startLocation.x - (xs.last ?? 0)) <= Self.thumb / 2 {
+                    pressedBlocked = true
+                }
+                if pressedBlocked { return }
+                if thumbX == nil {
+                    // A press on the thumb takes it where it was hit; anywhere else, the thumb
+                    // springs to the pointer and follows from there.
+                    let centre = was.map { xs[$0] } ?? track.start
+                    grab = abs(drag.startLocation.x - centre) <= Self.thumb / 2 ? centre - drag.startLocation.x : 0
+                }
+                let (x, stop) = track.follow(drag.location.x + grab, holding: was)
+                if thumbX == nil {
+                    withAnimation(Motion.move) { thumbX = x }
+                } else {
+                    var still = Transaction()
+                    still.disablesAnimations = true
+                    withTransaction(still) { thumbX = x }
+                }
+                if stop != was, abs(drag.translation.width) >= 3 {
+                    let rising = stop > (was ?? -1)
+                    if rising, EffortScale.spendsFaster(stops[stop]) {
+                        Haptics.threshold()
+                    } else {
+                        Haptics.detent()
+                    }
+                }
+                heldStop = stop
+                held = stops[stop]
+                hovered = nil
+            }
+            .onEnded { drag in
+                // A press on Ultracode while workflows are off says why and leaves the thread alone.
+                if pressedBlocked {
+                    pressedBlocked = false
+                    onBlocked()
+                    return
+                }
+                let holding = heldStop ?? index ?? 0
+                let clicked = abs(drag.translation.width) < 3
+                let target = clicked ? holding : track.settle(drag.location.x + grab, velocity: drag.velocity.width, holding: holding)
+                let xs = track.positions
+                let distance = xs[target] - (thumbX ?? xs[target])
+                // The drag's speed, as a share of the way left, starts the spring; the rail's own
+                // implicit animations mustn't replace it.
+                let push = abs(distance) < 1 ? 0 : max(min(drag.velocity.width / distance, 8), -8)
+                var settle = Transaction(animation: reduceMotion ? Motion.fade : .interpolatingSpring(duration: 0.28, bounce: 0.12, initialVelocity: push))
+                settle.disablesAnimations = true
+                withTransaction(settle) {
+                    thumbX = nil
+                    heldStop = nil
+                    if target != index { choose(target) }
+                }
+                held = nil
+                grab = 0
+            }
+    }
+
+    private func choose(_ stop: Int) {
+        let level = stops[stop]
+        effort = level == home ? nil : level
+    }
+
+    private func step(_ by: Int) -> KeyPress.Result {
+        go((index ?? (by > 0 ? -1 : stops.count)) + by)
+    }
+
+    private func go(_ stop: Int) -> KeyPress.Result {
+        guard stops.indices.contains(stop) else { return .ignored }
+        if blocked, stops[stop] == Effort.ultracode {
+            onBlocked()
+            return .handled
+        }
+        withAnimation(Motion.move) { choose(stop) }
+        return .handled
+    }
+}

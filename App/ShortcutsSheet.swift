@@ -32,6 +32,7 @@ enum ShortcutList {
             Row(name: "New line", keys: "⇧Return"),
             Row(name: "Slash commands and skills", keys: "/ at the start"),
             Row(name: "Stop", keys: "⌘."),
+            Row(name: "Model and effort", keys: "⌘⇧M"),
             Row(name: "Allow what Claude asks", keys: "Return"),
             Row(name: "Deny it, or close what's on top", keys: "Esc"),
         ]),
