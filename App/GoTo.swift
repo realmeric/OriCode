@@ -10,6 +10,8 @@ struct GoToEntry: Identifiable {
     let kind: Kind
     let title: String
     let detail: String
+    /// Threads and projects show their project's badge.
+    var project: Project?
     let run: @MainActor () -> Void
 }
 
@@ -19,12 +21,12 @@ extension AppModel {
             .flatMap { project in project.chats.map { (project, $0) } }
             .sorted { $0.1.updatedAt > $1.1.updatedAt }
             .map { project, chat in
-                GoToEntry(id: chat.id.uuidString, kind: .thread, title: chat.title, detail: project.name) { [weak self] in
+                GoToEntry(id: chat.id.uuidString, kind: .thread, title: chat.title, detail: project.name, project: project) { [weak self] in
                     self?.open(chatID: chat.id)
                 }
             }
         let projectEntries = projects.map { project in
-            GoToEntry(id: project.id.uuidString, kind: .project, title: project.name, detail: "Project") { [weak self] in
+            GoToEntry(id: project.id.uuidString, kind: .project, title: project.name, detail: "Project", project: project) { [weak self] in
                 self?.select(project)
             }
         }
@@ -90,10 +92,14 @@ struct GoToSheet: View {
                             open(results)
                         } label: {
                             HStack(spacing: 10) {
-                                Image(systemName: icon(entry.kind))
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Ink.faint)
-                                    .frame(width: 14)
+                                if let project = entry.project {
+                                    ProjectBadge(project: project)
+                                } else {
+                                    Image(systemName: icon(entry.kind))
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Ink.faint)
+                                        .frame(width: 22)
+                                }
                                 Text(entry.title)
                                     .font(Type.body)
                                     .foregroundStyle(Ink.primary)

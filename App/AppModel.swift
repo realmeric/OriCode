@@ -104,6 +104,7 @@ final class AppModel {
         drawerShown = drawerPinned
         loadSelectedConversation()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
+        colourProjects()
     }
 
     func open(chatID: UUID) {

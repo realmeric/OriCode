@@ -13,8 +13,9 @@ extension AppModel {
         return projects.first { $0.id == selectedProjectID }
     }
 
+    /// Every project's threads in one list, newest first: the drawer, ⌘1–9 and the Thread menu.
     var chats: [Chat] {
-        (project?.chats ?? []).sorted { $0.createdAt > $1.createdAt }
+        projects.flatMap(\.chats).sorted { $0.createdAt > $1.createdAt }
     }
 
     var chat: Chat? {
@@ -43,6 +44,7 @@ extension AppModel {
             return
         }
         let project = Project(name: url.lastPathComponent, path: path)
+        project.colorIndex = ProjectColor.pick(taken: projects.compactMap(\.colorIndex))
         context.insert(project)
         save()
         select(project)
@@ -53,8 +55,20 @@ extension AppModel {
         selectedChatID = project.chats.max { $0.updatedAt < $1.updatedAt }?.id
     }
 
+    /// Picking a thread picks its project, since the list holds every project's threads.
     func select(_ chat: Chat) {
+        if let project = chat.project { selectedProjectID = project.id }
         selectedChatID = chat.id
+    }
+
+    /// Projects from before badges had colours get theirs the first time the app opens.
+    func colourProjects() {
+        let uncoloured = projects.filter { $0.colorIndex == nil }
+        guard !uncoloured.isEmpty else { return }
+        for project in uncoloured {
+            project.colorIndex = ProjectColor.pick(taken: projects.compactMap(\.colorIndex))
+        }
+        save()
     }
 
     @discardableResult
@@ -79,12 +93,19 @@ extension AppModel {
     }
 
     func delete(_ chat: Chat) {
-        let wasSelected = chat.id == selectedChatID
-        let id = chat.id.uuidString
-        Task { _ = try? await engine.request("close", ["threadId": .string(id)]) }
+        let deleted = chat.id
+        let wasSelected = deleted == selectedChatID
+        Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         context.delete(chat)
         save()
-        if wasSelected { selectedChatID = chats.first?.id }
+        guard wasSelected else { return }
+        // The next thread in the same project if there is one, so deleting doesn't switch projects.
+        let rest = chats.filter { $0.id != deleted }
+        if let next = rest.first(where: { $0.project?.id == selectedProjectID }) ?? rest.first {
+            select(next)
+        } else {
+            selectedChatID = nil
+        }
     }
 
     func save() {

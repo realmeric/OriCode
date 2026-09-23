@@ -86,9 +86,14 @@ struct Drawer: View {
             if !model.projects.isEmpty { Divider() }
             Button("Add project…") { model.addProject() }
         } label: {
-            Text(model.project?.name ?? "No project")
-                .font(Type.body.weight(.medium))
-                .foregroundStyle(Ink.primary)
+            HStack(spacing: 8) {
+                if let project = model.project {
+                    ProjectBadge(project: project)
+                }
+                Text(model.project?.name ?? "No project")
+                    .font(Type.body.weight(.medium))
+                    .foregroundStyle(Ink.primary)
+            }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -102,10 +107,9 @@ struct Drawer: View {
             model.select(chat)
         } label: {
             HStack(spacing: 10) {
-                let heads = model.heads(of: chat)
-                RaysMark(lit: heads, turning: heads > 0, waiting: model.state(of: chat) == .waiting,
-                         restingOpacity: 0.28, dotOpacity: selected || heads > 0 ? 0.92 : 0.55)
-                    .frame(width: 14, height: 14)
+                if let project = chat.project {
+                    ProjectBadge(project: project)
+                }
                 if model.renamingChatID == chat.id {
                     TextField("Title", text: $draft)
                         .textFieldStyle(.plain)
@@ -142,6 +146,13 @@ struct Drawer: View {
                     }
                 }
                 Spacer(minLength: 4)
+                // Only while the thread works or waits, so an idle row gives its title the room.
+                let heads = model.heads(of: chat)
+                let waiting = model.state(of: chat) == .waiting
+                if heads > 0 || waiting {
+                    RaysMark(lit: heads, turning: heads > 0, waiting: waiting, restingOpacity: 0.28)
+                        .frame(width: 14, height: 14)
+                }
                 if index < 9 {
                     Text("⌘\(index + 1)")
                         .font(Type.secondary)

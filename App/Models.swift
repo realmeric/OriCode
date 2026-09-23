@@ -7,6 +7,8 @@ final class Project {
     var name: String
     var path: String
     var createdAt: Date
+    /// Which of ProjectColor's colours its badge is; picked at random when the project is added.
+    var colorIndex: Int?
     @Relationship(deleteRule: .cascade, inverse: \Chat.project) var chats: [Chat] = []
 
     init(name: String, path: String) {
