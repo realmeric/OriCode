@@ -25,6 +25,7 @@ extension AppModel {
         if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
         draftAttachments = []
         conversation.userSent(trimmed, previews: images.compactMap(\.preview))
+        holdWhileWorking()
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
@@ -46,6 +47,7 @@ extension AppModel {
                 _ = try await engine.request("send", .object(params))
             } catch {
                 conversation.sendFailed(error.localizedDescription)
+                holdWhileWorking()
             }
         }
     }
@@ -81,6 +83,7 @@ extension AppModel {
         }
         guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return }
         conversation(for: chat).receive(event)
+        holdWhileWorking()
         tellIfAway(event, chat: chat)
         if event.name == "turn.done" {
             refreshBranch(for: chat)
@@ -105,11 +108,20 @@ extension AppModel {
         }
     }
 
+    /// Tells the engine whether any thread's turn is running, for App Nap.
+    func holdWhileWorking() {
+        let busy = conversations.values.contains { $0.running }
+        guard busy != holdingForTurns else { return }
+        holdingForTurns = busy
+        Task { await engine.hold(busy) }
+    }
+
     func engineStopped() {
         for conversation in conversations.values where conversation.running {
             conversation.stopped()
             conversation.note("The engine stopped in the middle of this turn.")
         }
+        holdWhileWorking()
     }
 }
 

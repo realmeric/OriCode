@@ -50,6 +50,8 @@ final class AppModel {
     var modelPickerShown = false
     /// Whether the last titled window to become key is the main one, for what ⌘W closes.
     var mainWindowKey = true
+    /// Whether the engine has been told a turn is running, so it keeps App Nap off.
+    var holdingForTurns = false
     var draftAttachments: [ImageAttachment] = []
     var usage: PlanUsage?
     var usageAt: Date?

@@ -110,10 +110,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-69 · Awake only while Claude works
-The engine has held off App Nap for as long as it runs. It now asks only while a turn is running, so a hidden, idle OriCode can nap.
-Done when: the app's log shows the activity starting with a turn and ending with the last one.
-
 #### K-70 · Idle threads let go
 A thread's CLI stays alive after its turn, about 265MB each. The engine ends a thread's CLI after five idle minutes, or at once when the thread is closed with ⌘W, and the next message resumes the session. The app also lets go of closed, idle threads' transcripts and reloads them when they're opened.
 Done when: after a thread's idle minutes its CLI is gone, and its next message resumes with the thread's history.
@@ -545,6 +541,12 @@ Commit: 046f2fe
 Release builds are Apple silicon only and stripped of symbols: the 12.8MB universal binary becomes about 2.6MB.
 Done when: the installed binary is arm64 only and under 4MB, and the app runs.
 Notes: Release is arm64 only and strips as an archive would: DEPLOYMENT_POSTPROCESSING with STRIP_INSTALLED_PRODUCT and STRIP_STYLE all, plus dead-code stripping, with the symbols kept in the dSYM beside the app. The binary went from 12.8MB to 2.5MB, and with K-67 the whole app from 65MB to 7.4MB. Debug builds are untouched. Checked: the Release product is arm64 only, its signature verifies after stripping, and launched with an empty environment it opened its window and its engine answered with the models.
+Commit: d5b2d49
+
+#### K-69 · Awake only while Claude works
+The engine has held off App Nap for as long as it runs. It now asks only while a turn is running, so a hidden, idle OriCode can nap.
+Done when: the app's log shows the activity starting with a turn and ending with the last one.
+Notes: The engine's activity used to start with the engine and was never ended, not even when the engine exited. Now Engine.hold(_:) starts it when the app says a turn is running and ends it when none is, or when the engine stops; the app works that out after each send, failed send, event and engine stop. Checked: the log had no hold at launch, then holding off App Nap when a Haiku turn started and letting the app nap again 1.8s later when it ended.
 Commit: pending
 
 

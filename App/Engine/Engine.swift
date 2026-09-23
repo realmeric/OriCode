@@ -97,8 +97,6 @@ actor Engine {
         }
         try process.run()
         self.process = process
-        activity = activity ?? ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiatedAllowingIdleSystemSleep], reason: "The engine is running Claude")
         stdin = input.fileHandleForWriting
         Self.logger.notice("engine started with \(node.path, privacy: .public)")
 
@@ -186,7 +184,21 @@ actor Engine {
         process = nil
         stdin = nil
         failPending()
+        hold(false)
         continuation.yield(.stopped)
+    }
+
+    /// App Nap slows a hidden app's timers and pipe reads, which carry a turn's answer, so the
+    /// app asks not to nap while a turn runs, and only then: idle, it can nap like any other.
+    func hold(_ busy: Bool) {
+        if busy, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "Claude is working in a thread")
+            Self.logger.notice("holding off App Nap for a turn")
+        } else if !busy, let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+            Self.logger.notice("letting the app nap again")
+        }
     }
 
     private func failPending() {
