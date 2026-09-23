@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { readCatalog } from "./catalog.ts";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
-import { fallback, fromSDK, withDefaults, type Model } from "./models.ts";
+import { fallback, fromSDK, older, settled, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, commit, diffFor, push, removeWorktree, status, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
@@ -50,7 +50,7 @@ async function supportedModels(claude: string): Promise<Model[]> {
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
     const [list, catalog] = await Promise.all([Promise.race([probe.supportedModels(), timeout]), readCatalog()]);
-    return fromSDK(list, catalog);
+    return [...fromSDK(list, catalog), ...older(catalog, list)];
   } finally {
     probe.close();
   }
@@ -72,8 +72,8 @@ async function learnDefaults(claude: string, base: Model[]): Promise<void> {
   });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    const learned = await Promise.race([withDefaults(probe, ultraProbe, base), timeout]);
-    models = learned.models;
+    const learned = await Promise.race([withDefaults(probe, ultraProbe, base.filter((model) => !model.more)), timeout]);
+    models = [...learned.models, ...base.filter((model) => model.more).map((model) => settled(model, learned.settingsEffort))];
     event("models", { models, settingsEffort: learned.settingsEffort });
   } catch (error) {
     log(`model defaults unavailable: ${describe(error)}`);

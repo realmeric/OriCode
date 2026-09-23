@@ -181,16 +181,47 @@ struct ModelsPage: View {
     @State private var keyed: String?
     @FocusState private var focused: Bool
 
+    /// Rows and headings as the page draws them.
+    struct RowGroup: Identifiable {
+        let title: String?
+        let models: [ModelOption]
+        var id: String { title ?? "" }
+    }
+
+    static func groups(_ models: [ModelOption]) -> [RowGroup] {
+        let more = models.filter { $0.more == true }
+        return [RowGroup(title: nil, models: models.filter { $0.more != true })]
+            + (more.isEmpty ? [] : [RowGroup(title: "More models", models: more)])
+    }
+
+    private static let row: CGFloat = 42
+    private static let heading: CGFloat = 28
+
+    /// The page's height: all of it up to the effort page's, and past that it scrolls.
+    static func height(for models: [ModelOption]) -> CGFloat {
+        let headings = groups(models).filter { $0.title != nil }.count
+        return min(CGFloat(models.count) * row + CGFloat(headings) * heading + 16, MarkPicker.effortHeight)
+    }
+
     var body: some View {
         let chosen = PickerState(model: model, chat: chat).option?.id
         ScrollViewReader { reader in
             ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(model.models) { option in
-                        ModelRow(option: option, chosen: option.id == chosen, keyed: option.id == keyed, glide: glide) {
-                            pick(option.id)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Self.groups(model.models)) { group in
+                        if let title = group.title {
+                            Text(title)
+                                .font(Type.secondary)
+                                .foregroundStyle(Ink.faint)
+                                .padding(.horizontal, 10)
+                                .frame(height: Self.heading - 2, alignment: .bottomLeading)
                         }
-                        .id(option.id)
+                        ForEach(group.models) { option in
+                            ModelRow(option: option, chosen: option.id == chosen, keyed: option.id == keyed, glide: glide) {
+                                pick(option.id)
+                            }
+                            .id(option.id)
+                        }
                     }
                 }
                 .padding(8)
@@ -222,7 +253,7 @@ struct ModelsPage: View {
     }
 
     private func move(_ by: Int) -> KeyPress.Result {
-        let ids = model.models.map(\.id)
+        let ids = Self.groups(model.models).flatMap(\.models).map(\.id)
         let at = keyed.flatMap(ids.firstIndex(of:)) ?? -1
         guard ids.indices.contains(at + by) else { return .ignored }
         keyed = ids[at + by]
@@ -259,10 +290,12 @@ struct ModelRow: View {
                     Text(option.name)
                         .font(Type.body)
                         .foregroundStyle(chosen ? Ink.primary : Ink.primary.opacity(0.8))
-                    Text(option.description)
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.secondary)
-                        .lineLimit(1)
+                    if !option.description.isEmpty {
+                        Text(option.description)
+                            .font(Type.secondary)
+                            .foregroundStyle(Ink.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 4)
                 if option.fast {
@@ -293,7 +326,7 @@ struct ModelRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(option.description)
+        .help(option.description.isEmpty ? option.name : option.description)
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }

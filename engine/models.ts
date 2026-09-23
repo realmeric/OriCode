@@ -16,6 +16,9 @@ export type Model = {
   /// Why an xhigh model has no Ultracode when the user can change it: `workflows` while
   /// enableWorkflows is off in their settings.
   ultraBlocked: "workflows" | null;
+  /// One of the account's older models, from the catalog's overflow section; the app lists
+  /// them under More models. Absent on the SDK's own rows.
+  more?: boolean;
 };
 
 /// Models that take adaptive thinking, filled from the SDK's list. Asking one that doesn't
@@ -35,6 +38,36 @@ export function fromSDK(models: ModelInfo[], catalog: CatalogModel[] = []): Mode
     ultra: false,
     ultraBlocked: null,
   }));
+}
+
+/// The catalog's older models for the More models list, each with the levels, default level and
+/// fast mode the catalog gives it. One the SDK's rows already run is left out, and so is one
+/// that names a Claude Code version, which a model new enough to need one isn't yet.
+export function older(catalog: CatalogModel[], models: ModelInfo[]): Model[] {
+  const running = new Set(models.map((model) => model.resolvedModel?.replace(/\[1m\]$/i, "")));
+  return catalog
+    .filter((row) => row.more && !row.minVersion && !running.has(row.id))
+    .map((row) => {
+      if (row.adaptive) adaptive.add(row.id);
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description ?? "",
+        efforts: row.efforts,
+        fast: row.fast,
+        defaultEffort: row.defaultEffort,
+        ultra: false,
+        ultraBlocked: null,
+        more: true,
+      };
+    });
+}
+
+/// Where Default lands on an older model: the effortLevel in the user's settings when the model
+/// has it, as Claude Code does, or else the catalog's default. The CLI isn't switched to them to
+/// read it, since switching to a full model id costs a request to confirm it.
+export function settled(model: Model, settingsEffort: string | null): Model {
+  return settingsEffort && model.efforts.includes(settingsEffort) ? { ...model, defaultEffort: settingsEffort } : model;
 }
 
 /// The SDK names a row by family ("Opus (1M context)") and puts the version in its line ("Opus 5

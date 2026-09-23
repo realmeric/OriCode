@@ -54,8 +54,11 @@ struct OriCodeCommands: Commands {
             }
             Divider()
             Picker("Model", selection: modelBinding) {
-                ForEach(model.models) { option in
-                    Text(option.name).tag(option.id)
+                ForEach(ModelsPage.groups(model.models)) { group in
+                    if group.title != nil { Divider() }
+                    ForEach(group.models) { option in
+                        Text(option.name).tag(option.id)
+                    }
                 }
             }
             if let option = model.models.first(where: { $0.id == modelBinding.wrappedValue }), !option.levels.isEmpty {

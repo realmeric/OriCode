@@ -17,6 +17,8 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let ultra: Bool
     /// Why it can't when it nearly could: "workflows" while dynamic workflows are off.
     let ultraBlocked: String?
+    /// One of the account's older models, which Claude Code lists under More models.
+    let more: Bool?
 
     /// The SDK's id for Default (recommended), the model Claude Code picks.
     static let claudeDefault = "default"

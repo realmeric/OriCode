@@ -12,6 +12,8 @@ struct MarkPicker: View {
 
     enum Page { case effort, models }
 
+    static let effortHeight: CGFloat = 308
+
     var body: some View {
         ZStack {
             switch page {
@@ -25,7 +27,7 @@ struct MarkPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: 320, height: page == .effort ? 308 : CGFloat(model.models.count) * 42 + 16)
+        .frame(width: 320, height: page == .effort ? Self.effortHeight : ModelsPage.height(for: model.models))
         .animation(Motion.glide, value: page)
         .onAppear {
             // Asked now, so the Fast button already knows Claude Code's answer when it's clicked.
