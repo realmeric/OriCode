@@ -148,8 +148,9 @@ struct RootView: View {
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .overlay(alignment: .leading) {
+            // As wide as the room the transcript column always leaves at the left.
             Color.clear
-                .frame(width: 8)
+                .frame(width: 20)
                 .contentShape(.rect)
                 .onHover { model.hotZone($0) }
         }

@@ -44,7 +44,7 @@ The reference is the empty Codex window: a rounded pane of glass with the wallpa
 
 **The drawer.** The thread list is a drawer, not a sidebar. Closed, the window is only the conversation. Bring the mouse to the left edge, or onto the sidebar button right of the traffic lights, and it slides in over the glass; move away and it slides back. Press ⌘1–9 and it slides in just long enough to show the thread you picked: that row lit and nudged 6pt to the right, the way one card stands proud of a drawer of index cards, then it slides back on its own. Clicking the sidebar button, or ⌘B, pins it open for people who want a list.
 
-Numbers: 280pt wide, running the window's full height 6pt in from its top, left and bottom edges, corners 12pt so they sit concentric with the window's, and the traffic lights and the sidebar button sit in the middle of its first 40pt, the way ChatGPT's sidebar holds them. The window has a toolbar that draws nothing for this: AppKit centres the lights in its 52pt row, the sidebar button is its only item, and the title capsule sits on the same line. Hot zone 8pt at the window's left edge, 120ms before it reacts. Slide in 220ms ease-out, slide out 180ms ease-in, and it waits 400ms after the mouse leaves before going. The ⌘digit peek lasts 700ms after the keypress, or as long as the mouse is over it. Rows 34pt: the thread's rays mark, title (single line, truncated), and the ⌘digit for the first nine. Under the title-bar row, a `Menu` for the project with "Add project…" at the end; at its foot, New thread on the left and a Settings gear on the right, both lit on hover like a row.
+Numbers: 280pt wide, running the window's full height 6pt in from its top, left and bottom edges, corners 12pt so they sit concentric with the window's, and the traffic lights and the sidebar button sit in the middle of its first 40pt, the way ChatGPT's sidebar holds them. The window has a toolbar that draws nothing for this: AppKit centres the lights in its 52pt row, the sidebar button is its only item, and the title capsule sits on the same line. Hot zone 20pt at the window's left edge, 120ms before it reacts. Slide in 220ms ease-out, slide out 180ms ease-in, and it waits 400ms after the mouse leaves before going. The ⌘digit peek lasts 700ms after the keypress, or as long as the mouse is over it. Rows 34pt: the thread's rays mark, title (single line, truncated), and the ⌘digit for the first nine. Under the title-bar row, a `Menu` for the project with "Add project…" at the end; at its foot, New thread on the left and a Settings gear on the right, both lit on hover like a row.
 
 **Motion.** `.spring(duration: 0.28, bounce: 0.12)` for anything that moves, `.easeOut(duration: 0.18)` for anything that appears or fades. Nothing bounces more than that, with three exceptions borrowed from kullanym-notch for things that travel or measure: the composer's slide from the middle to the bottom and the usage card use its glide (`.spring(response: 0.5, dampingFraction: 0.86)`), and the usage ring sweeps to a new value with its reading spring (`response: 0.9, dampingFraction: 0.9`), because a ring that snaps reads as a glitch. Nothing animates that the user didn't cause, except what reports work the user started: rays lighting and the arc turning inside the usage circle.
 
@@ -105,10 +105,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: v0.7 "Projects"
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
-
-#### K-51 · A wider edge for the drawer
-The hot zone at the window's left edge grows from 8pt to 20pt, which is the room the transcript column always leaves there.
-Done when: the pointer 18pt in from the left edge opens the drawer.
 
 #### K-52 · Double-click the top to zoom
 A double-click on empty glass in the top row does what System Settings says a title bar double-click does: zoom by default, or minimize, or nothing. The toolbar draws nothing and the content runs under it, so the click reaches the content, which doesn't know the gesture.
@@ -454,6 +450,12 @@ Commit: 0ce1ef4
 The main window's title is "OriCode" rather than the open thread's, so AltTab, Mission Control and the Window menu name the app. The thread's title is already in the capsule.
 Done when: the window list names the main window "OriCode" whichever thread is open.
 Notes: The navigationTitle that followed the thread is gone, so the title is the Window scene's own name. Checked: the window list named the main window OriCode on an empty thread and again after switching threads from the Thread menu.
+Commit: a8e8f92
+
+#### K-51 · A wider edge for the drawer
+The hot zone at the window's left edge grows from 8pt to 20pt, which is the room the transcript column always leaves there.
+Done when: the pointer 18pt in from the left edge opens the drawer.
+Notes: The strip is 20pt wide and still starts under the toolbar row. Checked with the real pointer: 18pt in from the left edge the drawer slid in, 24pt in it didn't, and moving away took it back out.
 Commit: pending
 
 

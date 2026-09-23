@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The drawer's timing, straight from the brief: an 8pt hot zone that waits 120ms,
+/// The drawer's timing, straight from the brief: a 20pt hot zone that waits 120ms,
 /// 220ms in, 180ms out, a 400ms grace after the mouse leaves, and a 700ms ⌘digit peek.
 extension AppModel {
     enum DrawerTiming {
