@@ -110,6 +110,15 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.88 "Three pickers"
+
+#### K-87 · Three pickers to choose from
+Meriç didn't like the picker as a whole and asked for a few designs built from the ground up, to choose one. All three open as a card of the composer's own glass rising out of its right end, the way the slash menu rises out of its left, instead of a system popover with a material and an arrow of its own; a click anywhere else, Esc or Return puts it away. A · Slider keeps the reference's structure: the level over the model, one slider with a frosted glass thumb, the permission modes as tiles. B · Mark makes OriCode's mark the control: the dot, the main head, grows and heats from a small white point at Low to Claude's orange at Max as you drag across it or press the arrows, and at Ultracode the six rays light around it as heads. C · Columns lays model, effort and permissions out as three columns of words, a highlight gliding to each choice and a small meter on every level. Thread › Picker Design switches between them until one is chosen; the other two go then.
+Done when: each of the three opens from the model button and from ⌘⇧M, sets the thread's model, effort, fast mode and permission mode, and closes on a click outside; frames show all three.
+
+#### K-88 · Release 0.0.88
+As K-12. Tag `v0.0.88`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
