@@ -54,8 +54,8 @@ struct OriCodeCommands: Commands {
             }
             Divider()
             Picker("Model", selection: modelBinding) {
-                ForEach(ModelsPage.groups(model.models)) { group in
-                    if group.title != nil { Divider() }
+                ForEach(model.modelGroups) { group in
+                    if group.id != model.modelGroups.first?.id { Divider() }
                     ForEach(group.models) { option in
                         Text(option.name).tag(option.id)
                     }

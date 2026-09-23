@@ -27,7 +27,7 @@ struct MarkPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: 320, height: page == .effort ? Self.effortHeight : ModelsPage.height(for: model.models))
+        .frame(width: 320, height: page == .effort ? Self.effortHeight : ModelsPage.height(for: model.modelGroups))
         .animation(Motion.glide, value: page)
         .onAppear {
             // Asked now, so the Fast button already knows Claude Code's answer when it's clicked.

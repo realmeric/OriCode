@@ -89,6 +89,11 @@ final class AppModel {
     /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
     /// thread that hasn't asked yet, or no thread at all, shows what's already known.
     var fastReadings: [String: FastReading] = [:]
+    /// The models the user starred, by id, in the order starred; the models page and the model
+    /// pickers put them first. One Claude Code stops listing stays here, unseen, in case it's back.
+    var favoriteModels = UserDefaults.standard.stringArray(forKey: "favoriteModels") ?? [] {
+        didSet { UserDefaults.standard.set(favoriteModels, forKey: "favoriteModels") }
+    }
     /// A transient line under the composer, for things the user did that didn't work.
     private(set) var note: String?
     /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.

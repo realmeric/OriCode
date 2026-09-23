@@ -173,6 +173,19 @@ extension AppModel {
 
     /// On when the thread asks for it and its model can do it; a switch to a model that can't
     /// leaves the thread's choice alone for when it switches back.
+    func toggleFavorite(_ id: String) {
+        if let at = favoriteModels.firstIndex(of: id) {
+            favoriteModels.remove(at: at)
+        } else {
+            favoriteModels.append(id)
+        }
+    }
+
+    /// The models as the pickers group them: favorites, then Claude Code's own, then its older ones.
+    var modelGroups: [ModelsPage.RowGroup] {
+        ModelsPage.groups(models, favorites: favoriteModels)
+    }
+
     func fastMode(of chat: Chat) -> Bool {
         chat.fastMode && option(for: chat)?.fast == true
     }

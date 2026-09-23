@@ -281,7 +281,7 @@ private struct GeneralPane: View {
             SettingsRow(title: "Model", detail: "Each of these can follow what you last picked in the composer.") {
                 Picker("Model", selection: $newModel) {
                     Text(lastPicked(model.models.first { $0.id == lastModel }?.name)).tag("")
-                    ForEach(ModelsPage.groups(model.models)) { group in
+                    ForEach(model.modelGroups) { group in
                         Divider()
                         ForEach(group.models) { option in
                             Text(option.name).tag(option.id)

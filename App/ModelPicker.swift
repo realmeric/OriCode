@@ -188,19 +188,24 @@ struct ModelsPage: View {
         var id: String { title ?? "" }
     }
 
-    static func groups(_ models: [ModelOption]) -> [RowGroup] {
-        let more = models.filter { $0.more == true }
-        return [RowGroup(title: nil, models: models.filter { $0.more != true })]
-            + (more.isEmpty ? [] : [RowGroup(title: "More models", models: more)])
+    static func groups(_ models: [ModelOption], favorites: [String]) -> [RowGroup] {
+        let starred = favorites.compactMap { id in models.first { $0.id == id } }
+        let rest = models.filter { !favorites.contains($0.id) }
+        return [
+            RowGroup(title: "Favorites", models: starred),
+            RowGroup(title: starred.isEmpty ? nil : "Models", models: rest.filter { $0.more != true }),
+            RowGroup(title: "More models", models: rest.filter { $0.more == true }),
+        ].filter { !$0.models.isEmpty }
     }
 
     private static let row: CGFloat = 42
     private static let heading: CGFloat = 28
 
     /// The page's height: all of it up to the effort page's, and past that it scrolls.
-    static func height(for models: [ModelOption]) -> CGFloat {
-        let headings = groups(models).filter { $0.title != nil }.count
-        return min(CGFloat(models.count) * row + CGFloat(headings) * heading + 16, MarkPicker.effortHeight)
+    static func height(for groups: [RowGroup]) -> CGFloat {
+        let rows = groups.reduce(0) { $0 + $1.models.count }
+        let headings = groups.filter { $0.title != nil }.count
+        return min(CGFloat(rows) * row + CGFloat(headings) * heading + 16, MarkPicker.effortHeight)
     }
 
     var body: some View {
@@ -208,16 +213,19 @@ struct ModelsPage: View {
         ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Self.groups(model.models)) { group in
+                    ForEach(model.modelGroups) { group in
                         if let title = group.title {
                             Text(title)
                                 .font(Type.secondary)
                                 .foregroundStyle(Ink.faint)
                                 .padding(.horizontal, 10)
                                 .frame(height: Self.heading - 2, alignment: .bottomLeading)
+                                .id(title)
                         }
                         ForEach(group.models) { option in
-                            ModelRow(option: option, chosen: option.id == chosen, keyed: option.id == keyed, glide: glide) {
+                            ModelRow(option: option, chosen: option.id == chosen, keyed: option.id == keyed,
+                                     favorite: model.favoriteModels.contains(option.id), glide: glide,
+                                     star: { withAnimation(Motion.move) { model.toggleFavorite(option.id) } }) {
                                 pick(option.id)
                             }
                             .id(option.id)
@@ -230,10 +238,10 @@ struct ModelsPage: View {
             .onAppear {
                 keyed = chosen
                 focused = true
-                reader.scrollTo(chosen)
+                reader.scrollTo(scrollTarget(chosen))
             }
             .onChange(of: keyed) { _, row in
-                withAnimation(Motion.move) { reader.scrollTo(row) }
+                withAnimation(Motion.move) { reader.scrollTo(scrollTarget(row)) }
             }
         }
         .focusable()
@@ -252,8 +260,13 @@ struct ModelsPage: View {
         }
     }
 
+    /// A group's first row brings its heading into view with it.
+    private func scrollTarget(_ row: String?) -> String? {
+        model.modelGroups.first { $0.models.first?.id == row }?.title ?? row
+    }
+
     private func move(_ by: Int) -> KeyPress.Result {
-        let ids = Self.groups(model.models).flatMap(\.models).map(\.id)
+        let ids = model.modelGroups.flatMap(\.models).map(\.id)
         let at = keyed.flatMap(ids.firstIndex(of:)) ?? -1
         guard ids.indices.contains(at + by) else { return .ignored }
         keyed = ids[at + by]
@@ -271,63 +284,89 @@ struct ModelsPage: View {
 }
 
 /// A model: its name and the SDK's line about it, a bolt if it can go fast, on the gliding
-/// highlight when it's the one.
+/// highlight when it's the one, and at the end a star of its own, which shows on the row under
+/// the pointer or the arrow keys and stays on a favorite.
 struct ModelRow: View {
     let option: ModelOption
     let chosen: Bool
     let keyed: Bool
+    let favorite: Bool
     let glide: Namespace.ID
+    let star: () -> Void
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                ClaudeMark()
-                    .frame(width: 14, height: 14)
-                    .opacity(chosen ? 1 : 0.45)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(option.name)
-                        .font(Type.body)
-                        .foregroundStyle(chosen ? Ink.primary : Ink.primary.opacity(0.8))
-                    if !option.description.isEmpty {
-                        Text(option.description)
-                            .font(Type.secondary)
-                            .foregroundStyle(Ink.secondary)
-                            .lineLimit(1)
+        let starShown = favorite || hovering || keyed
+        HStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 10) {
+                    ClaudeMark()
+                        .frame(width: 14, height: 14)
+                        .opacity(chosen ? 1 : 0.45)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(option.name)
+                            .font(Type.body)
+                            .foregroundStyle(chosen ? Ink.primary : Ink.primary.opacity(0.8))
+                        if !option.description.isEmpty {
+                            Text(option.description)
+                                .font(Type.secondary)
+                                .foregroundStyle(Ink.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    if option.fast {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Ink.faint)
+                            .help("Can run in fast mode")
+                    }
+                    if chosen {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Ink.primary)
                     }
                 }
-                Spacer(minLength: 4)
-                if option.fast {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(Ink.faint)
-                        .help("Can run in fast mode")
-                }
-                if chosen {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Ink.primary)
-                }
+                .padding(.leading, 10)
+                .padding(.trailing, 6)
+                .frame(height: 40)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 10)
-            .frame(height: 40)
-            .background {
-                if chosen {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Surface.selected)
-                        .matchedGeometryEffect(id: "model", in: glide)
-                } else if hovering || keyed {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Surface.hover)
-                }
+            .buttonStyle(.plain)
+            .help(option.description.isEmpty ? option.name : option.description)
+            .accessibilityAddTraits(chosen ? .isSelected : [])
+            .accessibilityAction(named: favorite ? "Remove from Favorites" : "Add to Favorites", star)
+            Button(action: star) {
+                Image(systemName: favorite ? "star.fill" : "star")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(favorite ? Ink.secondary : Ink.faint)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 18, height: 40)
+                    .padding(.trailing, 10)
+                    .contentShape(.rect)
             }
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .opacity(starShown ? 1 : 0)
+            .animation(Motion.fade, value: starShown)
+            .help(favorite ? "Remove from Favorites" : "Add to Favorites")
+            .accessibilityLabel(favorite ? "Remove from Favorites" : "Add to Favorites")
+            .accessibilityHidden(!starShown)
         }
-        .buttonStyle(.plain)
+        .background {
+            if chosen {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Surface.selected)
+                    .matchedGeometryEffect(id: "model", in: glide)
+            } else if hovering || keyed {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Surface.hover)
+            }
+        }
         .onHover { hovering = $0 }
-        .help(option.description.isEmpty ? option.name : option.description)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
+        .contextMenu {
+            Button(favorite ? "Remove from Favorites" : "Add to Favorites", action: star)
+        }
     }
 }
 
