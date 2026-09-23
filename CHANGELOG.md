@@ -1,6 +1,8 @@
 # Changelog
 
-## v0.7.0 "Projects" - 2026-09-23
+Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
+
+## v0.0.61 "Projects" - 2026-09-23
 
 - Threads from every project share the drawer's list, each starting with its project's badge: the first and last letters of the name on a colour the project gets at random. An Add project button sits at the top of the list.
 - A double-click on the top row zooms the window the way a title bar does, and clicking the title pill opens Go to.
@@ -8,22 +10,22 @@
 - The model button opens a picker of the app's own: the models, effort, the permission modes, and fast mode for the models that have it, with the reason when Claude Code can't serve it.
 - The composer stands further out from the glass, and the drawer opens from a wider strip at the window's left edge.
 
-## v0.6.2 - 2026-09-23
+## v0.0.49 - 2026-09-23
 
 - The paperclip and the model menu light up under the pointer, like the app's other buttons.
 - The model menu and the usage card show Claude's own logo, in Claude's orange.
 
-## v0.6.1 - 2026-09-23
+## v0.0.46 - 2026-09-23
 
 - The traffic lights come down to the title pill's line, with the sidebar button beside them, and sit inside the thread list's first row with room around them instead of in its corner.
 
-## v0.6.0 "Settings" - 2026-09-23
+## v0.0.44 "Settings" - 2026-09-23
 
 - Settings is a glass window like the rest of the app: a sidebar of panes with the traffic lights in it and a search field that narrows the panes to what you type, and each pane's settings in cards under headings.
 - General gains a New threads card that sets the permission mode a new thread starts in; Shortcuts lists every shortcut.
 - The title pill sits a little lower, under the traffic lights rather than level with them.
 
-## v0.5.0 "Rays" - 2026-09-23
+## v0.0.41 "Rays" - 2026-09-23
 
 - The mark is a dot inside six arcs, and the app icon is the same drawing. Each lit arc is a head at work in the thread: the main loop, then each subagent, in the foreground or the background, up to six. The drawer's rows show them.
 - A sidebar button sits right of the traffic lights. Hovering it opens the thread list the way the left edge does, clicking it pins the list, and so does cmd-B. The list runs the window's full height with the traffic lights inside it, and while it's pinned the conversation moves over for it. Its foot has New thread and a Settings gear.
@@ -32,7 +34,7 @@
 - Turns no longer show how long they took or what they cost unless Settings › Transcript asks for it; what they changed still shows.
 - Settings sits on the same glass as the window, in cards, and the system's blue is gone from the app.
 
-## v0.4.0 "Hands" - 2026-09-22
+## v0.0.31 "Hands" - 2026-09-22
 
 - cmd-K opens Go to: threads from every project, the projects and the app's actions, fuzzy-matched; arrows move and Return opens.
 - Paste an image, drop one on the composer, or open one onto the app, and it goes out with the next message. The transcript keeps a small preview of what you sent.
@@ -41,14 +43,14 @@
 - Code blocks in the transcript are coloured the same muted way: keywords, strings, numbers, comments and names, nothing else.
 - The engine's replies no longer wait in the pipe until it next writes a log line, which was behind the turns that seemed to stall at random, and a turn's cost after a relaunch is its own cost, not the session's running total.
 
-## v0.3.0 "Git" - 2026-09-22
+## v0.0.25 "Git" - 2026-09-22
 
 - A capsule at the top of the window, level with the traffic lights, shows the project, the branch and the thread, with ↑ and a count when there are commits to push.
 - cmd-shift-D opens Changes over the transcript: the changed files with a checkbox each, a message box, Write message (a small Haiku call over the diff), Commit and Push. Git runs in the engine, never in the app.
 - cmd-shift-N starts a thread on a new branch in its own worktree under .worktrees/, so two threads can edit the same file without seeing each other. Deleting one offers to remove the worktree, and says what would be lost when there is something to lose.
 - Long transcripts show their latest 200 items with a button for the rest, and no longer come up blank at launch; replies that arrived as one piece are no longer lost from the store.
 
-## v0.2.0 "See what it did" - 2026-09-22
+## v0.0.21 "See what it did" - 2026-09-22
 
 - Edits, multi-edits and writes show as a card per file with its added and deleted counts, opening onto the diff Claude applied, and each turn's footer adds up the files and lines.
 - A thin ring around the send button shows how full the thread's context is, the drawer row's tooltip shows what the thread has cost, and Thread › Compact compacts it.
@@ -59,7 +61,7 @@
 - A dropped network, a crashed engine, a missing claude or a moved project folder each get one quiet line, never an alert; a thread whose folder is gone is greyed in the drawer.
 - Everything works from the keyboard: model and permission pickers in the Thread menu, delete with cmd-delete, Esc closes whatever is on top, and cmd-/ lists the shortcuts.
 
-## v0.1.0 "One window" - 2026-09-22
+## v0.0.12 "One window" - 2026-09-22
 
 The first version you can use as a daily Claude window.
 

@@ -30,6 +30,8 @@ If a card turns out to be two, split it here before starting. If you learn somet
 
 Every time rule 1 is broken on purpose, add a line under **Exceptions** at the bottom with the reason. Two exceptions is a smell. Three means stop and re-read the rules.
 
+Versions stay under 0.1.0 until the first public release on GitHub, which is 0.1.0. Until then a release is 0.0.N, where N is its release card's number, and its tag is `v0.0.N`. Release cards up to K-61 say v0.1 to v0.7, the numbers they had when they were done; their tags were renamed in K-64.
+
 ## Design brief
 
 The reference is the empty Codex window: a rounded pane of glass with the wallpaper's orange and violet visible through it, traffic lights top-left, a single mark in the middle, and no chrome at all. The test is whether the window still feels like that once a conversation is in it.
@@ -107,10 +109,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: 0.0.74 "Lighter"
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
-
-#### K-64 · Versions before 0.1.0
-Until the first public release on GitHub, which will be 0.1.0, a release is 0.0.N where N is its release card's number. The tags v0.1.0 to v0.7.0 become v0.0.12, v0.0.21, v0.0.25, v0.0.31, v0.0.41, v0.0.44, v0.0.46, v0.0.49 and v0.0.61, on the same commits, and the changelog's headings follow.
-Done when: git tag lists only v0.0.N tags, each on its old commit, and the changelog uses the same numbers.
 
 #### K-65 · A picker with some life in it
 The model picker keeps its two columns and stops looking like a settings pane. The chosen model's highlight glides from row to row. Effort becomes a meter of bars, one per level the model has, lit up to the chosen one, with Auto for no level. Fast mode is a bolt chip that lights when it's on. The permission modes are a row of five icon tiles with the chosen one's name and line under them, the highlight gliding between tiles. The motion is the app's spring. K-59's exception to rule 1 now covers the meter, the chip and the tiles.
@@ -533,6 +531,12 @@ Commit: 0203d9c
 ⌘W closes the open thread the way Claude's app closes a session: the window goes back to the empty composer for the project, and the thread stays in the list. With no thread open, ⌘W closes the window as before. File gets Close Thread.
 Done when: ⌘W with a thread open shows the empty composer, and a second ⌘W closes the window.
 Notes: One ⌘W item replaces the File menu's close group: Close Thread while the main window has a thread open, Close otherwise. A separate Close Thread above the system's Close didn't work: disabled, it still held ⌘W and the window never closed. Which window counts as key is tracked from titled windows only, because text input puts a borderless SPRoundedWindow in the key spot a moment after launch. Checked with real key presses: ⌘W on an open thread brought back the empty composer with the thread still in the list, a second ⌘W closed the window, and with Settings in front ⌘W closed Settings and left the thread open. The shortcuts list has the new line.
+Commit: 961a28c
+
+#### K-64 · Versions before 0.1.0
+Until the first public release on GitHub, which will be 0.1.0, a release is 0.0.N where N is its release card's number. The tags v0.1.0 to v0.7.0 become v0.0.12, v0.0.21, v0.0.25, v0.0.31, v0.0.41, v0.0.44, v0.0.46, v0.0.49 and v0.0.61, on the same commits, and the changelog's headings follow.
+Done when: git tag lists only v0.0.N tags, each on its old commit, and the changelog uses the same numbers.
+Notes: The six annotated tags kept their names in their messages (v0.0.12 One window and so on) and v0.0.61 became annotated as Projects; the other two stay plain. The app, the engine and its package now say 0.0.61, the last release, until 0.0.74. The rule is under How to work this board, and the changelog opens with it. Checked: git tag lists v0.0.12 to v0.0.61 only, each on the K-NN release commit its old tag was on.
 Commit: pending
 
 
