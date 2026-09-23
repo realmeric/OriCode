@@ -64,7 +64,6 @@ struct RootView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
-        .navigationTitle(model.chat?.title ?? model.project?.name ?? "OriCode")
         .confirmationDialog(
             "Delete “\(model.deletingChat?.title ?? "")”?",
             isPresented: Binding(get: { model.deletingChat != nil }, set: { if !$0 { model.deletingChat = nil } }),

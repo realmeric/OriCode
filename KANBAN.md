@@ -106,10 +106,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
 
-#### K-50 · The window says OriCode
-The main window's title is "OriCode" rather than the open thread's, so AltTab, Mission Control and the Window menu name the app. The thread's title is already in the capsule.
-Done when: the window list names the main window "OriCode" whichever thread is open.
-
 #### K-51 · A wider edge for the drawer
 The hot zone at the window's left edge grows from 8pt to 20pt, which is the room the transcript column always leaves there.
 Done when: the pointer 18pt in from the left edge opens the drawer.
@@ -453,6 +449,12 @@ Commit: 1eb5cf1
 As K-12. Tag `v0.6.2`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.6.2, launched with an empty environment, lit the paperclip and the model menu under the real pointer and showed Claude's logo in the menu, and an edit sent in Ask mode on Haiku waited on its card, was allowed, and landed in greet.swift.
 Commit: 0ce1ef4
+
+#### K-50 · The window says OriCode
+The main window's title is "OriCode" rather than the open thread's, so AltTab, Mission Control and the Window menu name the app. The thread's title is already in the capsule.
+Done when: the window list names the main window "OriCode" whichever thread is open.
+Notes: The navigationTitle that followed the thread is gone, so the title is the Window scene's own name. Checked: the window list named the main window OriCode on an empty thread and again after switching threads from the Thread menu.
+Commit: pending
 
 
 ## Exceptions
