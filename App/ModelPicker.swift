@@ -148,41 +148,6 @@ struct FastButton: View {
     }
 }
 
-/// How the picker shows that fast mode is on, three ways until Meriç keeps one: a tag beside the
-/// level, a bolt in the head and the thumb, or afterimages behind them. Thread › Fast Look.
-enum FastLook: String, CaseIterable, Identifiable {
-    case tag, bolt, echoes
-
-    static let key = "fastLook"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .tag: "A · Tag"
-        case .bolt: "B · Bolt"
-        case .echoes: "C · Echoes"
-        }
-    }
-}
-
-/// Fast mode beside the level's name, lit like the Fast button.
-struct FastTag: View {
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 9, weight: .bold))
-            Text("Fast")
-                .font(.system(size: 11, weight: .semibold))
-        }
-        .foregroundStyle(Color.white)
-        .padding(.horizontal, 7)
-        .frame(height: 18)
-        .background(Color.white.opacity(0.2), in: .capsule)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 /// Everything back to its default, previewed while the pointer is on it, turning back once as
 /// it goes.
 struct ResetButton: View {

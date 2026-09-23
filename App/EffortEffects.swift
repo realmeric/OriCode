@@ -24,6 +24,8 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
     /// The level under the thumb.
     var level: String?
+    /// Fast mode, which turns the Ultracode wheel at its speed, with the thumb's rays.
+    var fast = false
     /// False for the first moments after the picker opens, while the fill pours in, and once the
     /// rail has rested.
     var live: Bool
@@ -82,6 +84,8 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         /// Keeps whatever is thrown off the rail away from the text above and below it.
         private let band = CAGradientLayer()
         private var level: String?
+        private var fast = false
+        private var wheelPeriod = RaysMark.turn
         private var live = false
         private var bursts = 0
         private var wakes = 0
@@ -256,6 +260,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             }
             let moved = wanted.level != level || wanted.compact != compact || wanted.thumb != thumb
             level = wanted.level
+            fast = wanted.fast
             live = wanted.live
             if wanted.bursts > bursts { pendingBurst = true }
             bursts = wanted.bursts
@@ -310,11 +315,16 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             for (index, jet) in jets.enumerated() {
                 run(jet, rate: on && heat == .ultracode ? 1 : 0, ramp: false, cells: Self.wheelCells(index))
             }
-            // The wheel turns with the thumb's rays, which don't ask whether the window is covered.
+            // The wheel turns with the thumb's rays, at their speed, and doesn't ask whether the
+            // window is covered either.
+            let period = fast ? RaysMark.fastTurn : RaysMark.turn
             if live, heat == .ultracode {
-                if wheel.animation(forKey: "turn") == nil { wheel.startTurning(clockwise: 1) }
+                if wheel.animation(forKey: "turn") == nil || period != wheelPeriod {
+                    wheel.startTurning(clockwise: 1, period: period)
+                    wheelPeriod = period
+                }
             } else {
-                wheel.coastToRay(clockwise: 1)
+                wheel.coastToRay(clockwise: 1, period: wheelPeriod)
             }
             if on, wakes != scored {
                 scored = wakes

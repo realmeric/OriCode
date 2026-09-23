@@ -56,7 +56,6 @@ private struct MarkPage: View {
     @State private var calming: Task<Void, Never>?
     /// Bumped as a level lands, for the dot's pop.
     @State private var pops = 0
-    @AppStorage(FastLook.key) private var fastLook = FastLook.tag
 
     /// How far a drag across the mark goes for each level.
     private static let step: CGFloat = 26
@@ -73,7 +72,7 @@ private struct MarkPage: View {
         VStack(spacing: 0) {
             header(state)
                 .frame(height: 30)
-            HeadMark(level: stops.isEmpty ? nil : level, fast: state.fastAsked ? fastLook : nil, live: live, pops: pops)
+            HeadMark(level: stops.isEmpty ? nil : level, fast: state.fastAsked, live: live, pops: pops)
                 .frame(maxWidth: .infinity)
                 .frame(height: 92)
                 .contentShape(.rect)
@@ -89,7 +88,7 @@ private struct MarkPage: View {
             if let option = state.option, !option.efforts.isEmpty {
                 EffortRail(stops: option.stops, home: state.home, blocked: blocked(state),
                            effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                           held: $held, hovered: $hovered, fast: state.fastAsked ? fastLook : nil, compact: true,
+                           held: $held, hovered: $hovered, fast: state.fastAsked, compact: true,
                            ghost: previewingReset ? resetTarget(state) : nil,
                            onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
                     .padding(.top, 10)
@@ -109,6 +108,8 @@ private struct MarkPage: View {
             pops += 1
             wake()
         }
+        // Switching fast wakes the mark, so the bubbles swirl as they come and the rays race.
+        .onChange(of: state.fastAsked) { wake() }
         .onAppear { wake() }
         .onDisappear { calming?.cancel() }
     }
@@ -163,13 +164,8 @@ private struct MarkPage: View {
                 Tag(text: "Default")
                     .transition(.opacity.animation(Motion.fade))
             }
-            if state.fastAsked, fastLook == .tag {
-                FastTag()
-                    .transition(AnyTransition(.blurReplace).combined(with: .scale(scale: 0.8)))
-            }
         }
         .animation(Motion.move, value: name)
-        .animation(Motion.move, value: state.fastAsked)
     }
 
     /// What the level does, or what a hovered stop would do; the cost of Max and Ultracode in the
@@ -262,11 +258,11 @@ private struct MarkPage: View {
 
 /// OriCode's mark, large. The dot is the main head, and how hard it thinks is how big and how hot
 /// it is: a small white point at Low, Claude's orange burning at Max. The rays are heads, idle and
-/// faint until Ultracode lights all six. In fast mode the head carries the bolt, cut out of it, or
-/// leaves two afterimages behind it, as Thread › Fast Look has it.
+/// faint until Ultracode lights all six. In fast mode bubbles swirl inside the head at every level,
+/// and at Ultracode the rays race round in half a second with a trail behind each.
 private struct HeadMark: View {
     let level: String?
-    let fast: FastLook?
+    let fast: Bool
     let live: Bool
     let pops: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -274,36 +270,25 @@ private struct HeadMark: View {
     var body: some View {
         let ultra = level == Effort.ultracode
         let heat = Heat(level)
-        let echoes = fast == .echoes
         ZStack {
             RaysMark(lit: ultra ? RaysMark.rays : 0, turning: live && ultra && !reduceMotion, restingOpacity: 0.13, litOpacity: 0.9,
-                     dotOpacity: 0, color: .white, stagger: true, layered: true, settles: true)
+                     dotOpacity: 0, color: .white, stagger: true, layered: true, settles: true, fast: fast)
                 .frame(width: 88, height: 88)
-            // Afterimages of the head, the way a thing drawn moving leaves them: nearer and
-            // brighter, then further and fainter, sliding out from behind it as fast comes on.
-            ForEach([(0.45, 0.85, 0.34), (0.8, 0.7, 0.14)], id: \.0) { shift, scale, opacity in
+            ZStack {
                 dot(heat)
-                    .scaleEffect(echoes ? scale : 1)
-                    .offset(x: echoes ? -heat.size * shift : 0)
-                    .opacity(echoes ? opacity : 0)
+                    .shadow(color: heat.glow, radius: heat.reach)
+                if fast {
+                    FastBubbles(size: heat.size, tint: NSColor(heat.bubble), spinning: live && !reduceMotion)
+                        .frame(width: FastBubbles.side, height: FastBubbles.side)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
+                }
             }
-            dot(heat)
-                .overlay {
-                    if fast == .bolt {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: heat.size * 0.52, weight: .black))
-                            .blendMode(.destinationOut)
-                            .transition(.scale(scale: 0.3).combined(with: .opacity))
-                    }
-                }
-                .compositingGroup()
-                .shadow(color: heat.glow, radius: heat.reach)
-                .keyframeAnimator(initialValue: 1.0, trigger: reduceMotion ? 0 : pops) { dot, scale in
-                    dot.scaleEffect(scale)
-                } keyframes: { _ in
-                    CubicKeyframe(1.16, duration: 0.1)
-                    SpringKeyframe(1, duration: 0.45, spring: .bouncy)
-                }
+            .keyframeAnimator(initialValue: 1.0, trigger: reduceMotion ? 0 : pops) { dot, scale in
+                dot.scaleEffect(scale)
+            } keyframes: { _ in
+                CubicKeyframe(1.16, duration: 0.1)
+                SpringKeyframe(1, duration: 0.45, spring: .bouncy)
+            }
         }
         .animation(.spring(duration: 0.35, bounce: 0.3), value: level)
         .animation(Motion.move, value: fast)
@@ -322,26 +307,277 @@ private struct HeadMark: View {
         let rim: Color
         let glow: Color
         let reach: CGFloat
+        /// Fast mode's bubbles: Claude's orange on the white heads, white-hot, the way the
+        /// slider's sparks are born, on the orange ones.
+        let bubble: Color
 
         init(_ level: String?) {
             let white = Color.white.opacity(0.95)
+            let orange = Ink.claude.opacity(0.6)
+            let whiteHot = Color(red: 1, green: 0.97, blue: 0.92).opacity(0.95)
             switch level {
-            case "low": self.init(16, white, .white.opacity(0.8), .white.opacity(0.12), 4)
-            case "medium": self.init(20, white, .white.opacity(0.85), .white.opacity(0.16), 6)
-            case "high": self.init(24, white, Ink.ember, Ink.ember.opacity(0.28), 8)
-            case "xhigh": self.init(28, Ink.ember, Ink.claude.mix(with: Ink.ember, by: 0.45, in: .device), Ink.claude.opacity(0.35), 11)
-            case "max": self.init(32, Ink.ember, Ink.claude, Ink.claude.opacity(0.7), 16)
-            case Effort.ultracode: self.init(28, Ink.ember, Ink.claude, Ink.claude.opacity(0.6), 14)
-            default: self.init(20, white, .white.opacity(0.85), .white.opacity(0.14), 6)
+            case "low": self.init(16, white, .white.opacity(0.8), .white.opacity(0.12), 4, orange)
+            case "medium": self.init(20, white, .white.opacity(0.85), .white.opacity(0.16), 6, orange)
+            case "high": self.init(24, white, Ink.ember, Ink.ember.opacity(0.28), 8, Ink.claude.opacity(0.65))
+            case "xhigh": self.init(28, Ink.ember, Ink.claude.mix(with: Ink.ember, by: 0.45, in: .device), Ink.claude.opacity(0.35), 11, whiteHot)
+            case "max": self.init(32, Ink.ember, Ink.claude, Ink.claude.opacity(0.7), 16, whiteHot)
+            case Effort.ultracode: self.init(28, Ink.ember, Ink.claude, Ink.claude.opacity(0.6), 14, whiteHot)
+            default: self.init(20, white, .white.opacity(0.85), .white.opacity(0.14), 6, orange)
             }
         }
 
-        private init(_ size: CGFloat, _ core: Color, _ rim: Color, _ glow: Color, _ reach: CGFloat) {
+        private init(_ size: CGFloat, _ core: Color, _ rim: Color, _ glow: Color, _ reach: CGFloat, _ bubble: Color) {
             self.size = size
             self.core = core
             self.rim = rim
             self.glow = glow
             self.reach = reach
+            self.bubble = bubble
+        }
+    }
+}
+
+/// Fast mode's bubbles, swirling inside the head: ring bubbles on three orbits, the inner ones
+/// quicker, like a whirlpool, clipped to the head and grown with it. They swirl while the mark is
+/// live, then coast still and stay drawn, so fast still reads as on with nothing moving: a moving
+/// picker makes the window server redraw its blur.
+private struct FastBubbles: NSViewRepresentable {
+    /// Drawn at Max's size and scaled down to the level's.
+    static let side: CGFloat = 32
+
+    let size: CGFloat
+    let tint: NSColor
+    let spinning: Bool
+
+    func makeNSView(context: Context) -> BubblesView { BubblesView() }
+
+    func updateNSView(_ view: BubblesView, context: Context) {
+        view.want(size: size, tint: tint, spinning: spinning)
+    }
+
+    static func dismantleNSView(_ view: BubblesView, coordinator: ()) {
+        view.stop()
+    }
+
+    final class BubblesView: NSView {
+        private struct Orbit {
+            let radius: CGFloat
+            /// Where each bubble starts, in degrees, and how wide it is, in the disc's 32pt.
+            let bubbles: [(angle: CGFloat, diameter: CGFloat)]
+            let period: CFTimeInterval
+            let fizz: CFTimeInterval
+        }
+
+        private static let orbits = [
+            Orbit(radius: 3.2, bubbles: [(110, 5.1)], period: 0.6, fizz: 0.45),
+            Orbit(radius: 9, bubbles: [(20, 7), (200, 7)], period: 0.9, fizz: 0.6),
+            Orbit(radius: 11.8, bubbles: [(70, 4.2), (190, 4.2), (310, 4.2)], period: 1.4, fizz: 0.75),
+        ]
+
+        /// The head's disc, which clips the bubbles and scales with the level.
+        private let disc = CALayer()
+        private var orbits: [CALayer] = []
+        private var bubbles: [(layer: CAShapeLayer, fizz: CFTimeInterval)] = []
+        private var size: CGFloat = 0
+        private var tint: NSColor?
+        private var spinning = false
+        private var occlusion: NSObjectProtocol?
+        private var displayOptions: NSObjectProtocol?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            let side = FastBubbles.side
+            disc.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            disc.cornerRadius = side / 2
+            disc.masksToBounds = true
+            for orbit in Self.orbits {
+                let ring = CALayer()
+                ring.frame = disc.bounds
+                for bubble in orbit.bubbles {
+                    let angle = bubble.angle * .pi / 180
+                    let shape = CAShapeLayer()
+                    shape.bounds = CGRect(x: 0, y: 0, width: bubble.diameter, height: bubble.diameter)
+                    shape.position = CGPoint(x: side / 2 + orbit.radius * cos(angle), y: side / 2 + orbit.radius * sin(angle))
+                    shape.path = CGPath(ellipseIn: shape.bounds, transform: nil)
+                    shape.lineWidth = 1.6
+                    ring.addSublayer(shape)
+                    bubbles.append((shape, orbit.fizz))
+                }
+                disc.addSublayer(ring)
+                orbits.append(ring)
+            }
+            layer?.addSublayer(disc)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        // The mark's scrub gesture is under it.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            disc.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            CATransaction.commit()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            forget()
+            guard let window else {
+                stop()
+                return
+            }
+            occlusion = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.apply() }
+            }
+            displayOptions = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.apply() }
+                }
+            apply()
+        }
+
+        func want(size: CGFloat, tint: NSColor, spinning: Bool) {
+            if tint != self.tint {
+                CATransaction.begin()
+                CATransaction.setAnimationDuration(self.tint == nil ? 0 : 0.35)
+                for bubble in bubbles {
+                    bubble.layer.strokeColor = tint.cgColor
+                    bubble.layer.fillColor = tint.withAlphaComponent(tint.alphaComponent * 0.22).cgColor
+                }
+                CATransaction.commit()
+                self.tint = tint
+            }
+            if size != self.size {
+                let scale = size / FastBubbles.side
+                let from = disc.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? scale
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                disc.setValue(scale, forKeyPath: "transform.scale")
+                CATransaction.commit()
+                if self.size > 0 {
+                    // The head's own spring, so the clip keeps to the dot as the level changes.
+                    let grow = CASpringAnimation(perceptualDuration: 0.35, bounce: 0.3)
+                    grow.keyPath = "transform.scale"
+                    grow.fromValue = from
+                    grow.toValue = scale
+                    disc.add(grow, forKey: "grow")
+                }
+                self.size = size
+            }
+            self.spinning = spinning
+            apply()
+        }
+
+        private var visible: Bool {
+            guard let window else { return false }
+            return window.occlusionState.contains(.visible) && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+
+        private func apply() {
+            guard window != nil else { return }
+            if !visible {
+                halt()
+            } else if spinning {
+                swirl()
+            } else {
+                coast()
+            }
+        }
+
+        /// Clockwise, which for a layer drawn upward is the negative way, and the inner orbits first.
+        private func swirl() {
+            for (ring, orbit) in zip(orbits, Self.orbits) where ring.animation(forKey: "orbit") == nil {
+                let from = angle(of: ring)
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                ring.removeAnimation(forKey: "coast")
+                ring.setValue(from, forKeyPath: "transform.rotation.z")
+                CATransaction.commit()
+                let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+                spin.fromValue = from
+                spin.toValue = from - 2 * .pi
+                spin.duration = orbit.period
+                spin.repeatCount = .infinity
+                ring.add(spin, forKey: "orbit")
+            }
+            for (index, bubble) in bubbles.enumerated() where bubble.layer.animation(forKey: "fizz") == nil {
+                let fizz = CABasicAnimation(keyPath: "transform.scale")
+                fizz.fromValue = 0.8
+                fizz.toValue = 1.12
+                fizz.duration = bubble.fizz
+                fizz.autoreverses = true
+                fizz.repeatCount = .infinity
+                fizz.timeOffset = Double(index) * 0.13
+                fizz.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                bubble.layer.removeAnimation(forKey: "settle")
+                bubble.layer.add(fizz, forKey: "fizz")
+            }
+        }
+
+        /// Leaves at each orbit's own speed and eases to a stop, then the bubbles rest where they are.
+        private func coast() {
+            for (ring, orbit) in zip(orbits, Self.orbits) where ring.animation(forKey: "orbit") != nil {
+                let from = angle(of: ring)
+                let to = from - 2 * .pi / orbit.period * 0.8 / 2.5
+                let coast = CABasicAnimation(keyPath: "transform.rotation.z")
+                coast.fromValue = from
+                coast.toValue = to
+                coast.duration = 0.8
+                coast.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.5, 0.4, 1)
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                ring.setValue(to, forKeyPath: "transform.rotation.z")
+                ring.removeAnimation(forKey: "orbit")
+                ring.add(coast, forKey: "coast")
+                CATransaction.commit()
+            }
+            settle()
+        }
+
+        /// Stops everything on the spot: the window was covered, or Reduce Motion came on.
+        private func halt() {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for ring in orbits {
+                ring.setValue(angle(of: ring), forKeyPath: "transform.rotation.z")
+                ring.removeAllAnimations()
+            }
+            for bubble in bubbles { bubble.layer.removeAllAnimations() }
+            CATransaction.commit()
+        }
+
+        private func settle() {
+            for bubble in bubbles where bubble.layer.animation(forKey: "fizz") != nil {
+                let scale = bubble.layer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
+                let settle = CABasicAnimation(keyPath: "transform.scale")
+                settle.fromValue = scale
+                settle.toValue = 1
+                settle.duration = 0.2
+                settle.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                bubble.layer.removeAnimation(forKey: "fizz")
+                bubble.layer.add(settle, forKey: "settle")
+            }
+        }
+
+        private func angle(of ring: CALayer) -> Double {
+            let moving = ring.animation(forKey: "orbit") != nil || ring.animation(forKey: "coast") != nil
+            return (moving ? ring.presentation() ?? ring : ring).value(forKeyPath: "transform.rotation.z") as? Double ?? 0
+        }
+
+        func stop() {
+            forget()
+            halt()
+        }
+
+        private func forget() {
+            if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
+            if let displayOptions { NSWorkspace.shared.notificationCenter.removeObserver(displayOptions) }
+            occlusion = nil
+            displayOptions = nil
         }
     }
 }

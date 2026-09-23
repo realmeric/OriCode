@@ -73,9 +73,8 @@ struct EffortRail: View {
     /// title and the line under the rail.
     @Binding var held: String?
     @Binding var hovered: String?
-    /// Fast mode, when it's on, and the look Thread › Fast Look gives it: the bolt in the thumb,
-    /// or afterimages of the thumb behind it.
-    var fast: FastLook?
+    /// Fast mode: the thumb's rays turn at its speed at Ultracode.
+    var fast = false
     var compact = false
     /// Where Back to Defaults would put the thumb, while the pointer is on it.
     var ghost: String?
@@ -142,7 +141,7 @@ struct EffortRail: View {
                     // The whole rail, reaching past its last stop and above and below it for what's
                     // thrown off, placed rather than framed so the rail's hit area doesn't grow.
                     let width = geometry.size.width - Self.thumb / 2 + EffortEffects.reach
-                    EffortEffects(level: level, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
+                    EffortEffects(level: level, fast: fast, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
                                   positions: xs, index: stop, arrival: arrival, compact: compact)
                         .frame(width: width, height: Self.rail + 2 * EffortEffects.air)
                         .position(x: width / 2, y: Self.row / 2)
@@ -172,15 +171,6 @@ struct EffortRail: View {
                         .accessibilityHidden(true)
                 }
                 if stop != nil {
-                    // Fast mode's afterimages of the bead, left on the fill behind it.
-                    ForEach([(10.0, 0.85, 0.3), (19.0, 0.7, 0.13)], id: \.0) { shift, scale, opacity in
-                        Circle()
-                            .fill(Color.white.opacity(opacity))
-                            .frame(width: Self.thumb * scale, height: Self.thumb * scale)
-                            .position(x: centre - (fast == .echoes ? shift : 0), y: Self.row / 2)
-                            .opacity(fast == .echoes ? 1 : 0)
-                    }
-                    .animation(Motion.move, value: fast)
                     thumb(level: level, holding: thumbX != nil)
                         .position(x: centre, y: Self.row / 2)
                         .transition(.opacity)
@@ -251,6 +241,10 @@ struct EffortRail: View {
                 try? await Task.sleep(for: .milliseconds(350))
                 wake()
             }
+        }
+        // Switching fast at Ultracode spins the thumb's rays up to its speed, or back down.
+        .onChange(of: fast) {
+            if let index, stops[index] == Effort.ultracode { stoke() }
         }
         .onChange(of: effort) { old, new in
             wake()
@@ -390,19 +384,12 @@ struct EffortRail: View {
             Circle()
                 .strokeBorder(LinearGradient(colors: [.white.opacity(0.7), .white.opacity(0.12)], startPoint: .top, endPoint: .bottom),
                               lineWidth: 1)
-            if fast == .bolt {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: ultra ? 9 : 11, weight: .black))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                    .transition(.scale(scale: 0.3).combined(with: .opacity))
-            } else {
-                Circle()
-                    .fill(Color.black.opacity(0.85))
-                    .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
-            }
+            Circle()
+                .fill(Color.black.opacity(0.85))
+                .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
             if ultra {
                 RaysMark(lit: RaysMark.rays, turning: live && !reduceMotion, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
-                         color: .black, stagger: true, layered: true, settles: true)
+                         color: .black, stagger: true, layered: true, settles: true, fast: fast)
                     .frame(width: 22, height: 22)
                     .transition(.opacity.animation(.easeOut(duration: 0.14)))
             }

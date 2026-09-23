@@ -2,7 +2,6 @@ import SwiftUI
 
 struct OriCodeCommands: Commands {
     let model: AppModel
-    @AppStorage(FastLook.key) private var fastLook = FastLook.tag
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -75,9 +74,6 @@ struct OriCodeCommands: Commands {
                 .disabled(model.project == nil || model.atDefaults(model.chat))
             Toggle("Fast Mode", isOn: fastBinding)
                 .disabled(!(model.models.first { $0.id == modelBinding.wrappedValue }?.fast ?? false))
-            Picker("Fast Look", selection: $fastLook) {
-                ForEach(FastLook.allCases) { Text($0.title).tag($0) }
-            }
             Picker("Permission Mode", selection: modeBinding) {
                 ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
             }

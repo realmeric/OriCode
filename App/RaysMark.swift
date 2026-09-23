@@ -5,6 +5,12 @@ import SwiftUI
 /// from twelve o'clock.
 struct RaysMark: View {
     static let rays = 6
+    /// Seconds for one turn, and for one in fast mode.
+    nonisolated static let turn: CFTimeInterval = 9
+    nonisolated static let fastTurn: CFTimeInterval = 0.5
+    /// Fast mode's trail: each ray drawn again this many times, each copy this much earlier.
+    nonisolated static let trailCopies = 9
+    nonisolated static let trailDelay: CFTimeInterval = 1.0 / 480
 
     /// How many rays are lit, clamped to the six there are.
     var lit = 0
@@ -24,13 +30,16 @@ struct RaysMark: View {
     /// A turn that ends coasts on to where the next ray stands, so the mark rests upright: the
     /// effort thumb's, whose rays stop each time the picker rests.
     var settles = false
+    /// Fast mode: a turn goes round in half a second with a trail behind each ray, and coasts
+    /// further to rest.
+    var fast = false
 
     var body: some View {
         Group {
             if turning || waiting || layered {
                 MovingRays(lit: min(lit, Self.rays), turning: turning, waiting: waiting,
                            restingOpacity: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
-                           color: NSColor(color), stagger: stagger, settles: settles)
+                           color: NSColor(color), stagger: stagger, settles: settles, fast: fast)
             } else {
                 GeometryReader { proxy in
                     let side = min(proxy.size.width, proxy.size.height)
@@ -97,25 +106,35 @@ private struct MovingRays: NSViewRepresentable {
     let color: NSColor
     let stagger: Bool
     let settles: Bool
+    let fast: Bool
 
     func makeNSView(context: Context) -> RaysView { RaysView() }
 
     func updateNSView(_ view: RaysView, context: Context) {
         view.paint(color)
         view.show(lit: lit, turning: turning, waiting: waiting, resting: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
-                  stagger: stagger, settles: settles)
+                  stagger: stagger, settles: settles, fast: fast)
     }
 
     final class RaysView: NSView {
+        /// Draws the spinner again behind itself, each copy a moment earlier and fainter: fast
+        /// mode's motion blur, sampled from the turn itself. One copy, the spinner alone, at rest.
+        private let trail = CAReplicatorLayer()
         /// Holds the rays and turns. Flipped, so the rays' paths come out as SwiftUI draws them.
         private let spinner = CALayer()
         private var rays: [CAShapeLayer] = []
         private let dot = CAShapeLayer()
         private var lit = -1
+        private var turnPeriod = RaysMark.turn
+        /// Bumped by each turn, so a coast that ends after a newer turn began leaves its trail be.
+        private var generation = 0
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
+            trail.instanceCount = 1
+            trail.instanceDelay = RaysMark.trailDelay
+            trail.instanceAlphaOffset = -0.11
             spinner.isGeometryFlipped = true
             for _ in 0..<RaysMark.rays {
                 let ray = CAShapeLayer()
@@ -125,7 +144,8 @@ private struct MovingRays: NSViewRepresentable {
                 spinner.addSublayer(ray)
                 rays.append(ray)
             }
-            layer?.addSublayer(spinner)
+            trail.addSublayer(spinner)
+            layer?.addSublayer(trail)
             dot.fillColor = NSColor.white.cgColor
             layer?.addSublayer(dot)
         }
@@ -141,7 +161,7 @@ private struct MovingRays: NSViewRepresentable {
         }
 
         func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double, stagger: Bool = false,
-                  settles: Bool = false) {
+                  settles: Bool = false, fast: Bool = false) {
             let before = max(self.lit, 0)
             CATransaction.begin()
             // A newly lit ray eases in, the way the still mark's spring brings it up.
@@ -164,11 +184,28 @@ private struct MovingRays: NSViewRepresentable {
                 }
             }
             self.lit = lit
-            if turning, spinner.animation(forKey: "turn") == nil {
+            let period = fast ? RaysMark.fastTurn : RaysMark.turn
+            if turning, spinner.animation(forKey: "turn") == nil || period != turnPeriod {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                trail.instanceCount = fast ? RaysMark.trailCopies : 1
+                CATransaction.commit()
+                generation += 1
                 // Clockwise, which for a layer drawn upward is the negative way.
-                spinner.startTurning(clockwise: -1)
+                spinner.startTurning(clockwise: -1, period: period)
+                turnPeriod = period
             } else if !turning, settles {
-                spinner.coastToRay(clockwise: -1)
+                // The copies stay with the coast, which starts that much earlier so the trail
+                // doesn't drop out, and go at rest, where they'd stack on each ray and brighten it.
+                let span = trail.instanceCount > 1 ? Double(trail.instanceCount) * RaysMark.trailDelay : 0
+                let generation = generation
+                spinner.coastToRay(clockwise: -1, period: turnPeriod, trail: span) { [weak self] in
+                    guard let self, self.generation == generation else { return }
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    self.trail.instanceCount = 1
+                    CATransaction.commit()
+                }
             } else if !turning, spinner.animation(forKey: "turn") != nil {
                 // Stops where it is rather than snapping back to twelve.
                 let angle = spinner.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
@@ -199,8 +236,9 @@ private struct MovingRays: NSViewRepresentable {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             let side = min(bounds.width, bounds.height)
-            spinner.bounds = CGRect(x: 0, y: 0, width: side, height: side)
-            spinner.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            trail.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            trail.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            spinner.frame = trail.bounds
             let width = max(1.2, side * 0.085)
             let circle = spinner.bounds.insetBy(dx: width / 2, dy: width / 2)
             for (index, ray) in rays.enumerated() {
@@ -217,43 +255,58 @@ private struct MovingRays: NSViewRepresentable {
 }
 
 extension CALayer {
-    /// One turn in nine seconds, clockwise: the negative way for a layer drawn upward and the
-    /// positive way for one drawn downward, which `clockwise` says. It starts from wherever an
-    /// earlier turn stopped or a coast has got to.
-    func startTurning(clockwise: Double) {
-        let from = (animation(forKey: "coast") == nil ? self : presentation() ?? self).value(forKeyPath: "transform.rotation.z") as? Double ?? 0
+    /// One turn every `period` seconds, clockwise: the negative way for a layer drawn upward and
+    /// the positive way for one drawn downward, which `clockwise` says. It starts from wherever an
+    /// earlier turn or a coast has got to, so a change of speed doesn't jump.
+    func startTurning(clockwise: Double, period: CFTimeInterval = RaysMark.turn) {
+        let moving = animation(forKey: "turn") != nil || animation(forKey: "coast") != nil
+        let from = (moving ? presentation() ?? self : self).value(forKeyPath: "transform.rotation.z") as? Double ?? 0
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         removeAnimation(forKey: "coast")
+        removeAnimation(forKey: "turn")
         setValue(from, forKeyPath: "transform.rotation.z")
         CATransaction.commit()
         let turn = CABasicAnimation(keyPath: "transform.rotation.z")
         turn.fromValue = from
         turn.toValue = from + clockwise * 2 * .pi
-        turn.duration = 9
+        turn.duration = period
         turn.repeatCount = .infinity
+        turn.fillMode = .backwards
+        if period < 1 { turn.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120) }
         add(turn, forKey: "turn")
     }
 
     /// Ends a turn by coasting on to where the next ray stands, leaving at the turn's own speed
-    /// and easing to a stop there, so the mark rests upright instead of wherever it was.
-    func coastToRay(clockwise: Double) {
+    /// and easing to a stop there, so the mark rests upright instead of wherever it was. A fast
+    /// turn coasts longer and further, spinning down heavily. `span` starts the coast that much
+    /// earlier, for a trail whose copies show the moments before now.
+    func coastToRay(clockwise: Double, period: CFTimeInterval = RaysMark.turn, trail span: CFTimeInterval = 0,
+                    completion: (() -> Void)? = nil) {
         guard animation(forKey: "turn") != nil else { return }
         let angle = presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
         let step = Double.pi / 3
-        // At least a third of a step on, so the coast is never a jolt.
-        let rest = ((angle * clockwise + step / 3) / step).rounded(.up) * step
-        let slope = 2 * Double.pi / 9 / (rest - angle * clockwise)
+        let speed = 2 * Double.pi / period
+        let duration: CFTimeInterval = period < 1 ? 1.2 : 1
+        // At least a third of a step on, so the coast is never a jolt, and far enough that it can
+        // leave at the turn's speed and still ease in.
+        let reach = max(step / 3, speed * duration / 4.8)
+        let rest = ((angle * clockwise + reach) / step).rounded(.up) * step
+        let slope = speed * (duration + span) / (rest - angle * clockwise + speed * span)
         let coast = CABasicAnimation(keyPath: "transform.rotation.z")
-        coast.fromValue = angle
+        coast.fromValue = angle - clockwise * speed * span
         coast.toValue = rest * clockwise
-        coast.duration = 1
+        coast.duration = duration + span
+        coast.beginTime = convertTime(CACurrentMediaTime(), from: nil) - span
+        coast.fillMode = .backwards
         coast.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, Float(0.2 * slope), 0.4, 1)
+        if period < 1 { coast.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120) }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock(completion)
         setValue(rest * clockwise, forKeyPath: "transform.rotation.z")
         removeAnimation(forKey: "turn")
-        CATransaction.commit()
         add(coast, forKey: "coast")
+        CATransaction.commit()
     }
 }
