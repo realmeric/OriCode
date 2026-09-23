@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Candidate B: OriCode's mark is the control. The dot is the main head: it grows and heats as
+/// Candidate B: OriCode's mark over the slider. The dot is the main head: it grows and heats as
 /// Claude thinks harder, white at Low and Claude's orange at Max. At Ultracode the six rays light
-/// around it, the heads it runs on every task. Drag across the mark, use the arrows, or pick one
-/// of the dots under the level's name.
+/// around it, the heads it runs on every task. The slider underneath sets the level, and a drag
+/// across the mark walks it too.
 struct MarkPicker: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
@@ -24,7 +24,7 @@ struct MarkPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: 320, height: page == .effort ? 300 : CGFloat(model.models.count) * 42 + 16)
+        .frame(width: 320, height: page == .effort ? 308 : CGFloat(model.models.count) * 42 + 16)
         .animation(Motion.glide, value: page)
     }
 }
@@ -33,11 +33,11 @@ private struct MarkPage: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     let openModels: () -> Void
-    /// The stop under a drag across the mark, shown before it's written.
-    @State private var held: Int?
+    /// The level under the slider's thumb while it's held, and the stop under the pointer.
+    @State private var held: String?
+    @State private var hovered: String?
+    /// Where a drag across the mark started, in stops.
     @State private var dragFrom: Int?
-    /// The stop under the pointer in the row of dots.
-    @State private var hovered: Int?
     @State private var lastShown: Int?
     @State private var previewingReset = false
     @State private var resetTurns = 0
@@ -47,10 +47,8 @@ private struct MarkPage: View {
     @State private var calming: Task<Void, Never>?
     /// Bumped as a level lands, for the dot's pop.
     @State private var pops = 0
-    @FocusState private var focused: Bool
-    @Namespace private var glide
 
-    /// How far a drag goes for each level.
+    /// How far a drag across the mark goes for each level.
     private static let step: CGFloat = 26
     /// The extra a drag has to push past Max to reach Ultracode.
     private static let gate: CGFloat = 22
@@ -60,33 +58,30 @@ private struct MarkPage: View {
     var body: some View {
         let state = state
         let stops = state.option?.stops ?? []
-        let index = state.level.flatMap(stops.firstIndex(of:))
-        let shown = held ?? index
-        let level = shown.map { stops[$0] }
+        let level = held ?? state.level
+        let shown = level.flatMap(stops.firstIndex(of:))
         VStack(spacing: 0) {
             header(state)
                 .frame(height: 30)
             HeadMark(level: stops.isEmpty ? nil : level, live: live, pops: pops)
                 .frame(maxWidth: .infinity)
-                .frame(height: 100)
+                .frame(height: 92)
                 .contentShape(.rect)
-                .gesture(scrub(stops, index: index, blocked: blocked(state)))
-                .accessibilityRepresentation {
-                    Slider(value: Binding(get: { Double(index ?? 0) }, set: { choose(Int($0.rounded()), stops) }),
-                           in: 0...Double(max(stops.count - 1, 1)), step: 1) {
-                        Text("Effort")
-                    }
-                    .accessibilityValue(level.map(ModelMenu.effortName) ?? "Default")
-                }
+                .gesture(scrub(stops, index: state.level.flatMap(stops.firstIndex(of:)), blocked: blocked(state)))
+                // VoiceOver meets the slider underneath, which says the same.
+                .accessibilityHidden(true)
                 .padding(.top, 4)
             title(state, level: level, shown: shown, stops: stops)
                 .frame(height: 26)
             line(state, level: level, stops: stops)
                 .frame(height: 16)
                 .padding(.top, 2)
-            if stops.count > 1 {
-                dots(stops, shown: shown, home: state.home.flatMap(stops.firstIndex(of:)), blocked: blocked(state))
-                    .frame(height: 18)
+            if let option = state.option, !option.efforts.isEmpty {
+                EffortRail(stops: option.stops, home: state.home, blocked: blocked(state),
+                           effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
+                           held: $held, hovered: $hovered, fast: state.fastServed, compact: true,
+                           ghost: previewingReset ? resetTarget(state) : nil,
+                           onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
                     .padding(.top, 10)
             }
             Spacer(minLength: 0)
@@ -97,47 +92,27 @@ private struct MarkPage: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 12)
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
-            guard let index else { return .ignored }
-            let up = press.key == .rightArrow
-            if press.modifiers.contains(.option) { return go(up ? maxIndex(stops) : 0, stops) }
-            // A held key stops at Max: Ultracode takes a press of its own.
-            if press.phase == .repeat, up, stops.indices.contains(index + 1), stops[index + 1] == Effort.ultracode { return .handled }
-            return go(index + (up ? 1 : -1), stops)
-        }
-        .onKeyPress(.delete) {
-            withAnimation(Motion.move) { model.setEffort(nil, for: chat) }
-            return .handled
-        }
-        .onKeyPress(.return) {
-            model.modelPickerShown = false
-            return .handled
-        }
         .onChange(of: shown, initial: true) { old, now in
             lastShown = old ?? now
         }
-        .onChange(of: state.effort) { wake() }
-        .onAppear {
-            focused = true
+        .onChange(of: state.effort) {
+            pops += 1
             wake()
         }
+        .onAppear { wake() }
         .onDisappear { calming?.cancel() }
     }
 
+    /// Fast mode at the left, where every model shows it, dimmed on one that can't go fast; the
+    /// model in the middle; Back to Defaults at the right when there's anything to go back from.
     private func header(_ state: PickerState) -> some View {
         HStack(spacing: 0) {
-            Group {
-                if state.option?.fast == true {
-                    FastButton(asked: state.fastAsked, state: state.fastState, dimmed: previewingReset && !model.threadDefaults.fast) {
-                        model.setFast(!state.fastAsked, for: chat)
-                    }
-                } else {
-                    Color.clear
-                }
+            FastButton(asked: state.fastAsked, state: state.fastState, dimmed: previewingReset && !model.threadDefaults.fast) {
+                model.setFast(!state.fastAsked, for: chat)
             }
+            .disabled(state.option?.fast != true)
+            .opacity(state.option?.fast == true ? 1 : 0.35)
+            .help(state.option?.fast == true ? "Fast mode: faster output from the same model" : "This model can't run fast")
             .frame(width: 30, height: 30)
             Spacer(minLength: 6)
             ModelLine(option: state.option, preview: previewingReset ? model.models.first { $0.id == model.threadDefaults.model } : nil,
@@ -180,16 +155,16 @@ private struct MarkPage: View {
         .animation(Motion.move, value: name)
     }
 
-    /// What the level does, or what a hovered dot would do; the cost of Max and Ultracode in the
+    /// What the level does, or what a hovered stop would do; the cost of Max and Ultracode in the
     /// colour the usage circle has for the session.
     private func line(_ state: PickerState, level: String?, stops: [String]) -> some View {
-        let previewed = hovered.map { stops[$0] }
+        let previewed = held == nil ? hovered : nil
         let words: (String, String?)
-        if blockedNote {
+        if blockedNote || (previewed == Effort.ultracode && blocked(state)) {
             words = ("Needs dynamic workflows, see /config in Claude Code", nil)
-        } else if let problem = state.fastProblem, previewed == nil {
+        } else if let problem = state.fastProblem, previewed == nil, held == nil {
             words = (problem, nil)
-        } else if let missing = state.ultracodeMissing, previewed == nil {
+        } else if let missing = state.ultracodeMissing, previewed == nil, held == nil {
             words = (missing, nil)
         } else if stops.isEmpty {
             words = ("\(ModelMenu.shortName(state.option?.name ?? "This model")) has one reasoning level", nil)
@@ -213,46 +188,8 @@ private struct MarkPage: View {
         .transition(.opacity.animation(Motion.fade))
     }
 
-    /// One dot per level, the chosen one drawn long, Default's ringed and Ultracode as the rays.
-    private func dots(_ stops: [String], shown: Int?, home: Int?, blocked: Bool) -> some View {
-        HStack(spacing: 12) {
-            ForEach(stops.indices, id: \.self) { stop in
-                let current = stop == shown
-                ZStack {
-                    if current {
-                        Capsule()
-                            .fill(stops[stop] == Effort.ultracode || EffortScale.spendsFaster(stops[stop]) ? Ink.claude : Ink.primary)
-                            .frame(width: 18, height: 6)
-                            .matchedGeometryEffect(id: "level", in: glide)
-                    }
-                    if stops[stop] == Effort.ultracode {
-                        RaysMark(lit: RaysMark.rays, litOpacity: 1, dotOpacity: 1)
-                            .frame(width: 10, height: 10)
-                            .opacity(current ? 0 : blocked ? 0.18 : 0.45)
-                    } else if !current {
-                        if stop == home {
-                            Circle()
-                                .strokeBorder(Color.white.opacity(hovered == stop ? 0.8 : 0.5), lineWidth: 1.5)
-                                .frame(width: 8, height: 8)
-                        } else {
-                            Circle()
-                                .fill(Color.white.opacity(hovered == stop ? 0.6 : 0.28))
-                                .frame(width: 5, height: 5)
-                        }
-                    }
-                }
-                .frame(width: 18, height: 18)
-                .contentShape(.rect)
-                .onTapGesture { _ = go(stop, stops) }
-                .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovered = inside ? stop : (hovered == stop ? nil : hovered) } }
-                .accessibilityHidden(true)
-            }
-        }
-        .animation(Motion.move, value: shown)
-    }
-
-    /// Dragging across the mark walks the levels, a detent on the trackpad at each; the level is
-    /// written when the finger lets go. Ultracode sits past a gate the drag has to push through.
+    /// Dragging across the mark walks the levels too, a detent on the trackpad at each, and the
+    /// slider follows as each one lands. Ultracode sits past a gate the drag has to push through.
     private func scrub(_ stops: [String], index: Int?, blocked: Bool) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .onChanged { drag in
@@ -264,52 +201,36 @@ private struct MarkPage: View {
                    blocked || drag.translation.width < CGFloat(target - from) * Self.step + Self.gate {
                     target -= 1
                 }
-                let was = held ?? from
+                let was = state.level.flatMap(stops.firstIndex(of:)) ?? from
                 guard target != was else { return }
                 if target > was, EffortScale.spendsFaster(stops[target]) {
                     Haptics.threshold()
                 } else {
                     Haptics.detent()
                 }
-                withAnimation(.spring(duration: 0.3, bounce: 0.3)) { held = target }
+                let level = stops[target]
+                withAnimation(Motion.move) { model.setEffort(level == state.home ? nil : level, for: chat) }
             }
-            .onEnded { _ in
-                if let held, held != index { choose(held, stops) }
-                held = nil
-                dragFrom = nil
-            }
+            .onEnded { _ in dragFrom = nil }
     }
 
-    private func go(_ stop: Int, _ stops: [String]) -> KeyPress.Result {
-        guard stops.indices.contains(stop) else { return .ignored }
-        if blocked(state), stops[stop] == Effort.ultracode {
-            blockedNote = true
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                blockedNote = false
-            }
-            return .handled
-        }
-        choose(stop, stops)
-        return .handled
-    }
-
-    /// Landing where Default does is Default: the thread sends no level.
-    private func choose(_ stop: Int, _ stops: [String]) {
-        guard stops.indices.contains(stop) else { return }
-        let level = stops[stop]
-        withAnimation(.spring(duration: 0.3, bounce: 0.3)) {
-            model.setEffort(level == state.home ? nil : level, for: chat)
-        }
-        pops += 1
-    }
-
-    private func maxIndex(_ stops: [String]) -> Int {
-        stops.lastIndex { $0 != Effort.ultracode } ?? 0
+    /// Where the thumb lands after Back to Defaults, when the model stays the same.
+    private func resetTarget(_ state: PickerState) -> String? {
+        let target = model.threadDefaults
+        guard target.model == state.option?.id else { return nil }
+        return target.effort ?? state.home
     }
 
     private func blocked(_ state: PickerState) -> Bool {
         state.option.map { $0.ultraBlocked != nil && !$0.ultra } ?? false
+    }
+
+    private func showBlocked() {
+        blockedNote = true
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            blockedNote = false
+        }
     }
 
     private func wake() {

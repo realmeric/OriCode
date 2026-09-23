@@ -11,10 +11,16 @@ struct Composer: View {
     @State private var draft = UUID()
     @State private var slashSelected = 0
     @State private var height: CGFloat = 48
+    /// Where the composer's top is in the window, for which side the picker opens on.
+    @State private var top: CGFloat = .infinity
     @State private var attachHovered = false
     /// An image or file held over the composer, about to land in it.
     @State private var dropTarget = false
     @FocusState private var focused: Bool
+
+    /// The tallest picker, its gap and the 52pt title bar: with less room than this above the
+    /// composer, the picker opens below it.
+    static let pickerRoom: CGFloat = 380
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -36,16 +42,20 @@ struct Composer: View {
                 .allowsHitTesting(false)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top = $0 }
         // The model button's picker rises out of the composer's right end, the way the slash
-        // menu rises out of its left.
-        .overlay(alignment: .bottomTrailing) {
+        // menu rises out of its left; with the composer in the middle of an empty thread there
+        // isn't room above it under the title bar, so it drops below instead.
+        .overlay(alignment: top < Self.pickerRoom ? .topTrailing : .bottomTrailing) {
             if model.modelPickerShown {
+                let below = top < Self.pickerRoom
+                let anchor: UnitPoint = below ? .topTrailing : .bottomTrailing
                 PickerCard(chat: model.chat)
-                    .padding(.bottom, height + 10)
+                    .padding(below ? .top : .bottom, height + 10)
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.92, anchor: .bottomTrailing).combined(with: .opacity).combined(with: .offset(y: 8))
+                        insertion: .scale(scale: 0.92, anchor: anchor).combined(with: .opacity).combined(with: .offset(y: below ? -8 : 8))
                             .animation(Motion.glide),
-                        removal: .scale(scale: 0.97, anchor: .bottomTrailing).combined(with: .opacity).animation(Motion.fade)))
+                        removal: .scale(scale: 0.97, anchor: anchor).combined(with: .opacity).animation(Motion.fade)))
             }
         }
         .onChange(of: model.modelPickerShown) { _, shown in

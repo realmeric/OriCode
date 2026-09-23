@@ -112,10 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.90 "Mark and slider"
 
-#### K-89 · The mark over the slider
-Meriç tried the three and wanted B with A's slider, and the Fast button in B. B keeps OriCode's mark on top as the picture of effort, the dot growing and heating with the level and the rays lighting at Ultracode, and A's slider replaces the row of dots under it: the slider sets the level with its drag, detents and heat, and a drag across the mark still walks it. Fast mode sits at the top left on every model, dimmed on one that can't go fast. A and C stay in Thread › Picker Design until the choice is final.
-Done when: in B the slider and the mark move together from Low to Ultracode, the keys drive the slider, and the bolt shows live on Opus and dimmed on Haiku.
-
 #### K-90 · Release 0.0.90
 As K-12. Tag `v0.0.90`.
 
@@ -646,6 +642,12 @@ Commit: abbf42b
 As K-12. Tag `v0.0.88`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.88 is 7.9MB, arm64 only, with a 3.0MB binary and a 1.7MB engine; launched with an empty environment, a new thread's picker rose above the composer as A, turned to the models page and back as Haiku was picked, took Ask, closed on a click outside, and the thread sent an edit that waited on its card and landed in greet.swift when allowed.
 Commit: c935377
+
+#### K-89 · The mark over the slider
+Meriç tried the three and wanted B with A's slider, and the Fast button in B. B keeps OriCode's mark on top as the picture of effort, the dot growing and heating with the level and the rays lighting at Ultracode, and A's slider replaces the row of dots under it: the slider sets the level with its drag, detents and heat, and a drag across the mark still walks it. Fast mode sits at the top left on every model, dimmed on one that can't go fast. A and C stay in Thread › Picker Design until the choice is final.
+Done when: in B the slider and the mark move together from Low to Ultracode, the keys drive the slider, and the bolt shows live on Opus and dimmed on Haiku.
+Notes: MarkPage keeps the header, the 92pt mark, the name and the line, and puts EffortRail (compact, with its ghost, blocked note and Return) where the row of dots was; the rail's held and hovered levels drive the mark, the title and the line, so the dot grows under a drag on the slider before it lets go. A drag across the mark now writes each level as it lands, so the slider's thumb follows it; the rail owns the keys and the focus. The FastButton is always there, disabled at 35% with 'This model can't run fast' on a model without fast mode. Card 320 by 308. Checked with frames: Ultracode with the rays lit over the full slider, four lefts to Medium with a white dot and the thumb on the ringed stop, three rights to Max with an orange dot and the slider's sparks, one right back to Ultracode; on a Haiku thread the bolt is dimmed and the mark reads Standard with no slider. The release check found B's card reaching under the title bar when the composer sat in the middle of an empty thread, where its model line took no clicks, so the card now opens below the composer when there's less than 380pt above it; checked with a frame of an empty thread.
+Commit: pending
 
 
 ## Exceptions
