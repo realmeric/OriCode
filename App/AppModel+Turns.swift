@@ -78,6 +78,13 @@ extension AppModel {
     }
 
     func route(_ event: EngineEvent) {
+        if event.name == "fast", let state = event.body["state"]?.string {
+            // A check names its model; a thread's own CLI speaks for the model the thread is on.
+            let thread = event.threadId.flatMap(UUID.init(uuidString:))
+            let chat = thread.flatMap { id in try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first }
+            let modelID = event.body["model"]?.string ?? chat?.model ?? ModelOption.claudeDefault
+            fastReadings[modelID] = FastReading(state: state, reason: event.body["reason"]?.string)
+        }
         guard let threadId = event.threadId, let id = UUID(uuidString: threadId) else {
             if event.name == "error", let message = event.body["message"]?.string {
                 say(message)
@@ -184,9 +191,18 @@ extension AppModel {
     /// Asks the CLI, without sending it anything, whether it would serve the thread's model fast,
     /// so the switch can say why not before a turn is spent finding out.
     func checkFast(_ chat: Chat) {
-        var params: [String: JSON] = ["threadId": .string(chat.id.uuidString)]
-        if let model = chat.model { params["model"] = .string(model) }
-        Task { _ = try? await engine.request("fast.check", .object(params)) }
+        checkFast(model: chat.model ?? ModelOption.claudeDefault, thread: chat.id.uuidString)
+    }
+
+    /// The same question for a model, before any thread has asked it: the picker asks as it opens,
+    /// so the Fast button already knows when it's clicked.
+    func checkFast(model: String, thread: String = "picker") {
+        Task { _ = try? await engine.request("fast.check", ["threadId": .string(thread), "model": .string(model)]) }
+    }
+
+    /// What Claude Code last said about fast mode for a thread's model, or the next thread's.
+    func fastReading(for chat: Chat?) -> FastReading? {
+        option(for: chat).flatMap { fastReadings[$0.id] }
     }
 
     func setPermissionMode(_ mode: String, for chat: Chat?) {

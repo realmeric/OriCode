@@ -70,7 +70,7 @@ Methods:
 - `send { threadId, sessionId?, cwd, text, model?, effort?, permissionMode, fast?, attachments?, costSoFar? }` → `{ ok }`. Starts a turn; `sessionId` resumes an earlier one. `effort` is a level or `ultracode`, which goes to the CLI as the session's `ultracode` flag setting instead. `fast` puts `fastMode` in the session's flag settings, the opt-in the CLI asks of SDK sessions. `costSoFar` is what the thread has cost, because a resumed CLI's first result carries the session's saved running total.
 - `interrupt { threadId }` → `{ ok }`.
 - `setMode { threadId, permissionMode }` → `{ applied }`. `applied` is false when the running turn can't take it and it will hold from the next one.
-- `setFast { threadId, fast }` → `{ applied }`, applied to a running CLI with `applyFlagSettings`. `fast.check { threadId, model? }` → `{ state, reason }` asks a probe CLI through its initialize handshake, with no model call, and also sends the answer as the thread's `fast` event.
+- `setFast { threadId, fast }` → `{ applied }`, applied to a running CLI with `applyFlagSettings`. `fast.check { threadId, model? }` → `{ state, reason }` asks a probe CLI through its initialize handshake, with no model call, and also sends the answer as a `fast` event naming the model; `threadId` can be one no thread has, since the app keeps the answer per model.
 - `answer { requestId, allow, updatedInput?, answers?, message? }` → `{ ok }`. Resolves a pending `ask`.
 - `close { threadId }` → `{ ok }`. Ends the thread's CLI process; the app calls it when a thread is deleted.
 - `git.branch { cwd }` → `{ branch, ahead, upstream }`. Git always runs in the engine, never in the app.
@@ -95,7 +95,7 @@ Events, each with `threadId` except `models`:
 - `ask.cancelled { requestId }` when a pending ask stops waiting (interrupt, or the SDK gave up on it).
 - `turn.done { sessionId, stopReason, durationMs, costUSD, usage: { input, output, cacheRead, cacheWrite }, context: { used, window } }`. `context.used` is the last request's prompt plus output, the number the meter in K-14 draws.
 - `compacted { before, after }` when Claude Code compacted the conversation, with the token counts on either side.
-- `fast { state, reason }` when fast mode changes for the thread: `state` is `on`, `off` or `cooldown`, and `reason` is the SDK's why-not (`free`, `extra_usage_disabled`, `model_not_allowed` and so on) or null.
+- `fast { state, reason, model? }` when fast mode changes for the thread, or when a check answers for the model it names: `state` is `on`, `off` or `cooldown`, and `reason` is the SDK's why-not (`free`, `extra_usage_disabled`, `model_not_allowed` and so on) or null.
 - `effort { level, ultracode }` when the level the thread's CLI sends, or whether it runs as Ultracode, is new: read once the CLI is up and after each turn, so a project's settings count. `level` is null for a model without levels, and an Ultracode session reports xhigh.
 - `released` when the engine has ended an idle thread's CLI (K-70); the thread's next send resumes its session in a new one.
 - `error { message }`, and without a threadId when the engine itself is in trouble.
@@ -111,10 +111,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
 ### Todo: 0.0.94 "Fast, the same every time"
-
-#### K-93 · Fast mode says the same thing every time
-Meriç found the bolt and the effects sometimes worked and sometimes didn't. On this account Claude Code turns fast mode down ("Needs usage credits on your Claude account"), and the app kept that answer per thread and only after asking: the first time a thread turned fast on it lit up for a second before the answer came, after that the same thread showed the refusal at once, and a thread that hadn't asked showed fast as on. The answer belongs to the account and the model, not the thread, so the app keeps it per model and asks as the picker opens; the bolt and the effects then say what Claude Code will do, the same way every time.
-Done when: on this account, opening the picker on a thread with fast on settles on the struck bolt and the reason, turning fast off and on again shows the refusal straight away with no effects, and a thread that hasn't asked shows the same.
 
 #### K-94 · Release 0.0.94
 As K-12. Tag `v0.0.94`.
@@ -668,6 +664,12 @@ Commit: 2623625
 As K-12. Tag `v0.0.92`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.92 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread (fast on from Settings) opened B below the composer with the CLI's 'Needs usage credits on your Claude account' under the level, turned to the models page and back as Haiku was picked, took Ask, closed on a click outside, and the thread sent an edit that waited on its card and landed in greet.swift when allowed. The engine's model-defaults probe failed once today on an unconfirmed claude-fable-5-1[1m], which drops every model's defaults; that is a task of its own.
 Commit: 87825c9
+
+#### K-93 · Fast mode says the same thing every time
+Meriç found the bolt and the effects sometimes worked and sometimes didn't. On this account Claude Code turns fast mode down ("Needs usage credits on your Claude account"), and the app kept that answer per thread and only after asking: the first time a thread turned fast on it lit up for a second before the answer came, after that the same thread showed the refusal at once, and a thread that hadn't asked showed fast as on. The answer belongs to the account and the model, not the thread, so the app keeps it per model and asks as the picker opens; the bolt and the effects then say what Claude Code will do, the same way every time.
+Done when: on this account, opening the picker on a thread with fast on settles on the struck bolt and the reason, turning fast off and on again shows the refusal straight away with no effects, and a thread that hasn't asked shows the same.
+Notes: AppModel.fastReadings holds the last answer per model id: every fast event updates it, a check's for the model it names (the engine now puts model in the event) and a thread's own CLI's for the model the thread is on. PickerState, the Fast button, the line under the level and the composer's bolt read it through fastReading(for:), and the thread's own fastState and fastReason are gone. The picker asks for its model as it opens when there's no answer yet, with a threadId no thread has, so the answer is usually in before the bolt is clicked; turning fast on still asks again, which is how credits added later would show. Checked with frames on this account: a thread with fast on showed Checking fast mode for a moment after launch, then the struck bolt and 'Needs usage credits on your Claude account'; turning fast off gave the outline bolt and the level's own line, and on again the refusal at once with no streaks or speed lines.
+Commit: pending
 
 
 ## Exceptions

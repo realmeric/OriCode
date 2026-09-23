@@ -28,9 +28,9 @@ struct MarkPicker: View {
         .frame(width: 320, height: page == .effort ? 308 : CGFloat(model.models.count) * 42 + 16)
         .animation(Motion.glide, value: page)
         .onAppear {
-            // Fast mode left on from an earlier launch hasn't been checked in this one.
-            if let chat, model.fastMode(of: chat), model.conversations[chat.id]?.fastState == nil {
-                model.checkFast(chat)
+            // Asked now, so the Fast button already knows Claude Code's answer when it's clicked.
+            if let option = model.option(for: chat), option.fast, model.fastReadings[option.id] == nil {
+                model.checkFast(model: option.id)
             }
         }
     }

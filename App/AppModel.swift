@@ -51,6 +51,12 @@ enum Effort {
     static let ultracode = "ultracode"
 }
 
+struct FastReading: Equatable {
+    /// on, off or cooldown.
+    let state: String
+    let reason: String?
+}
+
 struct Hello: Codable, Sendable {
     let version: String
     let models: [ModelOption]
@@ -77,6 +83,10 @@ final class AppModel {
     /// Bumped whenever the app's defaults change, so what reads them there (a new thread's
     /// starting choices, which Settings can change) redraws.
     private(set) var defaultsRevision = 0
+    /// What Claude Code last said about fast mode for each model, by the model's id: whether it
+    /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
+    /// thread that hasn't asked yet, or no thread at all, shows what's already known.
+    var fastReadings: [String: FastReading] = [:]
     /// A transient line under the composer, for things the user did that didn't work.
     private(set) var note: String?
     /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.

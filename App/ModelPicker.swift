@@ -25,7 +25,7 @@ struct PickerState {
 
     var fastAsked: Bool { option?.fast == true && (chat?.fastMode ?? model.startingFast) }
 
-    var fastState: String? { conversation?.fastState }
+    var fastState: String? { model.fastReading(for: chat)?.state }
 
     var fastServed: Bool { fastAsked && fastState == "on" }
 
@@ -38,13 +38,12 @@ struct PickerState {
 
     /// What fast mode can't do right now, in the app's words, while it's asked for.
     var fastProblem: String? {
-        // With no thread there's no CLI to ask yet.
-        guard fastAsked, chat != nil else { return nil }
-        guard let state = fastState else { return "Checking fast mode…" }
-        switch state {
+        guard fastAsked else { return nil }
+        guard let reading = model.fastReading(for: chat) else { return "Checking fast mode…" }
+        switch reading.state {
         case "on": return nil
         case "cooldown": return "Paused after a rate limit, back shortly"
-        default: return conversation?.fastReason.map(FastCopy.why) ?? "Not available right now"
+        default: return reading.reason.map(FastCopy.why) ?? "Not available right now"
         }
     }
 

@@ -160,10 +160,11 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { applied: found ? await found.setFast(fast) : true };
   },
 
-  /// Tells the thread, as a `fast` event, what its CLI would say about fast mode for the model.
+  /// Tells the app, as a `fast` event for the thread, what the CLI would say about fast mode for
+  /// the model it names.
   async "fast.check"({ threadId, model }: { threadId: string; model?: string }) {
     const result = await fastCheck(await requireClaude(), model);
-    event("fast", { threadId, ...result });
+    event("fast", { threadId, model: model ?? null, ...result });
     return result;
   },
 

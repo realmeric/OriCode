@@ -105,7 +105,7 @@ struct ModelMenu: View {
 
     /// What the CLI last said about fast mode for the thread.
     private var fastState: String? {
-        chat.flatMap { model.conversations[$0.id]?.fastState }
+        model.fastReading(for: chat)?.state
     }
 
     private var selectedModel: ModelOption? { model.option(for: chat) }

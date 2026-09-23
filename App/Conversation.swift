@@ -77,8 +77,6 @@ final class Conversation {
     /// "Can't reach Claude…" while the CLI retries; a live line, never stored.
     private(set) var retrying: String?
     /// Fast mode as the CLI last reported it: on, off or cooldown, and why it can't be on.
-    private(set) var fastState: String?
-    private(set) var fastReason: String?
     /// What the thread's own CLI says it runs at, once it has started: the level (nil when the
     /// model has none) and whether Ultracode came on.
     private(set) var appliedEffort: String??
@@ -153,9 +151,6 @@ final class Conversation {
     func receive(_ event: EngineEvent) {
         if event.name != "retrying" { retrying = nil }
         switch event.name {
-        case "fast":
-            fastState = event.body["state"]?.string
-            fastReason = event.body["reason"]?.string
         case "effort":
             let level = event.body["level"]?.string
             let asked = event.body["asked"]?.string
