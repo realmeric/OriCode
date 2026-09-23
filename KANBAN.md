@@ -110,6 +110,15 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.81 "Orange"
+
+#### K-80 · Claude's orange on the rail
+The effort rail came out white, brightening as it rose. Effort is how hard Claude thinks, so it takes Claude's orange: the fill deepens from a faint orange at the rail's start to a strong one at the thumb, stronger at each level, and the motes, the burst, the halo at Max and Ultracode and fast mode's streaks glow warm instead of white. The thumb stays white with OriCode's dot. The brief's Ink line names the rail beside Claude's mark.
+Done when: frames at Medium, Max and Ultracode show the rail in Claude's orange with warm motes and a warm halo, and OriCode still reads 0.0% CPU with the picker open.
+
+#### K-81 · Release 0.0.81
+As K-12. Tag `v0.0.81`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
