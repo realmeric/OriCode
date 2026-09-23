@@ -106,10 +106,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
 
-#### K-52 · Double-click the top to zoom
-A double-click on empty glass in the top row does what System Settings says a title bar double-click does: zoom by default, or minimize, or nothing. The toolbar draws nothing and the content runs under it, so the click reaches the content, which doesn't know the gesture.
-Done when: double-clicking empty glass in the top row zooms the window, and doing it again restores it.
-
 #### K-53 · The pill opens Go to
 Clicking the title capsule opens Go to, as ⌘K does, and clicking it again closes it. The capsule lights on hover like the other buttons.
 Done when: a click on the capsule opens Go to.
@@ -456,6 +452,12 @@ Commit: a8e8f92
 The hot zone at the window's left edge grows from 8pt to 20pt, which is the room the transcript column always leaves there.
 Done when: the pointer 18pt in from the left edge opens the drawer.
 Notes: The strip is 20pt wide and still starts under the toolbar row. Checked with the real pointer: 18pt in from the left edge the drawer slid in, 24pt in it didn't, and moving away took it back out.
+Commit: a6ce7a3
+
+#### K-52 · Double-click the top to zoom
+A double-click on empty glass in the top row does what System Settings says a title bar double-click does: zoom by default, or minimize, or nothing. The toolbar draws nothing and the content runs under it, so the click reaches the content, which doesn't know the gesture.
+Done when: double-clicking empty glass in the top row zooms the window, and doing it again restores it.
+Notes: Checked first that a double-click on the top row did nothing. Now empty glass in the top row, and the drawer's first row, is a small AppKit view: a press hands the drag to performDrag, so the row still moves the window, and a double-click reads AppleActionOnDoubleClick and minimizes on Minimize, does nothing on None, and zooms otherwise, which covers the default when the key isn't set, as on this Mac. The capsule, the drawer and the toolbar's button sit above it and keep their clicks. Checked with the real pointer: a double-click at the row's left end zoomed the window to 1710 by 1074 and a second one brought it back to 1198 by 752, the same from the drawer's first row, and a drag on the row moved the window 13pt and back. The two notch apps keep windows over the top of the screen, so the middle of the row couldn't be clicked from here.
 Commit: pending
 
 

@@ -22,7 +22,7 @@ struct Drawer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Color.clear.frame(height: Self.titleRow)
+            TitleBarGlass().frame(height: Self.titleRow)
             projectMenu
                 .padding(.horizontal, 12)
                 .padding(.top, 2)

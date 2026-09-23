@@ -95,6 +95,11 @@ struct RootView: View {
             ShortcutsSheet()
         }
         .overlay(alignment: .top) {
+            TitleBarGlass()
+                .frame(height: TitleBar.height)
+                .ignoresSafeArea()
+        }
+        .overlay(alignment: .top) {
             // In the toolbar's row, level with the traffic lights AppKit centres in it.
             TitleCapsule()
                 .frame(height: TitleBar.height)
