@@ -112,9 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.81 "Orange"
 
-#### K-81 · Release 0.0.81
-As K-12. Tag `v0.0.81`.
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -597,6 +594,11 @@ Commit: 2fb7205
 The effort rail came out white, brightening as it rose. Effort is how hard Claude thinks, so it takes Claude's orange: the fill deepens from a faint orange at the rail's start to a strong one at the thumb, stronger at each level, and the motes, the burst, the halo at Max and Ultracode and fast mode's streaks glow warm instead of white. The thumb stays white with OriCode's dot. The brief's Ink line names the rail beside Claude's mark.
 Done when: frames at Medium, Max and Ultracode show the rail in Claude's orange with warm motes and a warm halo, and OriCode still reads 0.0% CPU with the picker open.
 Notes: The fill is Claude's orange, #D97757, from 30% at the rail's start to 45% at the thumb on Low and up to 94% at Max and Ultracode; the halo at the top of the scale is the same orange at 60%, and the motes, the burst, the streaks, the still streaks for Reduce Motion and fast mode's sweep take a pale ember white instead of pure white. The thumb stays white with OriCode's dot, and the dots and the Default ring on the fill stay dark. A first try started the fill at 22%, which read brown over the dark glass. Checked with frames: Medium shows a short warm fill under the thumb, Max deepens to full orange with warm motes and an orange glow round the thumb, Ultracode runs the whole rail with the rays in the thumb; OriCode read 0.0% CPU with the picker open.
+Commit: 359d5b7
+
+#### K-81 · Release 0.0.81
+As K-12. Tag `v0.0.81`.
+Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.81 is 7.7MB, arm64 only, with a 2.7MB binary and a 1.7MB engine; launched with an empty environment, a new thread opened on Opus (1M) at Max showed the rail in orange with its halo, then set to Haiku and Ask from the picker it sent an edit that waited on its card and landed in greet.swift when allowed.
 Commit: pending
 
 

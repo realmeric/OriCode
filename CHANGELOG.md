@@ -2,6 +2,10 @@
 
 Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
 
+## v0.0.81 "Orange" - 2026-09-23
+
+- The effort rail is Claude's orange instead of white: it deepens as effort rises, and its motes, streaks and halo glow warm.
+
 ## v0.0.79 "Feel" - 2026-09-23
 
 - A new thread or ⌘W no longer drops the composer and the mark over the old conversation. The old transcript fades first, the composer glides up to the middle, and the mark settles in last; switching threads never shows two conversations at once.
