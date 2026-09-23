@@ -11,8 +11,23 @@ extension AppModel {
             closeCommandCenter()
         } else {
             palette.reset()
+            // A terminal can move the branch behind the app's back.
+            refreshBranch(for: chat)
             withAnimation(Motion.move) { commandCenterShown = true }
         }
+    }
+
+    /// ⌘⇧B: the command center open on Switch branch.
+    func openBranchSwitcher() {
+        guard gitUnavailable == nil else {
+            if let reason = gitUnavailable { say(reason) }
+            return
+        }
+        palette.reset()
+        refreshBranch(for: chat)
+        palette.push(.list(branchList))
+        load(branchList, at: 1)
+        withAnimation(Motion.move) { commandCenterShown = true }
     }
 
     func closeCommandCenter() {
@@ -52,7 +67,7 @@ extension AppModel {
         runPaletteTask(input.title + "…") { try await input.submit(text) }
     }
 
-    private func load(_ list: PaletteList, at index: Int) {
+    func load(_ list: PaletteList, at index: Int) {
         palette.stack[index].loading = true
         Task {
             let items = (try? await list.items()) ?? []
@@ -258,6 +273,9 @@ extension AppModel {
             self?.modelPickerShown.toggle()
         })
 
+        // Git, in the thread's folder
+        items += gitCommands
+
         // Projects and files
         items.append(PaletteItem(id: "project.list", kind: .command, title: "Switch project…", subtitle: project?.name, icon: "folder",
                                  unavailable: projects.count > 1 ? nil : "There's only one project",
@@ -277,7 +295,7 @@ extension AppModel {
         return items
     }
 
-    private func command(_ id: String, _ title: String, icon: String, shortcut: String? = nil, subtitle: String? = nil,
+    func command(_ id: String, _ title: String, icon: String, shortcut: String? = nil, subtitle: String? = nil,
                          keywords: [String] = [], unavailable: String? = nil, _ run: @escaping @MainActor () -> Void) -> PaletteItem {
         PaletteItem(id: id, kind: .command, title: title, subtitle: subtitle, keywords: keywords, shortcut: shortcut, icon: icon,
                     unavailable: unavailable, action: .run(run))

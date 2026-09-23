@@ -25,6 +25,127 @@ export async function branch(cwd: string): Promise<{ branch: string; ahead: numb
   }
 }
 
+export type BranchInfo = {
+  name: string;
+  current: boolean;
+  upstream: string | null;
+  /// How far it is from its upstream, as git words it: "[ahead 2]", "[behind 1]", "[gone]".
+  track: string;
+  date: number;
+  /// The worktree it's checked out in, when that isn't this one.
+  elsewhere: string | null;
+};
+
+/// The local branches, latest commit first.
+export async function branches(cwd: string): Promise<{ current: string | null; branches: BranchInfo[] }> {
+  const top = (await git(cwd, ["rev-parse", "--show-toplevel"])).trim();
+  const format = "%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(committerdate:unix)%00%(worktreepath)";
+  const out = await git(cwd, ["for-each-ref", "--sort=-committerdate", `--format=${format}`, "refs/heads"]);
+  const list = out
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [name, head, upstream, track, date, worktree] = line.split("\0");
+      return {
+        name,
+        current: head === "*",
+        upstream: upstream || null,
+        track: track ?? "",
+        date: Number(date) || 0,
+        elsewhere: worktree && worktree !== top ? worktree : null,
+      };
+    });
+  return { current: list.find((item) => item.current)?.name ?? null, branches: list };
+}
+
+/// A name git takes for a branch, or a plain-words error. `@{-1}` and the like are refused: git
+/// would read them as another branch's name.
+async function checkName(cwd: string, name: string): Promise<void> {
+  const refused = new Error(`“${name}” isn't a name git takes for a branch.`);
+  const out = await git(cwd, ["check-ref-format", "--branch", name]).catch(() => {
+    throw refused;
+  });
+  if (out.trim() !== name) throw refused;
+}
+
+/// Git's messages for a failed switch or pull, cut to one line that says what to do.
+export function friendly(message: string): string {
+  const overwritten = message.match(/would be overwritten by (?:checkout|merge):\n((?:\t.*\n?)+)/);
+  if (overwritten) {
+    const files = overwritten[1].split("\n").map((line) => line.trim()).filter(Boolean);
+    const named = files.length > 3 ? `${files.slice(0, 3).join(", ")} and ${files.length - 3} more` : files.join(", ");
+    return `Uncommitted changes to ${named} would be overwritten. Commit or stash them first.`;
+  }
+  const elsewhere = message.match(/'([^']+)' is already (?:used|checked out) by worktree at/);
+  if (elsewhere) return `${elsewhere[1]} is checked out in another worktree.`;
+  const missing = message.match(/invalid reference: (.+)/);
+  if (missing) return missing[1].trim() === "@{-1}" || missing[1].trim() === "-" ? "There's no previous branch here." : `There's no branch called ${missing[1].trim()}.`;
+  if (/Not possible to fast-forward|Diverging branches/i.test(message)) {
+    return "The branch and its upstream have split; pull in the terminal to merge or rebase.";
+  }
+  if (/no tracking information/i.test(message)) return "This branch has no upstream to pull from.";
+  const first = message.split("\n").map((line) => line.trim()).find(Boolean) ?? message;
+  return first.replace(/^(fatal|error):\s*/i, "");
+}
+
+async function plainly(cwd: string, args: string[]): Promise<string> {
+  try {
+    return await git(cwd, args);
+  } catch (error) {
+    throw new Error(friendly((error as Error).message));
+  }
+}
+
+export async function switchTo(cwd: string, name: string): Promise<{ branch: string; ahead: number; upstream: boolean }> {
+  await checkName(cwd, name);
+  await plainly(cwd, ["switch", name]);
+  return branch(cwd);
+}
+
+export async function create(cwd: string, name: string, from?: string): Promise<{ branch: string; ahead: number; upstream: boolean }> {
+  await checkName(cwd, name);
+  const exists = await git(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`]).then(
+    () => true,
+    () => false,
+  );
+  if (exists) throw new Error(`A branch named ${name} already exists.`);
+  await plainly(cwd, ["switch", "-c", name, ...(from ? [from] : [])]);
+  return branch(cwd);
+}
+
+export async function previous(cwd: string): Promise<{ branch: string; ahead: number; upstream: boolean }> {
+  await plainly(cwd, ["switch", "-"]);
+  return branch(cwd);
+}
+
+/// A fast-forward pull only: anything that would merge is the terminal's business.
+export async function pull(cwd: string): Promise<{ summary: string; branch: string; ahead: number; upstream: boolean }> {
+  const before = (await git(cwd, ["rev-parse", "HEAD"])).trim();
+  await plainly(cwd, ["pull", "--ff-only"]);
+  const count = Number((await git(cwd, ["rev-list", "--count", `${before}..HEAD`])).trim()) || 0;
+  const summary = count === 0 ? "Already up to date." : `Pulled ${count} commit${count === 1 ? "" : "s"}.`;
+  return { summary, ...(await branch(cwd)) };
+}
+
+/// The web page of the repository's origin, or of its first remote, when git can say.
+export async function remote(cwd: string): Promise<{ web: string | null }> {
+  const names = (await git(cwd, ["remote"])).split("\n").filter(Boolean);
+  const name = names.includes("origin") ? "origin" : names[0];
+  if (!name) return { web: null };
+  const url = (await git(cwd, ["remote", "get-url", name])).trim();
+  return { web: webURL(url) };
+}
+
+/// git@host:owner/repo.git, ssh://git@host/owner/repo and https://host/owner/repo.git all become
+/// https://host/owner/repo.
+export function webURL(remote: string): string | null {
+  const scp = remote.match(/^[\w.-]+@([^:/]+):(.+?)(?:\.git)?\/?$/);
+  if (scp) return `https://${scp[1]}/${scp[2]}`;
+  const url = remote.match(/^(?:ssh|https?|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/);
+  if (url) return `https://${url[1]}/${url[2]}`;
+  return null;
+}
+
 export type ChangedFile = { path: string; status: string };
 
 /// Changed files from porcelain v1: "M" modified, "A" added, "D" deleted, "R" renamed, "?" untracked.

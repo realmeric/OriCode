@@ -40,6 +40,9 @@ struct OriCodeCommands: Commands {
             Button("Compact") { model.send("/compact") }
                 .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))
             Divider()
+            Button("Switch Branch…") { model.openBranchSwitcher() }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .disabled(model.project == nil)
             Button("Next Thread") { model.stepThread(1) }
                 .keyboardShortcut(.tab, modifiers: .control)
                 .disabled(model.chats.count < 2)

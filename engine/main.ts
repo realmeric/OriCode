@@ -5,7 +5,7 @@ import { readCatalog } from "./catalog.ts";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, newer, older, settled, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
-import { addWorktree, branch, commit, diffFor, push, removeWorktree, status, worktreeLoss } from "./git.ts";
+import { addWorktree, branch, branches, commit, create, diffFor, previous, pull, push, remote, removeWorktree, status, switchTo, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
 import { usage } from "./usage.ts";
 import { version } from "./version.ts";
@@ -185,6 +185,24 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return branch(cwd);
   },
 
+  async "git.branches"({ cwd }: { cwd: string }) {
+    return branches(cwd);
+  },
+  async "git.switch"({ cwd, branch: name }: { cwd: string; branch: string }) {
+    return switchTo(cwd, name);
+  },
+  async "git.create"({ cwd, name, from }: { cwd: string; name: string; from?: string }) {
+    return create(cwd, name, from);
+  },
+  async "git.previous"({ cwd }: { cwd: string }) {
+    return previous(cwd);
+  },
+  async "git.pull"({ cwd }: { cwd: string }) {
+    return pull(cwd);
+  },
+  async "git.remote"({ cwd }: { cwd: string }) {
+    return remote(cwd);
+  },
   async "git.status"({ cwd }: { cwd: string }) {
     return { files: await status(cwd) };
   },
