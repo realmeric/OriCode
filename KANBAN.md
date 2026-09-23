@@ -110,8 +110,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
-### Todo: 0.0.86 "Lit"
-
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
@@ -627,7 +625,7 @@ Commit: 11d3358
 #### K-86 · Release 0.0.86
 As K-12. Tag `v0.0.86`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.86 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread's picker opened on High with the lit rail and the shield for Auto, and set to Haiku and Ask it sent an edit that waited on its card and landed in greet.swift when allowed.
-Commit: pending
+Commit: b12296a
 
 
 ## Exceptions
