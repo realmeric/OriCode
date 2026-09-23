@@ -108,10 +108,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-62 · Default for Tint and Transparency
-Each slider in Settings › General › Window gets a Default button that puts it back where the app starts (Tint 30%, Transparency 0%), shown only while the value is somewhere else.
-Done when: moving a slider shows its Default button, and pressing it puts the slider back and hides the button.
-
 #### K-63 · ⌘W closes the thread first
 ⌘W closes the open thread the way Claude's app closes a session: the window goes back to the empty composer for the project, and the thread stays in the list. With no thread open, ⌘W closes the window as before. File gets Close Thread.
 Done when: ⌘W with a thread open shows the empty composer, and a second ⌘W closes the window.
@@ -530,6 +526,12 @@ Commit: a50dd35
 As K-12. Tag `v0.7.0`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.7.0, launched with an empty environment, came up as a window named OriCode, and an edit sent in Ask mode on Haiku in a new thread waited on its card, was allowed, and landed in greet.swift.
 Commit: 75d2e3a
+
+#### K-62 · Default for Tint and Transparency
+Each slider in Settings › General › Window gets a Default button that puts it back where the app starts (Tint 30%, Transparency 0%), shown only while the value is somewhere else.
+Done when: moving a slider shows its Default button, and pressing it puts the slider back and hides the button.
+Notes: The button sits left of the percentage, a small native button that fades in while the value is more than half a percent from the start and slides the slider back with the app's spring. Checked on Meriç's own settings, Tint 27% and Transparency 5%: both buttons showed, Default took Transparency to 0% and Tint to 30% and each button went away, and his values were written back afterwards, which the open window picked up.
+Commit: pending
 
 
 ## Exceptions

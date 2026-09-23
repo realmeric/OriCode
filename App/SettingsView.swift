@@ -176,15 +176,22 @@ private struct SliderRow: View {
     let range: ClosedRange<Double>
     let low: String
     let high: String
+    /// Where the app starts; a Default button shows while the slider is anywhere else.
+    let standard: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
                     Text(detail).font(Type.secondary).foregroundStyle(Ink.secondary)
                 }
                 Spacer()
+                if abs(value - standard) > 0.005 {
+                    Button("Default") { withAnimation(Motion.move) { value = standard } }
+                        .controlSize(.small)
+                        .transition(.opacity)
+                }
                 Text("\(Int((value * 100).rounded()))%")
                     .font(Type.mono)
                     .foregroundStyle(Ink.secondary)
@@ -202,6 +209,7 @@ private struct SliderRow: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
+        .animation(Motion.fade, value: abs(value - standard) > 0.005)
     }
 }
 
@@ -235,9 +243,9 @@ private struct GeneralPane: View {
         SectionHeading("Window")
         SettingsCard {
             SliderRow(title: "Tint", detail: "How light or dark the glass is.",
-                      value: $glass, range: Glass.range, low: "Light", high: "Dark")
+                      value: $glass, range: Glass.range, low: "Light", high: "Dark", standard: Glass.defaultTint)
             SliderRow(title: "Transparency", detail: "How much of the desktop shows through sharp instead of frosted.",
-                      value: $transparency, range: 0...1, low: "Frosted", high: "Clear")
+                      value: $transparency, range: 0...1, low: "Frosted", high: "Clear", standard: Glass.defaultTransparency)
         }
         SectionHeading("New threads")
         SettingsCard {
