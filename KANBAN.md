@@ -106,10 +106,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
 
-#### K-55 · Glass that captures dark
-AltTab, Mission Control and screenshots capture a window without what is behind it, and the `.hudWindow` material comes out of that a flat light grey, which is why AltTab shows OriCode lighter than Meriç's other glass apps. The window moves to `.underWindowBackground`, the material DroppyKit's glass uses.
-Done when: a capture of the main window comes out dark instead of mid grey. Needs Meriç's eye for the glass itself.
-
 #### K-56 · Transparency apart from tint
 Settings › General › Window gets two sliders. Tint is the one called Glass until now: the black layer from 15% to 60%, lighter to darker. Transparency is new and fades the material itself, from frosted (all of it) to clear (a quarter of it), so more of the desktop shows through sharp. Both windows follow both.
 Done when: moving Transparency changes how much material a capture of either window shows, and Tint still lightens and darkens them. Needs Meriç's eye over a wallpaper.
@@ -462,6 +458,12 @@ Commit: 14c1509
 The composer's surface goes from white at 8% to white at 12%. Over a dark backdrop that puts about 24 levels of light between it and the glass, the same as the bar in Meriç's screenshot has over its background.
 Done when: a capture shows the composer that much lighter than the glass around it.
 Notes: Meriç's screenshot has a background of about 42 and a bar of about 66, which is white at 11 to 13% laid over it; the composer was at 8%. At 12% it rises about 25 levels over glass that dark, where 8% gave 17. Checked: in a capture the composer now reads as a clear step up from the glass around it. On his desktop the step follows the wallpaper behind the window.
+Commit: 5ff76f6
+
+#### K-55 · Glass that captures dark
+AltTab, Mission Control and screenshots capture a window without what is behind it, and the `.hudWindow` material comes out of that a flat light grey, which is why AltTab shows OriCode lighter than Meriç's other glass apps. The window moves to `.underWindowBackground`, the material DroppyKit's glass uses.
+Done when: a capture of the main window comes out dark instead of mid grey. Needs Meriç's eye for the glass itself.
+Notes: Checked: a single-window capture, the kind AltTab takes, showed the main window a flat mid grey on .hudWindow and a dark grey on .underWindowBackground, with the tint at the 15% Meriç had set; Settings, on the same material, captures dark too. Needs Meriç's eye for how the new material looks over his wallpaper, which captures leave out.
 Commit: pending
 
 
