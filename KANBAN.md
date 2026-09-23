@@ -110,6 +110,15 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.92 "Fast you can see"
+
+#### K-91 · The mark stays, and fast you can see
+Meriç chose B, the mark over the slider, so A and C go, with Thread › Picker Design. The Fast button didn't say clearly enough whether it was on, and nothing else did either, because the slider's streaks waited for the CLI to confirm fast mode before running. Once clicked, the bolt lights up white on a lit circle with a glow, faint when it's off, struck through when the CLI turns fast mode down. While it's on, the slider's streaks run for a few seconds and then stand still behind the thumb; the mark's head trails speed lines, darts forward as fast comes on, and streaks run through the mark for those same seconds. The brief's Layout, Motion and Exceptions lines describe the one picker.
+Done when: A and C are gone and the picker opens as B; frames show the lit bolt with the streaks and speed lines while fast is on or being checked, and the struck bolt with the CLI's reason when it's turned down.
+
+#### K-92 · Release 0.0.92
+As K-12. Tag `v0.0.92`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
