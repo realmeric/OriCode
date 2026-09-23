@@ -6,14 +6,20 @@ import SwiftUI
 /// `.underWindowBackground` rather than `.hudWindow`, because window captures (AltTab,
 /// Mission Control, screenshots) leave out what's behind the window, and `.hudWindow` comes
 /// out of them a light grey.
+/// Settings' Transparency fades it, so more of the desktop shows through unblurred.
 struct BehindWindowGlass: NSViewRepresentable {
+    @AppStorage(Glass.transparencyKey) private var transparency = Glass.defaultTransparency
+
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = .underWindowBackground
         view.blendingMode = .behindWindow
         view.state = .active
+        view.alphaValue = Glass.materialOpacity(transparency)
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.alphaValue = Glass.materialOpacity(transparency)
+    }
 }

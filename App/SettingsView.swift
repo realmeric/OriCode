@@ -90,7 +90,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// The words a search can find a pane by: its title and what its settings are called.
     private var words: [String] {
         switch self {
-        case .general: ["glass", "window", "clear", "dark", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
+        case .general: ["glass", "window", "tint", "light", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
@@ -167,6 +167,44 @@ private struct SettingsRow<Control: View>: View {
     }
 }
 
+/// A setting that is a slider: what it is and does on the left, the value on the right, and the
+/// slider under them between its two ends.
+private struct SliderRow: View {
+    let title: String
+    let detail: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let low: String
+    let high: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
+                    Text(detail).font(Type.secondary).foregroundStyle(Ink.secondary)
+                }
+                Spacer()
+                Text("\(Int((value * 100).rounded()))%")
+                    .font(Type.mono)
+                    .foregroundStyle(Ink.secondary)
+                    .contentTransition(.numericText())
+                    .animation(Motion.fade, value: value)
+            }
+            Slider(value: $value, in: range) {
+                Text(title)
+            } minimumValueLabel: {
+                Text(low).font(Type.secondary).foregroundStyle(Ink.secondary)
+            } maximumValueLabel: {
+                Text(high).font(Type.secondary).foregroundStyle(Ink.secondary)
+            }
+            .labelsHidden()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+}
+
 extension SettingsRow where Control == EmptyView {
     init(title: String, detail: String?) {
         self.init(title: title, detail: detail) { EmptyView() }
@@ -188,6 +226,7 @@ private struct PaneTitle: View {
 private struct GeneralPane: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
+    @AppStorage(Glass.transparencyKey) private var transparency = Glass.defaultTransparency
     @AppStorage("nodePath") private var nodePath = ""
     @AppStorage("lastPermissionMode") private var permissionMode = "default"
 
@@ -195,31 +234,10 @@ private struct GeneralPane: View {
         PaneTitle(text: "General")
         SectionHeading("Window")
         SettingsCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Glass").font(.system(size: 14)).foregroundStyle(Ink.primary)
-                        Text("How much of the desktop shows through the window.")
-                            .font(Type.secondary).foregroundStyle(Ink.secondary)
-                    }
-                    Spacer()
-                    Text("\(Int((glass * 100).rounded()))%")
-                        .font(Type.mono)
-                        .foregroundStyle(Ink.secondary)
-                        .contentTransition(.numericText())
-                        .animation(Motion.fade, value: glass)
-                }
-                Slider(value: $glass, in: Glass.range) {
-                    Text("Glass")
-                } minimumValueLabel: {
-                    Text("Clear").font(Type.secondary).foregroundStyle(Ink.secondary)
-                } maximumValueLabel: {
-                    Text("Dark").font(Type.secondary).foregroundStyle(Ink.secondary)
-                }
-                .labelsHidden()
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            SliderRow(title: "Tint", detail: "How light or dark the glass is.",
+                      value: $glass, range: Glass.range, low: "Light", high: "Dark")
+            SliderRow(title: "Transparency", detail: "How much of the desktop shows through sharp instead of frosted.",
+                      value: $transparency, range: 0...1, low: "Frosted", high: "Clear")
         }
         SectionHeading("New threads")
         SettingsCard {

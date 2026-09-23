@@ -34,7 +34,7 @@ Every time rule 1 is broken on purpose, add a line under **Exceptions** at the b
 
 The reference is the empty Codex window: a rounded pane of glass with the wallpaper's orange and violet visible through it, traffic lights top-left, a single mark in the middle, and no chrome at all. The test is whether the window still feels like that once a conversation is in it.
 
-**Window.** A unified toolbar with its background hidden, full-size content, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them in a toolbar window, with one thing beside them: the sidebar button, the toolbar's only item. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
+**Window.** A unified toolbar with its background hidden, full-size content, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them in a toolbar window, with one thing beside them: the sidebar button, the toolbar's only item. Behind-window blur for the material, which Settings' Transparency fades down to a quarter so the desktop shows through sharp, then one tint layer: black at 30% by default, which Settings' Tint moves between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
 
 **Surfaces.** Composer: white at 12% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row or a button: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass, laid out like Meriç's reference: a sidebar of panes under a search field, holding the traffic lights the way the drawer does, and each pane's settings in cards under quiet headings, rows parted by hairlines inside a card. Those hairlines are the one place a line appears, because the reference has them.
 
@@ -105,10 +105,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: v0.7 "Projects"
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
-
-#### K-56 · Transparency apart from tint
-Settings › General › Window gets two sliders. Tint is the one called Glass until now: the black layer from 15% to 60%, lighter to darker. Transparency is new and fades the material itself, from frosted (all of it) to clear (a quarter of it), so more of the desktop shows through sharp. Both windows follow both.
-Done when: moving Transparency changes how much material a capture of either window shows, and Tint still lightens and darkens them. Needs Meriç's eye over a wallpaper.
 
 #### K-57 · Every project's threads in one list
 The drawer lists the threads of all projects, newest first, and each row starts with its project's badge: the first and last letters of the name (OriCode is OE) in the project's colour. A project gets its colour at random when it's added, from eight that read on the glass, skipping those other projects have until all eight are taken; projects from before this get one the first time the app opens. The rays mark moves to the row's other end, before the ⌘digit. Picking a thread picks its project, ⌘1–9 follow the one list, and Go to shows the badges too. The project menu at the top stays, as the project new threads start in, with its badge beside the name.
@@ -464,6 +460,12 @@ Commit: 5ff76f6
 AltTab, Mission Control and screenshots capture a window without what is behind it, and the `.hudWindow` material comes out of that a flat light grey, which is why AltTab shows OriCode lighter than Meriç's other glass apps. The window moves to `.underWindowBackground`, the material DroppyKit's glass uses.
 Done when: a capture of the main window comes out dark instead of mid grey. Needs Meriç's eye for the glass itself.
 Notes: Checked: a single-window capture, the kind AltTab takes, showed the main window a flat mid grey on .hudWindow and a dark grey on .underWindowBackground, with the tint at the 15% Meriç had set; Settings, on the same material, captures dark too. Needs Meriç's eye for how the new material looks over his wallpaper, which captures leave out.
+Commit: c1118f9
+
+#### K-56 · Transparency apart from tint
+Settings › General › Window gets two sliders. Tint is the one called Glass until now: the black layer from 15% to 60%, lighter to darker. Transparency is new and fades the material itself, from frosted (all of it) to clear (a quarter of it), so more of the desktop shows through sharp. Both windows follow both.
+Done when: moving Transparency changes how much material a capture of either window shows, and Tint still lightens and darkens them. Needs Meriç's eye over a wallpaper.
+Notes: The material's alphaValue follows Transparency from 100% down to 25%. Tint is the same black layer as before with Light and Dark at its ends, and both are rows of one Window card. Checked: at 100% the full screen showed the main window's text and a Finder window's icons sharp through the Settings detail, and the Finder icons through the bottom of the main window; back at 0% both windows are as they were. The Settings sidebar is the system's own material and doesn't follow it. Needs Meriç's eye over his wallpaper for where between the ends it looks right.
 Commit: pending
 
 

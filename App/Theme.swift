@@ -38,7 +38,17 @@ enum Motion {
 }
 
 enum Glass {
+    /// The black layer over the material: how light or dark the glass is.
     static let key = "glass"
     static let defaultTint = 0.30
     static let range = 0.15...0.60
+    /// How far the material fades so the desktop shows through sharp, 0 to 1.
+    static let transparencyKey = "transparency"
+    static let defaultTransparency = 0.0
+    /// The least of the material the window keeps, at full transparency.
+    static let clearest = 0.25
+
+    static func materialOpacity(_ transparency: Double) -> Double {
+        1 - min(max(transparency, 0), 1) * (1 - clearest)
+    }
 }
