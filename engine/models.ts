@@ -1,4 +1,5 @@
 import type { ModelInfo, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { CatalogModel } from "./catalog.ts";
 
 export type Model = {
   id: string;
@@ -21,20 +22,37 @@ export type Model = {
 /// for it is an error, so a model the engine hasn't heard about gets no thinking option.
 export const adaptive = new Set<string>();
 
-export function fromSDK(models: ModelInfo[]): Model[] {
+export function fromSDK(models: ModelInfo[], catalog: CatalogModel[] = []): Model[] {
   for (const model of models) {
     if (model.supportsAdaptiveThinking) adaptive.add(model.value);
   }
   return models.map((model) => ({
     id: model.value,
-    name: model.displayName,
-    description: model.description,
+    ...versioned(model, catalog),
     efforts: model.supportsEffort ? (model.supportedEffortLevels ?? []) : [],
     fast: model.supportsFastMode ?? false,
     defaultEffort: null,
     ultra: false,
     ultraBlocked: null,
   }));
+}
+
+/// The SDK names a row by family ("Opus (1M context)") and puts the version in its line ("Opus 5
+/// with 1M context · Best for…"). The name becomes the version, the catalog's for the model the
+/// row runs or else the line's, and the line loses it. Default keeps its name and its line,
+/// which says what it runs.
+export function versioned(model: ModelInfo, catalog: CatalogModel[]): { name: string; description: string } {
+  const unchanged = { name: model.displayName, description: model.description };
+  if (model.value === "default") return unchanged;
+  const runs = model.resolvedModel?.replace(/\[1m\]$/i, "");
+  const head = model.description.split(" · ")[0].replace(/ with 1M context$/, "");
+  const family = model.displayName.split(" (")[0];
+  const name = catalog.find((row) => row.id === runs)?.name ?? (head.startsWith(`${family} `) ? head : undefined);
+  if (!name) return unchanged;
+  const description = model.description.startsWith(`${name} `)
+    ? model.description.slice(name.length).replace(/^ (with |· )/, "")
+    : model.description;
+  return { name, description };
 }
 
 const levels = ["low", "medium", "high", "xhigh", "max"];

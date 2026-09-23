@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import { readCatalog } from "./catalog.ts";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, fromSDK, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
@@ -48,7 +49,8 @@ async function supportedModels(claude: string): Promise<Model[]> {
   const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    return fromSDK(await Promise.race([probe.supportedModels(), timeout]));
+    const [list, catalog] = await Promise.all([Promise.race([probe.supportedModels(), timeout]), readCatalog()]);
+    return fromSDK(list, catalog);
   } finally {
     probe.close();
   }
