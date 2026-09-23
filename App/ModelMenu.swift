@@ -55,23 +55,32 @@ struct ModelMenu: View {
             HStack(spacing: 6) {
                 ClaudeMark()
                     .frame(width: 14, height: 14)
-                Text(selectedModel.map { Self.shortName($0.name) } ?? "Model")
+                let name = selectedModel.map { Self.shortName($0.name) } ?? "Model"
+                Text(name)
                     .foregroundStyle(Ink.primary)
+                    .id(name)
+                    .transition(.blurReplace)
                 if let chat, model.fastMode(of: chat) {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(Ink.secondary)
                         .help("Fast mode")
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
                 if let effort = shownEffort {
                     Text(Self.effortName(effort))
                         .foregroundStyle(Ink.secondary)
+                        .id(effort)
+                        .transition(.blurReplace)
                 }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Ink.secondary)
             }
             .font(Type.secondary)
+            // The picker's choices arrive here as it makes them; the button grows leftwards,
+            // since the composer's field gives way and the send button holds its right.
+            .animation(Motion.move, value: [selectedModel?.id, shownEffort, chat.map(model.fastMode(of:)) == true ? "fast" : nil])
             .padding(.horizontal, 8)
             .frame(height: 30)
             .background(hovering || model.modelPickerShown ? Surface.hover : .clear, in: .capsule)

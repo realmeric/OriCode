@@ -12,6 +12,8 @@ struct Composer: View {
     @State private var slashSelected = 0
     @State private var height: CGFloat = 48
     @State private var attachHovered = false
+    /// An image or file held over the composer, about to land in it.
+    @State private var dropTarget = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -23,7 +25,8 @@ struct Composer: View {
         }
         .padding(6)
         .frame(minHeight: 48)
-        .background(Surface.composer, in: .rect(cornerRadius: 24, style: .continuous))
+        .background(dropTarget ? Surface.dropTarget : Surface.composer, in: .rect(cornerRadius: 24, style: .continuous))
+        .animation(Motion.fade, value: dropTarget)
         .overlay {
             // The raised-glass highlight along the top edge, fading out before the sides.
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -45,8 +48,12 @@ struct Composer: View {
             slashSelected = 0
             if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
         }
-        .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.image, .fileURL], isTargeted: $dropTarget) { providers in
             accept(providers)
+        }
+        // The finger is on the trackpad for the whole drag, so this says "let go here".
+        .onChange(of: dropTarget) { _, over in
+            if over { Haptics.detent() }
         }
         .onAppear { focused = true }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
@@ -183,6 +190,11 @@ struct Composer: View {
         } label: {
             Image(systemName: running ? "stop.fill" : "arrow.up")
                 .font(.system(size: running ? 12 : 15, weight: .semibold))
+                // One button changing its job, not two buttons swapping.
+                .contentTransition(.symbolEffect(.replace))
+                .animation(Motion.fade, value: running)
+                // The fade is for the symbol; where it sits follows the composer as one piece.
+                .geometryGroup()
                 .frame(width: 36, height: 36)
                 // Scoped to colour: a fade on the whole button also animated its position,
                 // and it left the capsule behind when the composer slid down.

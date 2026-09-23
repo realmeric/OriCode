@@ -1,5 +1,5 @@
 import AppKit
-import Foundation
+import SwiftUI
 
 extension AppModel {
     /// The selected thread's transcript, for views. Views only read; the conversation is
@@ -59,7 +59,8 @@ extension AppModel {
         if !allow {
             params["message"] = .string(message ?? "The user denied this. Tell them you stopped, and wait for what they want instead.")
         }
-        conversation(for: chat).answered(ask.requestId, allow: allow)
+        // The card folds into its one line and what's under it closes up, rather than jumping.
+        withAnimation(Motion.move) { conversation(for: chat).answered(ask.requestId, allow: allow) }
         Task {
             do {
                 _ = try await engine.request("answer", .object(params))

@@ -16,11 +16,13 @@ struct AskCard: View {
             waiting
                 .padding(14)
                 .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
-                .transition(.opacity)
+                .transition(.opacity.animation(.easeOut(duration: 0.12)))
         } else {
             Text(settledLine)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity.animation(Motion.fade.delay(0.08)))
         }
     }
 

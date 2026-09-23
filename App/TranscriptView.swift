@@ -34,6 +34,7 @@ struct TranscriptView: View {
                         item: item, cwd: cwd, listening: conversation.waitingAsk?.requestId,
                         live: conversation.running && index == conversation.items.count - 1)
                         .padding(.top, index == shown.startIndex ? 0 : spacing(before: item, after: conversation.items[index - 1]))
+                        .transition(Self.arrival(of: item))
                 }
                 if let retrying = conversation.retrying {
                     Text(retrying)
@@ -69,6 +70,16 @@ struct TranscriptView: View {
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
             }
+        }
+    }
+
+    /// A message you send comes up out of the composer on the send's glide, and a card asking
+    /// for you rises into place; everything else simply appears as it streams.
+    private static func arrival(of item: Item) -> AnyTransition {
+        switch item {
+        case .user: .opacity.combined(with: .offset(y: 18))
+        case .ask: .opacity.combined(with: .offset(y: 10)).animation(Motion.move)
+        default: .identity
         }
     }
 

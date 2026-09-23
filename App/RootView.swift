@@ -3,6 +3,9 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
+    /// Whether the last layout had a transcript in it: one arriving where there wasn't one comes
+    /// up behind the travelling composer, and one taking another thread's place only fades in.
+    @State private var hadTranscript = false
 
     var body: some View {
         GeometryReader { window in
@@ -15,9 +18,7 @@ struct RootView: View {
                     if let conversation, let chat = model.chat, started {
                         TranscriptView(conversation: conversation, cwd: chat.cwd)
                             .id(chat.id)
-                            // After the composer has mostly gone past, so the first message rises in
-                            // behind it instead of under it.
-                            .transition(.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22)))
+                            .transition(.asymmetric(insertion: hadTranscript ? Self.swap : Self.rise, removal: Self.leave))
                     } else {
                         Spacer(minLength: 0)
                         EmptyStateView(
@@ -25,14 +26,16 @@ struct RootView: View {
                             heads: conversation?.heads ?? 0,
                             waiting: conversation?.waitingAsk != nil)
                             .padding(.bottom, 28)
-                            .transition(.asymmetric(
-                                insertion: .opacity,
-                                removal: .opacity.combined(with: .offset(y: -36)).combined(with: .scale(scale: 0.92))))
+                            .transition(.asymmetric(insertion: Self.settle, removal: Self.lift))
                     }
                     // One composer in one place in the tree, whichever layout is showing, so the
                     // first message moves it rather than swapping it for another.
                     if model.project != nil {
                         Composer(running: conversation?.running ?? false, maxHeight: window.size.height * 0.4)
+                            // Moves as one piece: otherwise a label that changes with the thread,
+                            // like the model's name, is drawn where the composer is going while
+                            // the rest of it is still on the way.
+                            .geometryGroup()
                             .column()
                             // Above the transcript, so the slash menu can rise over it.
                             .zIndex(1)
@@ -52,6 +55,12 @@ struct RootView: View {
                     }
                     .frame(height: 28)
                 }
+                // Whatever empties the window (a new thread, ⌘W, another project) sends the
+                // composer back up to the middle the way the first message sends it down, once
+                // the old transcript has gone, so it never passes over a line of it.
+                .animation(started ? Motion.glide : Motion.glide.delay(0.1), value: started)
+                .onAppear { hadTranscript = started }
+                .onChange(of: started) { _, now in hadTranscript = now }
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                 .simultaneousGesture(TapGesture().onEnded {
@@ -160,6 +169,19 @@ struct RootView: View {
                 .onHover { model.hotZone($0) }
         }
     }
+
+    /// The first message's transcript rises in behind the composer once it has mostly gone past,
+    /// instead of under it.
+    private static let rise = AnyTransition.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22))
+    /// Another thread's transcript fades in once this one has gone, so two are never on the
+    /// glass together.
+    private static let swap = AnyTransition.opacity.animation(Motion.fade.delay(0.1))
+    /// A transcript leaving fades before anything moves in: the composer waits for it.
+    private static let leave = AnyTransition.opacity.animation(.easeOut(duration: 0.1))
+    /// The mark lifts away as the first message sends the composer down, and settles back from
+    /// the same place as an empty thread brings the composer up.
+    private static let lift = AnyTransition.opacity.combined(with: .offset(y: -36)).combined(with: .scale(scale: 0.92))
+    private static let settle = lift.animation(Motion.glide.delay(0.18))
 }
 
 /// Right of the traffic lights: hovering opens the drawer the way the left edge does,

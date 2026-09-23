@@ -198,7 +198,7 @@ private struct SliderRow: View {
                     .contentTransition(.numericText())
                     .animation(Motion.fade, value: value)
             }
-            Slider(value: $value, in: range) {
+            Slider(value: magnetic, in: range) {
                 Text(title)
             } minimumValueLabel: {
                 Text(low).font(Type.secondary).foregroundStyle(Ink.secondary)
@@ -210,6 +210,19 @@ private struct SliderRow: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .animation(Motion.fade, value: abs(value - standard) > 0.005)
+    }
+
+    /// The default holds the slider a moment as it passes, with a tap on the trackpad, so it can
+    /// be found by feel.
+    private var magnetic: Binding<Double> {
+        Binding {
+            value
+        } set: { next in
+            let band = (range.upperBound - range.lowerBound) * 0.012
+            let holding = abs(next - standard) < band
+            if holding, value != standard { Haptics.detent() }
+            value = holding ? standard : next
+        }
     }
 }
 

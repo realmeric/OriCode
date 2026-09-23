@@ -4,6 +4,8 @@ import SwiftUI
 enum Surface {
     static let composer = Color.white.opacity(0.12)
     static let composerEdge = Color.white.opacity(0.12)
+    /// The composer with something held over it to drop.
+    static let dropTarget = Color.white.opacity(0.16)
     static let userMessage = Color.white.opacity(0.07)
     static let card = Color.white.opacity(0.05)
     static let drawer = Color.white.opacity(0.06)
