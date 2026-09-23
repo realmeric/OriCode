@@ -65,20 +65,51 @@ struct UsageCircle: View {
     }
 }
 
-/// kullanym-notch's activity arc: a quarter of a circle turning once every 1.1 seconds,
-/// driven by the clock so it simply stops being drawn when the work stops.
-private struct WorkingArc: View {
-    var body: some View {
-        TimelineView(.animation) { context in
-            Circle()
-                .trim(from: 0, to: 0.25)
-                .stroke(Ink.primary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                .rotationEffect(.degrees(-90 + angle(at: context.date)))
-        }
-    }
+/// kullanym-notch's activity arc: a quarter of a circle turning once every 1.1 seconds. Core
+/// Animation turns it in the render server, so it costs the app nothing per frame; drawn from a
+/// TimelineView it made SwiftUI lay the whole window out again on every frame, about a tenth of
+/// a core for as long as a turn ran.
+private struct WorkingArc: NSViewRepresentable {
+    func makeNSView(context: Context) -> ArcView { ArcView() }
 
-    private func angle(at date: Date) -> Double {
-        (date.timeIntervalSinceReferenceDate / 1.1).truncatingRemainder(dividingBy: 1) * 360
+    func updateNSView(_ view: ArcView, context: Context) {}
+
+    final class ArcView: NSView {
+        private let arc = CAShapeLayer()
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            arc.fillColor = nil
+            arc.strokeColor = NSColor.white.withAlphaComponent(0.92).cgColor
+            arc.lineWidth = 1.6
+            arc.lineCap = .round
+            layer?.addSublayer(arc)
+            let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+            turn.fromValue = 0
+            // Clockwise: a layer's y axis points up, so that's the negative direction.
+            turn.toValue = -2 * Double.pi
+            turn.duration = 1.1
+            turn.repeatCount = .infinity
+            turn.isRemovedOnCompletion = false
+            arc.add(turn, forKey: "turn")
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            arc.frame = bounds
+            // From twelve o'clock to three, a quarter of the circle.
+            let radius = min(bounds.width, bounds.height) / 2 - arc.lineWidth / 2
+            let path = CGMutablePath()
+            path.addArc(center: CGPoint(x: bounds.midX, y: bounds.midY), radius: radius,
+                        startAngle: .pi / 2, endAngle: 0, clockwise: true)
+            arc.path = path
+            CATransaction.commit()
+        }
     }
 }
 

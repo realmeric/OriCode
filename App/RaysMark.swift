@@ -17,20 +17,21 @@ struct RaysMark: View {
     var dotOpacity = 0.92
 
     var body: some View {
-        GeometryReader { proxy in
-            let side = min(proxy.size.width, proxy.size.height)
-            ZStack {
-                if turning {
-                    TimelineView(.animation) { context in
-                        rays(side: side).rotationEffect(.degrees(angle(at: context.date)))
+        Group {
+            if turning || waiting {
+                MovingRays(lit: min(lit, Self.rays), turning: turning, waiting: waiting,
+                           restingOpacity: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity)
+            } else {
+                GeometryReader { proxy in
+                    let side = min(proxy.size.width, proxy.size.height)
+                    ZStack {
+                        rays(side: side)
+                        Circle().fill(Color.white).opacity(dotOpacity)
+                            .frame(width: side * 0.3, height: side * 0.3)
                     }
-                } else {
-                    rays(side: side)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                Dot(waiting: waiting, opacity: dotOpacity)
-                    .frame(width: side * 0.3, height: side * 0.3)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement()
@@ -50,10 +51,6 @@ struct RaysMark: View {
         }
     }
 
-    /// One turn every nine seconds: slow enough to read as breathing rather than loading.
-    private func angle(at date: Date) -> Double {
-        (date.timeIntervalSinceReferenceDate / 9).truncatingRemainder(dividingBy: 1) * 360
-    }
 }
 
 /// One of the arcs, centred on its sixth of the circle with a gap either side.
@@ -77,24 +74,103 @@ struct Ray: Shape {
     }
 }
 
-/// Driven by the clock rather than a repeating animation, which keeps going after its
-/// value is set back; derived from the time, the pulse simply stops being drawn.
-private struct Dot: View {
+/// The mark while it moves: the same rays and dot as layers, turned and pulsed by Core
+/// Animation in the render server. Drawn from a TimelineView, every frame of the turn made
+/// SwiftUI lay the whole window out again.
+private struct MovingRays: NSViewRepresentable {
+    let lit: Int
+    let turning: Bool
     let waiting: Bool
-    let opacity: Double
+    let restingOpacity: Double
+    let litOpacity: Double
+    let dotOpacity: Double
 
-    var body: some View {
-        if waiting {
-            TimelineView(.animation) { context in
-                Circle().fill(Color.white).opacity(opacity * pulse(at: context.date))
-            }
-        } else {
-            Circle().fill(Color.white).opacity(opacity)
-        }
+    func makeNSView(context: Context) -> RaysView { RaysView() }
+
+    func updateNSView(_ view: RaysView, context: Context) {
+        view.show(lit: lit, turning: turning, waiting: waiting, resting: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity)
     }
 
-    private func pulse(at date: Date) -> Double {
-        let phase = (date.timeIntervalSinceReferenceDate / 1.8).truncatingRemainder(dividingBy: 1)
-        return 0.35 + 0.65 * (0.5 + 0.5 * cos(phase * 2 * .pi))
+    final class RaysView: NSView {
+        /// Holds the rays and turns. Flipped, so the rays' paths come out as SwiftUI draws them.
+        private let spinner = CALayer()
+        private var rays: [CAShapeLayer] = []
+        private let dot = CAShapeLayer()
+        private var lit = -1
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            spinner.isGeometryFlipped = true
+            for _ in 0..<RaysMark.rays {
+                let ray = CAShapeLayer()
+                ray.fillColor = nil
+                ray.strokeColor = NSColor.white.cgColor
+                ray.lineCap = .round
+                spinner.addSublayer(ray)
+                rays.append(ray)
+            }
+            layer?.addSublayer(spinner)
+            dot.fillColor = NSColor.white.cgColor
+            layer?.addSublayer(dot)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double) {
+            CATransaction.begin()
+            // A newly lit ray eases in, the way the still mark's spring brings it up.
+            CATransaction.setAnimationDuration(lit == self.lit || self.lit < 0 ? 0 : 0.6)
+            for (index, ray) in rays.enumerated() {
+                ray.opacity = Float(index < lit ? litOpacity : resting)
+            }
+            CATransaction.commit()
+            self.lit = lit
+            if turning, spinner.animation(forKey: "turn") == nil {
+                // One turn in nine seconds, clockwise, which for a layer is the negative way.
+                let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+                turn.fromValue = 0
+                turn.toValue = -2 * Double.pi
+                turn.duration = 9
+                turn.repeatCount = .infinity
+                spinner.add(turn, forKey: "turn")
+            } else if !turning {
+                spinner.removeAnimation(forKey: "turn")
+            }
+            dot.opacity = Float(dotOpacity)
+            if waiting, dot.animation(forKey: "pulse") == nil {
+                // Down to a third and back every 1.8 seconds: the thread is waiting on you.
+                let pulse = CABasicAnimation(keyPath: "opacity")
+                pulse.fromValue = dotOpacity
+                pulse.toValue = dotOpacity * 0.35
+                pulse.duration = 0.9
+                pulse.autoreverses = true
+                pulse.repeatCount = .infinity
+                pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                dot.add(pulse, forKey: "pulse")
+            } else if !waiting {
+                dot.removeAnimation(forKey: "pulse")
+            }
+        }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            let side = min(bounds.width, bounds.height)
+            spinner.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            spinner.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            let width = max(1.2, side * 0.085)
+            let circle = spinner.bounds.insetBy(dx: width / 2, dy: width / 2)
+            for (index, ray) in rays.enumerated() {
+                ray.frame = spinner.bounds
+                ray.lineWidth = width
+                ray.path = Ray(index: index, count: RaysMark.rays).path(in: circle).cgPath
+            }
+            let dotSide = side * 0.3
+            dot.frame = CGRect(x: bounds.midX - dotSide / 2, y: bounds.midY - dotSide / 2, width: dotSide, height: dotSide)
+            dot.path = CGPath(ellipseIn: dot.bounds, transform: nil)
+            CATransaction.commit()
+        }
     }
 }

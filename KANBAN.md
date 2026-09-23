@@ -110,10 +110,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-71 · Animations at the rate they need
-The turning rays, the waiting pulse and the usage circle's working arc redraw through TimelineView at the display's rate, up to 120 times a second. They're capped at 30 frames a second, and 60 for the arc, which turns once a second.
-Done when: the app's CPU during a streaming turn is lower than before, with the numbers in the notes.
-
 #### K-72 · Logs that don't pile up
 engine.log takes every line the engine prints, traced or not, and tracing adds the CLI's own debug logs; both grow for good. When the engine starts, engine.log starts over past 5MB and CLI logs older than a week are removed.
 Done when: an old log in the CLI folder is gone after a launch.
@@ -549,6 +545,12 @@ Commit: 3314259
 A thread's CLI stays alive after its turn, about 265MB each. The engine ends a thread's CLI after five idle minutes, or at once when the thread is closed with ⌘W, and the next message resumes the session. The app also lets go of closed, idle threads' transcripts and reloads them when they're opened.
 Done when: after a thread's idle minutes its CLI is gone, and its next message resumes with the thread's history.
 Notes: The engine checks its threads once a minute and ends the CLI of one idle five minutes, unless it has subagents out or an ask waiting, then sends released so the app can drop that thread's transcript unless it's the open one. ⌘W does the same at once through close when the thread is idle. At the time, two idle CLIs held 294MB and 357MB. Checked: ⌘W on a thread whose CLI was up ended the CLI straight away, and reopening the thread read its transcript back from the store; its next message started a new CLI that resumed the session and answered two, the word from before. Left alone, that CLI went at 13:17:48, 5m15s after its turn, with released in the engine's log, and the thread's next message again resumed and answered two.
+Commit: 5a13c3b
+
+#### K-71 · Animations at the rate they need
+The turning rays, the waiting pulse and the usage circle's working arc redraw through TimelineView at the display's rate, up to 120 times a second. They're capped at 30 frames a second, and 60 for the arc, which turns once a second.
+Done when: the app's CPU while a turn runs is lower than before, with the numbers in the notes.
+Notes: The caps did nothing: measured in the Debug build with a Haiku turn waiting on an ask (the arc turning, a ray lit and turning in the pinned drawer, the dot pulsing, nothing streaming), OriCode used 10.2% of a core before and 10.7% after. A sample showed why: each frame of a TimelineView made SwiftUI lay the whole window out again, and the arc alone cost about 10%. So nothing in the app animates through TimelineView now. The arc is a shape layer, and the mark, while it turns or waits, is its six rays and dot as layers, the paths from the same Ray shape; Core Animation turns and pulses them in the render server. The still mark stays SwiftUI, which the icon renderer draws too. The drawer's marks also stop while the drawer is hidden, since it stays in the tree. Checked in the same waiting state: 0.0% CPU with no idle wakeups over twelve seconds, with the drawer hidden and with it shown; two frames half a second apart showed the rays turned about 20° with the dot dimmed, and the arc gone from seven o'clock to four.
 Commit: pending
 
 

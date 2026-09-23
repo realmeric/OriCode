@@ -173,7 +173,9 @@ struct Drawer: View {
                 let heads = model.heads(of: chat)
                 let waiting = model.state(of: chat) == .waiting
                 if heads > 0 || waiting {
-                    RaysMark(lit: heads, turning: heads > 0, waiting: waiting, restingOpacity: 0.28)
+                    // Still while the drawer is away: hidden, it stays in the tree, and a turning
+                    // mark would redraw thirty times a second for nobody.
+                    RaysMark(lit: heads, turning: heads > 0 && model.drawerShown, waiting: waiting && model.drawerShown, restingOpacity: 0.28)
                         .frame(width: 14, height: 14)
                 }
                 if index < 9 {
