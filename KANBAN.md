@@ -36,7 +36,7 @@ The reference is the empty Codex window: a rounded pane of glass with the wallpa
 
 **Window.** A unified toolbar with its background hidden, full-size content, `isMovableByWindowBackground` so any empty glass drags the window. Traffic lights stay where macOS puts them in a toolbar window, with one thing beside them: the sidebar button, the toolbar's only item. Behind-window blur for the material, then one tint layer: black at 30% by default, the Settings slider moves it between 15% and 60%. Corner radius is the system's. Minimum size 720×480, default 1180×760.
 
-**Surfaces.** Composer: white at 8% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row or a button: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass, laid out like Meriç's reference: a sidebar of panes under a search field, holding the traffic lights the way the drawer does, and each pane's settings in cards under quiet headings, rows parted by hairlines inside a card. Those hairlines are the one place a line appears, because the reference has them.
+**Surfaces.** Composer: white at 12% with a 1pt inset highlight of white at 12% along its top edge, which is what makes it read as raised glass rather than a different material. User message: white at 7%, radius 18, right-aligned, max width 560. Card (diff, ask): white at 5%, radius 14. Drawer: white at 6%, radius 14. Hover on a row or a button: white at 7%. Selected row: white at 10%. That is the entire palette of surfaces. Settings is a window of the same glass, laid out like Meriç's reference: a sidebar of panes under a search field, holding the traffic lights the way the drawer does, and each pane's settings in cards under quiet headings, rows parted by hairlines inside a card. Those hairlines are the one place a line appears, because the reference has them.
 
 **Ink.** System font. Body 14pt, secondary 12.5pt, monospace SF Mono 12.5pt. White at 92% for text, 55% for secondary, 30% for faint. Colour carries meaning and nothing else does: a soft green for added lines and a soft red for deleted ones; the usage circle's three bands from kullanym-notch (green, amber, red), because they say how close a limit is; and Claude's orange on Claude's own mark beside the model's name. No accent colour. A running thread lights rays on its mark in the drawer, in white.
 
@@ -105,10 +105,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: v0.7 "Projects"
 
 After v0.6.2 Meriç sent a list. The top row should zoom on a double-click and open Go to from the pill; the glass needs a transparency control apart from the tint slider; AltTab shows the window washed out and titled "New thread"; the drawer's edge is too narrow; the composer should stand out like the bar in his screenshot; threads from every project should share one list with a badge each; there should be an Add project button; and the model menu should become a picker of our own with fast mode in it. He also asked whether OriCode could get people banned, which was answered in chat from Anthropic's own pages.
-
-#### K-54 · A composer that stands out
-The composer's surface goes from white at 8% to white at 12%. Over a dark backdrop that puts about 24 levels of light between it and the glass, the same as the bar in Meriç's screenshot has over its background.
-Done when: a capture shows the composer that much lighter than the glass around it.
 
 #### K-55 · Glass that captures dark
 AltTab, Mission Control and screenshots capture a window without what is behind it, and the `.hudWindow` material comes out of that a flat light grey, which is why AltTab shows OriCode lighter than Meriç's other glass apps. The window moves to `.underWindowBackground`, the material DroppyKit's glass uses.
@@ -460,6 +456,12 @@ Commit: 0b186b0
 Clicking the title capsule opens Go to, as ⌘K does, and clicking it again closes it. The capsule lights on hover like the other buttons.
 Done when: a click on the capsule opens Go to.
 Notes: The capsule is a plain button sitting above the top row's glass: a click toggles Go to, and on hover its fill goes from white at 6% to 10%. Checked: pressing it opened Go to and pressing it again closed it. Droppy keeps a window over the middle of the screen's top edge, so the real pointer couldn't reach the capsule here and the presses went through accessibility; the row's glass beside it takes real clicks, as K-52 showed.
+Commit: 14c1509
+
+#### K-54 · A composer that stands out
+The composer's surface goes from white at 8% to white at 12%. Over a dark backdrop that puts about 24 levels of light between it and the glass, the same as the bar in Meriç's screenshot has over its background.
+Done when: a capture shows the composer that much lighter than the glass around it.
+Notes: Meriç's screenshot has a background of about 42 and a bar of about 66, which is white at 11 to 13% laid over it; the composer was at 8%. At 12% it rises about 25 levels over glass that dark, where 8% gave 17. Checked: in a capture the composer now reads as a clear step up from the glass around it. On his desktop the step follows the wallpaper behind the window.
 Commit: pending
 
 
