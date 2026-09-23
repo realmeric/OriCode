@@ -104,6 +104,61 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.74 "Lighter"
+
+After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
+
+#### K-62 · Default for Tint and Transparency
+Each slider in Settings › General › Window gets a Default button that puts it back where the app starts (Tint 30%, Transparency 0%), shown only while the value is somewhere else.
+Done when: moving a slider shows its Default button, and pressing it puts the slider back and hides the button.
+
+#### K-63 · ⌘W closes the thread first
+⌘W closes the open thread the way Claude's app closes a session: the window goes back to the empty composer for the project, and the thread stays in the list. With no thread open, ⌘W closes the window as before. File gets Close Thread.
+Done when: ⌘W with a thread open shows the empty composer, and a second ⌘W closes the window.
+
+#### K-64 · Versions before 0.1.0
+Until the first public release on GitHub, which will be 0.1.0, a release is 0.0.N where N is its release card's number. The tags v0.1.0 to v0.7.0 become v0.0.12, v0.0.21, v0.0.25, v0.0.31, v0.0.41, v0.0.44, v0.0.46, v0.0.49 and v0.0.61, on the same commits, and the changelog's headings follow.
+Done when: git tag lists only v0.0.N tags, each on its old commit, and the changelog uses the same numbers.
+
+#### K-65 · A picker with some life in it
+The model picker keeps its two columns and stops looking like a settings pane. The chosen model's highlight glides from row to row. Effort becomes a meter of bars, one per level the model has, lit up to the chosen one, with Auto for no level. Fast mode is a bolt chip that lights when it's on. The permission modes are a row of five icon tiles with the chosen one's name and line under them, the highlight gliding between tiles. The motion is the app's spring. K-59's exception to rule 1 now covers the meter, the chip and the tiles.
+Done when: every choice changes the thread as before, the highlights move rather than jump, and the picker still opens above the composer in an empty thread.
+
+#### K-66 · Ready to go public
+An MIT license, as T3 Code has; a README that says what OriCode is and isn't (not made or endorsed by Anthropic, runs on your own Claude Code login, never touches a credential); third-party notices for MarkdownUI, Highlightr and highlight.js, the Agent SDK (Anthropic's terms, installed from npm, not relicensed) and Claude's logo (from simple-icons, Anthropic's trademark). The repo stops tracking what shouldn't go out: `OriCode 2.xcodeproj`, an iCloud copy of the generated project, and `docs/reference.png`, a screenshot of another company's app. About's Show the source hides when that folder isn't on the Mac.
+Done when: the repo has LICENSE, README and THIRD_PARTY_NOTICES, tracks no generated project or third-party screenshot, and a fresh clone builds.
+
+#### K-67 · An engine without what it never loads
+The Agent SDK's code imports nothing but Node's own modules. The 42MB beside it are its peer dependencies (Anthropic's API SDK, the MCP SDK, zod and theirs), which npm installs and the engine never loads. The engine is staged without them.
+Done when: the app's engine folder is under 6MB and a turn still runs.
+
+#### K-68 · A smaller binary
+Release builds are Apple silicon only and stripped of symbols: the 12.8MB universal binary becomes about 2.6MB.
+Done when: the installed binary is arm64 only and under 4MB, and the app runs.
+
+#### K-69 · Awake only while Claude works
+The engine has held off App Nap for as long as it runs. It now asks only while a turn is running, so a hidden, idle OriCode can nap.
+Done when: the app's log shows the activity starting with a turn and ending with the last one.
+
+#### K-70 · Idle threads let go
+A thread's CLI stays alive after its turn, about 265MB each. The engine ends a thread's CLI after five idle minutes, or at once when the thread is closed with ⌘W, and the next message resumes the session. The app also lets go of closed, idle threads' transcripts and reloads them when they're opened.
+Done when: after a thread's idle minutes its CLI is gone, and its next message resumes with the thread's history.
+
+#### K-71 · Animations at the rate they need
+The turning rays, the waiting pulse and the usage circle's working arc redraw through TimelineView at the display's rate, up to 120 times a second. They're capped at 30 frames a second, and 60 for the arc, which turns once a second.
+Done when: the app's CPU during a streaming turn is lower than before, with the numbers in the notes.
+
+#### K-72 · Logs that don't pile up
+With tracing on, the engine's CLI debug logs and engine.log grow for good. At start the engine removes CLI logs older than a week and starts engine.log over past 5MB.
+Done when: an old log in the CLI folder is gone after a launch.
+
+#### K-73 · A cleaner interface
+A pass over the empty window, a transcript, the drawer, the picker and Settings, looking for anything that repeats itself, doesn't line up, or reads as something it isn't, with each fix noted.
+Done when: screenshots of each surface after the pass are in the notes' checks, and every change is listed.
+
+#### K-74 · Release 0.0.74
+As K-12. Tag `v0.0.74`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
