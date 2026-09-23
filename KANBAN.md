@@ -110,6 +110,15 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
 
+### Todo: 0.0.94 "Fast, the same every time"
+
+#### K-93 · Fast mode says the same thing every time
+Meriç found the bolt and the effects sometimes worked and sometimes didn't. On this account Claude Code turns fast mode down ("Needs usage credits on your Claude account"), and the app kept that answer per thread and only after asking: the first time a thread turned fast on it lit up for a second before the answer came, after that the same thread showed the refusal at once, and a thread that hadn't asked showed fast as on. The answer belongs to the account and the model, not the thread, so the app keeps it per model and asks as the picker opens; the bolt and the effects then say what Claude Code will do, the same way every time.
+Done when: on this account, opening the picker on a thread with fast on settles on the struck bolt and the reason, turning fast off and on again shows the refusal straight away with no effects, and a thread that hasn't asked shows the same.
+
+#### K-94 · Release 0.0.94
+As K-12. Tag `v0.0.94`.
+
 ### Parking lot
 
 Things that were once on the roadmap and are out on purpose. Each one stays out until there is a reason the official app can't serve.
