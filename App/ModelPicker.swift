@@ -143,7 +143,7 @@ private struct EffortPage: View {
                 if let option = state.option, !option.efforts.isEmpty {
                     EffortRail(stops: option.stops, home: state.home, blocked: option.ultraBlocked != nil && !option.ultra,
                                effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                               held: $held, hovered: $hovered, compact: compact,
+                               held: $held, hovered: $hovered, fast: state.fastServed, compact: compact,
                                ghost: previewingReset ? resetTarget(state) : nil,
                                onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
                         .resetWave(1, glide: true)
@@ -277,7 +277,15 @@ private struct EffortPage: View {
         } else {
             line = ("", nil, false)
         }
-        return Text(line.cost.map { "\(line.words) · \($0)" } ?? line.words)
+        return Group {
+            if let cost = line.cost {
+                // What it costs, in the colour the usage circle has for the session right now.
+                let band = model.usage?.headline?.used.map { Band.of($0).color } ?? Ink.secondary
+                Text("\(line.words) · \(Text(cost).foregroundStyle(band))")
+            } else {
+                Text(line.words)
+            }
+        }
         .font(Type.secondary)
         .foregroundStyle(Ink.secondary)
         .lineLimit(1)

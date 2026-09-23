@@ -3,7 +3,7 @@ import SwiftUI
 /// What each effort level says about itself, and how bright its part of the rail is.
 enum EffortScale {
     /// One line each, from Claude Code's own /effort wording. The clause after the dot under Max
-    /// and Ultracode is what they cost.
+    /// and Ultracode is what they cost, drawn in the session's usage band.
     static func line(_ level: String) -> (words: String, cost: String?) {
         switch level {
         case "low": ("Quick, simple work", nil)
@@ -16,7 +16,7 @@ enum EffortScale {
         }
     }
 
-    /// The two that spend the plan faster, and get the heavier tap.
+    /// The two that spend the plan faster, and get the heavier tap and the halo.
     static func spendsFaster(_ level: String) -> Bool {
         level == "max" || level == Effort.ultracode
     }
@@ -50,6 +50,8 @@ struct EffortRail: View {
     /// title and the line under the rail.
     @Binding var held: String?
     @Binding var hovered: String?
+    /// Fast mode, once the CLI serves it: streaks in the fill.
+    var fast = false
     var compact = false
     /// Where Back to Defaults would put the thumb, while the pointer is on it.
     var ghost: String?
@@ -64,6 +66,13 @@ struct EffortRail: View {
     @State private var grab: CGFloat = 0
     /// A press that began on a dimmed Ultracode: it only says why, and moves nothing.
     @State private var pressedBlocked = false
+    @State private var poured = false
+    /// Whether what moves in the fill is moving: for a few seconds after the picker opens or the
+    /// level or fast mode changes, then still, since a moving picker makes the window server
+    /// redraw its blur every frame.
+    @State private var live = false
+    @State private var calming: Task<Void, Never>?
+    @State private var bursts = 0
     @State private var keyed = false
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -89,8 +98,18 @@ struct EffortRail: View {
                     .fill(Surface.selected)
                     .frame(height: Self.rail)
                     .offset(y: (Self.row - Self.rail) / 2)
-                fill(level: level, width: stop == nil ? 0 : centre)
+                fill(level: level, width: stop == nil || !poured ? 0 : centre)
                     .offset(y: (Self.row - Self.rail) / 2)
+                if stop != nil, EffortScale.spendsFaster(level) || fast, !reduceMotion {
+                    // Ends short of the thumb, so nothing ever passes under it.
+                    EffortEffects(motes: EffortScale.spendsFaster(level), streaks: fast, live: live, bursts: bursts)
+                        .frame(width: max(centre - Self.thumb / 2 - 6, 0), height: Self.rail)
+                        .offset(y: (Self.row - Self.rail) / 2)
+                        .allowsHitTesting(false)
+                } else if stop != nil, fast, reduceMotion {
+                    stillStreaks(width: max(centre - Self.thumb / 2 - 6, 0))
+                        .offset(y: (Self.row - Self.rail) / 2)
+                }
                 ForEach(stops.indices, id: \.self) { mark in
                     stopMark(mark, onFill: stop != nil && xs[mark] <= centre)
                         .position(x: xs[mark], y: Self.row / 2)
@@ -171,7 +190,31 @@ struct EffortRail: View {
             }
             .accessibilityValue(spoken)
         }
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            if reduceMotion {
+                poured = true
+            } else {
+                withAnimation(Motion.glide.delay(0.05)) { poured = true }
+            }
+            Task {
+                // The fill pours in first; what moves in it starts once it's there.
+                try? await Task.sleep(for: .milliseconds(350))
+                wake()
+            }
+        }
+        .onChange(of: effort) { wake() }
+        .onChange(of: fast) { wake() }
+        .onDisappear { calming?.cancel() }
+    }
+
+    private func wake() {
+        calming?.cancel()
+        live = true
+        calming = Task {
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { live = false }
+        }
     }
 
     private var onDefault: Bool {
@@ -197,6 +240,18 @@ struct EffortRail: View {
                                  startPoint: .leading, endPoint: .trailing))
             .frame(width: width, height: Self.rail)
             .animation(Motion.fade, value: level)
+    }
+
+    /// Fast mode's streaks, drawn once and still, for Reduce Motion.
+    private func stillStreaks(width: CGFloat) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ForEach([0.5, 0.8, 0.35], id: \.self) { share in
+                Capsule()
+                    .fill(LinearGradient(colors: [Color.white.opacity(0.7), .clear], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(width * share, 0), height: 1.5)
+            }
+        }
+        .frame(width: width, height: Self.rail, alignment: .trailing)
     }
 
     @ViewBuilder
@@ -234,7 +289,7 @@ struct EffortRail: View {
                 .fill(Color.black.opacity(0.85))
                 .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
             if ultra {
-                RaysMark(lit: RaysMark.rays, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
+                RaysMark(lit: RaysMark.rays, turning: live && !reduceMotion, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
                          color: .black, stagger: true, layered: true)
                     .frame(width: 22, height: 22)
                     .transition(.opacity.animation(.easeOut(duration: 0.14)))
@@ -242,8 +297,10 @@ struct EffortRail: View {
         }
         .frame(width: Self.thumb, height: Self.thumb)
         .shadow(color: .black.opacity(0.3), radius: holding ? 7 : 4, y: 1.5)
+        .shadow(color: .white.opacity(EffortScale.spendsFaster(level) ? 0.35 : 0), radius: 9)
         .scaleEffect(holding ? 1.08 : 1)
         .animation(Motion.move, value: holding)
+        .animation(Motion.fade, value: EffortScale.spendsFaster(level))
     }
 
     private func drag(_ track: EffortTrack) -> some Gesture {
@@ -274,6 +331,7 @@ struct EffortRail: View {
                     let rising = stop > (was ?? -1)
                     if rising, EffortScale.spendsFaster(stops[stop]) {
                         Haptics.threshold()
+                        bursts += 1
                     } else {
                         Haptics.detent()
                     }
@@ -292,6 +350,7 @@ struct EffortRail: View {
                 let holding = heldStop ?? index ?? 0
                 let clicked = abs(drag.translation.width) < 3
                 let target = clicked ? holding : track.settle(drag.location.x + grab, velocity: drag.velocity.width, holding: holding)
+                if clicked, target > (index ?? -1), EffortScale.spendsFaster(stops[target]) { bursts += 1 }
                 let xs = track.positions
                 let distance = xs[target] - (thumbX ?? xs[target])
                 // The drag's speed, as a share of the way left, starts the spring; the rail's own
