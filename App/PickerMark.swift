@@ -71,7 +71,7 @@ private struct MarkPage: View {
         VStack(spacing: 0) {
             header(state)
                 .frame(height: 30)
-            HeadMark(level: stops.isEmpty ? nil : level, fast: state.fastOn, live: live, pops: pops, zips: zips)
+            HeadMark(level: stops.isEmpty ? nil : level, fast: state.fastAsked, live: live, pops: pops, zips: zips)
                 .frame(maxWidth: .infinity)
                 .frame(height: 92)
                 .contentShape(.rect)
@@ -87,7 +87,7 @@ private struct MarkPage: View {
             if let option = state.option, !option.efforts.isEmpty {
                 EffortRail(stops: option.stops, home: state.home, blocked: blocked(state),
                            effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                           held: $held, hovered: $hovered, fast: state.fastOn, compact: true,
+                           held: $held, hovered: $hovered, fast: state.fastAsked, compact: true,
                            ghost: previewingReset ? resetTarget(state) : nil,
                            onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
                     .padding(.top, 10)
@@ -107,7 +107,7 @@ private struct MarkPage: View {
             pops += 1
             wake()
         }
-        .onChange(of: state.fastOn) { _, on in
+        .onChange(of: state.fastAsked) { _, on in
             if on { zips += 1 }
             wake()
         }
@@ -119,7 +119,7 @@ private struct MarkPage: View {
     /// model in the middle; Back to Defaults at the right when there's anything to go back from.
     private func header(_ state: PickerState) -> some View {
         HStack(spacing: 0) {
-            FastButton(asked: state.fastAsked, state: state.fastState, dimmed: previewingReset && !model.threadDefaults.fast) {
+            FastButton(on: state.fastAsked, dimmed: previewingReset && !model.threadDefaults.fast) {
                 model.setFast(!state.fastAsked, for: chat)
             }
             .disabled(state.option?.fast != true)

@@ -23,27 +23,22 @@ struct PickerState {
     /// The level the thread runs at: the one picked, or where Default lands.
     var level: String? { effort ?? home }
 
+    /// Fast mode as the user set it. The bolt and the effects follow this, not Claude Code's
+    /// answer, which `fastProblem` puts into words when it won't serve it.
     var fastAsked: Bool { option?.fast == true && (chat?.fastMode ?? model.startingFast) }
-
-    var fastState: String? { model.fastReading(for: chat)?.state }
-
-    var fastServed: Bool { fastAsked && fastState == "on" }
-
-    /// Asked for and not turned down: on while the CLI checks, and on once it serves it.
-    var fastOn: Bool { fastAsked && (fastState == nil || fastState == "on") }
 
     var mode: PermissionModeOption {
         PermissionModeOption(rawValue: chat?.permissionMode ?? model.startingPermissionMode) ?? .ask
     }
 
-    /// What fast mode can't do right now, in the app's words, while it's asked for.
+    /// Why fast mode, turned on, isn't running fast right now, in the app's words.
     var fastProblem: String? {
         guard fastAsked else { return nil }
         guard let reading = model.fastReading(for: chat) else { return "Checking fast mode…" }
         switch reading.state {
         case "on": return nil
         case "cooldown": return "Paused after a rate limit, back shortly"
-        default: return reading.reason.map(FastCopy.why) ?? "Not available right now"
+        default: return FastCopy.why(reading.reason ?? "")
         }
     }
 
@@ -121,45 +116,35 @@ struct ModelLine: View {
     }
 }
 
-/// Fast mode: a bolt that lights up white on a lit circle once it's on, faint while it's off,
-/// quieter while a rate limit pauses it, and struck through when the CLI turns it down.
+/// Fast mode: a bolt that lights up white on a lit circle when it's turned on, faint while it's
+/// off. Whether Claude Code serves it is for the line under the level to say.
 struct FastButton: View {
-    let asked: Bool
-    /// What the CLI last said: on, off or cooldown; nil while it hasn't answered.
-    let state: String?
+    let on: Bool
     /// Back to Defaults, previewed, would turn it off.
     let dimmed: Bool
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        let refused = asked && state != nil && state != "on" && state != "cooldown"
-        let on = asked && !refused && state != "cooldown"
         Button(action: action) {
-            Image(systemName: refused ? "bolt.slash" : asked ? "bolt.fill" : "bolt")
+            Image(systemName: on ? "bolt.fill" : "bolt")
                 .font(.system(size: 13, weight: on ? .semibold : .medium))
-                .foregroundStyle(on ? Color.white : asked ? Ink.secondary : hovering ? Ink.secondary : Ink.faint)
-                .opacity(dimmed && asked ? 0.45 : 1)
+                .foregroundStyle(on ? Color.white : hovering ? Ink.secondary : Ink.faint)
+                .opacity(dimmed && on ? 0.45 : 1)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: asked)
+                .symbolEffect(.bounce, value: on)
                 .frame(width: 30, height: 30)
-                .background(fill(on: on, asked: asked), in: .circle)
+                .background(on ? Color.white.opacity(0.2) : hovering ? Surface.hover : Surface.card, in: .circle)
                 .shadow(color: .white.opacity(on ? 0.35 : 0), radius: 8)
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(Motion.fade, value: state)
+        .animation(Motion.fade, value: on)
         .animation(Motion.fade, value: dimmed)
-        .help(asked ? "Fast mode is on" : "Fast mode: faster output from the same model")
+        .help(on ? "Fast mode is on" : "Fast mode: faster output from the same model")
         .accessibilityLabel("Fast mode")
-        .accessibilityValue(asked && state == "on" ? "On" : refused ? "Not available" : state == "cooldown" && asked ? "Paused" : asked ? "On, checking" : "Off")
-    }
-
-    private func fill(on: Bool, asked: Bool) -> Color {
-        if on { return Color.white.opacity(0.2) }
-        if asked { return Color.white.opacity(0.08) }
-        return hovering ? Surface.hover : Surface.card
+        .accessibilityValue(on ? "On" : "Off")
     }
 }
 

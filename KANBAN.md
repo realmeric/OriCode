@@ -112,10 +112,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.0.100 "Your models, your choice"
 
-#### K-96 · Fast lights up when you turn it on
-Meriç asked for a bolt that turns white when clicked, and effects on the slider and the mark while fast is on. Since K-93 both waited on Claude Code's answer, and on this account the answer is no: one real message sent with fast forced on came back from the API as "Usage credits are required for fast mode." and ran at standard speed. So the bolt and the effects follow the click, and whether Claude Code will serve it is said once, under the level, in plain words. The composer's bolt does the same.
-Done when: on this account, clicking Fast lights the bolt white with the zip, the speed lines and the streaks every time, the line under the level says the thread runs at standard speed until usage credits are on, and clicking again puts all of it out.
-
 #### K-97 · Models by their version
 The picker names models by family: Opus, Fable, Sonnet, Haiku. Name them by version the way Claude Code's own catalog does (Opus 5, Fable 5.1, Sonnet 5, Haiku 4.5), in the models page, the picker's model line, the composer button and the Thread menu. The version comes from the catalog Claude Code keeps of the account's models, matched on the model each row resolves to, or else from the start of the SDK's line about the model; Default stays Default, with its line saying which model it runs. The line under a name no longer repeats the version.
 Done when: the models page lists Default, Opus 5, Fable 5.1, Sonnet 5 and Haiku 4.5 with this Mac's Claude Code, and the composer button says Opus 5 on an Opus thread.
@@ -691,6 +687,12 @@ Commit: 3757413
 As K-12. Tag `v0.0.94`.
 Notes: Checked: make test passes on both suites, and /Applications/OriCode.app at 0.0.94 is 7.8MB, arm64 only, with a 2.8MB binary and a 1.7MB engine; launched with an empty environment, a new thread with fast asked opened the picker and settled on the struck bolt and 'Needs usage credits on your Claude account' within two seconds, before any turn; set to Haiku and Ask it sent an edit that waited on its card and landed in greet.swift when allowed.
 Commit: b0fda7e
+
+#### K-96 · Fast lights up when you turn it on
+Meriç asked for a bolt that turns white when clicked, and effects on the slider and the mark while fast is on. Since K-93 both waited on Claude Code's answer, and on this account the answer is no: one real message sent with fast forced on came back from the API as "Usage credits are required for fast mode." and ran at standard speed. So the bolt and the effects follow the click, and whether Claude Code will serve it is said once, under the level, in plain words. The composer's bolt does the same.
+Done when: on this account, clicking Fast lights the bolt white with the zip, the speed lines and the streaks every time, the line under the level says the thread runs at standard speed until usage credits are on, and clicking again puts all of it out.
+Notes: The test message went out through the user's own CLI with CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK=1 and fastMode in the flag settings: the CLI reported fast on, the API answered 429 'Usage credits are required for fast mode.' (org_level_disabled), and the CLI sent the same request again at standard speed, which answered. PickerState.fastAsked, the user's setting, now drives the FastButton, the mark's speed lines and zip, and the slider's streaks; fastOn and fastServed went. The FastButton is on or off, with no paused or struck state, and the composer's bolt is always white when fast is set, with fastProblem as its tooltip. FastCopy words each refusal as the standard speed it means, 'Standard speed until usage credits are on' for extra_usage_disabled. Checked with frames of the Debug build on this account: clicking Fast lit the bolt white on its circle with the dot's zip, speed lines and streaks through the mark and along the slider, and the line under Max changed to the standard-speed one; four seconds on, the speed lines and the still streaks behind the thumb stayed and the composer showed its white bolt; a second click put out all of it and brought back Max's own line, and a third lit it all again.
+Commit: pending
 
 
 ## Exceptions

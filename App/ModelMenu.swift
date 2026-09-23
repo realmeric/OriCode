@@ -61,12 +61,12 @@ struct ModelMenu: View {
                     .id(name)
                     .transition(.blurReplace)
                 if fast {
-                    // Lit once the CLI serves it, faint while it checks or cools down, and
-                    // struck through when it won't, so that shows without opening the picker.
-                    Image(systemName: fastState.map { $0 != "on" && $0 != "cooldown" } ?? false ? "bolt.slash" : "bolt.fill")
+                    // On the way the user turned it on; the tooltip says so when Claude Code
+                    // runs the thread at standard speed anyway.
+                    Image(systemName: "bolt.fill")
                         .font(.system(size: 9))
-                        .foregroundStyle(fastState == "on" ? Ink.primary : Ink.faint)
-                        .help(fastState == "on" ? "Fast mode" : "Fast mode isn't running right now")
+                        .foregroundStyle(Ink.primary)
+                        .help(PickerState(model: model, chat: chat).fastProblem ?? "Fast mode")
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
                 // The level in effect: faint when it's Default's, brighter when picked, and at
@@ -100,12 +100,7 @@ struct ModelMenu: View {
     }
 
     private var fast: Bool {
-        chat.map(model.fastMode(of:)) ?? false
-    }
-
-    /// What the CLI last said about fast mode for the thread.
-    private var fastState: String? {
-        model.fastReading(for: chat)?.state
+        PickerState(model: model, chat: chat).fastAsked
     }
 
     private var selectedModel: ModelOption? { model.option(for: chat) }
@@ -136,19 +131,19 @@ struct ModelMenu: View {
     }
 }
 
-/// The CLI's reasons fast mode can't run, in the app's words.
+/// Why Claude Code runs a thread with fast mode on at standard speed, in the app's words.
 enum FastCopy {
     static func why(_ reason: String) -> String {
         switch reason {
-        case "free": "Needs a paid Claude plan"
-        case "extra_usage_disabled": "Needs usage credits on your Claude account"
-        case "preference": "Your organization has turned it off"
-        case "model_not_allowed": "Not allowed for this model"
-        case "not_first_party": "Only when Claude Code talks to Anthropic directly"
-        case "disabled_by_env": "Turned off on this Mac"
-        case "network_error": "Couldn't check just now"
-        case "pending": "Checking…"
-        default: "Not available right now"
+        case "free": "Standard speed: fast needs a paid plan"
+        case "extra_usage_disabled": "Standard speed until usage credits are on"
+        case "preference": "Standard speed: turned off by your organization"
+        case "model_not_allowed": "Standard speed: not allowed on this model"
+        case "not_first_party": "Standard speed: fast needs Anthropic's API"
+        case "disabled_by_env": "Standard speed: fast is turned off on this Mac"
+        case "network_error": "Couldn't check fast mode just now"
+        case "pending": "Checking fast mode…"
+        default: "Standard speed for now"
         }
     }
 }
