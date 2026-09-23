@@ -14,6 +14,12 @@ struct OriCodeCommands: Commands {
             Button("Add Project…") { model.addProject() }
                 .keyboardShortcut("o")
         }
+        // One ⌘W for both: the open thread first, then the window. A disabled Close Thread
+        // beside the system's Close held on to ⌘W, so the window never closed.
+        CommandGroup(replacing: .saveItem) {
+            Button(model.closesThread ? "Close Thread" : "Close") { model.close() }
+                .keyboardShortcut("w")
+        }
         CommandGroup(before: .toolbar) {
             Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
                 .keyboardShortcut("b")

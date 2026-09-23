@@ -61,6 +61,23 @@ extension AppModel {
         selectedChatID = chat.id
     }
 
+    /// Whether ⌘W closes the open thread rather than a window.
+    var closesThread: Bool {
+        mainWindowKey && chat != nil
+    }
+
+    /// ⌘W: the open thread goes back to the project's empty composer, the way Claude's app
+    /// closes a session, and stays in the list. With none open it closes the window.
+    func close() {
+        if closesThread {
+            selectedChatID = nil
+            return
+        }
+        let key = NSApp.keyWindow
+        let window = key?.styleMask.contains(.titled) == true ? key : NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
+        window?.performClose(nil)
+    }
+
     /// Projects from before badges had colours get theirs the first time the app opens.
     func colourProjects() {
         let uncoloured = projects.filter { $0.colorIndex == nil }

@@ -19,6 +19,7 @@ enum ShortcutList {
             Row(name: "Add project", keys: "⌘O"),
             Row(name: "Go to thread 1–9", keys: "⌘1 … ⌘9"),
             Row(name: "Show or hide the thread list", keys: "⌘B"),
+            Row(name: "Close the thread, then the window", keys: "⌘W"),
             Row(name: "Rename thread", keys: "⌘R"),
             Row(name: "Delete thread", keys: "⌘⌫"),
         ]),

@@ -108,10 +108,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 After 0.7.0 (now 0.0.61, see K-64) Meriç asked for default buttons on the glass sliders, ⌘W that closes the thread before the window, versions that stay under 0.1.0 until the first public release, a model picker with more life in it, the repo ready to go open source, and the app as light as it can be on energy, memory and disk with a clean interface. Measured before starting, on the installed 0.7.0: the app is 65MB, of which 47MB is the engine's node_modules and 12.8MB a universal binary with symbols; at rest OriCode uses 139MB, no CPU and about one idle wakeup every five seconds, and the engine 64MB; each thread that has sent a message keeps its own CLI alive afterwards, about 265MB for the smallest.
 
-#### K-63 · ⌘W closes the thread first
-⌘W closes the open thread the way Claude's app closes a session: the window goes back to the empty composer for the project, and the thread stays in the list. With no thread open, ⌘W closes the window as before. File gets Close Thread.
-Done when: ⌘W with a thread open shows the empty composer, and a second ⌘W closes the window.
-
 #### K-64 · Versions before 0.1.0
 Until the first public release on GitHub, which will be 0.1.0, a release is 0.0.N where N is its release card's number. The tags v0.1.0 to v0.7.0 become v0.0.12, v0.0.21, v0.0.25, v0.0.31, v0.0.41, v0.0.44, v0.0.46, v0.0.49 and v0.0.61, on the same commits, and the changelog's headings follow.
 Done when: git tag lists only v0.0.N tags, each on its old commit, and the changelog uses the same numbers.
@@ -531,6 +527,12 @@ Commit: 75d2e3a
 Each slider in Settings › General › Window gets a Default button that puts it back where the app starts (Tint 30%, Transparency 0%), shown only while the value is somewhere else.
 Done when: moving a slider shows its Default button, and pressing it puts the slider back and hides the button.
 Notes: The button sits left of the percentage, a small native button that fades in while the value is more than half a percent from the start and slides the slider back with the app's spring. Checked on Meriç's own settings, Tint 27% and Transparency 5%: both buttons showed, Default took Transparency to 0% and Tint to 30% and each button went away, and his values were written back afterwards, which the open window picked up.
+Commit: 0203d9c
+
+#### K-63 · ⌘W closes the thread first
+⌘W closes the open thread the way Claude's app closes a session: the window goes back to the empty composer for the project, and the thread stays in the list. With no thread open, ⌘W closes the window as before. File gets Close Thread.
+Done when: ⌘W with a thread open shows the empty composer, and a second ⌘W closes the window.
+Notes: One ⌘W item replaces the File menu's close group: Close Thread while the main window has a thread open, Close otherwise. A separate Close Thread above the system's Close didn't work: disabled, it still held ⌘W and the window never closed. Which window counts as key is tracked from titled windows only, because text input puts a borderless SPRoundedWindow in the key spot a moment after launch. Checked with real key presses: ⌘W on an open thread brought back the empty composer with the thread still in the list, a second ⌘W closed the window, and with Settings in front ⌘W closed Settings and left the thread open. The shortcuts list has the new line.
 Commit: pending
 
 

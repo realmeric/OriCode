@@ -48,6 +48,8 @@ final class AppModel {
     var goToShown = false
     /// The model button's picker, here so Esc can close it before anything under it.
     var modelPickerShown = false
+    /// Whether the last titled window to become key is the main one, for what ⌘W closes.
+    var mainWindowKey = true
     var draftAttachments: [ImageAttachment] = []
     var usage: PlanUsage?
     var usageAt: Date?
@@ -114,6 +116,12 @@ final class AppModel {
         loadSelectedConversation()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
+        // Titled windows only: text input puts borderless helper windows in the key spot too.
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
+            guard let window = note.object as? NSWindow, window.styleMask.contains(.titled) else { return }
+            let main = window.identifier?.rawValue.hasPrefix("main") == true
+            MainActor.assumeIsolated { self?.mainWindowKey = main }
+        }
     }
 
     func open(chatID: UUID) {
