@@ -118,10 +118,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
-#### K-123 · ⌫ takes a hunk back
-Meriç found ⌘Z and ⌘⇧Z doing nothing in the review. They work, as a take-back from the hunk's arrow showed, but ⌫ never took anything back, so there was nothing to undo. macOS reports the Delete key as U+007F, which SwiftUI's onKeyPress names deleteForward, and the review listened only for delete, U+0008. It listens for both.
-Done when: in the installed app, ⌫ on a selected hunk takes it back, ⌘Z puts it back and ⌘⇧Z takes it back again.
-
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
@@ -841,6 +837,12 @@ Meriç, once the review was in: the app becomes 0.1.0-rc, the candidate for the 
 Done when: the installed app's About window says 0.1.0-rc, the engine answers hello with 0.1.0-rc, make test passes, and nothing under Todo is new.
 Notes: MARKETING_VERSION in project.yml, engine/version.ts, and the engine's package.json and lock file say 0.1.0-rc. How to work this board now says the board takes only fixes until 0.1.0. K-107 and K-116 wait under a new After 0.1.0 heading, K-116 naming the review where it named the Changes sheet. K-105 and K-117 closed as folded into this card, untagged, and K-122 tags the candidate once Meriç has tried it. Checked: make test passes, 68 engine tests and 48 Swift tests; make app installed the Release build, whose About window says Version 0.1.0-rc (1) and whose engine answered hello with 0.1.0-rc; launched from a clean environment it opened on alpha, with the review's counts at the top right. Meriç's picks, selected thread and unpinned drawer are back as they were before the checks.
 Commit: 067b42a
+
+#### K-123 · ⌫ takes a hunk back
+Meriç found ⌘Z and ⌘⇧Z doing nothing in the review. They work, as a take-back from the hunk's arrow showed, but ⌫ never took anything back, so there was nothing to undo. The review listened for the Delete key with onKeyPress, and in a focused view on macOS that key never arrives as a key press: AppKit turns it into the Delete command. The review takes it through onDeleteCommand instead.
+Done when: in the installed app, ⌫ on a selected hunk takes it back, ⌘Z puts it back and ⌘⇧Z takes it back again.
+Notes: The first try listened for U+007F as well, which SwiftUI calls deleteForward, and ⌫ still did nothing on the installed build; the Delete command did it. Checked on the installed 0.1.0-rc with the window in front: ⌫ on the selected test hunk took it back, ⌘Z put it back, ⌘⇧Z took it back again and ⌘Z put it back; ⌫ while typing in the commit message only erased text. The arrow's take-back also went back and forth with ⌘Z and ⌘⇧Z. make test passes.
+Commit: pending
 
 
 ## Exceptions

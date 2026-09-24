@@ -35,8 +35,13 @@ struct ReviewPanel: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .space, .delete, .return, "j", "k", "n", "o"], phases: .down) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .space, .return, "j", "k", "n", "o"], phases: .down) { press in
             key(press)
+        }
+        // The Delete key reaches a focused view as the Delete command, never as a key press.
+        .onDeleteCommand {
+            guard model.review.noting == nil, let unit = selectedUnit else { return }
+            model.takeBack([unit], label: "Take Back", undoManager: undoManager)
         }
         .onChange(of: review.noting) { _, noting in
             if noting == nil { focused = true }
@@ -59,9 +64,6 @@ struct ReviewPanel: View {
             model.moveReviewSelection(-1)
         case .space:
             model.toggleSelectedReviewed()
-        case .delete:
-            guard let unit = selectedUnit else { return .ignored }
-            model.takeBack([unit], label: "Take Back", undoManager: undoManager)
         case .return where press.modifiers.contains(.command):
             guard model.review.busy == nil, !model.review.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .ignored }
             model.commitReview(reviewedOnly: ReviewFooter.reviewedOnly(model.review.book))
