@@ -929,7 +929,7 @@ Commit: 2750583
 The first public release, and Meriç's call to go straight to it: the candidate was tried here, so there's no public 0.1.0-rc. MARKETING_VERSION, engine/version.ts and the engine's package.json and lock say 0.1.0, CHANGELOG.md has its entry, and the README says how to install it. Meriç runs make release (K-135), which publishes v0.1.0 on GitHub with that entry as its notes and the signed zip attached, and points appcast.xml at it. The v0.0 tags go up with it as tags only, since those builds can't update themselves. Once it's out the freeze ends, and new work comes from Linear's OriCode project, 0.2.0 first.
 Done when: the release page for v0.1.0 has OriCode-0.1.0.zip, a copy downloaded through a browser opens with the README's first-launch steps, and appcast.xml on main names 0.1.0.
 Notes: Meriç ran make release from Terminal. It published v0.1.0, not a pre-release, with the CHANGELOG entry as its notes and OriCode-0.1.0.zip (5,615,096 bytes) attached, and committed appcast.xml naming it (89c6609); the v0.0 tags went up before it as tags only. Checked: the zip downloaded from the release unpacks to OriCode 0.1.0, build 184, with the feed set, signed by the OriCode certificate and passing codesign --verify --deep --strict; the appcast on raw.githubusercontent.com names build 184 and that zip, and sign_update --verify accepts its signature for the downloaded file. The first launch of a browser download through Open Anyway waits on Meriç, with K-134's same check. The build printed Swift 6 isolation warnings from AppModel.swift and MarkdownTheme.swift and xcodebuild's "exit code 0" line, neither of them a failure.
-Commit: pending
+Commit: 2b73ae2
 
 
 ## Exceptions
