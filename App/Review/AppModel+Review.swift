@@ -31,6 +31,8 @@ final class Takeback {
     /// Files taken back whole: to the Trash, with HEAD's version and index entry put back.
     let whole: [FileDiff]
     let marked: [ReviewUnit]
+    /// The hunks it took, to select again when they're put back.
+    let unitIDs: [String]
     /// Whether it's in effect now.
     var applied = false
     /// The hunks came out of the working tree, and out of the index where they were staged.
@@ -42,13 +44,14 @@ final class Takeback {
     var restored: [String] = []
     var index: [IndexEntry] = []
 
-    init(label: String, folder: String, root: String, patch: String?, whole: [FileDiff], marked: [ReviewUnit]) {
+    init(label: String, folder: String, root: String, patch: String?, whole: [FileDiff], marked: [ReviewUnit], unitIDs: [String]) {
         self.label = label
         self.folder = folder
         self.root = root
         self.patch = patch
         self.whole = whole
         self.marked = marked
+        self.unitIDs = unitIDs
     }
 }
 
@@ -85,6 +88,8 @@ final class ReviewState {
     var colours: [String: [AttributedString]] = [:]
     /// Bumped when a click on a hunk should give the review the keyboard back from a field.
     var focusTick = 0
+    /// Hunks to select once the next read has them: the ones a put-back brings back.
+    @ObservationIgnored var reselect: [String] = []
     @ObservationIgnored let marks = ReviewMarks()
     @ObservationIgnored var trigger: Task<Void, Never>?
     @ObservationIgnored var reading = false
@@ -203,14 +208,20 @@ extension AppModel {
         colour(review.book.units)
     }
 
-    /// Lays the marks over the book, and lets go of a selection or a note whose hunk has no
-    /// row any more.
+    /// Lays the marks over the book. The keyboard stays on a hunk: one put back is selected
+    /// again, and when the selected one is gone, the hunk that took its place is selected, the
+    /// way a list moves on after a delete. A note whose hunk has no row any more is let go.
     func applyMarks() {
         guard let root = review.root else { return }
+        let before = review.visibleUnits.map(\.id)
         review.book = review.base.marked(with: review.marks.marks(in: root))
         let visible = review.visibleUnits
-        if let selected = review.selected, !visible.contains(where: { $0.id == selected }) {
-            review.selected = nil
+        if let back = review.reselect.first(where: { id in visible.contains { $0.id == id } }) {
+            review.selected = back
+            review.reselect = []
+        } else if let selected = review.selected, !visible.contains(where: { $0.id == selected }) {
+            let at = before.firstIndex(of: selected) ?? 0
+            review.selected = visible.isEmpty ? nil : visible[min(at, visible.count - 1)].id
         }
         if let noting = review.noting, !visible.contains(where: { $0.id == noting && !review.folded($0) }) {
             review.noting = nil
@@ -321,7 +332,15 @@ extension AppModel {
             .map { PatchText.of($0.file.path, hunks: $0.hunks.sorted { $0.newStart < $1.newStart }) }.joined()
         let step = Takeback(
             label: label, folder: folder, root: root, patch: patch.isEmpty ? nil : patch,
-            whole: whole.values.sorted { $0.path < $1.path }, marked: units.filter(\.reviewed))
+            whole: whole.values.sorted { $0.path < $1.path }, marked: units.filter(\.reviewed), unitIDs: units.map(\.id))
+        // The keyboard moves on at once, so a second ⌫ takes the next hunk, not this one again.
+        let taken = Set(step.unitIDs)
+        if let selected = review.selected, taken.contains(selected) {
+            let visible = review.visibleUnits
+            let at = visible.firstIndex { $0.id == selected } ?? 0
+            let rest = visible.filter { !taken.contains($0.id) }
+            review.selected = rest.isEmpty ? nil : rest[min(at, rest.count - 1)].id
+        }
         perform(step, undoManager: undoManager, redoing: false)
     }
 
@@ -391,6 +410,7 @@ extension AppModel {
             undoManager?.removeAllActions(withTarget: step)
         }
         if review.lastTakeback === step { review.lastTakeback = nil }
+        review.reselect = step.unitIDs
         runReview("Putting back…") { [self] in
             guard step.applied else { return }
             let root = URL(filePath: step.root)

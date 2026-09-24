@@ -118,10 +118,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
-#### K-124 · The keyboard stays on a hunk
-Meriç: ⌫ worked once, then didn't. Taking a hunk back removed the hunk the keyboard was on, which left nothing selected, and after ⌘Z brought it back it still wasn't, so the next ⌫, Space or N had nothing to act on. A hunk that's taken back hands the selection to the one that takes its place, the way Finder and Mail move on after a delete, and a hunk put back is selected again.
-Done when: in the installed app, ⌫ on a selected hunk takes it back and the next hunk is selected; ⌫ again takes that one back; ⌘Z puts it back selected, and ⌫ takes it back again.
-
 #### K-125 · One thread lit after ⌘2
 Meriç: after ⌘2, clicking another thread in the drawer left both rows lit. The ⌘digit peek lights and nudges the thread it picks until the drawer slides away, and a pinned drawer never does. The peek ends when another thread is opened, however it's opened, and on a pinned drawer after its 700ms.
 Done when: with the drawer pinned, ⌘2 lights and nudges the second row and lets go of the nudge after a moment, and a click on another row leaves only that row lit; unpinned, ⌘2 then a click on another row does the same.
@@ -851,6 +847,12 @@ Meriç found ⌘Z and ⌘⇧Z doing nothing in the review. They work, as a take-
 Done when: in the installed app, ⌫ on a selected hunk takes it back, ⌘Z puts it back and ⌘⇧Z takes it back again.
 Notes: The first try listened for U+007F as well, which SwiftUI calls deleteForward, and ⌫ still did nothing on the installed build; the Delete command did it. Checked on the installed 0.1.0-rc with the window in front: ⌫ on the selected test hunk took it back, ⌘Z put it back, ⌘⇧Z took it back again and ⌘Z put it back; ⌫ while typing in the commit message only erased text. The arrow's take-back also went back and forth with ⌘Z and ⌘⇧Z. make test passes.
 Commit: 18e2179
+
+#### K-124 · The keyboard stays on a hunk
+Meriç: ⌫ worked once, then didn't. Taking a hunk back removed the hunk the keyboard was on, which left nothing selected, and after ⌘Z brought it back it still wasn't, so the next ⌫, Space or N had nothing to act on. A hunk that's taken back hands the selection to the one that takes its place, the way Finder and Mail move on after a delete, and a hunk put back is selected again.
+Done when: in the installed app, ⌫ on a selected hunk takes it back and the next hunk is selected; ⌫ again takes that one back; ⌘Z puts it back selected, and ⌫ takes it back again.
+Notes: A take-back of the selected hunk moves the keyboard to the hunk after it straight away, so a second ⌫ takes that one rather than the same hunk twice; a hunk that leaves the list any other way hands the selection to the one in its place; and a put-back selects the hunks it brings back once the next read has them. Checked on the installed build: ⌫ on the test file's hunk took it back and selected User.swift, ⌫ took that back and selected greet.swift, ⌘Z brought User.swift back selected, and ⌫ took it back again, where the last build did nothing; two ⌘Z put both back. make test passes.
+Commit: pending
 
 
 ## Exceptions
