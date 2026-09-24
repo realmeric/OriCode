@@ -114,9 +114,17 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148.
+From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148, in the OriCode project with the other ideas for after 0.1.0.
 
 ### Todo: 0.1.0-rc "Only fixes"
+
+#### K-129 · The drawer goes when it's put away
+Meriç found it: with the drawer pinned, a click on the sidebar button unpins it but leaves it open, because the pointer is over it, and the button sits in the drawer's first row, so the pointer always is. Unpinning is asking for the drawer to go, so it goes wherever the pointer is, and ⌘B the same. An unpinned drawer also lingers too long once the pointer leaves it, 400ms before it moves and 180ms to slide out; it waits 150ms and slides out in 150ms, and the brief's numbers change to match.
+Done when: with the drawer pinned, a click on the sidebar button closes it with the pointer still on the button, ⌘B closes it with the pointer over a row, and a drawer opened by hovering is gone about a third of a second after the pointer leaves it.
+
+#### K-130 · The composer steps aside for the drawer
+Meriç found it: a drawer opened by hovering, or by ⌘1–9's peek, slides over the left end of the composer, 76pt of it in a 1180pt window, and the two surfaces pile up. A pinned drawer already moves the conversation over; an unpinned one now moves the composer over into the same room right of it, on the drawer's own timing, and back as it goes, narrowing the composer only where the window is too small to hold it there. Meriç suggested a narrower composer, but that would take its width at every window size for the moments a drawer passes. The transcript stays where it is under the drawer. With no transcript, the mark and its line move with the composer so they stay together.
+Done when: in a 1180pt window, hovering the left edge brings the drawer in and the composer over beside it without touching, both go back as the pointer leaves, the empty state's mark and composer move together, ⌘2's peek does the same, and a pinned drawer still moves the whole conversation.
 
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
@@ -134,7 +142,7 @@ Once the window is Liquid Glass, the things that float over it can be too. The c
 Done when: frames show each surface on glass over the window's glass, the picker card rises out of the composer, the terminal's text stays readable, and no surface draws a stroke of its own. Needs Meriç's eye over their wallpaper; if glass on glass reads muddy, this card is reverted and K-106 stays.
 
 #### K-128 · Surfaces out of the capsule
-Meriç's idea, parked by the freeze. The title capsule becomes where the command center, the terminal and the review come from, the way the Dynamic Island grows into whatever it's showing. ⌘K, ⌘J or ⌘⇧D stretches the capsule down into that surface, and Esc or a click elsewhere folds it back up into the capsule; nothing drops from the window's top edge any more. The capsule already moves over when the drawer is pinned, so each surface grows from wherever the capsule is, and pinning or unpinning the drawer with a surface open carries the two across together. With no project there's no capsule, and ⌘K opens the command center as it does now. The morph is SwiftUI's own: glassEffectID in one GlassEffectContainer if K-116 has put the surfaces on glass, matchedGeometryEffect if it hasn't. Whether the review button at the top right opens the review out of the capsule or out of itself is Meriç's call before this is built.
+Meriç's idea, parked by the freeze. The title capsule becomes where the command center, the terminal and the review come from, the way the Dynamic Island grows into whatever it's showing. ⌘K, ⌘J or ⌘⇧D stretches the capsule down into that surface, and Esc or a click elsewhere folds it back up into the capsule; nothing drops from the window's top edge any more. The capsule already moves over when the drawer is pinned, so each surface grows from wherever the capsule is, and pinning or unpinning the drawer with a surface open carries the two across together. With no project there's no capsule, and ⌘K opens the command center as it does now. The morph is SwiftUI's own: glassEffectID in one GlassEffectContainer if K-116 has put the surfaces on glass, matchedGeometryEffect if it hasn't. Whether the review button at the top right opens the review out of the capsule or out of itself is Meriç's call before this is built. On Linear as REA-151.
 Done when: frames show each of the three surfaces grow out of the capsule and fold back into it with the drawer pinned and unpinned, pinning the drawer with one open moves both, Esc and a click elsewhere still dismiss, and with Reduce Motion on they fade in and out instead.
 
 ### Parking lot
