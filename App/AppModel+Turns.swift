@@ -103,7 +103,10 @@ extension AppModel {
             }
             // The same models as hello's, now with each one's default effort and Ultracode.
             if event.name == "models", let list = try? event.body["models"]?.decode([ModelOption].self), !list.isEmpty {
-                models = list
+                // A list whose Ultracode nothing answered for says no Ultracode anywhere; that's
+                // not a no, so Ultracode stays assumed where a model has xhigh.
+                let known = event.body["ultraKnown"]?.bool ?? true
+                models = known ? list : list.map(\.assumingUltracode)
                 settingsEffort = event.body["settingsEffort"]?.string
             }
             return

@@ -35,6 +35,16 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     var stops: [String] {
         efforts + (ultra || ultraBlocked != nil ? [Effort.ultracode] : [])
     }
+
+    /// The model with Ultracode wherever it has xhigh, for as long as the engine hasn't learned
+    /// which models run it: a thread's stored Ultracode then shows, and goes out, as it is, and
+    /// Claude Code runs it or not.
+    var assumingUltracode: ModelOption {
+        guard !ultra, ultraBlocked == nil, efforts.contains("xhigh") else { return self }
+        return ModelOption(
+            id: id, name: name, description: description, efforts: efforts, fast: fast, defaultEffort: defaultEffort,
+            ultra: true, ultraBlocked: nil, more: more, needs: needs)
+    }
 }
 
 /// Settings › New threads. Each setting is fixed there, or left empty to follow the last pick.
@@ -298,7 +308,8 @@ final class AppModel {
             let reply = try await engine.request("hello")
             Engine.logger.notice("hello \(String(decoding: (try? reply.data()) ?? Data(), as: UTF8.self), privacy: .public)")
             let hello = try reply.decode(Hello.self)
-            models = hello.models
+            // Which models run Ultracode comes a moment later, in the models event.
+            models = hello.models.map(\.assumingUltracode)
             engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
             refreshBranch(for: chat)
             refreshUsage()

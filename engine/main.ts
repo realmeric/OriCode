@@ -1,9 +1,9 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
-import { readCatalog } from "./catalog.ts";
+import { readCatalog, readSettingsEffort } from "./catalog.ts";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
-import { fallback, fromSDK, newer, older, settled, withDefaults, type Model } from "./models.ts";
+import { fallback, helloList, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, branches, commit, create, diffFor, previous, pull, push, remote, removeWorktree, status, switchTo, worktreeLoss } from "./git.ts";
 import { listFiles, readProjectFile } from "./files.ts";
@@ -55,8 +55,8 @@ async function supportedModels(claude: string): Promise<Model[]> {
   const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env, stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    const [list, catalog] = await Promise.all([Promise.race([probe.supportedModels(), timeout]), readCatalog()]);
-    return [...fromSDK(list, catalog), ...newer(catalog, list), ...older(catalog, list)];
+    const [list, catalog, settingsEffort] = await Promise.all([Promise.race([probe.supportedModels(), timeout]), readCatalog(), readSettingsEffort()]);
+    return helloList(list, catalog, settingsEffort);
   } finally {
     probe.close();
   }
@@ -66,7 +66,8 @@ async function supportedModels(claude: string): Promise<Model[]> {
 /// the second launched with Ultracode on (about two seconds in all), so hello answers without
 /// them and the list follows as a `models` event. The user's own settings are read, since an
 /// effortLevel there is what a thread's default turns into, but not their hooks, which have no
-/// business with a probe.
+/// business with a probe. A reading the CLIs can't give leaves that model on its fallback, and
+/// the event goes out all the same.
 async function learnDefaults(claude: string, base: Model[]): Promise<void> {
   const probe = query({
     prompt: idle,
@@ -77,11 +78,12 @@ async function learnDefaults(claude: string, base: Model[]): Promise<void> {
     options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true, ultracode: true }, env: cleanEnvironment() },
   });
   try {
-    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    const learned = await Promise.race([withDefaults(probe, ultraProbe, base.filter((model) => !model.more && !model.needs)), timeout]);
-    const read = new Map(learned.models.map((model) => [model.id, model]));
-    models = base.map((model) => read.get(model.id) ?? (model.more ? settled(model, learned.settingsEffort) : model));
-    event("models", { models, settingsEffort: learned.settingsEffort });
+    const learned = await withDefaults(probe, ultraProbe, base);
+    for (const miss of learned.missed) {
+      log(`model defaults: the ${miss.ultracode ? "Ultracode " : ""}probe missed ${miss.id}: ${describe(miss.error)}`);
+    }
+    models = learned.models;
+    event("models", { models, settingsEffort: learned.settingsEffort, ultraKnown: learned.ultraKnown });
   } catch (error) {
     log(`model defaults unavailable: ${describe(error)}`);
   } finally {
