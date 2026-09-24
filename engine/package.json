@@ -1,6 +1,6 @@
 {
   "name": "oricode-engine",
-  "version": "0.0.94",
+  "version": "0.1.0-rc",
   "private": true,
   "type": "module",
   "engines": {
