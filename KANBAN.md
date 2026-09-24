@@ -121,11 +121,11 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 ### Todo: 0.1.0-rc "Only fixes"
 
 #### K-135 · OriCode updates itself
-Anyone who installs 0.1.0 only hears about 0.2.0 if the app tells them. Sparkle, the usual updater for Mac apps outside the App Store, reads an appcast published with each GitHub release, shows the release's notes, and installs and relaunches on the user's word. Without a Developer ID it trusts an update by its EdDSA signature, whose private key stays in Meriç's Keychain. The app is built without the hardened runtime, so Sparkle loads under K-134's certificate. Sparkle downloads updates itself, so Gatekeeper's first-launch stop should come once, at the first install, not with every update. It needs the GitHub repo, which doesn't exist yet. Taken during the freeze at Meriç's word. On Linear as REA-172.
+Anyone who installs 0.1.0 only hears about 0.2.0 if the app tells them. Sparkle, the usual updater for Mac apps outside the App Store, reads an appcast published with each GitHub release, shows the release's notes, and installs and relaunches on the user's word. Without a Developer ID it trusts an update by its EdDSA signature, whose private key stays in Meriç's Keychain. The app is built without the hardened runtime, so Sparkle loads under K-134's certificate. Sparkle downloads updates itself, so Gatekeeper's first-launch stop should come once, at the first install, not with every update. Releases go out through a new make release: it builds and signs as make app does, zips the app, signs the zip with the EdDSA key, adds it to the appcast and publishes the GitHub release with gh. Publishing is Meriç's, so Meriç runs it in Terminal, as with make app. Taken during the freeze at Meriç's word. On Linear as REA-172.
 Done when: an OriCode built as 0.1.0-rc finds a test release one version ahead in the appcast, shows its notes, and after Install relaunches as that version with its threads and settings intact.
 
 #### K-122 · Release 0.1.0-rc
-As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
+As K-12, and the first release on GitHub: make release (K-135) publishes `v0.1.0-rc` as a pre-release, its notes from CHANGELOG.md and the signed zip attached. The v0.0 tags go up with it as tags only, without releases, since those builds can't update themselves. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
 ### After 0.1.0
 
