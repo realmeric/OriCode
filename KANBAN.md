@@ -118,6 +118,14 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
+#### K-134 · One certificate for every release
+Meriç won't pay for a Developer ID, so OriCode is never notarized, and a copy downloaded from GitHub is stopped the first time it opens; the README says how to let it through, in System Settings › Privacy & Security › Open Anyway. The other thing a Developer ID gives, one signature from build to build, comes free from a self-signed code-signing certificate. Meriç makes it once in Keychain Access (Certificate Assistant › Create a Certificate, Code Signing, named OriCode) and keeps a backup, and make app signs with it instead of ad hoc, falling back to ad hoc on a Mac without it. macOS then keeps a grant like Screen Recording from one build to the next, and every release carries the same designated requirement, which the updater (K-135) relies on. Taken during the freeze at Meriç's word. On Linear as REA-178.
+Done when: two make app builds a change apart show the same designated requirement in `codesign -d -r-`, and a release zip downloaded through a browser opens with the README's first-launch steps.
+
+#### K-135 · OriCode updates itself
+Anyone who installs 0.1.0 only hears about 0.2.0 if the app tells them. Sparkle, the usual updater for Mac apps outside the App Store, reads an appcast published with each GitHub release, shows the release's notes, and installs and relaunches on the user's word. Without a Developer ID it trusts an update by its EdDSA signature, whose private key stays in Meriç's Keychain. The app is built without the hardened runtime, so Sparkle loads under K-134's certificate. Sparkle downloads updates itself, so Gatekeeper's first-launch stop should come once, at the first install, not with every update. It needs the GitHub repo, which doesn't exist yet. Taken during the freeze at Meriç's word. On Linear as REA-172.
+Done when: an OriCode built as 0.1.0-rc finds a test release one version ahead in the appcast, shows its notes, and after Install relaunches as that version with its threads and settings intact.
+
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
