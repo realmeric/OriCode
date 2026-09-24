@@ -118,6 +118,10 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
+#### K-131 · Three ways to show usage
+Meriç finds the usage circle isn't OriCode and wants it changed before 0.1.0. Rendered beside the rest of the composer, three things set it apart: it's the only thing there drawn as an outline, a grey track round a coloured arc, where everything else is ink or tint; it's green nearly all the time, colour spent on saying nothing is wrong; and under half the session its short arc reads as a loading spinner, more so with the working arc turning inside it. Three candidates replace it, switched from Thread › Usage Look until Meriç keeps one, each opening the same card on hover. A, Words: the session's percentage in the composer's type, faint the way a Default level is. B, Glass: a disc of the send button's tint that fills from the bottom inside a rim of that tint. C, Meter: the card's bar in small, a 24pt track filling from the left. All three stay white until the session is half used and then take the amber and red bands, and the card's bars and the picker's cost clause drop their green the same way. The working arc goes, since Stop already says a turn is running. Taken during the freeze at Meriç's word.
+Done when: Thread › Usage Look switches the three, renders of each at 15%, 58% and 86% and of the card show no outline and no green, nothing in the composer turns while a turn runs, OriCode Molten launches with each look, and make test passes. Needs Meriç's eye over their wallpaper to pick one.
+
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
