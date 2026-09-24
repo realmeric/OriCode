@@ -118,6 +118,10 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
+#### K-132 · Usage, a glass that fills
+Meriç picked B, Glass, from K-131's three. It becomes the composer's usage for good: an 18pt disc of the send button's tint whose level rises from the bottom inside a 2pt rim of that tint, white until the session is half used and then amber and red. Words, Meter, UsageLook and Thread › Usage Look go, and the brief's Layout and Motion lines name the glass. Taken during the freeze at Meriç's word; it takes code out of the candidate rather than adding any.
+Done when: Thread › Usage Look is gone and nothing in the code switches looks, renders of the glass at 15%, 58% and 86% match K-131's B, OriCode Molten launches, and make test passes.
+
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
