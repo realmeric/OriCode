@@ -14,7 +14,7 @@ Before 0.1.0, the first public release, a version was 0.0.N, where N was the num
 - Claude's tool calls fold into one line per run, like "Ran 3 commands, read 2 files", which opens to the full list.
 - The window is Liquid Glass, darkened as far as you like in Settings.
 - OriCode updates itself. It checks GitHub once a day, and when there's a newer release, a circle beside the title fills as it downloads and then restarts OriCode into it.
-- It's signed with OriCode's own certificate but not notarized by Apple, so the first launch needs System Settings › Privacy & Security › Open Anyway. The README has the steps.
+- It's signed with OriCode's own certificate but not notarized by Apple, so macOS stops the first launch of a download; the README has the one command that opens it.
 
 ## v0.0.94 "Fast, the same every time" - 2026-09-23
 

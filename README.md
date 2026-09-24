@@ -17,7 +17,13 @@ Download OriCode's zip from the [latest release](https://github.com/realmeric/Or
 
 ## Opening it the first time
 
-OriCode is signed but not notarized by Apple, so the first time you open a copy you downloaded, macOS stops it and says Apple couldn't check it for malicious software. Open System Settings › Privacy & Security, find the line saying OriCode was blocked, click Open Anyway and confirm. macOS remembers that for this copy.
+OriCode is signed but not notarized by Apple, so the first time you open a copy you downloaded, macOS stops it and says Apple couldn't check it for malicious software. Once it's in Applications, clear the flag the download put on it, in Terminal, and open it as usual:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/OriCode.app
+```
+
+Some versions of macOS also offer Open Anyway in System Settings › Privacy & Security after that first try. Updates come through OriCode itself and shouldn't ask again.
 
 ## Updates
 
