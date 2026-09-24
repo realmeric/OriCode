@@ -2,11 +2,17 @@ import SwiftUI
 
 /// The window's title made visible: project · branch · thread, level with the traffic lights.
 /// Clicking it opens the command center, as ⌘K does. While there's an update, its circle hangs
-/// off the pill's right end, however wide the pill is, without moving the pill.
+/// off the pill's right end, however wide the pill is, without moving the pill. Its glass is the
+/// island's, which the surfaces grow out of.
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
-    @State private var hovering = false
+    let island: Namespace.ID
+    @Binding var hovering: Bool
+    /// Its own tint, for when the island's glass isn't there to be it: with Reduce Motion.
+    let glass: Bool
+
+    static let height: CGFloat = 24
 
     var body: some View {
         if let project = model.project {
@@ -38,9 +44,10 @@ struct TitleCapsule: View {
                 .font(Type.secondary)
                 .lineLimit(1)
                 .padding(.horizontal, 12)
-                .frame(height: 24)
-                .background(hovering ? Surface.selected : Surface.drawer, in: .capsule)
+                .frame(height: Self.height)
+                .background(glass ? hovering ? Surface.selected : Surface.drawer : .clear, in: .capsule)
                 .contentShape(.capsule)
+                .matchedGeometryEffect(id: Island.Piece.capsule, in: island, isSource: true)
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }

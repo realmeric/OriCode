@@ -2,9 +2,10 @@ import SwiftUI
 
 /// ⌘⇧D, or the button at the top right: what the working tree changes, told the way the thread
 /// went. Each of your messages, then what it changed, in the order it changed it; then what no
-/// edit here made. It comes down over the transcript like the terminal and keeps up with Claude
-/// while it's open.
+/// edit here made. It stretches down out of the title capsule and keeps up with Claude while
+/// it's open.
 struct ReviewPanel: View {
+    static let width: CGFloat = 960
     @Environment(AppModel.self) private var model
     @Environment(\.undoManager) private var undoManager
     @FocusState private var focused: Bool
@@ -30,8 +31,6 @@ struct ReviewPanel: View {
             }
             ReviewFooter()
         }
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
-        .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
         .focusable()
         .focused($focused)
         .focusEffectDisabled()

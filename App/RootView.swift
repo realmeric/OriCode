@@ -151,16 +151,6 @@ struct RootView: View {
                 .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
-            // In the toolbar's row, level with the traffic lights AppKit centres in it.
-            TitleCapsule()
-                .frame(height: TitleBar.height)
-                // Clear of the lights and the sidebar button on the left, and of the review's
-                // button and its counts on the right.
-                .padding(.horizontal, 130)
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 130 : 0)
-                .ignoresSafeArea()
-        }
-        .overlay(alignment: .top) {
             if model.terminalShown {
                 // Over the conversation's side of the window, down to 12pt above the composer
                 // however tall it has grown, and under the other panels, which can open over it.
@@ -177,22 +167,15 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) {
-            if model.reviewShown {
-                // Where the terminal comes down, which it closes: over the conversation's side
-                // of the window, down to 12pt above the composer. An empty thread's composer
-                // waits in the middle of the window, and there the review takes the whole height.
-                let low = !(model.currentConversation?.items.isEmpty ?? true)
-                GeometryReader { area in
-                    ReviewPanel()
-                        .frame(maxWidth: 960)
-                        .frame(height: low ? max(160, model.composerTop - area.frame(in: .global).minY - 24) : max(160, area.size.height - 40))
-                        .padding(.top, 12)
-                        .frame(maxWidth: .infinity)
-                }
-                .padding(.horizontal, 40)
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
+            // In the toolbar's row, level with the traffic lights AppKit centres in it, and over
+            // the terminal, which ⌘K and ⌘P open over.
+            Island()
+                // Clear of the lights and the sidebar button on the left, and of the review's
+                // button and its counts on the right; beside a pinned drawer, the column's margin
+                // from it.
+                .padding(.horizontal, Island.side)
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 + Column.margin - Island.side : 0)
+                .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
             if let file = model.openFile {
@@ -203,17 +186,6 @@ struct RootView: View {
                     // A pinned drawer covers the left of the window; the file sits beside it.
                     .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if model.fileFinderShown {
-                FileFinder()
-                    .padding(.top, 40)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .overlay(alignment: .top) {
-            if model.commandCenterShown {
-                CommandCenter()
-                    .padding(.top, 40)
-                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .overlay(alignment: .topLeading) {

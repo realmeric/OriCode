@@ -14,7 +14,7 @@ extension AppModel {
             // A terminal can move the branch behind the app's back, and actions.json can change.
             refreshBranch(for: chat)
             customActions.refresh()
-            withAnimation(Motion.move) { commandCenterShown = true }
+            withAnimation(Motion.move) { openInIsland(.command) }
         }
     }
 
@@ -28,7 +28,7 @@ extension AppModel {
         refreshBranch(for: chat)
         palette.push(.list(branchList))
         load(branchList, at: 1)
-        withAnimation(Motion.move) { commandCenterShown = true }
+        withAnimation(Motion.move) { openInIsland(.command) }
     }
 
     func closeCommandCenter() {

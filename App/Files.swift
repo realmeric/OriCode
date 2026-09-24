@@ -13,7 +13,9 @@ struct OpenFile: Identifiable {
 extension AppModel {
     func toggleFileFinder() {
         guard let chat else { return }
-        withAnimation(Motion.move) { fileFinderShown.toggle() }
+        withAnimation(Motion.move) {
+            if fileFinderShown { fileFinderShown = false } else { openInIsland(.files) }
+        }
         guard fileFinderShown else { return }
         let cwd = chat.cwd
         Task {
@@ -55,6 +57,7 @@ extension AppModel {
 
 /// ⌘P: find a file in the project by a few of its letters.
 struct FileFinder: View {
+    static let width: CGFloat = 560
     @Environment(AppModel.self) private var model
     @State private var query = ""
     @State private var selected = 0
@@ -116,9 +119,6 @@ struct FileFinder: View {
             }
         }
         .padding(.bottom, results.isEmpty ? 0 : 6)
-        .frame(width: 560)
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
-        .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
         .task {
             try? await Task.sleep(for: .milliseconds(60))
             focused = true

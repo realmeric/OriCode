@@ -7,6 +7,7 @@ struct CommandCenter: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
 
+    static let width: CGFloat = 560
     private static let row: CGFloat = 30
     private static let heading: CGFloat = 26
     /// About twelve rows, and past that it scrolls.
@@ -84,9 +85,6 @@ struct CommandCenter: View {
             }
         }
         .padding(.bottom, lines.isEmpty ? 0 : 6)
-        .frame(width: 560)
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
-        .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
         .animation(Motion.fade, value: status(of: level))
         // The field isn't in the window until the slide-in starts, so focus it a beat later.
         .task {

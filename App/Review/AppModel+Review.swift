@@ -129,9 +129,8 @@ extension AppModel {
         guard let folder = workingFolder else { return }
         closeTerminal()
         withAnimation(Motion.move) {
-            fileFinderShown = false
             openFile = nil
-            reviewShown = true
+            openInIsland(.review)
         }
         readReview(in: folder)
     }
