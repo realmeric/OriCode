@@ -3,6 +3,7 @@
 A native macOS app for coding agents: Swift and SwiftUI, one pane of glass with the conversation on it. The agent it runs today is Claude Code, the one you already use, signed in with your own account, through Anthropic's Claude Agent SDK.
 
 OriCode isn't made or endorsed by Anthropic. Claude, Claude Code and the Claude logo are Anthropic's trademarks.
+<img width="3410" height="2166" alt="image" src="https://github.com/user-attachments/assets/f015cde4-ba20-439d-8db5-bbebeff3f0d9" />
 
 ## What it needs
 
