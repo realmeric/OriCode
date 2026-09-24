@@ -15,7 +15,7 @@ KANBAN.md is the plan and the tracker. Work it the way its "How to work this boa
 - `make run` builds the Debug app, OriCode Molten, and opens it beside the installed OriCode. Molten has its own bundle id and its own Application Support and Logs folders, so it never opens OriCode's threads, and `make run` quits only Molten.
 - `make engine` type-checks the engine and stages it with production dependencies in `~/Library/Developer/OriCode/engine`.
 - `make test` runs the engine's protocol tests and the Swift unit tests.
-- `make app` builds Release, signs it ad hoc and copies it to `/Applications`. It quits the installed OriCode to replace it, so run it from Terminal.
+- `make app` builds Release, signs it ad hoc and copies it to `/Applications`, quitting the installed OriCode to replace it. Meriç runs it, in Terminal: a thread inside OriCode that ran it would end its own session mid-turn.
 
 ## Where things live
 
