@@ -61,11 +61,11 @@ private struct PermissionForm: View {
             HStack(spacing: 8) {
                 Spacer()
                 Button("Deny") { model.answer(ask, allow: false) }
+                    .buttonStyle(AskButtonStyle())
                 Button("Allow") { model.answer(ask, allow: true) }
+                    .buttonStyle(AskButtonStyle(prominent: true))
                     .keyboardShortcut(listens ? .defaultAction : nil)
             }
-            .controlSize(.regular)
-            .tint(Color(white: 0.5))
         }
     }
 
@@ -184,30 +184,29 @@ private struct QuestionForm: View {
                                 .accessibilityAddTraits(lit ? .isSelected : [])
                             }
                         }
+                        OtherField(text: Binding(get: { other[text] ?? "" }, set: { typed in
+                            other[text] = typed
+                            // What's typed is the answer, so no option stays lit beside it.
+                            if !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, picked[text] != nil {
+                                withAnimation(Motion.fade) { picked[text] = nil }
+                            }
+                        }), submit: submit)
                     }
                     // The rows' light reaches past the column, so their words line up with the question's.
                     .padding(.horizontal, -10)
-                    TextField("Other", text: Binding(get: { other[text] ?? "" }, set: { typed in
-                        other[text] = typed
-                        // What's typed is the answer, so no option stays lit beside it.
-                        if !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, picked[text] != nil {
-                            withAnimation(Motion.fade) { picked[text] = nil }
-                        }
-                    }))
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(submit)
                 }
             }
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
                 Button("Skip") { model.answer(ask, allow: false, message: AskCard.skipMessage) }
+                    .buttonStyle(AskButtonStyle())
                 if questions.count > 1 || questions.contains(where: { $0["multiSelect"]?.bool == true }) {
                     Button("Answer", action: submit)
+                        .buttonStyle(AskButtonStyle(prominent: true))
                         .keyboardShortcut(listens ? .defaultAction : nil)
                         .disabled(!complete)
                 }
             }
-            .tint(Color(white: 0.5))
         }
     }
 
@@ -265,5 +264,62 @@ private struct OptionRow<Content: View>: View {
             .background(lit ? Surface.selected : hovering ? Surface.hover : .clear, in: .rect(cornerRadius: 10, style: .continuous))
             .contentShape(.rect)
             .onHover { hovering = $0 }
+    }
+}
+
+/// Other, as one more row of the options: a field on the card's own tint, fainter than a picked
+/// option so it never passes for one, and lit like one under the pointer, while you type and
+/// while it holds the answer.
+private struct OtherField: View {
+    @Binding var text: String
+    let submit: () -> Void
+    @State private var hovering = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let lit = hovering || focused || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        TextField("Other", text: $text)
+            .textFieldStyle(.plain)
+            .font(Type.body)
+            .foregroundStyle(Ink.primary)
+            .focused($focused)
+            .onSubmit(submit)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(lit ? Surface.selected : Surface.card, in: .rect(cornerRadius: 10, style: .continuous))
+            .onHover { hovering = $0 }
+            .animation(Motion.fade, value: lit)
+            .padding(.top, 4)
+    }
+}
+
+/// The card's buttons in the glass's own tints, lit under the pointer so it's plain what can be
+/// pressed: white at 10%, 16% under the pointer; the one Return presses is white, like Send.
+private struct AskButtonStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        AskButton(configuration: configuration, prominent: prominent)
+    }
+
+    private struct AskButton: View {
+        let configuration: ButtonStyleConfiguration
+        let prominent: Bool
+        @Environment(\.isEnabled) private var enabled
+        @State private var hovering = false
+
+        var body: some View {
+            let lit = enabled && (hovering || configuration.isPressed)
+            configuration.label
+                .font(Type.body)
+                .foregroundStyle(prominent ? Color.black.opacity(0.85) : Ink.primary)
+                .padding(.horizontal, 14)
+                .frame(height: 30)
+                .background(prominent ? Color.white.opacity(lit ? 1 : 0.8) : Color.white.opacity(lit ? 0.16 : 0.10), in: .capsule)
+                .opacity(enabled ? 1 : 0.4)
+                .contentShape(.capsule)
+                .onHover { hovering = $0 }
+                .animation(Motion.fade, value: lit)
+        }
     }
 }
