@@ -4,7 +4,8 @@ export PATH := /opt/homebrew/bin:/usr/local/bin:$(PATH)
 # FinderInfo xattrs make codesign refuse the bundle.
 BUILD := $(HOME)/Library/Developer/OriCode
 DERIVED := $(BUILD)/DerivedData
-DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode.app
+# The Debug build is OriCode Molten, which runs beside the installed OriCode.
+DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
@@ -17,8 +18,8 @@ project:
 
 run: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
-	-pkill -x OriCode; sleep 0.3
-	open $(DEBUG_APP)
+	-pkill -x "OriCode Molten"; sleep 0.3
+	open "$(DEBUG_APP)"
 
 engine: $(BUILD)/engine/.stamp
 
@@ -48,8 +49,9 @@ app: project
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
 
-# The app icon is RaysMark on a squircle; re-render it whenever the mark changes.
+# The app icons are RaysMark on a squircle, OriCode's and OriCode Molten's; re-render them whenever the mark changes.
 icon:
 	mkdir -p $(BUILD)/icon
 	swiftc -O -o $(BUILD)/icon/render scripts/icon/main.swift App/RaysMark.swift
 	$(BUILD)/icon/render App/Assets.xcassets/AppIcon.appiconset
+	$(BUILD)/icon/render App/Assets.xcassets/AppIconMolten.appiconset molten

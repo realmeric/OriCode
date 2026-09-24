@@ -55,7 +55,7 @@ actor Engine {
     private var activity: NSObjectProtocol?
 
     static let logger = Logger(subsystem: "com.realmeric.oricode", category: "engine")
-    static let logFile = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/OriCode/engine.log")
+    static let logFile = Build.logs.appending(path: "engine.log")
 
     init() {
         (output, continuation) = AsyncStream.makeStream()

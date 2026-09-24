@@ -14,7 +14,7 @@ OriCode isn't made or endorsed by Anthropic. Claude, Claude Code and the Claude 
 ## Building
 
 ```sh
-make run    # builds the Debug app and opens it
+make run    # builds OriCode Molten, the Debug app, and opens it beside OriCode
 make app    # builds Release and copies it to /Applications
 make test   # the engine's protocol tests and the Swift unit tests
 ```

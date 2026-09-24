@@ -480,13 +480,13 @@ private struct AboutPane: View {
 
     var body: some View {
         PaneTitle(text: "About")
-        SectionHeading("OriCode")
+        SectionHeading(Build.name)
         SettingsCard {
             VStack(spacing: 10) {
                 RaysMark(lit: RaysMark.rays, litOpacity: 0.62)
                     .frame(width: 60, height: 60)
                     .padding(.bottom, 4)
-                Text("OriCode").font(.system(size: 20, weight: .semibold)).foregroundStyle(Ink.primary)
+                Text(Build.name).font(.system(size: 20, weight: .semibold)).foregroundStyle(Ink.primary)
                 Text("A native window for Claude Code.").font(Type.body).foregroundStyle(Ink.secondary)
                 Text(version).font(Type.secondary).foregroundStyle(Ink.faint)
                 // The folder it was built from, which a copy built elsewhere doesn't have.

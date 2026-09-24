@@ -97,9 +97,18 @@ extension Chat {
     }
 }
 
+/// Which OriCode this is: the one you work in, or OriCode Molten, the Debug build you work on.
+/// Each has its own name and its own folders, so neither opens the other's threads.
+enum Build {
+    static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "OriCode"
+    static let folder = Bundle.main.object(forInfoDictionaryKey: "OriCodeFolder") as? String ?? "OriCode"
+    static var support: URL { URL.applicationSupportDirectory.appending(path: folder, directoryHint: .isDirectory) }
+    static var logs: URL { FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/\(folder)", directoryHint: .isDirectory) }
+}
+
 enum Store {
     static func container() -> ModelContainer {
-        let folder = URL.applicationSupportDirectory.appending(path: "OriCode", directoryHint: .isDirectory)
+        let folder = Build.support
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let configuration = ModelConfiguration(url: folder.appending(path: "OriCode.store"))
         do {

@@ -14,7 +14,7 @@ struct OriCodeApp: App {
     }
 
     var body: some Scene {
-        Window("OriCode", id: "main") {
+        Window(Build.name, id: "main") {
             RootView()
                 .environment(model)
                 .modelContainer(container)

@@ -187,7 +187,7 @@ enum ActionLine {
     }
 }
 
-/// Your actions, in Application Support/OriCode/actions.json and never in a repository. The
+/// Your actions, in the build's Application Support folder's actions.json and never in a repository. The
 /// first run writes the examples; a file that doesn't read is left as it is, and says so.
 @MainActor @Observable final class CustomActionStore {
     private(set) var actions: [CustomAction] = []
@@ -198,7 +198,7 @@ enum ActionLine {
     @ObservationIgnored private var seen: Date?
 
     static var standardFile: URL {
-        URL.applicationSupportDirectory.appending(path: "OriCode/actions.json")
+        Build.support.appending(path: "actions.json")
     }
 
     init(file: URL = CustomActionStore.standardFile) {

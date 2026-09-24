@@ -1,6 +1,6 @@
 import Foundation
 
-/// What you've marked reviewed, by repository, in Application Support/OriCode/reviewed.json.
+/// What you've marked reviewed, by repository, in reviewed.json in the build's Application Support folder.
 /// A mark outlives its hunk changing, so the review can show what's new since you looked. It
 /// goes once HEAD has moved and its file is no longer in the diff, committed or on another
 /// branch; a stash between two looks leaves it alone. Past thirty days it goes anyway.
@@ -17,7 +17,7 @@ final class ReviewMarks {
     private var loaded = false
 
     static var standardFile: URL {
-        URL.applicationSupportDirectory.appending(path: "OriCode/reviewed.json")
+        Build.support.appending(path: "reviewed.json")
     }
 
     init(file: URL = ReviewMarks.standardFile) {

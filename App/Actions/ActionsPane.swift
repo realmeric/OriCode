@@ -53,7 +53,7 @@ struct ActionsPane: View {
             ActionForm(action: action, projects: model.projects) { store.save($0) }
         }
         .onAppear { store.refresh() }
-        Text("Actions are kept in Application Support/OriCode/actions.json, never in a project, and have no keys of their own.")
+        Text("Actions are kept in Application Support/\(Build.folder)/actions.json, never in a project, and have no keys of their own.")
             .font(Type.secondary)
             .foregroundStyle(Ink.faint)
             .padding(.top, 10)
