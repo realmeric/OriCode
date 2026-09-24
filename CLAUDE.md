@@ -2,6 +2,8 @@
 
 KANBAN.md is the plan and the tracker. Work it the way its "How to work this board" section says.
 
+Linear's OriCode project holds what's next. A REA issue is built as a card on this board and committed to main like any other card, not on a branch or in a pull request, whatever the global Linear rule says. The card and its commit name the issue, as in `K-137: Write while Claude works (REA-153)`, and the issue moves to In Progress when its card starts and to Done once the card is pushed.
+
 ## Rules that don't move
 
 1. **Never hand-roll a control the platform already has.** `Picker`, `Toggle`, `Slider`, `Menu`, `List`, `TextField`, the `Settings` scene, `NSOpenPanel`, `UserNotifications`, native materials, the native window. The previous version of this app was a web view, and over a thousand lines went into redrawing dropdowns, toggles and window chrome that AppKit gives away. It still looked wrong. If a card starts to read as "build a custom X", the card is wrong; fix the card.
