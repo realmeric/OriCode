@@ -11,6 +11,10 @@ OriCode isn't made or endorsed by Anthropic. Claude, Claude Code and the Claude 
 - Node 24 or newer, which runs the app's engine
 - To build it: Xcode 26 or newer with its Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`), and XcodeGen (`brew install xcodegen`)
 
+## Installing
+
+Download OriCode's zip from the [latest release](https://github.com/realmeric/OriCode/releases/latest), unzip it, and drag OriCode into Applications. From then on it updates itself.
+
 ## Opening it the first time
 
 OriCode is signed but not notarized by Apple, so the first time you open a copy you downloaded, macOS stops it and says Apple couldn't check it for malicious software. Open System Settings › Privacy & Security, find the line saying OriCode was blocked, click Open Anyway and confirm. macOS remembers that for this copy.

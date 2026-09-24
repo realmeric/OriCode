@@ -1,6 +1,20 @@
 # Changelog
 
-Until the first public release, which will be 0.1.0, a version is 0.0.N, where N is the number of its release card on KANBAN.md.
+Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
+
+## v0.1.0 "In the open" - 2026-09-24
+
+- The first public release, and the first you can download. OriCode is a native macOS app for coding agents, and the agent it runs is Claude Code, the one you're already logged into; it never sees a key or a token.
+- Review (⌘⇧D) shows every change in the project since the last commit, grouped by the turn that made it, with changes none of the thread's edits explain set apart. Mark hunks as you read them, take one back with ⌫ and bring it back with ⌘Z, leave Claude a note on a hunk, and commit only what you've reviewed.
+- A terminal (⌘J) slides down over the glass in the thread's folder. ⌘K's Run in terminal… types a command into it, and Continue in Claude Code hands the thread to `claude` there.
+- ⌘K is the command center: threads, projects, branches, models and efforts, and actions of your own, each a named command that runs in the terminal or quietly.
+- The model picker is OriCode's mark over an effort rail. It lists every model Claude Code offers, older ones included, by version and with your favourites first, and knows each model's own default level, Ultracode, and fast mode, which shows as bubbles swirling in the mark.
+- Threads live in a drawer that slides in from the window's left edge. ⌘B pins it, ⌘1–9 picks a thread, pinned threads stay in the order you put them, and ⌘⇧N starts a thread on its own branch.
+- Usage is a glass beside the composer that fills as your plan's session window goes; hover it for every window and the thread's context.
+- Claude's tool calls fold into one line per run, like "Ran 3 commands, read 2 files", which opens to the full list.
+- The window is Liquid Glass, darkened as far as you like in Settings.
+- OriCode updates itself. It checks GitHub once a day, and when there's a newer release, a circle beside the title fills as it downloads and then restarts OriCode into it.
+- It's signed with OriCode's own certificate but not notarized by Apple, so the first launch needs System Settings › Privacy & Security › Open Anyway. The README has the steps.
 
 ## v0.0.94 "Fast, the same every time" - 2026-09-23
 

@@ -120,10 +120,11 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148, in the OriCode project with the other ideas for after 0.1.0.
 
-### Todo: 0.1.0-rc "Only fixes"
+### Todo: 0.1.0
 
-#### K-122 · Release 0.1.0-rc
-As K-12, and the first release on GitHub: make release (K-135) publishes `v0.1.0-rc` as a pre-release, its notes from CHANGELOG.md and the signed zip attached. The v0.0 tags go up with it as tags only, without releases, since those builds can't update themselves. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
+#### K-122 · Release 0.1.0
+The first public release, and Meriç's call to go straight to it: the candidate was tried here, so there's no public 0.1.0-rc. MARKETING_VERSION, engine/version.ts and the engine's package.json and lock say 0.1.0, CHANGELOG.md has its entry, and the README says how to install it. Meriç runs make release (K-135), which publishes v0.1.0 on GitHub with that entry as its notes and the signed zip attached, and points appcast.xml at it. The v0.0 tags go up with it as tags only, since those builds can't update themselves. Once it's out the freeze ends, and new work comes from Linear's OriCode project, 0.2.0 first.
+Done when: the release page for v0.1.0 has OriCode-0.1.0.zip, a copy downloaded through a browser opens with the README's first-launch steps, and appcast.xml on main names 0.1.0.
 
 ### After 0.1.0
 

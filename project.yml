@@ -60,7 +60,7 @@ targets:
         PRODUCT_NAME: OriCode
         # One module whatever the product is called, so the tests' @testable import holds.
         PRODUCT_MODULE_NAME: OriCode
-        MARKETING_VERSION: "0.1.0-rc"
+        MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         ORICODE_FEED_URL: https://raw.githubusercontent.com/realmeric/OriCode/main/appcast.xml
         GENERATE_INFOPLIST_FILE: YES
