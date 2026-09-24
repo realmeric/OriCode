@@ -1,14 +1,14 @@
 import SwiftUI
 
 /// The drawer's timing, straight from the brief: a 20pt hot zone that waits 120ms,
-/// 220ms in, 180ms out, a 400ms grace after the mouse leaves, and a 700ms ⌘digit peek.
+/// 220ms in, 150ms out, a 150ms grace after the mouse leaves, and a 700ms ⌘digit peek.
 extension AppModel {
     enum DrawerTiming {
         static let hotZoneDelay = Duration.milliseconds(120)
-        static let grace = Duration.milliseconds(400)
+        static let grace = Duration.milliseconds(150)
         static let peek = Duration.milliseconds(700)
         static let slideIn = Animation.easeOut(duration: 0.22)
-        static let slideOut = Animation.easeIn(duration: 0.18)
+        static let slideOut = Animation.easeIn(duration: 0.15)
     }
 
     func hotZone(_ inside: Bool) {
@@ -34,9 +34,11 @@ extension AppModel {
         }
     }
 
+    /// Unpinning puts the drawer away even with the pointer on it: the sidebar button sits in
+    /// its first row, so a click there always is.
     func toggleDrawerPin() {
         withAnimation(drawerPinned ? DrawerTiming.slideOut : DrawerTiming.slideIn) { drawerPinned.toggle() }
-        if drawerPinned { showDrawer() } else if !mouseInDrawer { hideDrawer() }
+        if drawerPinned { showDrawer() } else { hideDrawer() }
     }
 
     /// ⌘1–9: select the thread and slide the drawer in just long enough to show which.
@@ -89,6 +91,8 @@ extension AppModel {
             drawerShown = false
             peekedChatID = nil
         }
+        // Gone from under the pointer, which may not move to say so before the next peek.
+        mouseInDrawer = false
     }
 
     func scheduleHide(after delay: Duration) {
