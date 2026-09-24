@@ -118,6 +118,10 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
+#### K-126 · A click nudges the thread too
+Meriç: ⌘2's row stands out a little and then settles, and a click on a row doesn't, so the same pick looks different by hand. A click on a row nudges it the way ⌘1–9 does, for the same 700ms, and the brief says so. Taken during the freeze at Meriç's word, as a pick that looked different by mouse and by keyboard.
+Done when: in the installed app, a click on a drawer row nudges it and it settles back, pinned and unpinned, and ⌘2 still does the same.
+
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
