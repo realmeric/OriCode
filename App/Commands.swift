@@ -2,7 +2,6 @@ import SwiftUI
 
 struct OriCodeCommands: Commands {
     let model: AppModel
-    @AppStorage(UsageLook.key) private var usageLook = UsageLook.words
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -89,9 +88,6 @@ struct OriCodeCommands: Commands {
                 .disabled(!(model.models.first { $0.id == modelBinding.wrappedValue }?.fast ?? false))
             Picker("Permission Mode", selection: modeBinding) {
                 ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
-            }
-            Picker("Usage Look", selection: $usageLook) {
-                ForEach(UsageLook.allCases) { Text($0.title).tag($0) }
             }
             Divider()
             Button(model.chat?.pinned == true ? "Unpin Thread" : "Pin Thread") {

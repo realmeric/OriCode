@@ -1,34 +1,44 @@
 import SwiftUI
 
-/// Left of send: how much of the plan's session window is gone, white while there's room and in
-/// kullanym-notch's amber and red as a limit nears. Hovering opens the card.
-struct UsageGauge: View {
+/// Left of send: a disc of the send button's tint that fills from the bottom as the plan's session
+/// window goes, white while there's room and in kullanym-notch's amber and red as a limit nears.
+/// Its rim is the same tint, so even a full one reads as a glass rather than a dot. Hovering opens
+/// the card.
+struct UsageGlass: View {
     @Environment(AppModel.self) private var model
-    @AppStorage(UsageLook.key) private var look = UsageLook.words
     let chat: Chat?
 
     @State private var shown = false
-    @State private var overGauge = false
+    @State private var overGlass = false
     @State private var overCard = false
     @State private var pending: Task<Void, Never>?
 
+    private let side: CGFloat = 18
+    private let rim: CGFloat = 2
+
     var body: some View {
         let used = model.usage?.headline?.used
-        Group {
-            switch look {
-            case .words: UsageWords(used: used)
-            case .glass: UsageGlass(used: used)
-            case .meter: UsageMeter(used: used)
-            }
+        // Empty until the first reading, which it rises to.
+        let level = min(max(used ?? 0, 0), 1)
+        let inner = side - rim * 2
+        ZStack {
+            Circle().fill(Surface.selected)
+            Rectangle()
+                .fill(Band.of(level).color)
+                // A sliver at least, so a live 1% is visible.
+                .frame(height: level > 0 ? max(1.5, inner * level) : 0)
+                .frame(width: inner, height: inner, alignment: .bottom)
+                .clipShape(.circle)
         }
-        .animation(Motion.reading, value: used)
+        .frame(width: side, height: side)
+        .animation(Motion.reading, value: level)
         .opacity(model.usageStale ? 0.45 : 1)
-        .frame(height: 30)
+        .padding(6)
         // Lit while its card is out, as the model button is while its picker is.
-        .background(shown ? Surface.hover : .clear, in: .capsule)
+        .background(shown ? Surface.hover : .clear, in: .circle)
         .contentShape(.rect)
         .onHover { inside in
-            overGauge = inside
+            overGlass = inside
             if inside { model.refreshUsage() }
             settle()
         }
@@ -44,87 +54,16 @@ struct UsageGauge: View {
     }
 
     /// Opens a quarter second after the mouse arrives, so passing over it doesn't flash a
-    /// card; closes a moment after it has left both the gauge and the card.
+    /// card; closes a moment after it has left both the glass and the card.
     private func settle() {
         pending?.cancel()
-        let wanted = overGauge || overCard
+        let wanted = overGlass || overCard
         guard wanted != shown else { return }
         pending = Task {
             try? await Task.sleep(for: .milliseconds(wanted ? 250 : 300))
-            guard !Task.isCancelled, (overGauge || overCard) == wanted else { return }
+            guard !Task.isCancelled, (overGlass || overCard) == wanted else { return }
             shown = wanted
         }
-    }
-}
-
-/// How the composer shows plan usage, three ways until Meriç keeps one: the percentage in words,
-/// a glass that fills, or the card's bar in small. Thread › Usage Look.
-enum UsageLook: String, CaseIterable, Identifiable {
-    case words, glass, meter
-
-    static let key = "usageLook"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .words: "A · Words"
-        case .glass: "B · Glass"
-        case .meter: "C · Meter"
-        }
-    }
-}
-
-/// The session's share in the composer's type, faint the way a Default level is until a limit
-/// is near. With no reading yet it takes no room.
-private struct UsageWords: View {
-    let used: Double?
-
-    var body: some View {
-        if let used {
-            Text("\(Int((used * 100).rounded()))%")
-                .font(Type.secondary.monospacedDigit())
-                .foregroundStyle(Band.of(used) == .ample ? Ink.faint : Band.of(used).color)
-                .contentTransition(.numericText(value: used))
-                .padding(.horizontal, 8)
-        }
-    }
-}
-
-/// A disc of the send button's tint that fills from the bottom as the session goes, inside a rim
-/// of that tint, so even a full one reads as a glass rather than a dot.
-private struct UsageGlass: View {
-    let used: Double?
-    private let side: CGFloat = 18
-    private let rim: CGFloat = 2
-
-    var body: some View {
-        let inner = side - rim * 2
-        ZStack {
-            Circle().fill(Surface.selected)
-            if let used {
-                let level = min(max(used, 0), 1)
-                Rectangle()
-                    .fill(Band.of(used).color)
-                    // A sliver at least, so a live 1% is visible.
-                    .frame(height: level > 0 ? max(1.5, inner * level) : 0)
-                    .frame(width: inner, height: inner, alignment: .bottom)
-                    .clipShape(.circle)
-            }
-        }
-        .frame(width: side, height: side)
-        .padding(6)
-    }
-}
-
-/// The card's session bar in small.
-private struct UsageMeter: View {
-    let used: Double?
-
-    var body: some View {
-        Bar(fraction: used ?? 0, color: used.map { Band.of($0).color } ?? .clear)
-            .frame(width: 24)
-            .padding(.horizontal, 8)
     }
 }
 
