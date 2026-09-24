@@ -24,7 +24,7 @@ Not an ADE, not an orchestrator, not a board of cards that run themselves. Not a
 
 ## How to work this board
 
-Take the first card under **Todo**. Move it under **In progress** by editing this file. Build it. Check the *Done when* line by building and running the app (`make run`), not by reading the code. Move the card under **Done** with the commit hash. Commit as `K-NN: <card title>`, one card per commit. Do not start the next card while the build is red.
+Take the first card under **Todo**. Move it under **In progress** by editing this file. Build it. Check the *Done when* line by building and running the app (`make run`), not by reading the code. Move the card under **Done** with the commit hash. Commit as `K-NN: <card title>`, one card per commit. Do not start the next card while the build is red. Since 2026-09-24 the repo is public at github.com/realmeric/OriCode: once a card's commits are in, including the one that records its hash, push main.
 
 If a card turns out to be two, split it here before starting. If you learn something that changes a later card, edit that card now and say so in the commit message. If a *Done when* needs a human eye (K-10 does), build it, stop, and tell Meriç exactly what to look at.
 
