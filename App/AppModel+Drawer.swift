@@ -47,6 +47,13 @@ extension AppModel {
         peekedChatID = visible[index].id
         showDrawer()
         scheduleHide(after: DrawerTiming.peek)
+        // A pinned drawer doesn't slide away, so the peek lets go of the row on its own.
+        peekTask?.cancel()
+        peekTask = Task {
+            try? await Task.sleep(for: DrawerTiming.peek)
+            guard !Task.isCancelled, drawerPinned else { return }
+            withAnimation(Motion.move) { peekedChatID = nil }
+        }
     }
 
     /// ⌃Tab and ⌃⇧Tab: the thread after or before the open one in the drawer's order, round the

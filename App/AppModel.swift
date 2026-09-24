@@ -167,6 +167,7 @@ final class AppModel {
     var showingShortcuts = false
     var mouseInDrawer = false
     var drawerTask: Task<Void, Never>?
+    var peekTask: Task<Void, Never>?
     private var listening = false
     private var noteTask: Task<Void, Never>?
 
@@ -177,6 +178,8 @@ final class AppModel {
     var selectedChatID: UUID? {
         didSet {
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
+            // A ⌘digit peek ends when another thread is opened, however it's opened.
+            if peekedChatID != selectedChatID { peekedChatID = nil }
             loadSelectedConversation()
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
             refreshBranch(for: chat)

@@ -118,10 +118,6 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
-#### K-125 · One thread lit after ⌘2
-Meriç: after ⌘2, clicking another thread in the drawer left both rows lit. The ⌘digit peek lights and nudges the thread it picks until the drawer slides away, and a pinned drawer never does. The peek ends when another thread is opened, however it's opened, and on a pinned drawer after its 700ms.
-Done when: with the drawer pinned, ⌘2 lights and nudges the second row and lets go of the nudge after a moment, and a click on another row leaves only that row lit; unpinned, ⌘2 then a click on another row does the same.
-
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
@@ -852,6 +848,12 @@ Commit: 18e2179
 Meriç: ⌫ worked once, then didn't. Taking a hunk back removed the hunk the keyboard was on, which left nothing selected, and after ⌘Z brought it back it still wasn't, so the next ⌫, Space or N had nothing to act on. A hunk that's taken back hands the selection to the one that takes its place, the way Finder and Mail move on after a delete, and a hunk put back is selected again.
 Done when: in the installed app, ⌫ on a selected hunk takes it back and the next hunk is selected; ⌫ again takes that one back; ⌘Z puts it back selected, and ⌫ takes it back again.
 Notes: A take-back of the selected hunk moves the keyboard to the hunk after it straight away, so a second ⌫ takes that one rather than the same hunk twice; a hunk that leaves the list any other way hands the selection to the one in its place; and a put-back selects the hunks it brings back once the next read has them. Checked on the installed build: ⌫ on the test file's hunk took it back and selected User.swift, ⌫ took that back and selected greet.swift, ⌘Z brought User.swift back selected, and ⌫ took it back again, where the last build did nothing; two ⌘Z put both back. make test passes.
+Commit: 3d30c29
+
+#### K-125 · One thread lit after ⌘2
+Meriç: after ⌘2, clicking another thread in the drawer left both rows lit. The ⌘digit peek lights and nudges the thread it picks until the drawer slides away, and a pinned drawer never does. The peek ends when another thread is opened, however it's opened, and on a pinned drawer after its 700ms.
+Done when: with the drawer pinned, ⌘2 lights and nudges the second row and lets go of the nudge after a moment, and a click on another row leaves only that row lit; unpinned, ⌘2 then a click on another row does the same.
+Notes: The peek clears in selectedChatID's didSet whenever the thread opened isn't the peeked one, which covers a click, ⌘K, a notification and ⌘W, and a pinned drawer's peek lets go after its 700ms. Checked on the installed build: pinned, ⌘2 lit and nudged the second row, the nudge let go about a second later, and a click on send ok in text left only that row lit; unpinned, ⌘2 slid the drawer in with the second row lit and a click on another row left only that one lit. make test passes.
 Commit: pending
 
 
