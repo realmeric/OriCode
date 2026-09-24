@@ -14,6 +14,10 @@ struct RootView: View {
                     .ignoresSafeArea()
                 let conversation = model.currentConversation
                 let started = conversation.map { !$0.items.isEmpty } ?? false
+                // An unpinned drawer passes over the conversation for a moment, and the composer's
+                // left end draws back out from under it while it's out. The right end, with the
+                // picker and Send, doesn't move.
+                let clear = model.drawerShown && !model.drawerPinned ? Self.clearing(width: window.size.width) : 0
                 VStack(spacing: 0) {
                     if let conversation, let chat = model.chat, started {
                         TranscriptView(conversation: conversation, cwd: chat.cwd)
@@ -36,6 +40,7 @@ struct RootView: View {
                             // like the model's name, is drawn where the composer is going while
                             // the rest of it is still on the way.
                             .geometryGroup()
+                            .padding(.leading, clear)
                             .column()
                             // Above the transcript, so the slash menu can rise over it.
                             .zIndex(1)
@@ -238,6 +243,13 @@ struct RootView: View {
         }
     }
 
+    /// How much of the column's left end a drawer covers at this window width, with the margin a
+    /// pinned one leaves.
+    private static func clearing(width: CGFloat) -> CGFloat {
+        let left = (width - min(Column.width, width - Column.margin * 2)) / 2
+        return max(0, Drawer.width + Drawer.inset * 2 + Column.margin - left)
+    }
+
     /// The first message's transcript rises in behind the composer once it has mostly gone past,
     /// instead of under it.
     private static let rise = AnyTransition.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22))
@@ -285,11 +297,16 @@ enum TitleBar {
     static let height: CGFloat = 52
 }
 
+/// The transcript's centred column: 760pt at most, 20pt from the edges below that.
+enum Column {
+    static let width: CGFloat = 760
+    static let margin: CGFloat = 20
+}
+
 extension View {
-    /// The transcript's centred column: 760pt at most, 20pt from the edges below that.
     func column() -> some View {
-        frame(maxWidth: 760)
-            .padding(.horizontal, 20)
+        frame(maxWidth: Column.width)
+            .padding(.horizontal, Column.margin)
             .frame(maxWidth: .infinity)
     }
 }
