@@ -118,8 +118,6 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
-(nothing yet)
-
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148, in the OriCode project with the other ideas for after 0.1.0.
 
 ### Todo
@@ -930,6 +928,12 @@ The first public release, and Meriç's call to go straight to it: the candidate 
 Done when: the release page for v0.1.0 has OriCode-0.1.0.zip, a copy downloaded through a browser opens with the README's first-launch steps, and appcast.xml on main names 0.1.0.
 Notes: Meriç ran make release from Terminal. It published v0.1.0, not a pre-release, with the CHANGELOG entry as its notes and OriCode-0.1.0.zip (5,615,096 bytes) attached, and committed appcast.xml naming it (89c6609); the v0.0 tags went up before it as tags only. Checked: the zip downloaded from the release unpacks to OriCode 0.1.0, build 184, with the feed set, signed by the OriCode certificate and passing codesign --verify --deep --strict; the appcast on raw.githubusercontent.com names build 184 and that zip, and sign_update --verify accepts its signature for the downloaded file. Meriç's browser download showed no Open Anyway on macOS 27, so the README now leads with clearing the quarantine flag (2b6f063), and with that Meriç's copy of 0.1.0 opened. The build printed Swift 6 isolation warnings from AppModel.swift and MarkdownTheme.swift and xcodebuild's "exit code 0" line, neither of them a failure.
 Commit: 2b73ae2
+
+#### K-137 · A picked option lights up
+Meriç: on a question with options, it isn't obvious which one is picked. With two questions or more a click on an option picks it without answering, and the picked button looked like the others, since `.tint` does nothing to a bordered button on macOS; a checked box was a small grey check and nothing more. Options become rows in the brief's own tints: nothing behind a row at rest, white at 7% under the pointer, white at 10% behind a picked one, and a checkmark at the end of the row when the question takes one answer. A question that takes several keeps its native checkboxes, and each checked row lights the same way. The rows reach 10pt past the column so their words line up with the question's. What's typed in Other is the answer, so typing there puts out that question's picks, and picking an option empties Other.
+Done when: renders of the real card over a dark and a bright backdrop show a picked option lit with its checkmark among unlit ones and the rows of checked boxes lit; the Debug build builds and make test passes. Needs Meriç's eye on a real question.
+Notes: QuestionForm draws each option as an OptionRow. A one-answer option stays a Button, as K-09 made it, so a click on a lone question's option still answers it, and its row lights with the checkmark at its end and tells VoiceOver it's selected; a several-answer option stays the native checkbox Toggle, inside a row that lights while it's checked. Both fade in and out with the brief's fade. Checked: the real QuestionForm and OptionRow, compiled offscreen with stubs of AppModel and PendingAsk, rendered a card with one question of each kind: before the change, a picked Plain JSON looked exactly like SQLite and In memory; after it, Plain JSON's row is lit with its checkmark and the checked Type-check and Lint rows are lit, over a dark and a bright backdrop at 560pt, and at 400pt. Another thread had uncommitted work in this folder and was testing with OriCode Molten, so this change was built on its own in a scratch worktree of HEAD whose Debug app was renamed to keep its test host out of Molten's store: it built, and make test's two halves passed, 68 engine tests and 53 Swift tests. Not checked: hover, clicks, typing in Other, or a real question in the app, since the thread this was built in can't see or press the window.
+Commit: pending
 
 
 ## Exceptions

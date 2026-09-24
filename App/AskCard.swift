@@ -148,27 +148,52 @@ private struct QuestionForm: View {
                     Text(text)
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
-                    ForEach(Array((question["options"]?.array ?? []).enumerated()), id: \.offset) { _, option in
-                        let label = option["label"]?.string ?? ""
-                        if multiple {
-                            Toggle(isOn: binding(text, label)) {
-                                optionLabel(label, option["description"]?.string)
+                    VStack(spacing: 2) {
+                        ForEach(Array((question["options"]?.array ?? []).enumerated()), id: \.offset) { _, option in
+                            let label = option["label"]?.string ?? ""
+                            let lit = picked[text]?.contains(label) == true
+                            if multiple {
+                                OptionRow(lit: lit) {
+                                    Toggle(isOn: binding(text, label).animation(Motion.fade)) {
+                                        optionLabel(label, option["description"]?.string)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .toggleStyle(.checkbox)
+                                }
+                            } else {
+                                Button {
+                                    withAnimation(Motion.fade) {
+                                        picked[text] = [label]
+                                        other[text] = nil
+                                    }
+                                    if questions.count == 1 { submit() }
+                                } label: {
+                                    OptionRow(lit: lit) {
+                                        HStack(alignment: .firstTextBaseline) {
+                                            optionLabel(label, option["description"]?.string)
+                                            Spacer(minLength: 12)
+                                            if lit {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundStyle(Ink.primary)
+                                            }
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(lit ? .isSelected : [])
                             }
-                            .toggleStyle(.checkbox)
-                        } else {
-                            Button {
-                                picked[text] = [label]
-                                other[text] = nil
-                                if questions.count == 1 { submit() }
-                            } label: {
-                                optionLabel(label, option["description"]?.string)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(picked[text]?.contains(label) == true ? Ink.primary : nil)
                         }
                     }
-                    TextField("Other", text: Binding(get: { other[text] ?? "" }, set: { other[text] = $0 }))
+                    // The rows' light reaches past the column, so their words line up with the question's.
+                    .padding(.horizontal, -10)
+                    TextField("Other", text: Binding(get: { other[text] ?? "" }, set: { typed in
+                        other[text] = typed
+                        // What's typed is the answer, so no option stays lit beside it.
+                        if !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, picked[text] != nil {
+                            withAnimation(Motion.fade) { picked[text] = nil }
+                        }
+                    }))
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(submit)
                 }
@@ -188,7 +213,7 @@ private struct QuestionForm: View {
 
     private func optionLabel(_ label: String, _ description: String?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(Type.body)
+            Text(label).font(Type.body).foregroundStyle(Ink.primary)
             if let description, !description.isEmpty {
                 Text(description).font(Type.secondary).foregroundStyle(Ink.secondary)
             }
@@ -202,6 +227,7 @@ private struct QuestionForm: View {
             var set = picked[question] ?? []
             if on { set.insert(label) } else { set.remove(label) }
             picked[question] = set
+            if on { other[question] = nil }
         }
     }
 
@@ -223,5 +249,21 @@ private struct QuestionForm: View {
             answers[text] = answer(for: text)
         }
         model.answer(ask, allow: true, answers: answers)
+    }
+}
+
+/// An option's row: lit while it's picked, so the choice reads at a glance, and lit less under the pointer.
+private struct OptionRow<Content: View>: View {
+    let lit: Bool
+    @ViewBuilder let content: Content
+    @State private var hovering = false
+
+    var body: some View {
+        content
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(lit ? Surface.selected : hovering ? Surface.hover : .clear, in: .rect(cornerRadius: 10, style: .continuous))
+            .contentShape(.rect)
+            .onHover { hovering = $0 }
     }
 }
