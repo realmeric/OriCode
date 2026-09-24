@@ -58,6 +58,9 @@ struct ReviewUnit: Identifiable, Hashable, Sendable {
 
     var added: Int { hunk == nil ? file.added : lines.count { $0.kind == .added } }
     var deleted: Int { hunk == nil ? file.deleted : lines.count { $0.kind == .deleted } }
+
+    /// The file section it's shown under: its turn's changes to its file.
+    var section: String { "\(turn ?? 0)/\(file.status)/\(file.path)" }
 }
 
 struct ReviewFileSection: Identifiable, Hashable, Sendable {
@@ -118,7 +121,7 @@ struct ReviewBook: Sendable {
         for unit in units {
             let file = unit.file
             let key = file.path + "\u{0}" + file.status
-            byTurn[unit.turn, default: [:]][key, default: ReviewFileSection(id: "\(unit.turn ?? 0)/\(file.status)/\(file.path)", file: file, units: [])]
+            byTurn[unit.turn, default: [:]][key, default: ReviewFileSection(id: unit.section, file: file, units: [])]
                 .units.append(unit)
         }
         let order = Dictionary(diff.files.enumerated().map { ($1.path + "\u{0}" + $1.status, $0) }) { first, _ in first }

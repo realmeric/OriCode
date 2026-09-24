@@ -39,9 +39,10 @@ struct ReviewPanel: View {
         }
         // The Delete key reaches a focused view as the Delete command, never as a key press.
         .onDeleteCommand {
-            guard model.review.noting == nil, let unit = selectedUnit else { return }
+            guard model.review.noting == nil, let unit = model.review.selectedUnit else { return }
             model.takeBack([unit], label: "Take Back", undoManager: undoManager)
         }
+        .onAppear { model.review.placeFiles() }
         .onChange(of: review.noting) { _, noting in
             if noting == nil { focused = true }
         }
@@ -58,28 +59,24 @@ struct ReviewPanel: View {
         guard model.review.noting == nil else { return .ignored }
         switch press.key {
         case .downArrow, "j":
-            model.moveReviewSelection(1)
+            model.review.move(1)
         case .upArrow, "k":
-            model.moveReviewSelection(-1)
+            model.review.move(-1)
         case .space:
             model.toggleSelectedReviewed()
         case .return where press.modifiers.contains(.command):
             guard model.review.busy == nil, !model.review.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .ignored }
             model.commitReview(reviewedOnly: ReviewFooter.reviewedOnly(model.review.book))
         case "n":
-            guard let unit = selectedUnit else { return .ignored }
+            guard let unit = model.review.selectedUnit else { return .ignored }
             model.review.noting = unit.id
         case "o":
-            guard let unit = selectedUnit, !unit.file.status.hasPrefix("D") else { return .ignored }
+            guard let unit = model.review.selectedUnit, !unit.file.status.hasPrefix("D") else { return .ignored }
             model.openFile(unit.file.path)
         default:
             return .ignored
         }
         return .handled
-    }
-
-    private var selectedUnit: ReviewUnit? {
-        model.review.book.units.first { $0.id == model.review.selected }
     }
 }
 
@@ -161,7 +158,7 @@ private struct ReviewScroll: View {
             }
             for section in chapter.files {
                 rows.append(.file(section))
-                rows += section.units.map(Row.unit)
+                if review.openFiles.contains(section.id) { rows += section.units.map(Row.unit) }
             }
         }
         return rows
@@ -317,7 +314,8 @@ private struct FoldedChapter: View {
     }
 }
 
-/// A file's path, what happened to it, and its counts for this chapter.
+/// A file's path, what happened to it, and its counts for this chapter. A click shows its hunks
+/// or folds the file to this line, which has a check once every hunk in it is reviewed.
 private struct FileHeader: View {
     @Environment(AppModel.self) private var model
     let section: ReviewFileSection
@@ -326,20 +324,39 @@ private struct FileHeader: View {
     var body: some View {
         let file = section.file
         let folder = (file.path as NSString).deletingLastPathComponent
+        let open = model.review.openFiles.contains(section.id)
         HStack(spacing: 6) {
-            if let status = Self.status(file) {
-                Text(status).foregroundStyle(file.status == "D" ? Ink.deleted : file.isNew ? Ink.added : Ink.faint)
+            Button {
+                model.review.toggle(section)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(hovering ? Ink.secondary : Ink.faint)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    if let status = Self.status(file) {
+                        Text(status).foregroundStyle(file.status == "D" ? Ink.deleted : file.isNew ? Ink.added : Ink.faint)
+                    }
+                    HStack(spacing: 0) {
+                        if !folder.isEmpty { Text(folder + "/").foregroundStyle(Ink.faint) }
+                        Text((file.path as NSString).lastPathComponent).foregroundStyle(Ink.primary)
+                    }
+                    .font(Type.mono)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    Counts(added: section.units.reduce(0) { $0 + $1.added }, deleted: section.units.reduce(0) { $0 + $1.deleted }, quiet: true)
+                        .opacity(0.8)
+                    if section.units.allSatisfy(\.reviewed) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Ink.faint)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(.rect)
             }
-            HStack(spacing: 0) {
-                if !folder.isEmpty { Text(folder + "/").foregroundStyle(Ink.faint) }
-                Text((file.path as NSString).lastPathComponent).foregroundStyle(Ink.primary)
-            }
-            .font(Type.mono)
-            .lineLimit(1)
-            .truncationMode(.head)
-            Counts(added: section.units.reduce(0) { $0 + $1.added }, deleted: section.units.reduce(0) { $0 + $1.deleted }, quiet: true)
-                .opacity(0.8)
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .help(open ? "Fold this file" : "Unfold this file")
             if hovering, file.status != "D" {
                 Button("Open") { model.openFile(file.path) }
                     .buttonStyle(.plain)

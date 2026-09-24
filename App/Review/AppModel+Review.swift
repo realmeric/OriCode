@@ -74,6 +74,10 @@ final class ReviewState {
     var unfolded: Set<String> = []
     /// Hunks too long to draw whole until asked.
     var expanded: Set<String> = []
+    /// Files whose hunks show; a closed one is its header alone.
+    var openFiles: Set<String> = []
+    /// Whether the review has been seen in this folder, with its first file opened.
+    var placed = false
     var notes: [ReviewNote] = []
     /// The unit a note is being written on.
     var noting: String?
@@ -114,9 +118,61 @@ final class ReviewState {
         (unit.reviewed || unit.lockfile) && !unfolded.contains(unit.id)
     }
 
-    /// The hunks with a row on screen: none of a folded chapter's.
+    /// The hunks the keyboard can reach: none of a folded chapter's.
     var visibleUnits: [ReviewUnit] {
         book.chapters.filter { !folded($0) }.flatMap(\.units)
+    }
+
+    /// The hunk the keyboard is on, while its file is open.
+    var selectedUnit: ReviewUnit? {
+        guard let selected else { return nil }
+        return book.units.first { $0.id == selected && openFiles.contains($0.section) }
+    }
+
+    /// The first look at a folder's changes opens one file, the first with something to review,
+    /// and leaves the rest closed.
+    func placeFiles() {
+        guard !placed else { return }
+        let units = visibleUnits
+        guard let top = units.first(where: { !$0.reviewed }) ?? units.first else { return }
+        openFiles = [top.section]
+        placed = true
+    }
+
+    /// Puts the keyboard on a hunk and opens its file. Moving on from a hunk in another file
+    /// closes that one, so the keyboard reads one file at a time.
+    func select(_ unit: ReviewUnit?, leaving: ReviewUnit? = nil) {
+        selected = unit?.id
+        guard let unit else { return }
+        if let leaving, leaving.section != unit.section { openFiles.remove(leaving.section) }
+        openFiles.insert(unit.section)
+    }
+
+    /// ↑↓ and J K: the next hunk, never one in a folded chapter. A file closed under the
+    /// keyboard is passed over whole.
+    func move(_ step: Int) {
+        let units = visibleUnits
+        guard !units.isEmpty else { return }
+        guard let index = units.firstIndex(where: { $0.id == selected }) else {
+            select((step > 0 ? units.first { !$0.reviewed } : units.last { !$0.reviewed }) ?? units.first)
+            return
+        }
+        let here = units[index]
+        var next = index + step
+        while units.indices.contains(next), units[next].section == here.section, !openFiles.contains(here.section) {
+            next += step
+        }
+        guard units.indices.contains(next) else { return }
+        select(units[next], leaving: here)
+    }
+
+    /// A click on a file's header opens it, or closes it and lets go of a note being written in it.
+    func toggle(_ section: ReviewFileSection) {
+        if openFiles.remove(section.id) == nil {
+            openFiles.insert(section.id)
+        } else if section.units.contains(where: { $0.id == noting }) {
+            noting = nil
+        }
     }
 }
 
@@ -153,6 +209,8 @@ extension AppModel {
             review.selected = nil
             review.noting = nil
             review.lastTakeback = nil
+            review.openFiles = []
+            review.placed = false
         }
         review.wanted = true
         review.trigger?.cancel()
@@ -204,6 +262,7 @@ extension AppModel {
         review.problem = nil
         review.marks.prune(in: diff.root, head: diff.head, keeping: Set(diff.files.map(\.path)))
         applyMarks()
+        if reviewShown { review.placeFiles() }
         colour(review.book.units)
     }
 
@@ -215,12 +274,12 @@ extension AppModel {
         let before = review.visibleUnits.map(\.id)
         review.book = review.base.marked(with: review.marks.marks(in: root))
         let visible = review.visibleUnits
-        if let back = review.reselect.first(where: { id in visible.contains { $0.id == id } }) {
-            review.selected = back
+        if let back = review.reselect.lazy.compactMap({ id in visible.first { $0.id == id } }).first {
+            review.select(back)
             review.reselect = []
         } else if let selected = review.selected, !visible.contains(where: { $0.id == selected }) {
             let at = before.firstIndex(of: selected) ?? 0
-            review.selected = visible.isEmpty ? nil : visible[min(at, visible.count - 1)].id
+            review.select(visible.isEmpty ? nil : visible[min(at, visible.count - 1)])
         }
         if let noting = review.noting, !visible.contains(where: { $0.id == noting && !review.folded($0) }) {
             review.noting = nil
@@ -286,29 +345,22 @@ extension AppModel {
     }
 
     /// Space: marks the hunk the keyboard is on, or unmarks it, and moves on to the next one
-    /// still to review.
+    /// still to review, in its file. Only a hunk you can see: with none selected, the first one
+    /// to review in an open file, and none while the keyboard's is in a closed one.
     func toggleSelectedReviewed() {
         let units = review.visibleUnits
-        guard let index = units.firstIndex(where: { $0.id == review.selected }) ?? units.firstIndex(where: { !$0.reviewed }) else { return }
+        let shown = review.selected == nil
+            ? units.first { !$0.reviewed && review.openFiles.contains($0.section) }
+            : review.selectedUnit
+        guard let shown, let index = units.firstIndex(where: { $0.id == shown.id }) else { return }
         let unit = units[index]
         setReviewed([unit], !unit.reviewed)
         if !unit.reviewed {
             let next = units[(index + 1)...].first { !$0.reviewed } ?? units[..<index].first { !$0.reviewed }
-            review.selected = next?.id
+            review.select(next, leaving: unit)
         } else {
             review.selected = unit.id
         }
-    }
-
-    /// ↑↓ and J K: over the hunks that have a row, never into a folded chapter.
-    func moveReviewSelection(_ step: Int) {
-        let units = review.visibleUnits
-        guard !units.isEmpty else { return }
-        guard let index = units.firstIndex(where: { $0.id == review.selected }) else {
-            review.selected = (step > 0 ? units.first { !$0.reviewed } : units.last { !$0.reviewed })?.id ?? units.first?.id
-            return
-        }
-        review.selected = units[min(max(index + step, 0), units.count - 1)].id
     }
 
     // MARK: Taking back
@@ -338,7 +390,7 @@ extension AppModel {
             let visible = review.visibleUnits
             let at = visible.firstIndex { $0.id == selected } ?? 0
             let rest = visible.filter { !taken.contains($0.id) }
-            review.selected = rest.isEmpty ? nil : rest[min(at, rest.count - 1)].id
+            review.select(rest.isEmpty ? nil : rest[min(at, rest.count - 1)])
         }
         perform(step, undoManager: undoManager, redoing: false)
     }

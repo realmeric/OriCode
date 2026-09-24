@@ -288,5 +288,41 @@ struct ReviewTests {
         let lines = AttributedString("one\r\ntwo\r\nthree").lines()
         #expect(lines.map { String($0.characters) } == ["one\r", "two\r", "three"])
     }
+
+    @Test func theKeyboardReadsOneFileAtATime() {
+        let diff = WorkingDiff(root: Self.root, head: nil, files: [
+            file("a.swift", [hunk(["+let a = 1"])]),
+            file("b.swift", [hunk(["+let b = 1"]), hunk(["+let b = 2"], at: 30)]),
+            file("c.swift", [hunk(["+let c = 1"])]),
+        ])
+        let book = ReviewBook(diff: diff, provenance: Provenance())
+        let units = book.units
+        let (a, b, c) = (units[0].section, units[1].section, units[3].section)
+
+        // The first look opens the top file with something to review, and only that one.
+        let review = ReviewState()
+        review.book = book.marked(with: [:])
+        review.placeFiles()
+        #expect(review.openFiles == [a])
+        let reviewed = ReviewState()
+        reviewed.book = book.marked(with: [units[0].fingerprint: ReviewMark(path: "a.swift", lines: ["+let a = 1"], at: .now)])
+        reviewed.placeFiles()
+        #expect(reviewed.openFiles == [b])
+
+        // Going into a closed file opens it and closes the one left behind.
+        review.move(1)
+        #expect(review.selected == units[0].id)
+        review.move(1)
+        #expect(review.selected == units[1].id)
+        #expect(review.openFiles == [b])
+        #expect(review.selectedUnit?.id == units[1].id)
+
+        // A file closed under the keyboard is passed over whole, and its hunk can't be acted on.
+        review.toggle(book.chapters[0].files[1])
+        #expect(review.selectedUnit == nil)
+        review.move(1)
+        #expect(review.selected == units[3].id)
+        #expect(review.openFiles == [c])
+    }
 }
 
