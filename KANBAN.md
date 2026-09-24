@@ -118,6 +118,10 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
+#### K-133 · Tool calls fold into one row
+Meriç: the Claude Code app folds the tool calls between two pieces of Claude's text into one row, like "Ran 3 commands, read 2 files", that opens to the full list, while OriCode draws every call as its own line, so a turn that reads and runs twenty things shows twenty lines between two sentences. The calls between two pieces of Claude's text, and any thinking among them, fold into one row in the secondary ink that says what they did in Claude Code's words, in the order each kind first came: "Read 2 files, ran 3 commands, searched for 1 pattern". Edits fold in too, as they do in Claude Code, whose diffs live in its diff viewer the way OriCode's live in the review, and the row carries the lines they added and removed. It says how many calls failed, and shows the mini spinner while the turn is still in it. A click opens the full list under it, each call as today's line or diff card, and closes it again. A lone call keeps its own line, and an ask, answered or not, stays where it is and ends the run. The brief's Layout paragraph says so. Taken during the freeze at Meriç's word.
+Done when: a unit test covers where runs start and end and the row's words; renders of a run of reads, commands, a search and an edit show one row with its words and counts, and the calls under it when open; a lone call still shows its own line; make test passes. Needs Meriç's eye on a real thread.
+
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
