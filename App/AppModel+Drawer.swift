@@ -44,14 +44,25 @@ extension AppModel {
         let visible = chats
         guard visible.indices.contains(index) else { return }
         select(visible[index])
-        peekedChatID = visible[index].id
+        nudge(visible[index])
         showDrawer()
         scheduleHide(after: DrawerTiming.peek)
-        // A pinned drawer doesn't slide away, so the peek lets go of the row on its own.
+    }
+
+    /// A click on a drawer row: the thread opens and its row stands out the way ⌘1–9's does.
+    func pickByClick(_ chat: Chat) {
+        select(chat)
+        nudge(chat)
+    }
+
+    /// The picked row, lit and 6pt out, settles back once the peek's 700ms are up.
+    private func nudge(_ chat: Chat) {
+        let id = chat.id
+        peekedChatID = id
         peekTask?.cancel()
         peekTask = Task {
             try? await Task.sleep(for: DrawerTiming.peek)
-            guard !Task.isCancelled, drawerPinned else { return }
+            guard !Task.isCancelled, peekedChatID == id else { return }
             withAnimation(Motion.move) { peekedChatID = nil }
         }
     }

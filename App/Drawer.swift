@@ -203,7 +203,7 @@ struct Drawer: View {
         .contentShape(.rect)
         .offset(x: peeked ? 6 : 0)
         .animation(Motion.move, value: peeked)
-        .onTapGesture { model.select(chat) }
+        .onTapGesture { model.pickByClick(chat) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
         .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)
         .accessibilityAddTraits(.isButton)
