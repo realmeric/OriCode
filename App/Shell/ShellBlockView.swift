@@ -62,12 +62,14 @@ struct ShellBlockView: View {
         if let live, live.running {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.mini).tint(Ink.secondary)
+                Button("Open") { model.open(live) }
+                    .help("Its terminal, to type into")
                 Button("Stop") { live.stop() }
-                    .buttonStyle(.plain)
-                    .font(Type.secondary)
-                    .foregroundStyle(Ink.primary)
                     .help("Stop the command (⌃C)")
             }
+            .buttonStyle(.plain)
+            .font(Type.secondary)
+            .foregroundStyle(Ink.primary)
         } else if live == nil, run.endedAt == nil {
             Text("stopped when OriCode quit").font(Type.secondary).foregroundStyle(Ink.faint)
         } else if let code = live?.exitCode ?? run.exitCode, code != 0 {

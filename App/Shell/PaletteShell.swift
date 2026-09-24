@@ -1,11 +1,11 @@
 import Foundation
 
-/// ⌘K's way to the terminal, all of it through runInTerminal: show or hide it, run a command in
-/// it, and carry the thread's session over to the `claude` in it.
+/// ⌘K's way to the shell prompt: toggle it, run a line as a block, and carry the thread's session
+/// over to a `claude` in a block of its own.
 extension AppModel {
     private static let terminalRecentsKey = "terminalRecents"
 
-    /// The last ten commands run from ⌘K, newest first.
+    /// The last ten lines run from ⌘K, newest first.
     var terminalRecents: [String] {
         UserDefaults.standard.stringArray(forKey: Self.terminalRecentsKey) ?? []
     }
@@ -13,13 +13,13 @@ extension AppModel {
     var terminalCommands: [PaletteItem] {
         let noFolder: String? = workingFolder == nil ? "Add a project first" : nil
         return [
-            command("terminal", terminalShown ? "Hide terminal" : "Terminal", icon: "terminal", shortcut: "⌘J",
-                    keywords: ["shell", "zsh", "console", "command line"], unavailable: noFolder) { [weak self] in
-                self?.toggleTerminal()
+            command("terminal", shellPrompt ? "Leave the shell prompt" : "Shell prompt", icon: "terminal", shortcut: "⌘J",
+                    keywords: ["shell", "zsh", "console", "command line", "terminal", "!"], unavailable: noFolder) { [weak self] in
+                self?.toggleShellPrompt()
             },
-            PaletteItem(id: "terminal.run", kind: .command, title: "Run in terminal…", keywords: ["shell", "command", "zsh", "execute"],
+            PaletteItem(id: "terminal.run", kind: .command, title: "Run a command…", keywords: ["shell", "command", "zsh", "execute", "terminal"],
                         icon: "apple.terminal", unavailable: noFolder,
-                        action: .list(PaletteList(title: "Run", placeholder: "A command for the terminal", items: { [weak self] in
+                        action: .list(PaletteList(title: "Run", placeholder: "A command for the thread's folder", items: { [weak self] in
                             self?.terminalRecents.map { line in self?.runRow(line, id: "terminal.recent." + line) }.compactMap { $0 } ?? []
                         }, typed: { [weak self] line in
                             self?.runRow(line, title: "Run “\(line)”", id: "terminal.typed")
@@ -30,15 +30,15 @@ extension AppModel {
 
     private func runRow(_ line: String, title: String? = nil, id: String) -> PaletteItem {
         PaletteItem(id: id, kind: .choice, title: title ?? line, icon: "chevron.right", action: .run { [weak self] in
-            guard let self, runInTerminal(line) else { return }
+            guard let self, runInThread(line) else { return }
             var recents = terminalRecents.filter { $0 != line }
             recents.insert(line, at: 0)
             UserDefaults.standard.set(Array(recents.prefix(10)), forKey: Self.terminalRecentsKey)
         })
     }
 
-    /// The thread's session in the terminal's own `claude`. The app's CLI for the thread lets go
-    /// of it first, so two processes never write one session.
+    /// The thread's session in Claude Code's own terminal interface, in a block opened full. The
+    /// app's CLI for the thread lets go of it first, so two processes never write one session.
     private var continueInClaudeCode: PaletteItem {
         let unavailable: String? = {
             guard let chat else { return "No thread is open" }
@@ -46,7 +46,6 @@ extension AppModel {
             if conversation(for: chat).running { return "Wait for the turn to end" }
             // Closing the CLI would end its subagents and background commands with it.
             if conversation(for: chat).tasks > 0 { return "Wait for its tasks to finish" }
-            if terminals.existing(for: chat.cwd)?.busy == true { return "The terminal is busy" }
             return nil
         }()
         return command("terminal.claude", "Continue in Claude Code", icon: "arrow.up.forward.app",
@@ -54,11 +53,11 @@ extension AppModel {
                        unavailable: unavailable) { [weak self] in
             guard let self, let chat, let session = chat.sessionId else { return }
             let thread = chat.id
-            let folder = chat.cwd
             Task {
                 _ = try? await self.engine.request("close", ["threadId": .string(thread.uuidString)])
-                if self.runInTerminal("cd \(folder.shellQuoted) && claude --resume \(session.shellQuoted)", in: folder) {
-                    self.handedOff.insert(thread)
+                if let block = self.runCommand("claude --resume \(session.shellQuoted)") {
+                    self.open(block)
+                    self.handedOff[thread] = block.id
                 }
             }
         }

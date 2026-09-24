@@ -24,14 +24,14 @@ extension AppModel {
         guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return false }
         let conversation = conversation(for: chat)
         guard !conversation.running else { return false }
-        // Continue in Claude Code gave the session to the terminal's claude; a turn from here too
-        // would make two writers and fork it.
-        if handedOff.contains(chat.id) {
-            guard terminals.existing(for: chat.cwd)?.busy != true else {
-                say("This thread is open in Claude Code in the terminal. Quit it there to go on here.")
+        // Continue in Claude Code gave the session to a block's claude; a turn from here too would
+        // make two writers and fork it.
+        if let block = handedOff[chat.id] {
+            guard shellBlocks[block]?.running != true else {
+                say("This thread is open in Claude Code in one of its blocks. Quit it there to go on here.")
                 return false
             }
-            handedOff.remove(chat.id)
+            handedOff[chat.id] = nil
         }
         if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
         draftAttachments = []

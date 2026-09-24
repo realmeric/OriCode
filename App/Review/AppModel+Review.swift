@@ -209,7 +209,7 @@ extension AppModel {
 
     func openReview() {
         guard let folder = workingFolder else { return }
-        closeTerminal()
+        closeBlock()
         withAnimation(Motion.move) {
             openFile = nil
             openInIsland(.review)

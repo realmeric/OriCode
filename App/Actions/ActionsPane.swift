@@ -83,7 +83,7 @@ private struct ActionRow<Actions: View>: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 12)
-            Text([action.runs == .quietly ? "Quietly" : "In the terminal", action.asks ? "asks first" : nil, project].compactMap { $0 }.joined(separator: " · "))
+            Text([action.runs == .quietly ? "Quietly" : "In the thread", action.asks ? "asks first" : nil, project].compactMap { $0 }.joined(separator: " · "))
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 .lineLimit(1)
@@ -125,7 +125,7 @@ private struct ActionForm: View {
                         .foregroundStyle(Ink.secondary)
                 }
                 Picker("Runs", selection: $action.runs) {
-                    Text("In the terminal").tag(CustomAction.Runs.terminal)
+                    Text("In the thread").tag(CustomAction.Runs.terminal)
                     Text("Quietly, with its last line as a note").tag(CustomAction.Runs.quietly)
                 }
                 Toggle("Ask before running", isOn: $action.asks)

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Your own actions as ⌘K rows: typed into the terminal, or run quietly by the engine with their
+/// Your own actions as ⌘K rows: run as a block in the thread, or quietly by the engine with their
 /// last line as the note under the composer.
 extension AppModel {
     /// What the placeholders stand for in the open thread.
@@ -40,7 +40,7 @@ extension AppModel {
         }
         let line = ActionLine.expand(action.command, with: values)
         let run: PaletteAction = action.runs == .terminal
-            ? .run { [weak self] in _ = self?.runInTerminal(line) }
+            ? .run { [weak self] in _ = self?.runInThread(line) }
             : .task("Running \(action.name)…") { [weak self] in try await self?.run(action, line: line) }
         guard action.asks else { return run }
         return .list(PaletteList(title: action.name, placeholder: "Return runs it") {
@@ -50,7 +50,7 @@ extension AppModel {
 
     private func run(_ action: CustomAction, line: String) async throws -> String? {
         guard action.runs == .quietly else {
-            runInTerminal(line)
+            runInThread(line)
             return nil
         }
         guard let folder = workingFolder else { return nil }

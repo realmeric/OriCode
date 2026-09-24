@@ -4,7 +4,8 @@ import SwiftTerm
 /// One command from the composer's shell prompt, run in a terminal of its own in the thread's
 /// folder. The user's login shell runs it interactively, so their PATH and aliases hold, and it
 /// starts fresh each time: a `cd` in one command doesn't carry to the next. What it prints lands
-/// in the transcript as it comes, in the terminal's colours; nothing draws the terminal itself.
+/// in the transcript as it comes, in the terminal's colours. The terminal itself is drawn only
+/// while the block is open: a program that takes the whole screen opens it, and so can you.
 @MainActor
 @Observable
 final class ShellBlock {
@@ -25,11 +26,15 @@ final class ShellBlock {
     /// The last lines it printed, as the transcript draws them, and how many lines there are.
     private(set) var screen = AttributedString()
     private(set) var lineCount = 0
+    /// A program has the whole screen, as vim and less do.
+    private(set) var fullScreen = false
     /// Everything it printed, raw, for the store.
     @ObservationIgnored private(set) var output = Data()
-    /// Told when it ends.
+    /// Told when it ends, and when a program takes the whole screen or lets it go.
     @ObservationIgnored var onEnd: ((ShellBlock) -> Void)?
-    @ObservationIgnored let terminal: Terminal
+    @ObservationIgnored var onFullScreen: ((ShellBlock) -> Void)?
+    /// The terminal: fed all along, drawn only while the block is open.
+    @ObservationIgnored let view: BlockTerminalView
     @ObservationIgnored private let link: Link
     @ObservationIgnored private var process: LocalProcess?
     @ObservationIgnored private var redraw: Task<Void, Never>?
@@ -42,9 +47,16 @@ final class ShellBlock {
         self.command = command
         self.folder = folder
         link = Link()
-        terminal = Terminal(delegate: link, options: TerminalOptions(cols: Self.columns, rows: Self.rows, scrollback: Self.scrollback))
+        // A zero frame keeps the options' size until the block is opened.
+        view = BlockTerminalView(frame: .zero, font: TerminalPalette.font(size: 12.5),
+                                 options: TerminalOptions(cols: Self.columns, rows: Self.rows, scrollback: Self.scrollback))
+        TerminalPalette.dress(view)
+        view.terminalDelegate = link
         link.block = self
+        view.onBufferChange = { [weak self] in self?.bufferChanged() }
     }
+
+    var terminal: Terminal { view.getTerminal() }
 
     /// False when the shell couldn't start: no pty left, no fork.
     func start() -> Bool {
@@ -52,7 +64,7 @@ final class ShellBlock {
         var environment = TerminalEnvironment.make()
         // What a command prints goes into the thread, not through a pager nobody can page.
         environment += ["PAGER=cat", "GIT_PAGER=cat"]
-        TerminalSession.closeOnExec()
+        TerminalEnvironment.closeOnExec()
         process.startProcess(executable: TerminalEnvironment.shell, args: ["-l", "-i", "-c", command],
                              environment: environment, currentDirectory: folder)
         let master = process.childfd
@@ -78,6 +90,11 @@ final class ShellBlock {
         }
     }
 
+    /// Keys for the program, as if typed into its terminal.
+    func type(_ text: String) {
+        process?.send(data: Array(text.utf8)[...])
+    }
+
     /// Hangs it up, as closing a terminal window does: at quit, or when its thread goes.
     func end() {
         guard running, let shell = process?.shellPid, shell > 0 else { return }
@@ -90,7 +107,7 @@ final class ShellBlock {
     }
 
     fileprivate func received(_ bytes: ArraySlice<UInt8>) {
-        terminal.feed(buffer: bytes)
+        view.feed(byteArray: bytes)
         output.append(contentsOf: bytes)
         if output.count > Self.kept * 2 { output = output.suffix(Self.kept) }
         guard redraw == nil else { return }
@@ -108,6 +125,20 @@ final class ShellBlock {
         screen = ShellRender.attributed(lines.suffix(ShellRender.shown))
     }
 
+    private func bufferChanged() {
+        let now = terminal.isCurrentBufferAlternate
+        guard now != fullScreen else { return }
+        fullScreen = now
+        onFullScreen?(self)
+    }
+
+    /// The pty takes the terminal's size, and the program in it redraws for it.
+    fileprivate func resized(columns: Int, rows: Int) {
+        guard let process, process.childfd >= 0 else { return }
+        var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(columns), ws_xpixel: 0, ws_ypixel: 0)
+        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: process.childfd, windowSize: &size)
+    }
+
     fileprivate func ended(_ code: Int32?) {
         guard running else { return }
         redraw?.cancel()
@@ -121,7 +152,7 @@ final class ShellBlock {
 
     /// The pty and the terminal call back on the main queue.
     @MainActor
-    private final class Link: LocalProcessDelegate, TerminalDelegate {
+    private final class Link: LocalProcessDelegate, TerminalViewDelegate {
         weak var block: ShellBlock?
 
         // SwiftTerm hands over waitpid's status as it is: the code a shell would say is in its
@@ -136,12 +167,38 @@ final class ShellBlock {
         }
 
         nonisolated func getWindowSize() -> winsize {
-            winsize(ws_row: UInt16(ShellBlock.rows), ws_col: UInt16(ShellBlock.columns), ws_xpixel: 0, ws_ypixel: 0)
+            MainActor.assumeIsolated {
+                let terminal = block?.terminal
+                return winsize(ws_row: UInt16(terminal?.rows ?? ShellBlock.rows), ws_col: UInt16(terminal?.cols ?? ShellBlock.columns),
+                               ws_xpixel: 0, ws_ypixel: 0)
+            }
         }
 
-        // What the terminal answers a program's questions with goes back to it.
-        nonisolated func send(source: Terminal, data: ArraySlice<UInt8>) {
+        // Keys typed into the open terminal, and what it answers a program's questions with.
+        nonisolated func send(source: TerminalView, data: ArraySlice<UInt8>) {
             MainActor.assumeIsolated { block?.process?.send(data: data) }
         }
+
+        nonisolated func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+            MainActor.assumeIsolated { block?.resized(columns: newCols, rows: newRows) }
+        }
+
+        nonisolated func setTerminalTitle(source: TerminalView, title: String) {}
+        nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+        nonisolated func scrolled(source: TerminalView, position: Double) {}
+        nonisolated func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+    }
+}
+
+/// A block's terminal. The window moves by its background, and a view drawn on clear counts as
+/// background, so a drag to select text would move the window instead.
+final class BlockTerminalView: TerminalView {
+    var onBufferChange: (() -> Void)?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func bufferActivated(source: Terminal) {
+        super.bufferActivated(source: source)
+        onBufferChange?()
     }
 }

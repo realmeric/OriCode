@@ -44,7 +44,7 @@ enum ShortcutList {
         ]),
         Group(title: "App", rows: [
             Row(name: "Command center", keys: "⌘K"),
-            Row(name: "Terminal", keys: "⌘J"),
+            Row(name: "Shell prompt", keys: "⌘J"),
             Row(name: "Switch branch", keys: "⌘⇧B"),
             Row(name: "Next and previous thread", keys: "⌃Tab ⌃⇧Tab"),
             Row(name: "Find a file", keys: "⌘P"),

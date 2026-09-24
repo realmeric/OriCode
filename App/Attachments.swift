@@ -79,8 +79,8 @@ extension AppModel {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                   event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, project != nil,
-                  // A paste in the terminal is the terminal's.
-                  terminals.owner(of: event.window?.firstResponder) == nil
+                  // A paste in an open block is its program's.
+                  !(event.window?.firstResponder is BlockTerminalView)
             else { return event }
             let board = NSPasteboard.general
             guard board.string(forType: .string) == nil,

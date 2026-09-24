@@ -125,13 +125,12 @@ final class AppModel {
     var reviewShown = false
     let review = ReviewState()
     var commandCenterShown = false
-    /// ⌘J's terminal, and the shells behind it, one per folder.
-    var terminalShown = false
-    let terminals = TerminalStore()
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
-    /// Threads whose session Continue in Claude Code gave to the terminal's claude.
-    var handedOff: Set<UUID> = []
+    /// Threads whose session Continue in Claude Code gave to a block's claude, and that block.
+    var handedOff: [UUID: UUID] = [:]
+    /// The block drawn full over the conversation.
+    var openBlock: UUID?
     /// Whether the composer is a shell prompt for the thread's folder, after a `!` at its start.
     var shellPrompt = false
     /// The commands run from it in this launch, by their block's id, running or ended.

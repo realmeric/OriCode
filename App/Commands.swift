@@ -31,7 +31,7 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut("b")
             Button("Command Center…") { model.toggleCommandCenter() }
                 .keyboardShortcut("k")
-            Button(model.terminalShown ? "Hide Terminal" : "Terminal") { model.toggleTerminal() }
+            Button(model.shellPrompt ? "Leave Shell Prompt" : "Shell Prompt") { model.toggleShellPrompt() }
                 .keyboardShortcut("j")
                 .disabled(model.project == nil)
             Button("Find File…") { model.toggleFileFinder() }

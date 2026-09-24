@@ -192,7 +192,6 @@ extension AppModel {
     func delete(_ chat: Chat) {
         let deleted = chat.id
         let wasSelected = deleted == selectedChatID
-        if let folder = ownFolder(of: chat) { terminals.end(folder: folder) }
         endShells(of: chat)
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         context.delete(chat)

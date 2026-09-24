@@ -11,19 +11,19 @@ extension AppModel {
         }
         if openFile != nil {
             closeFile()
-            focusTerminal()
+            focusOpenBlock()
             return true
         }
         if fileFinderShown {
             toggleFileFinder()
-            focusTerminal()
+            focusOpenBlock()
             return true
         }
         if commandCenterShown {
             // Back one level, and at the top, away.
             if !palette.pop() {
                 closeCommandCenter()
-                focusTerminal()
+                focusOpenBlock()
             }
             return true
         }
@@ -35,15 +35,16 @@ extension AppModel {
             }
             return true
         }
-        // The drawer's rename field sits over the terminal.
+        // The drawer's rename field sits over an open block.
         if renamingChatID != nil {
             renamingChatID = nil
             return true
         }
-        if terminalShown {
-            // While a program holds the shell (vim, fzf, claude), Esc is that program's.
-            if terminals.owner(of: NSApp.mainWindow?.firstResponder)?.busy == true { return false }
-            closeTerminal()
+        if let block = openShell {
+            // While it runs, Esc is its program's, vim's or claude's; Close, ⌘J or a click on the
+            // transcript put it back.
+            if block.running { return false }
+            closeBlock()
             return true
         }
         if shellPrompt {

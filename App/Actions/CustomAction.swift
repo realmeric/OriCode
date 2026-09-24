@@ -1,6 +1,6 @@
 import Foundation
 
-/// One of your own rows in ⌘K: a command line with placeholders, typed into the terminal or run
+/// One of your own rows in ⌘K: a command line with placeholders, run as a block in the thread or
 /// quietly by the engine.
 struct CustomAction: Codable, Identifiable, Equatable, Sendable {
     enum Runs: String, Codable, CaseIterable, Sendable {

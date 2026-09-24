@@ -84,13 +84,13 @@ struct Composer: View {
             if over { Haptics.detent() }
         }
         .onAppear { focused = true }
-        // Not while the terminal is up, which has the keyboard until it goes.
+        // Not while a block is open, which has the keyboard until it goes.
         .onChange(of: model.composerFocus) {
-            if !model.terminalShown { focused = true }
+            if model.openBlock == nil { focused = true }
         }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
-            if !model.terminalShown { focused = waiting == nil }
+            if model.openBlock == nil { focused = waiting == nil }
         }
     }
 

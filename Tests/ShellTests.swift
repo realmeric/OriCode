@@ -64,6 +64,38 @@ struct ShellTests {
         #expect(block.exitCode == 130)
     }
 
+    @Test func aProgramTakingTheWholeScreenSaysSoAndLetsGo() async throws {
+        let block = ShellBlock(id: UUID(), chatID: UUID(), command: "printf '\\033[?1049hfull'; sleep 0.4; printf '\\033[?1049lback'", folder: NSTemporaryDirectory())
+        var changes: [Bool] = []
+        block.onFullScreen = { changes.append($0.fullScreen) }
+        #expect(block.start())
+        for _ in 0..<60 where block.running { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(changes == [true, false])
+        #expect(block.text.hasSuffix("back"))
+    }
+
+    @Test func commandJTogglesThePromptAndPutsAnOpenBlockBack() async throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let project = Project(name: "alpha", path: NSTemporaryDirectory())
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        let chat = Chat(project: project)
+        container.mainContext.insert(chat)
+        try container.mainContext.save()
+        model.selectedProjectID = project.id
+        model.selectedChatID = chat.id
+        model.toggleShellPrompt()
+        #expect(model.shellPrompt)
+        let block = try #require(model.runCommand("sleep 5"))
+        model.open(block)
+        #expect(model.openShell === block)
+        model.toggleShellPrompt()
+        #expect(model.openShell == nil)
+        #expect(model.shellPrompt)
+        block.stop()
+    }
+
     @Test func blocksGoToClaudeOnceWithTheNextMessage() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "shell-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -6,26 +6,35 @@ import SwiftUI
 /// one, the way Claude Code's own `!` does.
 extension AppModel {
     /// Runs a line from the shell prompt in the open thread, starting one if there's none.
-    func runCommand(_ line: String) {
+    @discardableResult
+    func runCommand(_ line: String) -> ShellBlock? {
         let command = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty, let chat = chat ?? newChat() else { return }
+        guard !command.isEmpty, let chat = chat ?? newChat() else { return nil }
         guard FileManager.default.fileExists(atPath: chat.cwd) else {
             say("This thread's folder isn't there any more.")
-            return
+            return nil
         }
         let conversation = conversation(for: chat)
         // Known before its block goes into the thread, whose view looks it up as it first draws.
         let block = ShellBlock(id: UUID(), chatID: chat.id, command: command, folder: chat.cwd)
         block.onEnd = { [weak self] block in self?.shellEnded(block) }
+        // A program taking the whole screen opens its block over the thread, and letting it go
+        // puts the block back.
+        block.onFullScreen = { [weak self] block in
+            guard let self else { return }
+            if block.fullScreen { open(block) } else if openBlock == block.id { closeBlock() }
+        }
         shellBlocks[block.id] = block
         withAnimation(Motion.fade) { conversation.shellStarted(ShellRun(command: command, folder: chat.cwd), id: block.id) }
         holdForShells()
         if !block.start() { say("The shell couldn't start.") }
+        return block
     }
 
     private func shellEnded(_ block: ShellBlock) {
         holdForShells()
         store(block)
+        if openBlock == block.id { closeBlock() }
     }
 
     /// Writes a command's block into its thread as it stands.
@@ -64,6 +73,17 @@ extension AppModel {
             store(block)
             block.end()
         }
+    }
+
+    /// A sentence for a dialog about something that ends these threads' commands: "This also stops
+    /// npm and make."
+    func shellsStopping(in chats: [Chat]) -> String? {
+        let threads = Set(chats.map(\.id))
+        let running = shellBlocks.values.filter { $0.running && threads.contains($0.chatID) }.sorted { $0.startedAt < $1.startedAt }
+            .map { $0.command.split(separator: " ").first.map(String.init) ?? $0.command }
+        guard !running.isEmpty else { return nil }
+        let list = running.count == 1 ? running[0] : running.dropLast().joined(separator: ", ") + " and " + running[running.count - 1]
+        return "This also stops \(list)."
     }
 
     /// Hangs up the commands a thread has running, when it's deleted.

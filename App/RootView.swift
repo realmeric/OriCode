@@ -74,7 +74,7 @@ struct RootView: View {
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.openFile != nil { model.closeFile() }
                     if model.reviewShown { model.closeReview() }
-                    if model.terminalShown { model.closeTerminal() }
+                    if model.openBlock != nil { model.closeBlock() }
                 })
             }
         }
@@ -82,7 +82,7 @@ struct RootView: View {
         // The picker rises out of the composer into the terminal's place, and can't draw over it.
         .onChange(of: model.modelPickerShown) { _, shown in
             if shown {
-                model.closeTerminal()
+                model.closeBlock()
                 if model.reviewShown { model.closeReview() }
             }
         }
@@ -108,7 +108,7 @@ struct RootView: View {
             Button("Cancel", role: .cancel) {}
         } message: { chat in
             if let branch = chat.worktreeBranch, let loss = model.deletingLoss {
-                let stopping = model.ownFolder(of: chat).flatMap { model.terminals.stopping(in: [$0]) }
+                let stopping = model.shellsStopping(in: [chat])
                 Text([loss.isEmpty ? "Everything on \(branch) is on another branch or remote, so its worktree can go too." : loss.sentence, stopping]
                     .compactMap { $0 }.joined(separator: " "))
             } else {
@@ -131,7 +131,7 @@ struct RootView: View {
             case 1: "Its thread goes with it."
             default: "Its \(threads) threads go with it."
             }
-            let stopping = model.terminals.stopping(in: [project.path] + project.chats.map(\.cwd))
+            let stopping = model.shellsStopping(in: project.chats)
             Text("\(goes) The folder stays\(worktrees ? ", and so do its worktrees" : "").\(stopping.map { " " + $0 } ?? "")")
         }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
@@ -151,11 +151,12 @@ struct RootView: View {
                 .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
-            if model.terminalShown {
-                // Over the conversation's side of the window, down to 12pt above the composer
-                // however tall it has grown, and under the other panels, which can open over it.
+            if let block = model.openShell {
+                // A block drawn full, over the conversation's side of the window down to 12pt above
+                // the composer however tall it has grown, rising out of the thread where its block
+                // is; under the other panels, which can open over it.
                 GeometryReader { area in
-                    TerminalOverlay()
+                    BlockPanel(block: block)
                         .frame(maxWidth: 900)
                         .frame(height: max(60, model.composerTop - area.frame(in: .global).minY - 24))
                         .padding(.top, 12)
@@ -163,12 +164,12 @@ struct RootView: View {
                 }
                 .padding(.horizontal, 40)
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.scale(scale: 0.96, anchor: .bottom).combined(with: .opacity))
             }
         }
         .overlay(alignment: .top) {
-            // In the toolbar's row, level with the traffic lights AppKit centres in it, and over
-            // the terminal, which ⌘K and ⌘P open over.
+            // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
+            // open block, which ⌘K and ⌘P open over.
             Island()
                 // Clear of the lights and the sidebar button on the left, and of the review's
                 // button and its counts on the right; beside a pinned drawer, the column's margin

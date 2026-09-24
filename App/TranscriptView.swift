@@ -84,8 +84,8 @@ struct TranscriptView: View {
         switch entry {
         case .item(let item):
             ItemView(
-                // Not while the terminal is up: Return typed there mustn't answer the card.
-                item: item, cwd: cwd, listening: model.terminalShown ? nil : conversation.waitingAsk?.requestId,
+                // Not while a block is open: Return typed there mustn't answer the card.
+                item: item, cwd: cwd, listening: model.openBlock != nil ? nil : conversation.waitingAsk?.requestId,
                 live: conversation.running && item.id == conversation.items.last?.id,
                 resumes: conversation.resumeAt != nil && item.id == conversation.lastLimit)
         case .run(let items):
