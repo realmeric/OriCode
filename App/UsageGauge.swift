@@ -1,42 +1,34 @@
 import SwiftUI
 
-/// Left of send: how much of the plan's session window is gone, in kullanym-notch's bands,
-/// with a thin white arc turning inside while the thread works. Hovering opens the card.
-struct UsageCircle: View {
+/// Left of send: how much of the plan's session window is gone, white while there's room and in
+/// kullanym-notch's amber and red as a limit nears. Hovering opens the card.
+struct UsageGauge: View {
     @Environment(AppModel.self) private var model
-    let running: Bool
+    @AppStorage(UsageLook.key) private var look = UsageLook.words
     let chat: Chat?
 
     @State private var shown = false
-    @State private var overCircle = false
+    @State private var overGauge = false
     @State private var overCard = false
     @State private var pending: Task<Void, Never>?
 
-    private let diameter: CGFloat = 22
-    private let stroke: CGFloat = 2.5
-
     var body: some View {
         let used = model.usage?.headline?.used
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.12), lineWidth: stroke)
-            if let used {
-                Circle()
-                    .trim(from: 0, to: min(max(used, 0), 1))
-                    .stroke(Band.of(used).color, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(Motion.reading, value: used)
-            }
-            if running {
-                WorkingArc()
-                    .frame(width: diameter - stroke * 2 - 5, height: diameter - stroke * 2 - 5)
+        Group {
+            switch look {
+            case .words: UsageWords(used: used)
+            case .glass: UsageGlass(used: used)
+            case .meter: UsageMeter(used: used)
             }
         }
-        .frame(width: diameter, height: diameter)
+        .animation(Motion.reading, value: used)
         .opacity(model.usageStale ? 0.45 : 1)
-        .padding(5)
+        .frame(height: 30)
+        // Lit while its card is out, as the model button is while its picker is.
+        .background(shown ? Surface.hover : .clear, in: .capsule)
         .contentShape(.rect)
         .onHover { inside in
-            overCircle = inside
+            overGauge = inside
             if inside { model.refreshUsage() }
             settle()
         }
@@ -52,64 +44,87 @@ struct UsageCircle: View {
     }
 
     /// Opens a quarter second after the mouse arrives, so passing over it doesn't flash a
-    /// card; closes a moment after it has left both the circle and the card.
+    /// card; closes a moment after it has left both the gauge and the card.
     private func settle() {
         pending?.cancel()
-        let wanted = overCircle || overCard
+        let wanted = overGauge || overCard
         guard wanted != shown else { return }
         pending = Task {
             try? await Task.sleep(for: .milliseconds(wanted ? 250 : 300))
-            guard !Task.isCancelled, (overCircle || overCard) == wanted else { return }
+            guard !Task.isCancelled, (overGauge || overCard) == wanted else { return }
             shown = wanted
         }
     }
 }
 
-/// kullanym-notch's activity arc: a quarter of a circle turning once every 1.1 seconds. Core
-/// Animation turns it in the render server, so it costs the app nothing per frame; drawn from a
-/// TimelineView it made SwiftUI lay the whole window out again on every frame, about a tenth of
-/// a core for as long as a turn ran.
-private struct WorkingArc: NSViewRepresentable {
-    func makeNSView(context: Context) -> ArcView { ArcView() }
+/// How the composer shows plan usage, three ways until Meriç keeps one: the percentage in words,
+/// a glass that fills, or the card's bar in small. Thread › Usage Look.
+enum UsageLook: String, CaseIterable, Identifiable {
+    case words, glass, meter
 
-    func updateNSView(_ view: ArcView, context: Context) {}
+    static let key = "usageLook"
 
-    final class ArcView: NSView {
-        private let arc = CAShapeLayer()
+    var id: String { rawValue }
 
-        override init(frame: NSRect) {
-            super.init(frame: frame)
-            wantsLayer = true
-            arc.fillColor = nil
-            arc.strokeColor = NSColor.white.withAlphaComponent(0.92).cgColor
-            arc.lineWidth = 1.6
-            arc.lineCap = .round
-            layer?.addSublayer(arc)
-            let turn = CABasicAnimation(keyPath: "transform.rotation.z")
-            turn.fromValue = 0
-            // Clockwise: a layer's y axis points up, so that's the negative direction.
-            turn.toValue = -2 * Double.pi
-            turn.duration = 1.1
-            turn.repeatCount = .infinity
-            turn.isRemovedOnCompletion = false
-            arc.add(turn, forKey: "turn")
+    var title: String {
+        switch self {
+        case .words: "A · Words"
+        case .glass: "B · Glass"
+        case .meter: "C · Meter"
         }
+    }
+}
 
-        required init?(coder: NSCoder) { nil }
+/// The session's share in the composer's type, faint the way a Default level is until a limit
+/// is near. With no reading yet it takes no room.
+private struct UsageWords: View {
+    let used: Double?
 
-        override func layout() {
-            super.layout()
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            arc.frame = bounds
-            // From twelve o'clock to three, a quarter of the circle.
-            let radius = min(bounds.width, bounds.height) / 2 - arc.lineWidth / 2
-            let path = CGMutablePath()
-            path.addArc(center: CGPoint(x: bounds.midX, y: bounds.midY), radius: radius,
-                        startAngle: .pi / 2, endAngle: 0, clockwise: true)
-            arc.path = path
-            CATransaction.commit()
+    var body: some View {
+        if let used {
+            Text("\(Int((used * 100).rounded()))%")
+                .font(Type.secondary.monospacedDigit())
+                .foregroundStyle(Band.of(used) == .ample ? Ink.faint : Band.of(used).color)
+                .contentTransition(.numericText(value: used))
+                .padding(.horizontal, 8)
         }
+    }
+}
+
+/// A disc of the send button's tint that fills from the bottom as the session goes, inside a rim
+/// of that tint, so even a full one reads as a glass rather than a dot.
+private struct UsageGlass: View {
+    let used: Double?
+    private let side: CGFloat = 18
+    private let rim: CGFloat = 2
+
+    var body: some View {
+        let inner = side - rim * 2
+        ZStack {
+            Circle().fill(Surface.selected)
+            if let used {
+                let level = min(max(used, 0), 1)
+                Rectangle()
+                    .fill(Band.of(used).color)
+                    // A sliver at least, so a live 1% is visible.
+                    .frame(height: level > 0 ? max(1.5, inner * level) : 0)
+                    .frame(width: inner, height: inner, alignment: .bottom)
+                    .clipShape(.circle)
+            }
+        }
+        .frame(width: side, height: side)
+        .padding(6)
+    }
+}
+
+/// The card's session bar in small.
+private struct UsageMeter: View {
+    let used: Double?
+
+    var body: some View {
+        Bar(fraction: used ?? 0, color: used.map { Band.of($0).color } ?? .clear)
+            .frame(width: 24)
+            .padding(.horizontal, 8)
     }
 }
 

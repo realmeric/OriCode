@@ -169,7 +169,7 @@ private struct MarkPage: View {
     }
 
     /// What the level does, or what a hovered stop would do; the cost of Max and Ultracode in the
-    /// colour the usage circle has for the session.
+    /// session's usage band.
     private func line(_ state: PickerState, level: String?, stops: [String]) -> some View {
         let previewed = held == nil ? hovered : nil
         let words: (String, String?)

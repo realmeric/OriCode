@@ -38,7 +38,7 @@ enum Motion {
     /// kullanym-notch's glide, for things that travel a long way: the composer leaving the
     /// middle of the window, the usage card.
     static let glide = Animation.spring(response: 0.5, dampingFraction: 0.86)
-    /// kullanym-notch's reading spring: a ring that snaps to a new value reads as a glitch.
+    /// kullanym-notch's reading spring: a gauge that snaps to a new value reads as a glitch.
     static let reading = Animation.spring(response: 0.9, dampingFraction: 0.9)
 }
 

@@ -182,7 +182,7 @@ struct Composer: View {
             HStack(spacing: 4) {
                 attachButton
                 ModelMenu(chat: model.chat)
-                UsageCircle(running: running, chat: model.chat)
+                UsageGauge(chat: model.chat)
             }
             .frame(height: 36)
             sendButton

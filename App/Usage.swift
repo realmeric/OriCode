@@ -38,7 +38,8 @@ struct PlanUsage: Sendable {
     }
 }
 
-/// kullanym-notch's bands: how close a window is to its ceiling, as a colour.
+/// kullanym-notch's bands: how close a window is to its ceiling. Only a near one takes a colour;
+/// with room left it's the app's white, since there's nothing to tell.
 enum Band {
     case ample, watch, critical
 
@@ -52,7 +53,7 @@ enum Band {
 
     var color: Color {
         switch self {
-        case .ample: Color(red: 0x34 / 255, green: 0xD3 / 255, blue: 0x99 / 255)
+        case .ample: Ink.secondary
         case .watch: Color(red: 0xFA / 255, green: 0xCC / 255, blue: 0x15 / 255)
         case .critical: Color(red: 0xFB / 255, green: 0x5A / 255, blue: 0x2C / 255)
         }
