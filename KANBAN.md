@@ -894,7 +894,7 @@ Commit: 1942a8b
 Meriç picked B, Glass, from K-131's three. It becomes the composer's usage for good: an 18pt disc of the send button's tint whose level rises from the bottom inside a 2pt rim of that tint, white until the session is half used and then amber and red. Words, Meter, UsageLook and Thread › Usage Look go, and the brief's Layout and Motion lines name the glass. Taken during the freeze at Meriç's word; it takes code out of the candidate rather than adding any.
 Done when: Thread › Usage Look is gone and nothing in the code switches looks, renders of the glass at 15%, 58% and 86% match K-131's B, OriCode Molten launches, and make test passes.
 Notes: UsageGauge became UsageGlass, one view that draws the glass, keeps the card with its quarter-second hover and the stale dimming, and takes the hover fill, now a circle, while its card is out. The level is drawn even with no reading, at zero, so the first reading rises into the glass instead of fading in. UsageLook, UsageWords, UsageMeter and Thread › Usage Look went, and the usageLook key Meriç's picks wrote into OriCode Molten's defaults is left unread. Checked: the real UsageGlass, rendered offscreen through K-131's harness, drew the same glass as K-131's B at 4%, 15%, 58% and 86%, stale, and empty with no reading; OriCode Molten built with no warning in the files touched and launched. make test passes, 68 engine tests and 48 Swift tests.
-Commit: pending
+Commit: 8c85207
 
 
 ## Exceptions
