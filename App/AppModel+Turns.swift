@@ -36,14 +36,23 @@ extension AppModel {
         if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
         draftAttachments = []
         conversation.userSent(trimmed, previews: images.compactMap(\.preview))
+        startTurn(in: chat, text: trimmed, images: images)
+        return true
+    }
+
+    /// Hands a message the transcript already shows, or one it needn't, to the thread's session
+    /// with the thread's model, level, mode and speed.
+    func startTurn(in chat: Chat, text: String, images: [ImageAttachment] = [], allowing grant: PendingAsk? = nil) {
+        let conversation = conversation(for: chat)
         holdWhileWorking()
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
-            "text": .string(trimmed),
+            "text": .string(text),
             "permissionMode": .string(chat.permissionMode),
             "costSoFar": .number(chat.costUSD),
         ]
+        if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = chat.model { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it: an Ultracode left on after
@@ -63,15 +72,18 @@ extension AppModel {
                 holdWhileWorking()
             }
         }
-        return true
     }
 
     func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil) {
         guard let chat else { return }
+        if conversation(for: chat).askedBeforeQuit.contains(ask.requestId) {
+            answerAfterQuit(ask, in: chat, allow: allow, answers: answers, message: message)
+            return
+        }
         var params: [String: JSON] = ["requestId": .string(ask.requestId), "allow": .bool(allow)]
         if let answers { params["answers"] = .object(answers.mapValues(JSON.string)) }
         if !allow {
-            params["message"] = .string(message ?? "The user denied this. Tell them you stopped, and wait for what they want instead.")
+            params["message"] = .string(message ?? Self.deniedMessage)
         }
         // The card folds into its one line and what's under it closes up, rather than jumping.
         withAnimation(Motion.move) { conversation(for: chat).answered(ask.requestId, allow: allow) }
@@ -86,6 +98,13 @@ extension AppModel {
 
     func stop() {
         guard let chat else { return }
+        let conversation = conversation(for: chat)
+        if conversation.waitingAfterQuit {
+            withAnimation(Motion.move) { conversation.stopAfterQuit() }
+            holdWhileWorking()
+            notifier.badge(conversations.values.count { $0.waitingAsk != nil })
+            return
+        }
         Task { _ = try? await engine.request("interrupt", ["threadId": .string(chat.id.uuidString)]) }
     }
 
@@ -160,7 +179,8 @@ extension AppModel {
     }
 
     func engineStopped() {
-        for conversation in conversations.values where conversation.running {
+        // A thread waiting on you from before a quit has no CLI to lose.
+        for conversation in conversations.values where conversation.running && !conversation.waitingAfterQuit {
             conversation.stopped()
             conversation.note("The engine stopped in the middle of this turn.")
         }

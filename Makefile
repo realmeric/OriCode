@@ -16,6 +16,10 @@ ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock
 
 .PHONY: run engine test app release project icon
 
+# A SIGTERM quits OriCode the way ⌘Q does, marking the threads still working, which takes a
+# moment; `open` before it has gone would only bring the quitting app forward. Five seconds at most.
+gone = for i in $$(seq 50); do pgrep -x "$(1)" >/dev/null || break; sleep 0.1; done
+
 # XcodeGen lists source files explicitly, so regenerate on every build. SwiftTerm runs a package
 # plugin, which a command-line build refuses unless validation is skipped.
 project:
@@ -23,7 +27,7 @@ project:
 
 run: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
-	-pkill -x "OriCode Molten"; sleep 0.3
+	-pkill -x "OriCode Molten"; $(call gone,OriCode Molten)
 	open "$(DEBUG_APP)"
 
 engine: $(BUILD)/engine/.stamp
@@ -50,7 +54,7 @@ test: project engine
 app: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
 	codesign --force --deep --sign $(SIGN) $(RELEASE_APP)
-	-pkill -x OriCode; sleep 0.3
+	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
 

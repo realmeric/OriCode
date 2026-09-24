@@ -35,6 +35,8 @@ struct PendingAsk: Hashable {
     let input: JSON
     let options: JSON?
     var state: State = .waiting
+    /// The call it holds, whose line waits with it.
+    var toolUseId: String?
 }
 
 struct TurnFooter: Hashable {
@@ -88,6 +90,9 @@ final class Conversation {
     /// settings alone can't know.
     private(set) var defaultReading: (model: String?, level: String?)?
     private(set) var turn = 0
+    /// Asks that were waiting on you when OriCode quit, by request id. They stay up, and the turn
+    /// with them; the CLI that asked is gone, so an answer resumes the session instead.
+    private(set) var askedBeforeQuit: Set<String> = []
     private let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -104,14 +109,33 @@ final class Conversation {
             apply(event.kind, body, id: event.id)
         }
         open = nil
-        // Asks and tool calls from an earlier launch will never finish; the engine that ran them is gone.
+        // Asks and tool calls from an earlier launch will never finish; the engine that ran them is
+        // gone. A quit in the middle of the last turn is the exception: what it was waiting on you
+        // for is still up, with the call it holds.
+        let lastSent = items.lastIndex { if case .user = $0 { true } else { false } } ?? -1
         for index in items.indices {
-            if case .ask(let id, var ask) = items[index], ask.state == .waiting {
+            guard case .ask(let id, var ask) = items[index], ask.state == .waiting else { continue }
+            if chat.quitMidTurn, index > lastSent {
+                askedBeforeQuit.insert(ask.requestId)
+            } else {
                 ask.state = .cancelled
                 items[index] = .ask(id: id, ask: ask)
             }
         }
-        finishOpenTools()
+        running = waitingAfterQuit
+        finishOpenTools(except: waitingCalls)
+    }
+
+    /// Whether the thread is waiting on you from before a quit, with no CLI behind it.
+    var waitingAfterQuit: Bool {
+        !askedBeforeQuit.isEmpty
+    }
+
+    /// The calls the asks from before a quit hold.
+    private var waitingCalls: Set<String> {
+        Set(items.compactMap { item in
+            if case .ask(_, let ask) = item, askedBeforeQuit.contains(ask.requestId) { ask.toolUseId } else { nil }
+        })
     }
 
     /// Heads at work: the main loop while a turn runs, and each subagent it sent out
@@ -132,6 +156,7 @@ final class Conversation {
         turn += 1
         running = true
         chat.started = true
+        chat.quitMidTurn = false
         if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {
             chat.title = Chat.title(from: text)
         }
@@ -209,6 +234,43 @@ final class Conversation {
         record("answer", ["event": "answer", "requestId": .string(requestId), "allow": .bool(allow)])
     }
 
+    /// OriCode is quitting while the thread works, which isn't a stop: the thread is marked for the
+    /// next launch, and what has streamed so far is written down. Working is what the mark shows,
+    /// a turn running or a subagent or background command out, since the CLI that ran them goes too.
+    func quitting() {
+        guard running || tasks > 0 else { return }
+        chat.quitMidTurn = true
+        unsaved = true
+        flush()
+    }
+
+    /// One of the asks from before a quit has its answer, which goes to the session in a message
+    /// of its own. Any other still up is over, since Claude asks again for what it still needs,
+    /// and so are the calls they held: Claude makes them again.
+    func answeredAfterQuit(_ requestId: String, allow: Bool) {
+        answered(requestId, allow: allow)
+        settleAfterQuit(except: requestId)
+    }
+
+    /// Stop on a thread waiting from before a quit. Nothing runs to interrupt, so the turn ends
+    /// here, the way a stopped one does.
+    func stopAfterQuit() {
+        guard waitingAfterQuit else { return }
+        settleAfterQuit(except: nil)
+        record("turn.done", ["event": "turn.done", "stopReason": "interrupted"])
+        running = false
+    }
+
+    private func settleAfterQuit(except answered: String?) {
+        for requestId in askedBeforeQuit.sorted() where requestId != answered {
+            record("ask.cancelled", ["event": "ask.cancelled", "requestId": .string(requestId)])
+        }
+        askedBeforeQuit = []
+        chat.quitMidTurn = false
+        finishOpenTools()
+        flush()
+    }
+
     /// Streaming deltas only touch objects in memory; the store is written here.
     func flush() {
         guard unsaved || context.hasChanges else { return }
@@ -229,9 +291,9 @@ final class Conversation {
     /// Tools that never got their result, because the turn was stopped or the engine went away,
     /// didn't happen: marked failed, so an edit shows as the failed line a denied one gets rather
     /// than a card with its change counted, and stays out of the turn's files.
-    private func finishOpenTools() {
+    private func finishOpenTools(except waiting: Set<String> = []) {
         for index in items.indices {
-            if case .tool(let id, var call) = items[index], call.result == nil {
+            if case .tool(let id, var call) = items[index], call.result == nil, !waiting.contains(call.toolUseId) {
                 call.result = ""
                 call.isError = true
                 items[index] = .tool(id: id, call: call)
@@ -284,7 +346,8 @@ final class Conversation {
                 kind: body["kind"]?.string ?? "permission",
                 tool: body["tool"]?.string ?? "",
                 input: body["input"] ?? .null,
-                options: body["options"])
+                options: body["options"],
+                toolUseId: body["toolUseId"]?.string)
             items.append(.ask(id: id, ask: ask))
         case "answer", "ask.cancelled":
             let requestId = body["requestId"]?.string

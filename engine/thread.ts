@@ -34,7 +34,12 @@ export type SendParams = {
   /// What the thread's turns have cost so far. A resumed CLI reports the session's saved
   /// running total in its first result, so this is the baseline a turn's cost is taken from.
   costSoFar?: number;
+  /// A call the user allowed after a quit had ended the CLI that asked about it. Claude makes it
+  /// again once resumed, and the first ask for the same call in the turn is allowed unasked.
+  grant?: Grant;
 };
+
+export type Grant = { tool: string; input: Record<string, unknown> };
 
 type Ask = {
   threadId: string;
@@ -134,6 +139,11 @@ export class Thread {
   private asked: string | null = null;
   /// When the last turn ended, for letting an idle CLI go.
   private idleSince: number | undefined;
+  /// The call the user already allowed, until the turn asks about it or ends.
+  private grant: Grant | undefined;
+  /// A resumed session said a command from its last CLI never finished, which the CLI answers
+  /// with a result of its own before it takes up the message sent.
+  private orphaned = false;
 
   constructor(id: string, claude: string) {
     this.id = id;
@@ -168,6 +178,7 @@ export class Thread {
     this.started = false;
     this.interrupted = false;
     this.errored = false;
+    this.grant = params.grant;
     this.push(params);
   }
 
@@ -318,6 +329,7 @@ export class Thread {
         if (!message.ambient) this.tasks.set(message.task_id, { description: message.description, background: message.is_backgrounded ?? false });
         break;
       case "task_notification":
+        if (this.resuming && !this.tasks.has(message.task_id)) this.orphaned = true;
         this.tasks.delete(message.task_id);
         break;
       case "task_updated":
@@ -363,6 +375,11 @@ export class Thread {
   }
 
   private ask(tool: string, input: Record<string, unknown>, toolUseId: string, signal: AbortSignal): Promise<PermissionResult> {
+    if (this.grant && sameCall(this.grant, tool, input)) {
+      this.grant = undefined;
+      log(`thread=${this.id} ${tool} allowed before the quit`);
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
+    }
     const requestId = randomUUID();
     const kind = tool === "AskUserQuestion" ? "question" : "permission";
     return new Promise((resolve) => {
@@ -480,12 +497,19 @@ export class Thread {
         return;
       }
       case "result": {
+        // Nothing asked the model for that one; the turn sent is still to come.
+        if (this.orphaned && message.num_turns === 0) {
+          this.orphaned = false;
+          return;
+        }
+        this.orphaned = false;
         if (this.resuming && message.subtype !== "success" && message.errors.some((error) => error.startsWith("No conversation found"))) {
           this.startFresh(this.resuming);
           return;
         }
         this.resuming = undefined;
         this.running = false;
+        this.grant = undefined;
         this.idleSince = Date.now();
         this.streamed.clear();
         this.tellFast(message);
@@ -527,6 +551,22 @@ export function changedEffort(told: Effort | undefined, now: Applied): Effort | 
   const ultracode = now.ultracode === true;
   if (told && told.level === level && told.ultracode === ultracode) return undefined;
   return { level, ultracode };
+}
+
+/// Whether a call is the one the user allowed. Claude words a command's description afresh when
+/// it makes the call again, so that's left out; everything else must match.
+export function sameCall(grant: Grant, tool: string, input: Record<string, unknown>): boolean {
+  if (grant.tool !== tool) return false;
+  const essence = (call: Record<string, unknown>) => JSON.stringify(sorted({ ...call, description: undefined }));
+  return essence(grant.input) === essence(input);
+}
+
+/// The value with every object's keys in order, so two calls compare by what they say.
+function sorted(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sorted);
+  if (!value || typeof value !== "object") return value;
+  const object = value as Record<string, unknown>;
+  return Object.fromEntries(Object.keys(object).sort().map((key) => [key, sorted(object[key])]));
 }
 
 function content(params: SendParams): SDKUserMessage["message"]["content"] {

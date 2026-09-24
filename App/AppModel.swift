@@ -324,6 +324,7 @@ final class AppModel {
             refreshBranch(for: chat)
             refreshUsage()
             readReview()
+            pickUpAfterQuit()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

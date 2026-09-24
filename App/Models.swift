@@ -50,6 +50,9 @@ final class Chat {
     /// Where it was put among the pinned threads, or among the rest once one of them was dragged;
     /// nil for a thread that never was, which sits above those that were, newest first.
     var position: Double?
+    /// OriCode quit while its turn ran. The next launch sends it on, or, when it was waiting on
+    /// you, puts the question back up.
+    var quitMidTurn: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

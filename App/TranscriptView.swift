@@ -418,8 +418,9 @@ extension TurnFooter {
     func words(time showTime: Bool, cost showCost: Bool) -> String {
         let seconds = Int((durationMs / 1000).rounded())
         let time = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
-        // A stopped turn says so either way: it's what happened, not a statistic.
-        if stopReason == "interrupted" { return showTime ? "Stopped after \(time)" : "Stopped" }
+        // A stopped turn says so either way: it's what happened, not a statistic. One stopped after
+        // a quit had cut it off has no time of its own.
+        if stopReason == "interrupted" { return showTime && durationMs > 0 ? "Stopped after \(time)" : "Stopped" }
         var parts: [String] = []
         if showTime { parts.append("Worked for \(time)") }
         if showCost { parts.append(String(format: "$%.2f", costUSD)) }
