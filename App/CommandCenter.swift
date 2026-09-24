@@ -54,12 +54,16 @@ struct CommandCenter: View {
                         move(-1, in: items)
                         return .handled
                     }
+                    // Tab opens a row's level, and otherwise stays put rather than take the keyboard
+                    // out of the field.
                     .onKeyPress(.tab) {
-                        guard items.indices.contains(level.selected), items[level.selected].opensLevel else { return .ignored }
-                        model.activate(items[level.selected])
+                        if items.indices.contains(level.selected), items[level.selected].opensLevel {
+                            model.activate(items[level.selected])
+                        }
                         return .handled
                     }
-                    .onKeyPress(.delete) {
+                    // The Backspace key sends DEL, 0x7F, which isn't SwiftUI's .delete, 0x08.
+                    .onKeyPress(keys: [.delete, KeyEquivalent("\u{7F}")]) { _ in
                         guard level.query.isEmpty, palette.stack.count > 1 else { return .ignored }
                         _ = palette.pop()
                         return .handled

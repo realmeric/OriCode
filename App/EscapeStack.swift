@@ -9,21 +9,25 @@ extension AppModel {
             modelPickerShown = false
             return true
         }
+        if composerMenu {
+            composerMenu = false
+            return true
+        }
         if openFile != nil {
             closeFile()
-            focusOpenBlock()
+            returnKeyboard()
             return true
         }
         if fileFinderShown {
             toggleFileFinder()
-            focusOpenBlock()
+            returnKeyboard()
             return true
         }
         if commandCenterShown {
             // Back one level, and at the top, away.
             if !palette.pop() {
                 closeCommandCenter()
-                focusOpenBlock()
+                returnKeyboard()
             }
             return true
         }

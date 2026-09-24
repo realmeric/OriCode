@@ -212,10 +212,11 @@ struct EffortRail: View {
             keyed = true
             return go(maxIndex)
         }
-        .onKeyPress(.delete) {
+        // ⌫ back to Default. Backspace reaches a focused view as the Delete command, never as a key
+        // press, the way it does in the review.
+        .onDeleteCommand {
             keyed = true
             withAnimation(Motion.move) { effort = nil }
-            return .handled
         }
         .onKeyPress(.return) {
             onReturn()

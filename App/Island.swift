@@ -56,6 +56,12 @@ struct Island: View {
             .padding(.top, Self.top)
             .frame(width: area.size.width)
         }
+        // A surface folding back leaves the keyboard with nobody; the composer, or an open
+        // block, takes it back once the surface has gone.
+        .onChange(of: shown == .capsule) { _, folded in
+            guard folded else { return }
+            DispatchQueue.main.async { model.returnKeyboard() }
+        }
     }
 
     private var shown: Piece {

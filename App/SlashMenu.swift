@@ -66,3 +66,45 @@ struct SlashMenu: View {
         .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
     }
 }
+
+/// Tab's matches when there's more than one, above the capsule the way the slash menu is: the
+/// first twelve, and how many more.
+struct CompletionMenu: View {
+    let candidates: [String]
+    let selected: Int?
+    let pick: (Int) -> Void
+
+    private static let shown = 12
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            let start = max(0, min((selected ?? 0) - Self.shown / 2, candidates.count - Self.shown))
+            ForEach(Array(candidates.enumerated().dropFirst(start).prefix(Self.shown)), id: \.offset) { index, candidate in
+                Button {
+                    pick(index)
+                } label: {
+                    Text(candidate)
+                        .font(Type.mono)
+                        .foregroundStyle(Ink.primary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+                        .background(index == selected ? Surface.selected : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
+            if candidates.count > Self.shown {
+                Text("\(candidates.count) matches")
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.faint)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+            }
+        }
+        .padding(6)
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
+    }
+}

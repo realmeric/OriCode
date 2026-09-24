@@ -141,6 +141,10 @@ final class AppModel {
     var shellsInView: [UUID: Bool] = [:]
     /// A block the transcript is asked to bring into view.
     var scrollTarget: UUID?
+    /// What the user's shell can run as a first word, for Tab at the prompt, once asked.
+    var shellNames: Task<[String], Never>?
+    /// Tab's list of matches is up in the composer, and Esc puts it away first.
+    var composerMenu = false
     /// Where the composer's top edge is in the window, which the terminal stops above.
     var composerTop: CGFloat = 0
     /// ⌘K's levels, what's typed at each, and what it's doing.

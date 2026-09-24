@@ -86,6 +86,11 @@ struct FileFinder: View {
                     return .handled
                 }
                 .onSubmit { if results.indices.contains(selected) { model.openFile(results[selected]) } }
+                // Tab moves down the list rather than take the keyboard out of the field.
+                .onKeyPress(.tab) {
+                    selected = min(selected + 1, max(results.count - 1, 0))
+                    return .handled
+                }
                 .onChange(of: query) { selected = 0 }
             if !results.isEmpty {
                 List(Array(results.enumerated()), id: \.element) { index, path in
