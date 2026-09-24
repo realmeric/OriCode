@@ -7,6 +7,9 @@ DERIVED := $(BUILD)/DerivedData
 # The Debug build is OriCode Molten, which runs beside the installed OriCode.
 DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
+# Signed with the OriCode certificate where this Mac has it, so every release keeps the same
+# designated requirement and macOS knows it for the same app; ad hoc where it doesn't.
+SIGN := $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"OriCode"' && echo OriCode || echo -)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
 .PHONY: run engine test app project icon
@@ -44,7 +47,7 @@ test: project engine
 
 app: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
-	codesign --force --deep --sign - $(RELEASE_APP)
+	codesign --force --deep --sign $(SIGN) $(RELEASE_APP)
 	-pkill -x OriCode; sleep 0.3
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
