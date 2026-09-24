@@ -30,6 +30,62 @@ enum ToolSummary {
         }
     }
 
+    /// What a run of calls did, in Claude Code's words, each kind where it first came: "Read 2
+    /// files, ran 3 commands, searched for 1 pattern". A file counts once however often it's
+    /// read or edited.
+    static func run(_ calls: [ToolCall]) -> String {
+        var kinds: [RunKind] = []
+        var seen: [RunKind: Set<String>] = [:]
+        for call in calls {
+            let kind = RunKind(call.name)
+            if seen[kind] == nil { kinds.append(kind) }
+            seen[kind, default: []].insert(path(for: call) ?? call.toolUseId)
+        }
+        let line = kinds.map { $0.phrase(seen[$0]?.count ?? 0) }.joined(separator: ", ")
+        return line.prefix(1).uppercased() + line.dropFirst()
+    }
+
+    private enum RunKind {
+        case read, edit, command, search, list, fetch, web, agent, plan, skill, question, planning, other
+
+        init(_ name: String) {
+            switch name {
+            case "Read": self = .read
+            case "Edit", "MultiEdit", "Write", "NotebookEdit": self = .edit
+            case "Bash": self = .command
+            case "Grep", "Glob": self = .search
+            case "LS": self = .list
+            case "WebFetch": self = .fetch
+            case "WebSearch": self = .web
+            case "Task", "Agent": self = .agent
+            case "TodoWrite": self = .plan
+            case "Skill": self = .skill
+            case "AskUserQuestion": self = .question
+            case "ExitPlanMode": self = .planning
+            default: self = .other
+            }
+        }
+
+        func phrase(_ count: Int) -> String {
+            let one = count == 1
+            return switch self {
+            case .read: "read \(count) \(one ? "file" : "files")"
+            case .edit: "edited \(count) \(one ? "file" : "files")"
+            case .command: "ran \(count) \(one ? "command" : "commands")"
+            case .search: "searched for \(count) \(one ? "pattern" : "patterns")"
+            case .list: "listed \(count) \(one ? "directory" : "directories")"
+            case .fetch: "fetched \(count) \(one ? "page" : "pages")"
+            case .web: one ? "searched the web" : "searched the web \(count) times"
+            case .agent: "ran \(count) \(one ? "agent" : "agents")"
+            case .plan: "updated the plan"
+            case .skill: "used \(count) \(one ? "skill" : "skills")"
+            case .question: "asked you"
+            case .planning: "finished planning"
+            case .other: "used \(count) \(one ? "tool" : "tools")"
+            }
+        }
+    }
+
     /// The file a Read, Edit, MultiEdit, Write or NotebookEdit call touched, as given to the tool.
     static func path(for call: ToolCall) -> String? {
         switch call.name {
