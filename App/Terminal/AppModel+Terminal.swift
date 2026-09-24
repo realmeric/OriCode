@@ -12,6 +12,7 @@ extension AppModel {
         guard let folder = workingFolder else { return }
         startTerminal(in: folder)
         modelPickerShown = false
+        if reviewShown { closeReview() }
         withAnimation(Motion.move) { terminalShown = true }
     }
 

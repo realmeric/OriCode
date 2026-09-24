@@ -23,8 +23,14 @@ enum ShortcutList {
             Row(name: "Rename thread", keys: "⌘R"),
             Row(name: "Delete thread", keys: "⌘⌫"),
         ]),
-        Group(title: "Git", rows: [
-            Row(name: "Changes", keys: "⌘⇧D"),
+        Group(title: "Review", rows: [
+            Row(name: "Review changes", keys: "⌘⇧D"),
+            Row(name: "Next and previous hunk", keys: "↓ ↑  or  J K"),
+            Row(name: "Mark reviewed, then the next", keys: "Space"),
+            Row(name: "Note for Claude", keys: "N"),
+            Row(name: "Take it back", keys: "⌫"),
+            Row(name: "Undo that", keys: "⌘Z"),
+            Row(name: "Open the file", keys: "O"),
             Row(name: "Commit", keys: "⌘Return"),
         ]),
         Group(title: "Conversation", rows: [

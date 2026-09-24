@@ -127,6 +127,11 @@ extension AppModel {
             refreshBranch(for: chat)
             refreshUsage(fresh: true)
         }
+        // The count at the top right follows every turn in the open folder, and an open review
+        // follows every edit.
+        if chat.cwd == self.chat?.cwd, event.name == "turn.done" || (reviewShown && event.name == "tool.result") {
+            readReview(after: .milliseconds(event.name == "turn.done" ? 200 : 500))
+        }
     }
 
     /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.

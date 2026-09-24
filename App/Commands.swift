@@ -31,9 +31,9 @@ struct OriCodeCommands: Commands {
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut("p")
                 .disabled(model.chat == nil)
-            Button(model.changesShown ? "Hide Changes" : "Changes") { model.toggleChanges() }
+            Button(model.reviewShown ? "Hide Review" : "Review Changes") { model.toggleReview() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
-                .disabled(model.chat == nil)
+                .disabled(model.project == nil)
             Divider()
         }
         CommandMenu("Thread") {

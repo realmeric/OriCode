@@ -165,37 +165,11 @@ export async function status(cwd: string): Promise<ChangedFile[]> {
   return files;
 }
 
-export async function commit(cwd: string, paths: string[], message: string): Promise<string> {
-  if (!paths.length) throw new Error("Pick at least one file to commit.");
-  if (!message.trim()) throw new Error("Write a commit message first.");
-  await git(cwd, ["add", "-A", "--", ...paths]);
-  await git(cwd, ["commit", "-m", message, "--", ...paths]);
-  return (await git(cwd, ["rev-parse", "--short", "HEAD"])).trim();
-}
-
 export async function push(cwd: string): Promise<void> {
   const remotes = (await git(cwd, ["remote"])).trim();
   if (!remotes) throw new Error("This repository has no remote to push to.");
   const { upstream } = await branch(cwd);
   await git(cwd, upstream ? ["push"] : ["push", "-u", "origin", "HEAD"]);
-}
-
-/// What the commit would contain, for the message writer: the tracked diff and the start of
-/// each new file, cut to keep the Haiku call small.
-export async function diffFor(cwd: string, paths: string[]): Promise<string> {
-  const files = await status(cwd);
-  const chosen = new Set(paths);
-  const parts: string[] = [];
-  const tracked = files.filter((file) => chosen.has(file.path) && file.status !== "?").map((file) => file.path);
-  if (tracked.length) parts.push(await git(cwd, ["diff", "HEAD", "--", ...tracked]));
-  for (const file of files.filter((file) => chosen.has(file.path) && file.status === "?")) {
-    const content = await git(cwd, ["show", `:${file.path}`]).catch(async () => {
-      const { readFile } = await import("node:fs/promises");
-      return (await readFile(`${cwd}/${file.path}`, "utf8").catch(() => "")).slice(0, 4000);
-    });
-    parts.push(`new file ${file.path}\n${content}`);
-  }
-  return parts.join("\n").slice(0, 60_000);
 }
 
 /// A new branch checked out in `.worktrees/<slug>` inside the project, kept out of the

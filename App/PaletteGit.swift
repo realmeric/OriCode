@@ -125,7 +125,7 @@ extension AppModel {
         params["cwd"] = .string(folder)
         let reply = try await engine.request(method, .object(params))
         adopt(reply, in: folder)
-        if changesShown, let chat { loadChanges(cwd: chat.cwd) }
+        if reviewShown { readReview() }
         return try? reply.decode(BranchInfo.self).branch
     }
 

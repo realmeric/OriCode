@@ -68,7 +68,7 @@ struct RootView: View {
                     if model.commandCenterShown { model.closeCommandCenter() }
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.openFile != nil { model.closeFile() }
-                    if model.changesShown { model.closeChanges() }
+                    if model.reviewShown { model.closeReview() }
                     if model.terminalShown { model.closeTerminal() }
                 })
             }
@@ -76,7 +76,10 @@ struct RootView: View {
         .ignoresSafeArea(edges: .top)
         // The picker rises out of the composer into the terminal's place, and can't draw over it.
         .onChange(of: model.modelPickerShown) { _, shown in
-            if shown { model.closeTerminal() }
+            if shown {
+                model.closeTerminal()
+                if model.reviewShown { model.closeReview() }
+            }
         }
         .confirmationDialog(
             "Delete “\(model.deletingChat?.title ?? "")”?",
@@ -134,12 +137,22 @@ struct RootView: View {
                 .frame(height: TitleBar.height)
                 .ignoresSafeArea()
         }
+        .overlay(alignment: .topTrailing) {
+            // The toolbar has no trailing side of its own with the title hidden, so the review's
+            // button is laid out on the lights' line the way the capsule is.
+            ReviewButton()
+                .frame(height: TitleBar.height)
+                .padding(.trailing, 14)
+                .ignoresSafeArea()
+        }
         .overlay(alignment: .top) {
             // In the toolbar's row, level with the traffic lights AppKit centres in it.
             TitleCapsule()
                 .frame(height: TitleBar.height)
-                .padding(.horizontal, 90)
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 90 : 0)
+                // Clear of the lights and the sidebar button on the left, and of the review's
+                // button and its counts on the right.
+                .padding(.horizontal, 130)
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 - 130 : 0)
                 .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
@@ -159,11 +172,31 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) {
+            if model.reviewShown {
+                // Where the terminal comes down, which it closes: over the conversation's side
+                // of the window, down to 12pt above the composer. An empty thread's composer
+                // waits in the middle of the window, and there the review takes the whole height.
+                let low = !(model.currentConversation?.items.isEmpty ?? true)
+                GeometryReader { area in
+                    ReviewPanel()
+                        .frame(maxWidth: 960)
+                        .frame(height: low ? max(160, model.composerTop - area.frame(in: .global).minY - 24) : max(160, area.size.height - 40))
+                        .padding(.top, 12)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal, 40)
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .overlay(alignment: .top) {
             if let file = model.openFile {
                 FileViewer(file: file)
                     .padding(.top, 20)
                     .padding(.horizontal, 40)
                     .padding(.bottom, 90)
+                    // A pinned drawer covers the left of the window; the file sits beside it.
+                    .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if model.fileFinderShown {
                 FileFinder()
@@ -175,13 +208,6 @@ struct RootView: View {
             if model.commandCenterShown {
                 CommandCenter()
                     .padding(.top, 40)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .overlay(alignment: .top) {
-            if model.changesShown {
-                ChangesSheet()
-                    .padding(.top, 20)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }

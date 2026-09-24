@@ -289,8 +289,9 @@ extension AppModel {
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: "⌘P", unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })
-        items.append(command("changes", "Changes", icon: "plusminus", shortcut: "⌘⇧D", keywords: ["commit", "diff", "stage", "git"],
-                             unavailable: noThread) { [weak self] in self?.openChanges() })
+        items.append(command("changes", "Review changes", icon: "plus.forwardslash.minus", shortcut: "⌘⇧D",
+                             keywords: ["commit", "diff", "changes", "stage", "git", "revert"],
+                             unavailable: noProject) { [weak self] in self?.openReview() })
 
         // Quality of life
         items += qualityCommands

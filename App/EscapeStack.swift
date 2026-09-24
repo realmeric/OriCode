@@ -26,9 +26,12 @@ extension AppModel {
             }
             return true
         }
-        if changesShown {
-            closeChanges()
-            focusTerminal()
+        if reviewShown {
+            if review.noting != nil {
+                review.noting = nil
+            } else {
+                closeReview()
+            }
             return true
         }
         // The drawer's rename field sits over the terminal.

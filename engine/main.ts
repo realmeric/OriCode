@@ -5,7 +5,8 @@ import { readCatalog, readSettingsEffort } from "./catalog.ts";
 import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
 import { fallback, helloList, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
-import { addWorktree, branch, branches, commit, create, diffFor, previous, pull, push, remote, removeWorktree, status, switchTo, worktreeLoss } from "./git.ts";
+import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
+import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { listFiles, readProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
 import { usage } from "./usage.ts";
@@ -206,12 +207,29 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "git.remote"({ cwd }: { cwd: string }) {
     return remote(cwd);
   },
-  async "git.status"({ cwd }: { cwd: string }) {
-    return { files: await status(cwd) };
+  async "git.commit"({ cwd, paths, message }: { cwd: string; paths: string[]; message: string }) {
+    return { hash: await commitAll(cwd, paths, message) };
   },
 
-  async "git.commit"({ cwd, paths, message }: { cwd: string; paths: string[]; message: string }) {
-    return { hash: await commit(cwd, paths, message) };
+  async "git.diff"({ cwd }: { cwd: string }) {
+    return workingDiff(cwd);
+  },
+
+  async "git.apply"({ cwd, patch, reverse, index }: { cwd: string; patch: string; reverse: boolean; index?: boolean }) {
+    return applyPatch(cwd, patch, reverse, index ?? false);
+  },
+
+  async "git.restore"({ cwd, paths }: { cwd: string; paths: string[] }) {
+    return restore(cwd, paths);
+  },
+
+  async "git.unrestore"({ cwd, paths, index }: { cwd: string; paths: string[]; index: IndexEntry[] }) {
+    await unrestore(cwd, paths, index);
+    return { ok: true };
+  },
+
+  async "git.commitReviewed"(params: { cwd: string; paths: string[]; patch: string; partial: string[]; message: string }) {
+    return { hash: await commitReviewed(params.cwd, params) };
   },
 
   async "git.push"({ cwd }: { cwd: string }) {
@@ -219,10 +237,10 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { ok: true };
   },
 
-  async "git.message"({ cwd, paths }: { cwd: string; paths: string[] }) {
-    const diff = await diffFor(cwd, paths);
-    if (!diff.trim()) throw new Error("Nothing to describe.");
-    return { message: await writeMessage(await requireClaude(), cwd, diff) };
+  /// The app sends the diff it's about to commit, cut to keep the Haiku call small.
+  async "git.message"({ cwd, diff }: { cwd: string; diff: string }) {
+    if (!diff?.trim()) throw new Error("Nothing to describe.");
+    return { message: await writeMessage(await requireClaude(), cwd, diff.slice(0, 60_000)) };
   },
 
   async "worktree.add"({ cwd, slug }: { cwd: string; slug: string }) {

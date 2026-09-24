@@ -54,11 +54,13 @@ struct DiffCard: View {
 struct Counts: View {
     let added: Int
     let deleted: Int
+    /// Leaves out a side that's zero, where one number is all a line needs.
+    var quiet = false
 
     var body: some View {
         HStack(spacing: 5) {
-            Text("+\(added)").foregroundStyle(Ink.added)
-            Text("−\(deleted)").foregroundStyle(Ink.deleted)
+            if !quiet || added > 0 || deleted == 0 { Text("+\(added)").foregroundStyle(Ink.added) }
+            if !quiet || deleted > 0 { Text("−\(deleted)").foregroundStyle(Ink.deleted) }
         }
         .font(Type.secondary.monospacedDigit())
     }

@@ -120,7 +120,10 @@ final class AppModel {
     private(set) var revision = 0
     var conversations: [UUID: Conversation] = [:]
     var branches: [UUID: BranchInfo] = [:]
-    var changesShown = false
+    /// ⌘⇧D's review, and what it has read of the open thread's folder, which the button at
+    /// the top right counts from even while it's closed.
+    var reviewShown = false
+    let review = ReviewState()
     var commandCenterShown = false
     /// ⌘J's terminal, and the shells behind it, one per folder.
     var terminalShown = false
@@ -151,7 +154,6 @@ final class AppModel {
     var openFile: OpenFile?
     /// Slash commands by folder; an empty list means they're being fetched.
     var slashCommands: [String: [SlashCommandInfo]] = [:]
-    let changes = ChangesState()
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
@@ -178,6 +180,7 @@ final class AppModel {
             loadSelectedConversation()
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
             refreshBranch(for: chat)
+            readReview()
         }
     }
 
@@ -250,6 +253,10 @@ final class AppModel {
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.defaultsRevision += 1 }
         }
+        // Files change outside the app too: an editor, a terminal, another tool.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.readReview() }
+        }
         // Titled windows only: text input puts borderless helper windows in the key spot too.
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
             guard let window = note.object as? NSWindow, window.styleMask.contains(.titled) else { return }
@@ -313,6 +320,7 @@ final class AppModel {
             engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
             refreshBranch(for: chat)
             refreshUsage()
+            readReview()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {
