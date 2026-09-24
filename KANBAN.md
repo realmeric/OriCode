@@ -32,7 +32,7 @@ Every time rule 1 is broken on purpose, add a line under **Exceptions** at the b
 
 Versions stay under 0.1.0 until the first public release on GitHub, which is 0.1.0. Until then a release is 0.0.N, where N is its release card's number, and its tag is `v0.0.N`. Release cards up to K-61 say v0.1 to v0.7, the numbers they had when they were done; their tags were renamed in K-64.
 
-Since K-121 the app is 0.1.0-rc, the candidate for 0.1.0, and the board takes only fixes: a card is taken when it fixes something broken in what's there, and anything new waits under **After 0.1.0** until 0.1.0 is out.
+0.1.0 went out on 2026-09-24 (K-122), and the freeze 0.1.0-rc began (K-121) ended with it. New work comes from Linear's OriCode project, the 0.2.0 milestone first, and becomes a card here when it's taken.
 
 ## Design brief
 
@@ -118,17 +118,17 @@ Permission modes are the SDK's: `default`, `acceptEdits`, `plan`, `auto`, `bypas
 
 (nothing yet)
 
+(nothing yet)
+
 From Meriç's reference Settings, what OriCode doesn't have yet (token activity, MCP, Models, Source control, Archive, a workspace default for new threads, Show thinking, Concise replies, changeable shortcuts, Providers, Hydra) waits on Linear as REA-138 to REA-148, in the OriCode project with the other ideas for after 0.1.0.
 
-### Todo: 0.1.0
+### Todo
 
-#### K-122 · Release 0.1.0
-The first public release, and Meriç's call to go straight to it: the candidate was tried here, so there's no public 0.1.0-rc. MARKETING_VERSION, engine/version.ts and the engine's package.json and lock say 0.1.0, CHANGELOG.md has its entry, and the README says how to install it. Meriç runs make release (K-135), which publishes v0.1.0 on GitHub with that entry as its notes and the signed zip attached, and points appcast.xml at it. The v0.0 tags go up with it as tags only, since those builds can't update themselves. Once it's out the freeze ends, and new work comes from Linear's OriCode project, 0.2.0 first.
-Done when: the release page for v0.1.0 has OriCode-0.1.0.zip, a copy downloaded through a browser opens with the README's first-launch steps, and appcast.xml on main names 0.1.0.
+The 0.2.0 milestone on Linear comes next: REA-153, REA-150, REA-161 and REA-162.
 
-### After 0.1.0
+### Later
 
-New work waits here while 0.1.0-rc is out, and none of it is taken until 0.1.0 ships.
+Cards written during the freeze, each on Linear too: K-107 is REA-177, K-116 is REA-176 and K-128 is REA-151.
 
 #### K-107 · OriCode's own Clear to Tinted
 Build this only on Meriç's yes, once they have lived with K-106. It is the slider Meriç named: OriCode's own copy of the system's Liquid Glass slider, whose default is the system's look. Settings › General › Window gets a second native Slider row, Liquid Glass, from Clear to Tinted, with ticks at the system's three notches and Follow System as its default. Away from Follow System, it writes NSGlassTintAmount into OriCode's own defaults and posts NSGlassEffectDiffusionDidChangeNotification. In a probe window that changed the glass live; OriCode itself hasn't been checked. At Follow System it removes the key. Both the key and the notification are private and undocumented. The Architecture section names them and says what happens when a macOS update breaks them: the row stops doing anything and the window stays at the system's look. The row hides when Reduce Transparency or Increase Contrast is on, as the system's own slider does, and on macOS before 27.
@@ -924,6 +924,12 @@ Anyone who installs 0.1.0 only hears about 0.2.0 if the app tells them. Sparkle,
 Done when: an OriCode numbered as 0.1.0-rc finds a test release one version ahead in an appcast, shows the circle beside the capsule with the notes on hover, fills it while downloading, and after the second click comes back as that version with its threads and settings intact.
 Notes: Sparkle 2.10.0 comes in through SwiftPM. Updates.swift is its user driver: an SPUUpdater with OriCode as the SPUUserDriver, keeping a phase (idle, available, downloading with its fraction, ready) and holding Sparkle's reply until the circle is clicked. OriCode › Check for Updates… asks at once and says "OriCode X is the newest." under the composer when there's nothing. UpdateCircle.swift draws it as an overlay on the capsule's trailing edge, 6pt out, so it follows the pill at any width; the first cut sat at the end of the capsule's 520pt frame, far from a short pill, which Meriç caught. The Info.plist takes its versions from the build settings, the feed from ORICODE_FEED_URL, empty in Debug, and the public EdDSA key; generate_keys put the private half in the login keychain. make app numbers builds with git rev-list --count, make release runs scripts/release.sh, and appcast.xml starts as an empty channel, so a check before the first release finds nothing rather than a 404. Checked with the Release build copied into a test app with its own bundle id, numbered 1000 as 0.1.0-rc, beside a copy numbered 1001 as 0.1.1-test, zipped, signed with sign_update and offered by a local appcast over http://127.0.0.1, since Sparkle refuses file:// feeds. At launch it fetched the appcast and the circle appeared beside the capsule with its arrow, and renders of the face at 45%, 80% and ready show the fill with the arrow dark under it. Meriç didn't get to the two clicks, so the install was checked through Sparkle's silent path, with SUAutomaticallyUpdate on for the test app only: it downloaded the zip and verified it, and on quit Autoupdate replaced the bundle within a second with build 1001, still signed by the OriCode certificate. Relaunched, it ran as 0.1.1-test with its project, store and a planted setting intact. The clicked path, a click to download and one to restart, waits on Meriç's eye. make test passes, 68 engine tests and 53 Swift tests. The test app's data, defaults and caches were removed afterwards.
 Commit: 2750583
+
+#### K-122 · Release 0.1.0
+The first public release, and Meriç's call to go straight to it: the candidate was tried here, so there's no public 0.1.0-rc. MARKETING_VERSION, engine/version.ts and the engine's package.json and lock say 0.1.0, CHANGELOG.md has its entry, and the README says how to install it. Meriç runs make release (K-135), which publishes v0.1.0 on GitHub with that entry as its notes and the signed zip attached, and points appcast.xml at it. The v0.0 tags go up with it as tags only, since those builds can't update themselves. Once it's out the freeze ends, and new work comes from Linear's OriCode project, 0.2.0 first.
+Done when: the release page for v0.1.0 has OriCode-0.1.0.zip, a copy downloaded through a browser opens with the README's first-launch steps, and appcast.xml on main names 0.1.0.
+Notes: Meriç ran make release from Terminal. It published v0.1.0, not a pre-release, with the CHANGELOG entry as its notes and OriCode-0.1.0.zip (5,615,096 bytes) attached, and committed appcast.xml naming it (89c6609); the v0.0 tags went up before it as tags only. Checked: the zip downloaded from the release unpacks to OriCode 0.1.0, build 184, with the feed set, signed by the OriCode certificate and passing codesign --verify --deep --strict; the appcast on raw.githubusercontent.com names build 184 and that zip, and sign_update --verify accepts its signature for the downloaded file. The first launch of a browser download through Open Anyway waits on Meriç, with K-134's same check. The build printed Swift 6 isolation warnings from AppModel.swift and MarkdownTheme.swift and xcodebuild's "exit code 0" line, neither of them a failure.
+Commit: pending
 
 
 ## Exceptions
