@@ -141,8 +141,8 @@ enum TranscriptEntry: Identifiable {
     }
 
     /// Folds the tool calls between two pieces of Claude's text, with any thinking among them,
-    /// into a run, as the Claude Code app does. Anything else ends a run, an ask included, and a
-    /// run with one call in it stays as its items.
+    /// into a run, as the Claude Code app does. Anything else ends a run, an ask or a workflow's
+    /// card included, and a run with one call in it stays as its items.
     static func fold(_ items: some Collection<Item>) -> [TranscriptEntry] {
         var entries: [TranscriptEntry] = []
         var run: [Item] = []
@@ -157,6 +157,9 @@ enum TranscriptEntry: Identifiable {
         }
         for item in items {
             switch item {
+            case .tool(_, let call) where call.name == "Workflow" && !call.isError:
+                close()
+                entries.append(.item(item))
             case .tool, .thinking:
                 run.append(item)
             default:
@@ -216,6 +219,8 @@ struct ItemView: View {
         case .tool(_, let call):
             if call.isEdit && !call.isError {
                 DiffCard(call: call, cwd: cwd)
+            } else if call.name == "Workflow" && !call.isError {
+                WorkflowCard(call: call)
             } else {
                 ToolLine(call: call, cwd: cwd)
             }

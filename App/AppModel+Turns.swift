@@ -189,6 +189,7 @@ extension AppModel {
             conversation.stopped()
             conversation.note("The engine stopped in the middle of this turn.")
         }
+        for conversation in conversations.values { conversation.endWorkflows() }
         holdWhileWorking()
     }
 }

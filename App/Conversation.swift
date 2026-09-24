@@ -15,6 +15,8 @@ struct ToolCall: Hashable {
     var result: String?
     var isError = false
     var patch: [Hunk]?
+    /// A Workflow call's run, as the engine last told of it.
+    var workflow: WorkflowRun?
 
     static let edits: Set<String> = ["Edit", "MultiEdit", "Write"]
 
@@ -144,6 +146,8 @@ final class Conversation {
     private var unsaved = false
     /// Each command's event, updated when it ends and when Claude reads it.
     private var shellEvents: [UUID: Event] = [:]
+    /// Each workflow's one event, by its task, written again as it moves.
+    private var workflowEvents: [String: Event] = [:]
 
     init(chat: Chat, context: ModelContext) {
         self.chat = chat
@@ -153,9 +157,11 @@ final class Conversation {
             turn = max(turn, event.turn)
             guard let body = try? JSONDecoder().decode(JSON.self, from: event.payload) else { continue }
             if event.kind == "shell" { shellEvents[event.id] = event }
+            if event.kind == "workflow", let taskId = body["taskId"]?.string { workflowEvents[taskId] = event }
             apply(event.kind, body, id: event.id)
         }
         open = nil
+        endWorkflows(saving: false)
         // Asks and tool calls from an earlier launch will never finish; the engine that ran them is
         // gone. A quit in the middle of the last turn is the exception: what it was waiting on you
         // for is still up, with the call it holds.
@@ -288,6 +294,8 @@ final class Conversation {
             record(event.name, event.body)
         case "tool.use", "tool.result", "ask", "ask.cancelled", "error":
             record(event.name, event.body)
+        case "workflow":
+            workflowChanged(event.body)
         case "turn.done":
             running = false
             if let sessionId = event.body["sessionId"]?.string { chat.sessionId = sessionId }
@@ -322,6 +330,35 @@ final class Conversation {
         event.payload = (try? run.body.data()) ?? event.payload
         unsaved = true
         flush()
+    }
+
+    /// A workflow's latest state: its one event, written again, and its call's card.
+    private func workflowChanged(_ body: JSON) {
+        guard let taskId = body["taskId"]?.string else { return }
+        guard let event = workflowEvents[taskId] else {
+            workflowEvents[taskId] = record("workflow", body)
+            return
+        }
+        event.payload = (try? body.data()) ?? event.payload
+        apply("workflow", body, id: event.id)
+        unsaved = true
+        flush()
+    }
+
+    /// Workflows the engine was running when it went, which went with it. Read back in at launch
+    /// they're only shown stopped; the store has them stopped once an engine goes while they run.
+    func endWorkflows(saving: Bool = true) {
+        for event in workflowEvents.values {
+            guard case .object(var body)? = try? JSONDecoder().decode(JSON.self, from: event.payload),
+                  body["state"]?.string == "running"
+            else { continue }
+            body["state"] = "stopped"
+            if saving {
+                workflowChanged(.object(body))
+            } else {
+                apply("workflow", .object(body), id: event.id)
+            }
+        }
     }
 
     /// OriCode is quitting while the thread works, which isn't a stop: the thread is marked for the
@@ -431,6 +468,14 @@ final class Conversation {
                         newStart: hunk["newStart"]?.int ?? 0,
                         lines: hunk["lines"]?.array?.compactMap(\.string) ?? [])
                 }
+                items[index] = .tool(id: itemId, call: call)
+            }
+        case "workflow":
+            let toolUseId = body["toolUseId"]?.string
+            if let index = items.lastIndex(where: { if case .tool(_, let call) = $0 { call.toolUseId == toolUseId } else { false } }),
+               case .tool(let itemId, var call) = items[index]
+            {
+                call.workflow = WorkflowRun(body)
                 items[index] = .tool(id: itemId, call: call)
             }
         case "ask":

@@ -17,6 +17,7 @@ import {
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { event, log } from "./wire.ts";
+import { workflowShape, type WorkflowShape } from "./workflow.ts";
 
 export type Attachment = { mediaType: string; data: string };
 
@@ -128,6 +129,8 @@ export class Thread {
   private streamed = new Set<string>();
   /// Subagents and other tasks the CLI is running for this thread, in the foreground or not.
   private tasks = new Map<string, { description: string; background: boolean }>();
+  /// Workflows the thread started, by task, with the call that started them and their last snapshot.
+  private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape }>();
   private costSoFar = 0;
   private lastContext = 0;
   private fast = false;
@@ -332,13 +335,32 @@ export class Thread {
     switch (message.subtype) {
       case "task_started":
         if (!message.ambient) this.tasks.set(message.task_id, { description: message.description, background: message.is_backgrounded ?? false });
+        if (message.task_type === "local_workflow") {
+          const name = message.workflow_name ?? message.description;
+          this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] } });
+          this.tellWorkflow(message.task_id, "running");
+        }
         break;
+      case "task_progress": {
+        const workflow = this.workflows.get(message.task_id);
+        const progress = (message as { workflow_progress?: unknown }).workflow_progress;
+        if (workflow && Array.isArray(progress)) {
+          workflow.shape = workflowShape(progress);
+          this.tellWorkflow(message.task_id, "running");
+        }
+        return true;
+      }
       case "task_notification":
         if (this.resuming && !this.tasks.has(message.task_id)) this.orphaned = true;
         this.tasks.delete(message.task_id);
+        this.tellWorkflow(message.task_id, message.status, message.summary);
+        this.workflows.delete(message.task_id);
         break;
       case "task_updated":
-        if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) this.tasks.delete(message.task_id);
+        if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) {
+          this.tasks.delete(message.task_id);
+          this.tellWorkflow(message.task_id, message.patch.status === "killed" ? "stopped" : message.patch.status);
+        }
         break;
       case "background_tasks_changed": {
         // The CLI's own list of what's still running in the background: a backgrounded
@@ -357,6 +379,13 @@ export class Thread {
       event("tasks", { threadId: this.id, running: this.tasks.size, tasks: [...this.tasks.values()].map((task) => task.description) });
     }
     return true;
+  }
+
+  /// Where a workflow the thread started has got, with its last snapshot, whole each time.
+  private tellWorkflow(taskId: string, state: string, summary?: string): void {
+    const workflow = this.workflows.get(taskId);
+    if (!workflow) return;
+    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, summary: summary ?? null });
   }
 
   private fail(message: string): void {
