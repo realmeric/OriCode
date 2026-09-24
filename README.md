@@ -15,6 +15,10 @@ OriCode isn't made or endorsed by Anthropic. Claude, Claude Code and the Claude 
 
 OriCode is signed but not notarized by Apple, so the first time you open a copy you downloaded, macOS stops it and says Apple couldn't check it for malicious software. Open System Settings › Privacy & Security, find the line saying OriCode was blocked, click Open Anyway and confirm. macOS remembers that for this copy.
 
+## Updates
+
+OriCode checks GitHub for a newer release once a day, or when you choose OriCode › Check for Updates…. When there is one, a circle with an arrow appears beside the title at the top of the window. Click it to download the update, and again to restart into it.
+
 ## Building
 
 ```sh

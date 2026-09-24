@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// The window's title made visible: project · branch · thread, level with the traffic lights.
-/// Clicking it opens the command center, as ⌘K does.
+/// Clicking it opens the command center, as ⌘K does. While there's an update, its circle hangs
+/// off the pill's right end, however wide the pill is, without moving the pill.
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
+    @Environment(Updates.self) private var updates
     @State private var hovering = false
 
     var body: some View {
@@ -43,8 +45,18 @@ struct TitleCapsule: View {
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
             .help("Command center (⌘K)")
+            .overlay(alignment: .trailing) {
+                if updates.phase != .idle {
+                    UpdateCircle()
+                        .offset(x: UpdateCircle.side + 6)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.move, value: updates.phase != .idle)
             .frame(maxWidth: 520)
             .fixedSize(horizontal: false, vertical: true)
+        } else if updates.phase != .idle {
+            UpdateCircle()
         }
     }
 }

@@ -2,8 +2,14 @@ import SwiftUI
 
 struct OriCodeCommands: Commands {
     let model: AppModel
+    let updates: Updates
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if updates.enabled {
+                Button("Check for Updates…") { updates.check() }
+            }
+        }
         CommandGroup(replacing: .newItem) {
             Button("New Thread") { model.openNewThread() }
                 .keyboardShortcut("n")

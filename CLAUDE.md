@@ -16,6 +16,7 @@ KANBAN.md is the plan and the tracker. Work it the way its "How to work this boa
 - `make engine` type-checks the engine and stages it with production dependencies in `~/Library/Developer/OriCode/engine`.
 - `make test` runs the engine's protocol tests and the Swift unit tests.
 - `make app` builds Release, signs it ad hoc and copies it to `/Applications`, quitting the installed OriCode to replace it. Meriç runs it, in Terminal: a thread inside OriCode that ran it would end its own session mid-turn.
+- `make release` publishes project.yml's MARKETING_VERSION as a GitHub release, notes from its CHANGELOG.md entry, and points `appcast.xml` at it, which every installed OriCode checks daily. It needs the OriCode certificate and the Sparkle key in the login keychain. Meriç runs it, in Terminal, like `make app`.
 
 ## Where things live
 

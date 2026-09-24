@@ -6,6 +6,7 @@ struct OriCodeApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     private let container = Store.container()
     @State private var model: AppModel
+    @State private var updates = Updates()
 
     init() {
         // A write to an engine that just died must fail as an error, not kill the app.
@@ -17,6 +18,7 @@ struct OriCodeApp: App {
         Window(Build.name, id: "main") {
             RootView()
                 .environment(model)
+                .environment(updates)
                 .modelContainer(container)
                 .task {
                     delegate.openFolder = { [model] url in
@@ -26,13 +28,14 @@ struct OriCodeApp: App {
                     delegate.deliverEarlyFolders()
                     delegate.runningInTerminal = { [model] in model.terminals.running }
                     delegate.endTerminals = { [model] in model.terminals.endAll() }
+                    updates.say = { [model] line in model.say(line) }
                     await model.boot()
                 }
                 .frame(minWidth: 720, minHeight: 480)
                 .containerBackground(for: .window) { BehindWindowGlass() }
                 .preferredColorScheme(.dark)
         }
-        .commands { OriCodeCommands(model: model) }
+        .commands { OriCodeCommands(model: model, updates: updates) }
         // A toolbar row, so the traffic lights sit where a toolbar window's do: in from the
         // corner, inside the drawer's first row, level with the sidebar button and the capsule.
         .windowToolbarStyle(.unified(showsTitle: false))

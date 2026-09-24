@@ -10,9 +10,11 @@ RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
 # Signed with the OriCode certificate where this Mac has it, so every release keeps the same
 # designated requirement and macOS knows it for the same app; ad hoc where it doesn't.
 SIGN := $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"OriCode"' && echo OriCode || echo -)
+# Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
+BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
-.PHONY: run engine test app project icon
+.PHONY: run engine test app release project icon
 
 # XcodeGen lists source files explicitly, so regenerate on every build. SwiftTerm runs a package
 # plugin, which a command-line build refuses unless validation is skipped.
@@ -46,11 +48,16 @@ test: project engine
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet test
 
 app: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
 	codesign --force --deep --sign $(SIGN) $(RELEASE_APP)
 	-pkill -x OriCode; sleep 0.3
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
+
+# A release on GitHub, offered to every installed OriCode through appcast.xml (scripts/release.sh).
+# Meriç runs it, in Terminal, once the version's CHANGELOG entry is committed and pushed.
+release: project
+	scripts/release.sh
 
 # The app icons are RaysMark on a squircle, OriCode's and OriCode Molten's; re-render them whenever the mark changes.
 icon:
