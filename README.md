@@ -9,7 +9,7 @@ OriCode isn't made or endorsed by Anthropic. Claude, Claude Code and the Claude 
 - macOS 26 or newer on Apple silicon
 - Claude Code, installed and logged in: run `claude` in Terminal once
 - Node 24 or newer, which runs the app's engine
-- To build it: Xcode 26 or newer and XcodeGen (`brew install xcodegen`)
+- To build it: Xcode 26 or newer with its Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`), and XcodeGen (`brew install xcodegen`)
 
 ## Building
 

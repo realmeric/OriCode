@@ -10,12 +10,13 @@ ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock
 
 .PHONY: run engine test app project icon
 
-# XcodeGen lists source files explicitly, so regenerate on every build.
+# XcodeGen lists source files explicitly, so regenerate on every build. SwiftTerm runs a package
+# plugin, which a command-line build refuses unless validation is skipped.
 project:
 	xcodegen generate --quiet
 
 run: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -quiet build
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
 	-pkill -x OriCode; sleep 0.3
 	open $(DEBUG_APP)
 
@@ -38,10 +39,10 @@ $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 
 test: project engine
 	cd engine && node --test test/*.test.ts
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -quiet test
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet test
 
 app: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -quiet build
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
 	codesign --force --deep --sign - $(RELEASE_APP)
 	-pkill -x OriCode; sleep 0.3
 	rm -rf /Applications/OriCode.app

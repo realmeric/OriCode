@@ -11,7 +11,6 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     var onExit: (() -> Void)?
     /// The shell has exited; its last screen stays up while the terminal goes away.
     private(set) var ended = false
-    private var watcher: DispatchSourceProcess?
 
     init(folder: String) {
         self.folder = folder
@@ -20,9 +19,8 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         view.processDelegate = self
         view.font = TerminalPalette.font(size: 12.5)
         view.nativeForegroundColor = NSColor(white: 0.92, alpha: 1)
-        // Clear, so the glass shows through; this version doesn't carry it to the layer itself.
+        // Clear, so the glass shows through.
         view.nativeBackgroundColor = .clear
-        view.layer?.backgroundColor = NSColor.clear.cgColor
         view.caretColor = NSColor(white: 0.92, alpha: 1)
         // White, not the system's accent colour, which the brief keeps out.
         view.selectedTextBackgroundColor = NSColor(white: 1, alpha: 0.18)
@@ -30,7 +28,9 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         view.optionAsMetaKey = false
         view.caretViewTracksFocus = true
         view.installColors(TerminalPalette.ansi)
-        // This version's scroller is always drawn, a track down the right; the wheel still scrolls.
+        // SwiftTerm's scroller is an overlay-style NSScroller with no scroll view around it to fade
+        // it, so it stands as a dark strip down the right; hidden, its width goes to the text, and
+        // the wheel still scrolls.
         for scroller in view.subviews where scroller is NSScroller {
             scroller.isHidden = true
         }
@@ -41,11 +41,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         let master = view.process.childfd
         if master >= 0 { _ = fcntl(master, F_SETFD, fcntl(master, F_GETFD) | FD_CLOEXEC) }
         // A shell that couldn't start (no pty left, no fork) is over, so the next ⌘J tries again.
-        guard view.process.shellPid > 0 else {
-            ended = true
-            return
-        }
-        watch(view.process.shellPid)
+        if view.process.shellPid <= 0 { ended = true }
     }
 
     /// SwiftTerm forks and execs without closing anything, so a shell would inherit every
@@ -60,24 +56,6 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         }
     }
 
-    /// SwiftTerm stops watching the shell once the terminal reads its end, which usually comes
-    /// first, so it never says the shell exited and never reaps it. This watches for itself.
-    private func watch(_ pid: pid_t) {
-        guard pid > 0 else { return }
-        let watcher = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)
-        watcher.setEventHandler { [weak self] in
-            var status: Int32 = 0
-            waitpid(pid, &status, WNOHANG)
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.watcher?.cancel()
-                self.ended = true
-                self.onExit?()
-            }
-        }
-        watcher.activate()
-        self.watcher = watcher
-    }
 
     /// What holds the terminal when it isn't the shell at its prompt: vim, a build, claude, or
     /// fzf, which zsh's key bindings run as $(…) inside the shell's own process group.
@@ -147,8 +125,13 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
 
     nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
-    // Rarely called; the watcher above is what hears the shell end.
-    nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {}
+    // The shell has gone and been reaped; SwiftTerm calls this on the main queue.
+    nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {
+        MainActor.assumeIsolated {
+            ended = true
+            onExit?()
+        }
+    }
 }
 
 /// The window moves by its background, and a view drawn on clear counts as background, so a drag

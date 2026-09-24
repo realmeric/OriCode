@@ -19,11 +19,11 @@ packages:
   Highlightr:
     url: https://github.com/raspu/Highlightr
     from: 2.3.0
-  # Pinned: 1.12 and later need Xcode's Metal Toolchain, a separate download, and 1.19 adds a
-  # build-tool plugin that every xcodebuild line would have to skip validating.
+  # Needs Xcode's Metal Toolchain (xcodebuild -downloadComponent MetalToolchain) for its shader,
+  # and its build-info plugin is why the Makefile's xcodebuild lines skip plugin validation.
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
-    exactVersion: 1.11.2
+    exactVersion: 1.20.0
 targets:
   OriCode:
     type: application

@@ -21,4 +21,6 @@ KANBAN.md is the plan and the tracker. Work it the way its "How to work this boa
 
 `App/` is the Swift app. `engine/` is the TypeScript sidecar the app spawns with `node engine/main.ts`, speaking newline-delimited JSON. `project.yml` generates `OriCode.xcodeproj` through XcodeGen (`brew install xcodegen`); the project file is gitignored, so never edit it.
 
+SwiftTerm, the terminal, compiles a Metal shader, so Xcode's Metal Toolchain must be installed (`xcodebuild -downloadComponent MetalToolchain`), and it runs a package plugin, so every xcodebuild line passes `-skipPackagePluginValidation`.
+
 Node 24 or newer is required. On this Mac the first `node` on the PATH is v22, so run engine commands with `PATH=/opt/homebrew/bin:$PATH`.
