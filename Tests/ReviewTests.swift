@@ -324,5 +324,40 @@ struct ReviewTests {
         #expect(review.selected == units[3].id)
         #expect(review.openFiles == [c])
     }
+
+    @Test func aMarkFinishesItsFileBeforeGoingOn() {
+        let diff = WorkingDiff(root: Self.root, head: nil, files: [
+            file("a.swift", [hunk(["+let a = 1"]), hunk(["+let a = 2"], at: 20), hunk(["+let a = 3"], at: 40)]),
+            file("b.swift", [hunk(["+let b = 1"])]),
+            file("c.swift", [hunk(["+let c = 1"])]),
+        ])
+        let book = ReviewBook(diff: diff, provenance: Provenance())
+        let units = book.units
+        let marked = { (reviewed: [ReviewUnit]) in
+            book.marked(with: Dictionary(uniqueKeysWithValues: reviewed.map {
+                ($0.fingerprint, ReviewMark(path: $0.file.path, lines: $0.lines.map(\.signed), at: .now))
+            }))
+        }
+        let review = ReviewState()
+
+        // Marking a.swift's second hunk goes back for its first before leaving the file.
+        review.book = marked([units[2]])
+        #expect(review.next(after: units[1])?.id == units[0].id)
+        // With a.swift done, it goes on to b.swift.
+        review.book = marked([units[0], units[2]])
+        #expect(review.next(after: units[1])?.id == units[3].id)
+        // A whole file marked goes on to the first hunk to review after it, round to the top.
+        #expect(review.next(afterFile: units[3].section)?.id == units[4].id)
+        #expect(review.next(afterFile: units[4].section)?.id == units[1].id)
+
+        // ⌥ opens or folds every file, and folding lets go of a note being written.
+        review.openFiles = [units[0].section]
+        review.noting = units[0].id
+        review.toggle(book.chapters[0].files[1], all: true)
+        #expect(review.openFiles == Set(units.map(\.section)))
+        review.toggle(book.chapters[0].files[1], all: true)
+        #expect(review.openFiles.isEmpty)
+        #expect(review.noting == nil)
+    }
 }
 

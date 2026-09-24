@@ -34,7 +34,7 @@ struct ReviewPanel: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .space, .return, "j", "k", "n", "o"], phases: .down) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .space, .return, "j", "k", "n", "o"], phases: .down) { press in
             key(press)
         }
         // The Delete key reaches a focused view as the Delete command, never as a key press.
@@ -62,6 +62,10 @@ struct ReviewPanel: View {
             model.review.move(1)
         case .upArrow, "k":
             model.review.move(-1)
+        case .leftArrow, .rightArrow:
+            // The file the keyboard is in, folded under it or not.
+            guard let unit = model.review.book.units.first(where: { $0.id == model.review.selected }) else { return .ignored }
+            model.review.setOpen(unit.section, press.key == .rightArrow)
         case .space:
             model.toggleSelectedReviewed()
         case .return where press.modifiers.contains(.command):
@@ -315,7 +319,7 @@ private struct FoldedChapter: View {
 }
 
 /// A file's path, what happened to it, and its counts for this chapter. A click shows its hunks
-/// or folds the file to this line, which has a check once every hunk in it is reviewed.
+/// or folds the file to this line; its circle, in the column of its hunks' circles, marks them all.
 private struct FileHeader: View {
     @Environment(AppModel.self) private var model
     let section: ReviewFileSection
@@ -325,9 +329,10 @@ private struct FileHeader: View {
         let file = section.file
         let folder = (file.path as NSString).deletingLastPathComponent
         let open = model.review.openFiles.contains(section.id)
+        let reviewed = section.units.allSatisfy(\.reviewed)
         HStack(spacing: 6) {
             Button {
-                model.review.toggle(section)
+                model.review.toggle(section, all: NSEvent.modifierFlags.contains(.option))
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right")
@@ -346,23 +351,27 @@ private struct FileHeader: View {
                     .truncationMode(.head)
                     Counts(added: section.units.reduce(0) { $0 + $1.added }, deleted: section.units.reduce(0) { $0 + $1.deleted }, quiet: true)
                         .opacity(0.8)
-                    if section.units.allSatisfy(\.reviewed) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Ink.faint)
-                    }
                     Spacer(minLength: 0)
                 }
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .help(open ? "Fold this file" : "Unfold this file")
+            .help(open ? "Fold this file (←); ⌥-click folds every file" : "Unfold this file (→); ⌥-click unfolds every file")
             if hovering, file.status != "D" {
                 Button("Open") { model.openFile(file.path) }
                     .buttonStyle(.plain)
                     .foregroundStyle(Ink.secondary)
                     .help("Open \(file.path) (O)")
             }
+            Button {
+                model.toggleReviewed(section)
+            } label: {
+                Image(systemName: reviewed ? "checkmark.circle.fill" : "circle")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Ink.secondary)
+            .help(reviewed ? "Mark this file not reviewed" : "Mark this file reviewed and go on to the next")
+            .padding(.trailing, 12)
         }
         .font(Type.secondary)
         .padding(.top, 14)
@@ -487,7 +496,7 @@ private struct UnitView: View {
                 .help(unit.file.revertsByHunk ? "Take this back out of the file (⌫)" : "Put the file back as it was at the last commit (⌫)")
             }
             Button {
-                model.setReviewed([unit], !unit.reviewed)
+                model.toggleReviewed(unit)
             } label: {
                 Image(systemName: unit.reviewed ? "checkmark.circle.fill" : "circle")
             }

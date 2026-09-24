@@ -166,13 +166,39 @@ final class ReviewState {
         select(units[next], leaving: here)
     }
 
-    /// A click on a file's header opens it, or closes it and lets go of a note being written in it.
-    func toggle(_ section: ReviewFileSection) {
-        if openFiles.remove(section.id) == nil {
-            openFiles.insert(section.id)
-        } else if section.units.contains(where: { $0.id == noting }) {
-            noting = nil
+    /// A click on a file's header opens it or folds it; with ⌥, every file goes the same way.
+    func toggle(_ section: ReviewFileSection, all: Bool = false) {
+        let open = !openFiles.contains(section.id)
+        for id in all ? book.chapters.flatMap(\.files).map(\.id) : [section.id] {
+            setOpen(id, open)
         }
+    }
+
+    /// Opens a file or folds it. Folding lets go of a note being written in it.
+    func setOpen(_ section: String, _ open: Bool) {
+        if open {
+            openFiles.insert(section)
+        } else {
+            openFiles.remove(section)
+            if book.units.contains(where: { $0.id == noting && $0.section == section }) { noting = nil }
+        }
+    }
+
+    /// Where the keyboard goes once a hunk is marked: the next one still to review in its file,
+    /// earlier ones too, so a file is finished before it's left; else the next in the files after.
+    func next(after unit: ReviewUnit) -> ReviewUnit? {
+        let units = visibleUnits
+        guard let index = units.firstIndex(where: { $0.id == unit.id }) else { return nil }
+        let rest = units[(index + 1)...] + units[..<index]
+        return rest.first { !$0.reviewed && $0.section == unit.section } ?? rest.first { !$0.reviewed }
+    }
+
+    /// Where the keyboard goes once a whole file is marked: the first hunk still to review in the
+    /// files after it, round to the top.
+    func next(afterFile section: String) -> ReviewUnit? {
+        let units = visibleUnits
+        guard let index = units.firstIndex(where: { $0.section == section }) else { return nil }
+        return (units[index...] + units[..<index]).first { !$0.reviewed && $0.section != section }
     }
 }
 
@@ -344,23 +370,42 @@ extension AppModel {
         applyMarks()
     }
 
-    /// Space: marks the hunk the keyboard is on, or unmarks it, and moves on to the next one
-    /// still to review, in its file. Only a hunk you can see: with none selected, the first one
-    /// to review in an open file, and none while the keyboard's is in a closed one.
+    /// Space: marks the hunk the keyboard is on, or unmarks it. Only a hunk you can see: with
+    /// none selected, the first one to review in an open file, and none while the keyboard's is
+    /// in a closed one.
     func toggleSelectedReviewed() {
-        let units = review.visibleUnits
         let shown = review.selected == nil
-            ? units.first { !$0.reviewed && review.openFiles.contains($0.section) }
+            ? review.visibleUnits.first { !$0.reviewed && review.openFiles.contains($0.section) }
             : review.selectedUnit
-        guard let shown, let index = units.firstIndex(where: { $0.id == shown.id }) else { return }
-        let unit = units[index]
-        setReviewed([unit], !unit.reviewed)
-        if !unit.reviewed {
-            let next = units[(index + 1)...].first { !$0.reviewed } ?? units[..<index].first { !$0.reviewed }
-            review.select(next, leaving: unit)
-        } else {
+        guard let shown else { return }
+        toggleReviewed(shown)
+    }
+
+    /// Space or a hunk's circle: marks it and moves the keyboard on to the next one to review,
+    /// opening its file and folding the one it leaves; or unmarks it and keeps the keyboard there.
+    func toggleReviewed(_ unit: ReviewUnit) {
+        if unit.reviewed {
+            setReviewed([unit], false)
             review.selected = unit.id
+        } else {
+            let next = review.next(after: unit)
+            setReviewed([unit], true)
+            review.select(next, leaving: unit)
         }
+    }
+
+    /// A file's circle: marks every hunk in it, folds it and opens the next file to review; or,
+    /// with all of them marked, unmarks them.
+    func toggleReviewed(_ section: ReviewFileSection) {
+        let open = section.units.filter { !$0.reviewed }
+        guard !open.isEmpty else {
+            setReviewed(section.units, false)
+            return
+        }
+        let next = review.next(afterFile: section.id)
+        setReviewed(open, true)
+        review.setOpen(section.id, false)
+        review.select(next)
     }
 
     // MARK: Taking back
