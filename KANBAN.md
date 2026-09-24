@@ -118,6 +118,10 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo: 0.1.0-rc "Only fixes"
 
+#### K-127 · OriCode Molten
+Meriç wants to work on OriCode from OriCode, and `make run` quit every OriCode, the one the work was happening in too. The Debug build becomes an app of its own, the way browsers keep a Canary or a Nightly beside the release, with a name that means something here: OriCode is glass, and glass before it sets is molten, hot, still being shaped and quick to burn. OriCode Molten has its own bundle id, com.realmeric.oricode.molten, and its own Application Support and Logs folders, so it never opens OriCode's threads, and `make run` quits only it. Its icon is OriCode's, the same squircle and mark, in glass fresh from the furnace: deep red at the corners, orange where the mark sits, the mark white-hot. make icon renders both. Taken during the freeze at Meriç's word; it changes the build, not the app.
+Done when: make run opens OriCode Molten with the molten icon beside a running OriCode and leaves OriCode running, Molten starts with no projects of OriCode's, Settings › About and the Window menu say OriCode Molten, and make test and make app pass.
+
 #### K-122 · Release 0.1.0-rc
 As K-12. Tag `v0.1.0-rc`. Only once Meriç has tried the build from K-120 and K-121 and said it's right.
 
@@ -860,7 +864,7 @@ Commit: d117713
 Meriç: ⌘2's row stands out a little and then settles, and a click on a row doesn't, so the same pick looks different by hand. A click on a row nudges it the way ⌘1–9 does, for the same 700ms, and the brief says so. Taken during the freeze at Meriç's word, as a pick that looked different by mouse and by keyboard.
 Done when: in the installed app, a click on a drawer row nudges it and it settles back, pinned and unpinned, and ⌘2 still does the same.
 Notes: ⌘1–9 and a click both go through nudge, which lights the row, moves it 6pt out and lets go after 700ms unless another pick came first; the drawer's own slide timing is unchanged. Checked on the installed build with the drawer pinned: a click on the third row nudged it and it settled within the second, a click back on send ok in text did the same, and ⌘2 still nudged the second row and let go. make test passes.
-Commit: pending
+Commit: 6679f24
 
 
 ## Exceptions
