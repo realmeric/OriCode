@@ -40,6 +40,16 @@ extension AppModel {
         conversation.shellChanged(block.id, run)
     }
 
+    /// The open thread's latest command still running whose block has gone out of view, and how
+    /// many more are, for the line under the composer.
+    var runningOutOfView: (block: ShellBlock, more: Int)? {
+        guard let chat else { return nil }
+        let away = shellBlocks.values
+            .filter { $0.chatID == chat.id && $0.running && shellsInView[$0.id] == false }
+            .sorted { $0.startedAt > $1.startedAt }
+        return away.first.map { ($0, away.count - 1) }
+    }
+
     /// What's running from the shell prompt, for the question at quit: "make test in alpha".
     var runningCommands: [String] {
         shellBlocks.values.filter(\.running).sorted { $0.startedAt < $1.startedAt }.map { block in

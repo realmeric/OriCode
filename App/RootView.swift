@@ -295,6 +295,8 @@ struct EngineNote: View {
         Group {
             if let note = model.modeNote ?? model.note {
                 Text(note)
+            } else if model.engineState == .ready || model.engineState == .starting, let away = model.runningOutOfView {
+                RunningLine(block: away.block, more: away.more)
             } else {
                 engineLine
             }
@@ -336,6 +338,30 @@ struct EngineNote: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Ink.primary)
+    }
+}
+
+/// A command still running whose block has scrolled out of view: which, with a way back to it
+/// and a way to stop it.
+struct RunningLine: View {
+    @Environment(AppModel.self) private var model
+    let block: ShellBlock
+    let more: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(ToolSummary.firstLine(block.command)).font(Type.mono).lineLimit(1).truncationMode(.middle)
+            Text(more > 0 ? "and \(more) more are running" : "is running")
+            Text("·").foregroundStyle(Ink.faint)
+            Button("Show") { model.scrollTarget = block.id }
+                .buttonStyle(.plain)
+                .foregroundStyle(Ink.primary)
+            Button("Stop") { block.stop() }
+                .buttonStyle(.plain)
+                .foregroundStyle(Ink.primary)
+                .help("Stop it (⌃C)")
+        }
+        .frame(maxWidth: Column.width - 40)
     }
 }
 

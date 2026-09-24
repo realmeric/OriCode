@@ -44,6 +44,8 @@ struct ShellBlockView: View {
         }
         .padding(12)
         .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+        // Out of view while it runs, the line under the composer takes its place.
+        .onScrollVisibilityChange(threshold: 0.15) { model.shellsInView[id] = $0 }
         .task(id: run.output) {
             guard live == nil, !run.output.isEmpty else { return }
             let output = run.output

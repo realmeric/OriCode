@@ -33,6 +33,7 @@ struct TranscriptView: View {
                 let entries = TranscriptEntry.fold(shown)
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     view(of: entry)
+                        .id(entry.id)
                         .padding(.top, index == 0 ? 0 : Self.spacing(before: entry.first, after: entries[index - 1].last))
                         .transition(Self.arrival(of: entry.first))
                 }
@@ -58,6 +59,11 @@ struct TranscriptView: View {
         }
         .onChange(of: conversation.items) {
             if pinned { position.scrollTo(edge: .bottom) }
+        }
+        .onChange(of: model.scrollTarget) { _, target in
+            guard let target else { return }
+            withAnimation(Motion.move) { position.scrollTo(id: target, anchor: .center) }
+            model.scrollTarget = nil
         }
         .mask {
             // Fades under the top edge and above the composer instead of ending at a line.

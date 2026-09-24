@@ -138,6 +138,10 @@ final class AppModel {
     var shellBlocks: [UUID: ShellBlock] = [:]
     /// Keeps App Nap off while a command runs.
     var shellActivity: NSObjectProtocol?
+    /// Whether each block is in the transcript's view, once it has said.
+    var shellsInView: [UUID: Bool] = [:]
+    /// A block the transcript is asked to bring into view.
+    var scrollTarget: UUID?
     /// Where the composer's top edge is in the window, which the terminal stops above.
     var composerTop: CGFloat = 0
     /// ⌘K's levels, what's typed at each, and what it's doing.
