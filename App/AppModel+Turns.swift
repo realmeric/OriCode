@@ -142,6 +142,7 @@ extension AppModel {
         conversation(for: chat).receive(event)
         holdWhileWorking()
         tellIfAway(event, chat: chat)
+        if event.name == "limited" { scheduleResumes() }
         if event.name == "turn.done" {
             refreshBranch(for: chat)
             refreshUsage(fresh: true)
@@ -165,6 +166,8 @@ extension AppModel {
                 ? "A question for you."
                 : "Waiting on you: " + ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: event.body["input"] ?? .null), cwd: chat.cwd)
             notifier.post(title: chat.title, body: summary, chatID: chat.id)
+        } else if let resumeAt = chat.resumeAt {
+            notifier.post(title: chat.title, body: "Stopped at Claude's session limit. It goes on at \(Limit.time(resumeAt)).", chatID: chat.id)
         } else if event.body["stopReason"]?.string != "interrupted" {
             notifier.post(title: chat.title, body: "Finished.", chatID: chat.id)
         }

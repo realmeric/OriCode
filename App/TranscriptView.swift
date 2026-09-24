@@ -80,7 +80,8 @@ struct TranscriptView: View {
             ItemView(
                 // Not while the terminal is up: Return typed there mustn't answer the card.
                 item: item, cwd: cwd, listening: model.terminalShown ? nil : conversation.waitingAsk?.requestId,
-                live: conversation.running && item.id == conversation.items.last?.id)
+                live: conversation.running && item.id == conversation.items.last?.id,
+                resumes: conversation.resumeAt != nil && item.id == conversation.lastLimit)
         case .run(let items):
             ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id)
         }
@@ -167,6 +168,8 @@ struct ItemView: View {
     let cwd: String
     let listening: String?
     let live: Bool
+    /// A limit's line is the one the thread waits out.
+    var resumes = false
 
     var body: some View {
         switch item {
@@ -219,6 +222,8 @@ struct ItemView: View {
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 .textSelection(.enabled)
+        case .limited(_, let resetsAt, let window):
+            LimitLine(resetsAt: resetsAt, window: window, pending: resumes)
         }
     }
 }

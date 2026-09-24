@@ -168,6 +168,8 @@ final class AppModel {
     var mouseInDrawer = false
     var drawerTask: Task<Void, Never>?
     var peekTask: Task<Void, Never>?
+    /// The wait for the soonest session limit to reset, when a thread it stopped goes on.
+    var resumeTask: Task<Void, Never>?
     private var listening = false
     private var noteTask: Task<Void, Never>?
 
@@ -325,6 +327,7 @@ final class AppModel {
             refreshUsage()
             readReview()
             pickUpAfterQuit()
+            scheduleResumes()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

@@ -56,11 +56,13 @@ enum Item: Identifiable, Hashable {
     case ask(id: UUID, ask: PendingAsk)
     case footer(id: UUID, footer: TurnFooter)
     case note(id: UUID, text: String)
+    /// One of the plan's limits refused a turn: when it resets, and which limit it was.
+    case limited(id: UUID, resetsAt: Date, window: String?)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
-             .footer(let id, _), .note(let id, _):
+             .footer(let id, _), .note(let id, _), .limited(let id, _, _):
             id
         }
     }
@@ -126,6 +128,23 @@ final class Conversation {
         finishOpenTools(except: waitingCalls)
     }
 
+    /// When the thread goes on by itself, once the session limit that stopped it resets.
+    var resumeAt: Date? {
+        chat.resumeAt
+    }
+
+    /// The latest limit's line, the one a waiting thread waits out.
+    var lastLimit: UUID? {
+        items.last { if case .limited = $0 { true } else { false } }?.id
+    }
+
+    /// The thread won't go on by itself after all.
+    func cancelResume() {
+        chat.resumeAt = nil
+        unsaved = true
+        flush()
+    }
+
     /// Whether the thread is waiting on you from before a quit, with no CLI behind it.
     var waitingAfterQuit: Bool {
         !askedBeforeQuit.isEmpty
@@ -157,6 +176,7 @@ final class Conversation {
         running = true
         chat.started = true
         chat.quitMidTurn = false
+        chat.resumeAt = nil
         if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {
             chat.title = Chat.title(from: text)
         }
@@ -206,6 +226,14 @@ final class Conversation {
                 unsaved = true
             } else {
                 record(event.name, ["event": .string(event.name), "delta": .string(delta)], keepOpen: true)
+            }
+        case "limited":
+            record(event.name, event.body)
+            if let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }),
+               Limit.resumes(window: event.body["window"]?.string, resetsAt: resetsAt) {
+                // Refused again past the reset, a Mac's clock ahead of Claude's: a while longer.
+                chat.resumeAt = resetsAt > .now ? resetsAt : .now.addingTimeInterval(300)
+                flush()
             }
         case "session.lost":
             chat.sessionId = nil
@@ -377,6 +405,9 @@ final class Conversation {
             items.append(.footer(id: id, footer: footer))
         case "error", "note":
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
+        case "limited":
+            let resetsAt = Date(timeIntervalSince1970: (body["resetsAt"]?.double ?? 0) / 1000)
+            items.append(.limited(id: id, resetsAt: resetsAt, window: body["window"]?.string))
         case "compacted":
             let before = body["before"]?.int.map { $0.formatted(.number.notation(.compactName)) }
             let after = body["after"]?.int.map { $0.formatted(.number.notation(.compactName)) }

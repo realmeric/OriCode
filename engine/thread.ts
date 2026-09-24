@@ -10,6 +10,7 @@ import {
   type PermissionResult,
   type Query,
   type SDKMessage,
+  type SDKRateLimitInfo,
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -144,6 +145,9 @@ export class Thread {
   /// A resumed session said a command from its last CLI never finished, which the CLI answers
   /// with a result of its own before it takes up the message sent.
   private orphaned = false;
+  /// The plan's limits as the CLI last reported them, and whether this turn was refused by one.
+  private limit: SDKRateLimitInfo | undefined;
+  private refused = false;
 
   constructor(id: string, claude: string) {
     this.id = id;
@@ -178,6 +182,7 @@ export class Thread {
     this.started = false;
     this.interrupted = false;
     this.errored = false;
+    this.refused = false;
     this.grant = params.grant;
     this.push(params);
   }
@@ -450,6 +455,11 @@ export class Thread {
         if (usage) {
           this.lastContext = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.output_tokens ?? 0);
         }
+        if (message.error === "rate_limit") {
+          // Said once the turn ends, when the limit that refused it has been reported too.
+          this.refused = true;
+          return;
+        }
         if (message.error) {
           // An API failure arrives as a synthetic message; its text is the raw error, so say it once, plainly.
           this.fail(errorText(message.error));
@@ -482,6 +492,9 @@ export class Thread {
         }
         return;
       }
+      case "rate_limit_event":
+        this.limit = message.rate_limit_info;
+        return;
       case "system": {
         if (message.subtype === "init") this.tellFast(message);
         if (this.trackTask(message)) return;
@@ -510,6 +523,12 @@ export class Thread {
         this.resuming = undefined;
         this.running = false;
         this.grant = undefined;
+        if (this.refused) {
+          this.refused = false;
+          const limited = limitReached(this.limit);
+          if (limited) event("limited", { threadId: this.id, ...limited });
+          else this.fail(errorText("rate_limit"));
+        }
         this.idleSince = Date.now();
         this.streamed.clear();
         this.tellFast(message);
@@ -551,6 +570,13 @@ export function changedEffort(told: Effort | undefined, now: Applied): Effort | 
   const ultracode = now.ultracode === true;
   if (told && told.level === level && told.ultracode === ultracode) return undefined;
   return { level, ultracode };
+}
+
+/// When a turn refused by the plan's limits can go on: the limit's reset, in milliseconds, and
+/// which limit it was. Nothing when the CLI hasn't said a limit is reached, or when.
+export function limitReached(info: SDKRateLimitInfo | undefined): { resetsAt: number; window: string | null } | undefined {
+  if (info?.status !== "rejected" || !info.resetsAt) return undefined;
+  return { resetsAt: info.resetsAt * 1000, window: info.rateLimitType ?? null };
 }
 
 /// Whether a call is the one the user allowed. Claude words a command's description afresh when
