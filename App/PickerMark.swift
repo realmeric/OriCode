@@ -184,7 +184,7 @@ private struct MarkPage: View {
         } else if let shown = previewed ?? level {
             words = EffortScale.line(shown)
         } else {
-            words = ("Claude Code picks the level for this model", nil)
+            words = ("Runs at the model's default level", nil)
         }
         return Group {
             if let cost = words.1 {

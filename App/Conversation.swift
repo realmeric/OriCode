@@ -317,7 +317,7 @@ final class Conversation {
         case "compacted":
             let before = body["before"]?.int.map { $0.formatted(.number.notation(.compactName)) }
             let after = body["after"]?.int.map { $0.formatted(.number.notation(.compactName)) }
-            items.append(.note(id: id, text: before.map { "Compacted from \($0) tokens to \(after ?? "less")." } ?? "Claude compacted the conversation."))
+            items.append(.note(id: id, text: before.map { "Compacted from \($0) tokens to \(after ?? "less")." } ?? "Compacted the conversation."))
         default:
             break
         }

@@ -143,7 +143,7 @@ extension AppModel {
         if event.name == "ask" {
             let tool = event.body["tool"]?.string ?? ""
             let summary = event.body["kind"]?.string == "question"
-                ? "Claude has a question for you."
+                ? "A question for you."
                 : "Waiting on you: " + ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: event.body["input"] ?? .null), cwd: chat.cwd)
             notifier.post(title: chat.title, body: summary, chatID: chat.id)
         } else if event.body["stopReason"]?.string != "interrupted" {

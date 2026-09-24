@@ -33,7 +33,7 @@ enum PermissionModeOption: String, CaseIterable, Identifiable {
         switch self {
         case .ask: "Edits and commands wait for you"
         case .acceptEdits: "Edits go through, commands ask"
-        case .auto: "Claude decides what is safe"
+        case .auto: "The model decides what is safe"
         case .plan: "Reads and thinks, changes nothing"
         case .dontAsk: "Everything goes through"
         }

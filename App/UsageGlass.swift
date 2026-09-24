@@ -98,7 +98,7 @@ private struct UsageCard: View {
                         .font(Type.secondary).foregroundStyle(Ink.secondary)
                 }
             } else {
-                Text(model.usageLoading ? "Asking Claude…" : "Usage isn't available right now.")
+                Text(model.usageLoading ? "Checking usage…" : "Usage isn't available right now.")
                     .font(Type.secondary).foregroundStyle(Ink.secondary)
             }
             if let chat, chat.contextWindow > 0 {

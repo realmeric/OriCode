@@ -27,7 +27,7 @@ enum ShortcutList {
             Row(name: "Review changes", keys: "⌘⇧D"),
             Row(name: "Next and previous hunk", keys: "↓ ↑  or  J K"),
             Row(name: "Mark reviewed, then the next", keys: "Space"),
-            Row(name: "Note for Claude", keys: "N"),
+            Row(name: "Add a note", keys: "N"),
             Row(name: "Take it back", keys: "⌫"),
             Row(name: "Undo that", keys: "⌘Z"),
             Row(name: "Open the file", keys: "O"),
@@ -39,7 +39,7 @@ enum ShortcutList {
             Row(name: "Slash commands and skills", keys: "/ at the start"),
             Row(name: "Stop", keys: "⌘."),
             Row(name: "Model and effort", keys: "⌘⇧M"),
-            Row(name: "Allow what Claude asks", keys: "Return"),
+            Row(name: "Allow what the thread asks", keys: "Return"),
             Row(name: "Deny it, or close what's on top", keys: "Esc"),
         ]),
         Group(title: "App", rows: [

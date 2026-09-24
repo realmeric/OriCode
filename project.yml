@@ -56,9 +56,9 @@ targets:
         # The brief has no accent colour; this keeps the system's blue out of tabs, default buttons and selection.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
-        INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Claude reads and edits the projects you add, and some of them live in Documents.
-        INFOPLIST_KEY_NSDesktopFolderUsageDescription: Claude reads and edits the projects you add, and some of them live on the Desktop.
-        INFOPLIST_KEY_NSDownloadsFolderUsageDescription: Claude reads and edits the projects you add, and some of them live in Downloads.
+        INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Your coding agent reads and edits the projects you add, and some of them live in Documents.
+        INFOPLIST_KEY_NSDesktopFolderUsageDescription: Your coding agent reads and edits the projects you add, and some of them live on the Desktop.
+        INFOPLIST_KEY_NSDownloadsFolderUsageDescription: Your coding agent reads and edits the projects you add, and some of them live in Downloads.
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_APP_SANDBOX: NO
       configs:

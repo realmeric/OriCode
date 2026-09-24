@@ -223,7 +223,7 @@ actor Engine {
     /// app asks not to nap while a turn runs, and only then: idle, it can nap like any other.
     func hold(_ busy: Bool) {
         if busy, activity == nil {
-            activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "Claude is working in a thread")
+            activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "A thread is working")
             Self.logger.notice("holding off App Nap for a turn")
         } else if !busy, let activity {
             ProcessInfo.processInfo.endActivity(activity)

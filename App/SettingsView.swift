@@ -384,16 +384,16 @@ private struct GeneralPane: View {
         model.models.first { $0.id == (newModel.nonEmpty ?? lastModel) }
     }
 
-    /// Where Claude Code's default lands for the model a new thread starts on.
+    /// Where the CLI's default lands for the model a new thread starts on.
     private var effortDetail: String {
         let starting = startingOption
         if let starting, starting.levels.isEmpty {
             return "\(ModelMenu.shortName(starting.name)) has one reasoning level."
         }
         guard let starting, let level = starting.defaultEffort else {
-            return "Claude Code's default is the model's own, unless your Claude Code settings pick one."
+            return "Default is the model's own, unless your CLI settings pick one."
         }
-        return "Claude Code's default on \(ModelMenu.shortName(starting.name)) is \(ModelMenu.effortName(level))."
+        return "Default on \(ModelMenu.shortName(starting.name)) is \(ModelMenu.effortName(level))."
     }
 
     private func choose() {
@@ -487,7 +487,7 @@ private struct AboutPane: View {
                     .frame(width: 60, height: 60)
                     .padding(.bottom, 4)
                 Text(Build.name).font(.system(size: 20, weight: .semibold)).foregroundStyle(Ink.primary)
-                Text("A native window for Claude Code.").font(Type.body).foregroundStyle(Ink.secondary)
+                Text("A native window for coding agents.").font(Type.body).foregroundStyle(Ink.secondary)
                 Text(version).font(Type.secondary).foregroundStyle(Ink.faint)
                 // The folder it was built from, which a copy built elsewhere doesn't have.
                 if let source, FileManager.default.fileExists(atPath: source.path) {

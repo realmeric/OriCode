@@ -24,7 +24,7 @@ extension AppModel {
         guard let folder = workingFolder else { return "Add a project first" }
         if chat?.worktreeBranch != nil { return "This thread's branch is its own" }
         let working = projects.flatMap(\.chats).contains { $0.cwd == folder && conversations[$0.id]?.running == true }
-        return working ? "Claude is working in this folder" : nil
+        return working ? "A thread is working in this folder" : nil
     }
 
     var gitCommands: [PaletteItem] {

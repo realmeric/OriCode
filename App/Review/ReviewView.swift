@@ -225,7 +225,7 @@ private struct ChapterHeader: View {
                     Text("Not from this thread's edits")
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
-                    Text("No edit Claude made here shows these changes: they're yours, a command's, or another thread's.")
+                    Text("No edit in this thread shows these changes: they're yours, a command's, or another thread's.")
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
                 }
@@ -462,7 +462,7 @@ private struct UnitView: View {
                 } label: {
                     Image(systemName: "text.bubble")
                 }
-                .help("Note for Claude (N)")
+                .help("Add a note (N)")
                 Button {
                     model.takeBack([unit], label: "Take Back", undoManager: undoManager)
                 } label: {
@@ -663,7 +663,7 @@ private struct NoteEditor: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("Note for Claude about these lines", text: $text, axis: .vertical)
+            TextField("A note about these lines", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.primary)
@@ -704,13 +704,13 @@ private struct ReviewFooter: View {
         VStack(alignment: .leading, spacing: 8) {
             if !review.notes.isEmpty {
                 HStack(spacing: 10) {
-                    Text("\(review.notes.count) \(review.notes.count == 1 ? "note" : "notes") for Claude")
+                    Text("\(review.notes.count) \(review.notes.count == 1 ? "note" : "notes") to send")
                         .foregroundStyle(Ink.primary)
                     Spacer()
                     Button("Discard") { withAnimation(Motion.move) { review.notes.removeAll() } }
-                    Button("Send to Claude") { model.sendNotes() }
+                    Button("Send") { model.sendNotes() }
                         .disabled(running)
-                        .help(running ? "Claude is still working; send when it's done." : "Send the notes as your next message")
+                        .help(running ? "The thread is still working; send when it's done." : "Send the notes as your next message")
                 }
                 .font(Type.secondary)
             }

@@ -64,7 +64,7 @@ extension AppModel {
     func addProject(at url: URL) {
         let path = url.standardizedFileURL.path
         guard FileManager.default.fileExists(atPath: url.appending(path: ".git").path) else {
-            say("\(url.lastPathComponent) isn't a git repository, so OriCode can't show what Claude changes there.")
+            say("\(url.lastPathComponent) isn't a git repository, so OriCode can't show the changes made there.")
             return
         }
         if let existing = projects.first(where: { $0.path == path }) {
