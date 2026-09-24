@@ -26,8 +26,11 @@ struct OriCodeApp: App {
                         model.addProject(at: url)
                     }
                     delegate.deliverEarlyFolders()
-                    delegate.runningInTerminal = { [model] in model.terminals.running }
-                    delegate.endTerminals = { [model] in model.terminals.endAll() }
+                    delegate.runningInTerminal = { [model] in model.terminals.running + model.runningCommands }
+                    delegate.endTerminals = { [model] in
+                        model.terminals.endAll()
+                        model.endShells()
+                    }
                     delegate.markCutOffTurns = { [model] in model.markCutOffTurns() }
                     updates.say = { [model] line in model.say(line) }
                     await model.boot()

@@ -47,7 +47,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     /// SwiftTerm forks and execs without closing anything, so a shell would inherit every
     /// descriptor the app holds: the engine's pipes, whose end then never comes, its log, and
     /// other shells' terminals, which then never hang up. Each is marked to close at exec first.
-    private static func closeOnExec() {
+    static func closeOnExec() {
         guard let open = try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd") else { return }
         for name in open {
             guard let fd = Int32(name), fd > 2 else { continue }
@@ -266,11 +266,14 @@ enum TerminalPalette {
         return CTFontGetGlyphsForCharacters(font, letters, &glyphs, letters.count)
     }
 
+    /// The sixteen, as 0xRRGGBB.
+    static let rgb = [
+        0x5C5C63, 0xF28C8C, 0x8CD999, 0xE6C98A, 0x8FB3F0, 0xD6A2E8, 0x86D1D1, 0xC8C8CC,
+        0x7A7A82, 0xFFA8A8, 0xA8EBB3, 0xF2DBA6, 0xADC8FA, 0xE6BDF2, 0xA6E3E3, 0xEBEBEB,
+    ]
+
     static var ansi: [SwiftTerm.Color] {
-        [
-            0x5C5C63, 0xF28C8C, 0x8CD999, 0xE6C98A, 0x8FB3F0, 0xD6A2E8, 0x86D1D1, 0xC8C8CC,
-            0x7A7A82, 0xFFA8A8, 0xA8EBB3, 0xF2DBA6, 0xADC8FA, 0xE6BDF2, 0xA6E3E3, 0xEBEBEB,
-        ].map { rgb in
+        rgb.map { rgb in
             SwiftTerm.Color(red: UInt16((rgb >> 16) & 0xFF) * 257, green: UInt16((rgb >> 8) & 0xFF) * 257, blue: UInt16(rgb & 0xFF) * 257)
         }
     }

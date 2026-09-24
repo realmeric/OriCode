@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 extension AppModel {
     /// Esc closes the topmost thing and nothing under it hears the key. Returns whether
@@ -43,6 +44,10 @@ extension AppModel {
             // While a program holds the shell (vim, fzf, claude), Esc is that program's.
             if terminals.owner(of: NSApp.mainWindow?.firstResponder)?.busy == true { return false }
             closeTerminal()
+            return true
+        }
+        if shellPrompt {
+            withAnimation(Motion.fade) { shellPrompt = false }
             return true
         }
         if drawerShown {

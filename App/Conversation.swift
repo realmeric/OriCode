@@ -39,6 +39,46 @@ struct PendingAsk: Hashable {
     var toolUseId: String?
 }
 
+/// A command run from the composer's shell prompt, as the thread keeps it: what it printed, raw,
+/// and how far of that, as text, Claude has read.
+struct ShellRun: Hashable {
+    let command: String
+    let folder: String
+    let startedAt: Date
+    var endedAt: Date?
+    var exitCode: Int32?
+    var output = Data()
+    /// Characters of its text given to Claude; -1 until it has been given at all.
+    var sentUpTo = -1
+
+    var body: JSON {
+        var body: [String: JSON] = [
+            "event": "shell", "command": .string(command), "folder": .string(folder),
+            "startedAt": .number(startedAt.timeIntervalSince1970), "output": .string(output.base64EncodedString()),
+            "sentUpTo": .number(Double(sentUpTo)),
+        ]
+        if let endedAt { body["endedAt"] = .number(endedAt.timeIntervalSince1970) }
+        if let exitCode { body["exitCode"] = .number(Double(exitCode)) }
+        return .object(body)
+    }
+
+    init(command: String, folder: String, startedAt: Date = .now) {
+        self.command = command
+        self.folder = folder
+        self.startedAt = startedAt
+    }
+
+    init(_ body: JSON) {
+        command = body["command"]?.string ?? ""
+        folder = body["folder"]?.string ?? ""
+        startedAt = Date(timeIntervalSince1970: body["startedAt"]?.double ?? 0)
+        endedAt = body["endedAt"]?.double.map(Date.init(timeIntervalSince1970:))
+        exitCode = body["exitCode"]?.int.map(Int32.init)
+        output = body["output"]?.string.flatMap { Data(base64Encoded: $0) } ?? Data()
+        sentUpTo = body["sentUpTo"]?.int ?? -1
+    }
+}
+
 struct TurnFooter: Hashable {
     let durationMs: Double
     let costUSD: Double
@@ -58,11 +98,13 @@ enum Item: Identifiable, Hashable {
     case note(id: UUID, text: String)
     /// One of the plan's limits refused a turn: when it resets, and which limit it was.
     case limited(id: UUID, resetsAt: Date, window: String?)
+    /// A command run from the composer's shell prompt.
+    case shell(id: UUID, run: ShellRun)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
-             .footer(let id, _), .note(let id, _), .limited(let id, _, _):
+             .footer(let id, _), .note(let id, _), .limited(let id, _, _), .shell(let id, _):
             id
         }
     }
@@ -100,6 +142,8 @@ final class Conversation {
     private var seq = 0
     private var open: (item: Int, event: Event, kind: String)?
     private var unsaved = false
+    /// Each command's event, updated when it ends and when Claude reads it.
+    private var shellEvents: [UUID: Event] = [:]
 
     init(chat: Chat, context: ModelContext) {
         self.chat = chat
@@ -108,6 +152,7 @@ final class Conversation {
             seq = max(seq, event.seq + 1)
             turn = max(turn, event.turn)
             guard let body = try? JSONDecoder().decode(JSON.self, from: event.payload) else { continue }
+            if event.kind == "shell" { shellEvents[event.id] = event }
             apply(event.kind, body, id: event.id)
         }
         open = nil
@@ -262,6 +307,23 @@ final class Conversation {
         record("answer", ["event": "answer", "requestId": .string(requestId), "allow": .bool(allow)])
     }
 
+    /// A command from the shell prompt starts: its block goes into the thread, which it starts if
+    /// it hadn't, and is kept up to date by `shellEnded`.
+    func shellStarted(_ run: ShellRun, id: UUID) {
+        chat.started = true
+        if !chat.titleIsCustom, chat.title == Chat.untitled { chat.title = Chat.title(from: run.command) }
+        shellEvents[id] = record("shell", run.body, id: id)
+    }
+
+    /// A command's block as it stands now: ended, or read by Claude.
+    func shellChanged(_ id: UUID, _ run: ShellRun) {
+        guard let index = items.lastIndex(where: { $0.id == id }), let event = shellEvents[id] else { return }
+        items[index] = .shell(id: id, run: run)
+        event.payload = (try? run.body.data()) ?? event.payload
+        unsaved = true
+        flush()
+    }
+
     /// OriCode is quitting while the thread works, which isn't a stop: the thread is marked for the
     /// next launch, and what has streamed so far is written down. Working is what the mark shows,
     /// a turn running or a subagent or background command out, since the CLI that ran them goes too.
@@ -329,8 +391,10 @@ final class Conversation {
         }
     }
 
-    private func record(_ kind: String, _ body: JSON, keepOpen: Bool = false) {
+    @discardableResult
+    private func record(_ kind: String, _ body: JSON, keepOpen: Bool = false, id: UUID? = nil) -> Event {
         let event = Event(turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
+        if let id { event.id = id }
         seq += 1
         context.insert(event)
         event.chat = chat
@@ -339,6 +403,7 @@ final class Conversation {
         apply(kind, body, id: event.id)
         if keepOpen, let last = items.indices.last { open = (last, event, kind) }
         if !keepOpen { flush() }
+        return event
     }
 
     private func apply(_ kind: String, _ body: JSON, id: UUID) {
@@ -408,6 +473,8 @@ final class Conversation {
         case "limited":
             let resetsAt = Date(timeIntervalSince1970: (body["resetsAt"]?.double ?? 0) / 1000)
             items.append(.limited(id: id, resetsAt: resetsAt, window: body["window"]?.string))
+        case "shell":
+            items.append(.shell(id: id, run: ShellRun(body)))
         case "compacted":
             let before = body["before"]?.int.map { $0.formatted(.number.notation(.compactName)) }
             let after = body["after"]?.int.map { $0.formatted(.number.notation(.compactName)) }

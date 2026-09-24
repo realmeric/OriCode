@@ -142,13 +142,33 @@ struct Composer: View {
 
     private var row: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            TextField("Ask for a change", text: $text, axis: .vertical)
+            if model.shellPrompt {
+                Text("$")
+                    .font(Type.mono)
+                    .foregroundStyle(Ink.secondary)
+                    .padding(.leading, 14)
+                    .padding(.vertical, 9)
+                    .transition(.opacity)
+            }
+            TextField(placeholder, text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(Type.body)
+                .font(model.shellPrompt ? Type.mono : Type.body)
                 .foregroundStyle(Ink.primary)
                 .lineLimit(1...maxLines)
                 .id(draft)
                 .focused($focused)
+                // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
+                .onChange(of: text) { _, now in
+                    guard !model.shellPrompt, now.hasPrefix("!") else { return }
+                    withAnimation(Motion.fade) { model.shellPrompt = true }
+                    text = String(now.dropFirst())
+                }
+                // ⌫ in an empty prompt turns it back.
+                .onKeyPress(.delete) {
+                    guard model.shellPrompt, text.isEmpty else { return .ignored }
+                    withAnimation(Motion.fade) { model.shellPrompt = false }
+                    return .handled
+                }
                 .onKeyPress(.downArrow) {
                     guard !slashMatches.isEmpty else { return .ignored }
                     slashSelected = min(slashSelected + 1, slashMatches.count - 1)
@@ -167,6 +187,8 @@ struct Composer: View {
                 .onKeyPress(.return, phases: .down) { press in
                     if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
                         text += "\n"
+                    } else if model.shellPrompt {
+                        runCommand()
                     } else if let command = selectedSlash, text != "/" + command.name {
                         complete(command)
                     } else if !canSend, let ask = waitingPermission {
@@ -178,7 +200,7 @@ struct Composer: View {
                 }
 
                 .padding(.vertical, 9)
-                .padding(.leading, 14)
+                .padding(.leading, model.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
                 attachButton
                 ModelMenu(chat: model.chat)
@@ -217,14 +239,16 @@ struct Composer: View {
     }
 
     private var sendButton: some View {
-        Button {
-            if running { model.stop() } else { send() }
+        // At the shell prompt it runs the command, whether or not a turn is running.
+        let stops = running && !model.shellPrompt
+        return Button {
+            if model.shellPrompt { runCommand() } else if running { model.stop() } else { send() }
         } label: {
-            Image(systemName: running ? "stop.fill" : "arrow.up")
-                .font(.system(size: running ? 12 : 15, weight: .semibold))
+            Image(systemName: stops ? "stop.fill" : "arrow.up")
+                .font(.system(size: stops ? 12 : 15, weight: .semibold))
                 // One button changing its job, not two buttons swapping.
                 .contentTransition(.symbolEffect(.replace))
-                .animation(Motion.fade, value: running)
+                .animation(Motion.fade, value: stops)
                 // The fade is for the symbol; where it sits follows the composer as one piece.
                 .geometryGroup()
                 .frame(width: 36, height: 36)
@@ -232,20 +256,33 @@ struct Composer: View {
                 // and it left the capsule behind when the composer slid down.
                 .animation(Motion.fade) { content in
                     content
-                        .foregroundStyle(canSend || running ? Color.black.opacity(0.85) : Ink.faint)
-                        .background(canSend || running ? Ink.primary : Surface.selected, in: .circle)
+                        .foregroundStyle(canSend || stops ? Color.black.opacity(0.85) : Ink.faint)
+                        .background(canSend || stops ? Ink.primary : Surface.selected, in: .circle)
                 }
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .disabled(!running && !canSend)
-        .help(running ? "Stop (⌘.)" : "Send (Return)")
-        .accessibilityLabel(running ? "Stop" : "Send")
+        .disabled(!stops && !canSend)
+        .help(model.shellPrompt ? "Run (Return)" : running ? "Stop (⌘.)" : "Send (Return)")
+        .accessibilityLabel(model.shellPrompt ? "Run" : running ? "Stop" : "Send")
+    }
+
+    private var placeholder: String {
+        guard model.shellPrompt else { return "Ask for a change" }
+        return "A command for " + (model.chat.map { URL(filePath: $0.cwd).lastPathComponent } ?? model.project?.name ?? "the project")
+    }
+
+    private func runCommand() {
+        guard canSend else { return }
+        model.runCommand(text)
+        text = ""
+        draft = UUID()
+        focused = true
     }
 
     /// The word after a leading "/", while it's still being typed.
     private var slashQuery: String? {
-        guard text.hasPrefix("/"), !text.contains(where: \.isWhitespace) else { return nil }
+        guard !model.shellPrompt, text.hasPrefix("/"), !text.contains(where: \.isWhitespace) else { return nil }
         return String(text.dropFirst())
     }
 

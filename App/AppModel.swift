@@ -132,6 +132,12 @@ final class AppModel {
     let customActions = CustomActionStore()
     /// Threads whose session Continue in Claude Code gave to the terminal's claude.
     var handedOff: Set<UUID> = []
+    /// Whether the composer is a shell prompt for the thread's folder, after a `!` at its start.
+    var shellPrompt = false
+    /// The commands run from it in this launch, by their block's id, running or ended.
+    var shellBlocks: [UUID: ShellBlock] = [:]
+    /// Keeps App Nap off while a command runs.
+    var shellActivity: NSObjectProtocol?
     /// Where the composer's top edge is in the window, which the terminal stops above.
     var composerTop: CGFloat = 0
     /// ⌘K's levels, what's typed at each, and what it's doing.

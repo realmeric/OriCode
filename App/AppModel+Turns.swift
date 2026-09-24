@@ -45,6 +45,8 @@ extension AppModel {
     func startTurn(in chat: Chat, text: String, images: [ImageAttachment] = [], allowing grant: PendingAsk? = nil) {
         let conversation = conversation(for: chat)
         holdWhileWorking()
+        // The commands run from the shell prompt since Claude last read them go first.
+        let text = shellContext(for: chat).map { $0 + "\n\n" + text } ?? text
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),

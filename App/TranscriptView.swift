@@ -224,6 +224,8 @@ struct ItemView: View {
                 .textSelection(.enabled)
         case .limited(_, let resetsAt, let window):
             LimitLine(resetsAt: resetsAt, window: window, pending: resumes)
+        case .shell(let id, let run):
+            ShellBlockView(id: id, run: run)
         }
     }
 }
