@@ -3,6 +3,7 @@ import SwiftUI
 
 struct Composer: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let running: Bool
     let maxHeight: CGFloat
     @State private var text = ""
@@ -31,6 +32,8 @@ struct Composer: View {
     /// The tallest picker, its gap and the 52pt title bar: with less room than this above the
     /// composer, the picker opens below it.
     static let pickerRoom: CGFloat = 380
+    /// A text field's placeholder, as AppKit draws it.
+    private static let placeholderInk = Color(nsColor: .placeholderTextColor)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -178,75 +181,89 @@ struct Composer: View {
                     .foregroundStyle(Ink.secondary)
                     .padding(.leading, 14)
                     .padding(.vertical, 9)
-                    .transition(.opacity)
+                    // It grows out of the composer's left end as the text moves over for it.
+                    .transition(reduceMotion ? .opacity.animation(Motion.fade) : .scale(scale: 0, anchor: .leading).combined(with: .opacity))
             }
-            TextField(placeholder, text: $text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(model.shellPrompt ? Type.mono : Type.body)
-                .foregroundStyle(Ink.primary)
-                .lineLimit(1...maxLines)
-                .id(draft)
-                .focused($focused)
-                // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
-                .onChange(of: text) { _, now in
-                    if now != completed { completions = [] }
-                    guard !model.shellPrompt, now.hasPrefix("!") else { return }
-                    withAnimation(Motion.fade) { model.shellPrompt = true }
-                    text = String(now.dropFirst())
-                }
-                // ⌫ in an empty prompt turns it back. The Backspace key sends DEL, 0x7F, which
-                // isn't SwiftUI's .delete, 0x08.
-                .onKeyPress(keys: [.delete, KeyEquivalent("\u{7F}")]) { _ in
-                    guard model.shellPrompt, text.isEmpty else { return .ignored }
-                    withAnimation(Motion.fade) { model.shellPrompt = false }
+            // Fonts don't interpolate, so the field's text and placeholder fade in with the new type
+            // over a copy of what it showed in the old one. The field itself stays, and keeps the
+            // keyboard; SwiftUI's opacity doesn't reach its AppKit view, so its colours fade instead.
+            KeyframeAnimator(initialValue: 1.0, trigger: model.shellPrompt) { shown in
+                let placeholder = placeholder(shell: model.shellPrompt)
+                TextField(placeholder, text: $text, prompt: Text(placeholder).foregroundStyle(Self.placeholderInk.opacity(shown)), axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(model.shellPrompt ? Type.mono : Type.body)
+                    .foregroundStyle(Ink.primary.opacity(shown))
+                    .lineLimit(1...maxLines)
+                    .focused($focused)
+                    .overlay(alignment: Alignment(horizontal: .leading, vertical: .firstTextBaseline)) {
+                        // In and out with the keyframes alone, not faded in by the move spring.
+                        if shown < 1 { ghost.opacity(1 - shown).transition(.identity) }
+                    }
+            } keyframes: { _ in
+                MoveKeyframe(0)
+                LinearKeyframe(1, duration: 0.18, timingCurve: .easeOut)
+            }
+            .id(draft)
+            // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
+            .onChange(of: text) { _, now in
+                if now != completed { completions = [] }
+                guard !model.shellPrompt, now.hasPrefix("!") else { return }
+                model.shellPrompt = true
+                text = String(now.dropFirst())
+            }
+            // ⌫ in an empty prompt turns it back. The Backspace key sends DEL, 0x7F, which
+            // isn't SwiftUI's .delete, 0x08.
+            .onKeyPress(keys: [.delete, KeyEquivalent("\u{7F}")]) { _ in
+                guard model.shellPrompt, text.isEmpty else { return .ignored }
+                model.shellPrompt = false
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                if !slashMatches.isEmpty {
+                    slashSelected = min(slashSelected + 1, slashMatches.count - 1)
                     return .handled
                 }
-                .onKeyPress(.downArrow) {
-                    if !slashMatches.isEmpty {
-                        slashSelected = min(slashSelected + 1, slashMatches.count - 1)
-                        return .handled
-                    }
-                    if !completions.isEmpty {
-                        tab(backward: false)
-                        return .handled
-                    }
-                    return recall(older: false) ? .handled : .ignored
-                }
-                .onKeyPress(.upArrow) {
-                    if !slashMatches.isEmpty {
-                        slashSelected = max(slashSelected - 1, 0)
-                        return .handled
-                    }
-                    if !completions.isEmpty {
-                        tab(backward: true)
-                        return .handled
-                    }
-                    return recall(older: true) ? .handled : .ignored
-                }
-                // Tab never takes the keyboard out of the composer: it completes, or does nothing.
-                // ⇧Tab arrives as a backtab.
-                .onKeyPress(keys: [.tab, KeyEquivalent("\u{19}")]) { press in
-                    tab(backward: press.key != .tab || press.modifiers.contains(.shift))
+                if !completions.isEmpty {
+                    tab(backward: false)
                     return .handled
                 }
-                .onKeyPress(.return, phases: .down) { press in
-                    completions = []
-                    if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
-                        text += "\n"
-                    } else if model.shellPrompt {
-                        runCommand()
-                    } else if let command = selectedSlash, text != "/" + command.name {
-                        complete(command)
-                    } else if !canSend, let ask = waitingPermission {
-                        model.answer(ask, allow: true)
-                    } else {
-                        send()
-                    }
+                return recall(older: false) ? .handled : .ignored
+            }
+            .onKeyPress(.upArrow) {
+                if !slashMatches.isEmpty {
+                    slashSelected = max(slashSelected - 1, 0)
                     return .handled
                 }
+                if !completions.isEmpty {
+                    tab(backward: true)
+                    return .handled
+                }
+                return recall(older: true) ? .handled : .ignored
+            }
+            // Tab never takes the keyboard out of the composer: it completes, or does nothing.
+            // ⇧Tab arrives as a backtab.
+            .onKeyPress(keys: [.tab, KeyEquivalent("\u{19}")]) { press in
+                tab(backward: press.key != .tab || press.modifiers.contains(.shift))
+                return .handled
+            }
+            .onKeyPress(.return, phases: .down) { press in
+                completions = []
+                if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
+                    text += "\n"
+                } else if model.shellPrompt {
+                    runCommand()
+                } else if let command = selectedSlash, text != "/" + command.name {
+                    complete(command)
+                } else if !canSend, let ask = waitingPermission {
+                    model.answer(ask, allow: true)
+                } else {
+                    send()
+                }
+                return .handled
+            }
 
-                .padding(.vertical, 9)
-                .padding(.leading, model.shellPrompt ? 0 : 14)
+            .padding(.vertical, 9)
+            .padding(.leading, model.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
                 attachButton
                 ModelMenu(chat: model.chat)
@@ -255,6 +272,19 @@ struct Composer: View {
             .frame(height: 36)
             sendButton
         }
+        // The prompt comes and goes with the move spring, or, with Reduce Motion, fades in place.
+        .animation(reduceMotion ? nil : Motion.move, value: model.shellPrompt)
+    }
+
+    /// The field as it looked before the prompt turned, fading out as the field fades in.
+    private var ghost: some View {
+        Text(text.isEmpty ? placeholder(shell: !model.shellPrompt) : text)
+            .font(model.shellPrompt ? Type.body : Type.mono)
+            .foregroundStyle(text.isEmpty ? Self.placeholderInk : Ink.primary)
+            .lineLimit(1...maxLines)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// The native panel for images; they go in the way a paste or a drop does.
@@ -313,8 +343,8 @@ struct Composer: View {
         .accessibilityLabel(model.shellPrompt ? "Run" : running ? "Stop" : "Send")
     }
 
-    private var placeholder: String {
-        guard model.shellPrompt else { return "Ask for a change" }
+    private func placeholder(shell: Bool) -> String {
+        guard shell else { return "Ask for a change" }
         return "A command for " + (model.chat.map { URL(filePath: $0.cwd).lastPathComponent } ?? model.project?.name ?? "the project")
     }
 

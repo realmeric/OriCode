@@ -12,7 +12,7 @@ extension AppModel {
             return
         }
         guard project != nil else { return }
-        withAnimation(Motion.fade) { shellPrompt.toggle() }
+        shellPrompt.toggle()
         composerFocus += 1
     }
 

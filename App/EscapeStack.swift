@@ -54,7 +54,7 @@ extension AppModel {
             return true
         }
         if shellPrompt {
-            withAnimation(Motion.fade) { shellPrompt = false }
+            shellPrompt = false
             return true
         }
         if drawerShown {
