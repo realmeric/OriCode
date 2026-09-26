@@ -15,6 +15,8 @@ struct Composer: View {
     /// one the text holds while Tab cycles through them.
     @State private var completions: [String] = []
     @State private var completionIndex: Int?
+    /// What zsh lists beside a match, when it says.
+    @State private var completionNotes: [String: String] = [:]
     /// The line before the word Tab completes, and the text as Tab last left it: typing anything
     /// else puts the list away.
     @State private var completionHead = ""
@@ -84,7 +86,7 @@ struct Composer: View {
                     .padding(.bottom, height + 8)
                     .transition(.opacity)
             } else if !completions.isEmpty {
-                CompletionMenu(candidates: completions, selected: completionIndex) { pick($0) }
+                CompletionMenu(candidates: completions, descriptions: completionNotes, selected: completionIndex) { pick($0) }
                     .frame(maxWidth: 520, alignment: .leading)
                     .padding(.bottom, height + 8)
                     .transition(.opacity)
@@ -374,7 +376,7 @@ struct Composer: View {
     }
 
     /// Tab: the slash command the list is on; again, the next of several matches; else the word
-    /// being typed, as a command or path at the prompt, or a path after `@` in a message.
+    /// being typed, as the user's shell would at the prompt, or a path after `@` in a message.
     private func tab(backward: Bool) {
         if let command = selectedSlash {
             complete(command)
@@ -386,17 +388,18 @@ struct Composer: View {
             pick(next)
             return
         }
-        guard let chat = model.chat else { return }
+        // With no thread open, the project's folder.
+        guard let folder = model.chat?.cwd ?? model.project?.path else { return }
         guard model.shellPrompt else {
-            apply(ShellCompletion.mention(text, folder: chat.cwd))
+            apply(ShellCompletion.mention(text, folder: folder))
             return
         }
         let line = text
         Task { @MainActor in
-            let commands = await model.shellCommands()
+            let result = await model.completeCommand(line, in: folder)
             // Typed on while the shell answered: that Tab is stale.
             guard text == line else { return }
-            apply(ShellCompletion.complete(line, folder: chat.cwd, commands: commands))
+            apply(result)
         }
     }
 
@@ -405,8 +408,9 @@ struct Composer: View {
         completed = result.text
         text = result.text
         if !result.candidates.isEmpty {
-            completionHead = ShellCompletion.split(result.text).head
+            completionHead = result.head
             completionIndex = nil
+            completionNotes = result.descriptions
             completions = result.candidates
         }
     }

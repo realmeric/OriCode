@@ -97,8 +97,24 @@ extension AppModel {
         return await asking.value
     }
 
+    /// As the prompt opens: the shell's names, and a zsh user's own zsh started, so its startup
+    /// files have loaded by the first Tab.
     func loadShellCommands() {
+        if (TerminalEnvironment.shell as NSString).lastPathComponent == "zsh", zshCompletion?.running != true {
+            zshCompletion = ZshCompletion()
+        }
         Task { _ = await shellCommands() }
+    }
+
+    /// Tab at the prompt: what the user's zsh would offer, when that's their shell and it answers
+    /// in time with something, else a command or a path.
+    func completeCommand(_ line: String, in folder: String) async -> ShellCompletion.Result? {
+        if let zshCompletion, !line.contains("\n"), !line.trimmingCharacters(in: .whitespaces).isEmpty,
+           let answer = await zshCompletion.matches(of: line, in: folder),
+           let result = ShellCompletion.zsh(answer, line: line) {
+            return result
+        }
+        return ShellCompletion.complete(line, folder: folder, commands: await shellCommands())
     }
 
     /// A line from ⌘K or one of your actions, run as a block in the open thread.
@@ -111,7 +127,8 @@ extension AppModel {
 }
 
 /// Reads what an interactive login shell knows as commands. zsh lists its tables, bash has
-/// compgen, and any other shell gets its PATH read from the folders.
+/// compgen, fish lists its builtins and functions, and any other shell gets its PATH read from
+/// the folders.
 enum ShellNames {
     static func read() -> [String] {
         let shell = TerminalEnvironment.shell
@@ -119,6 +136,7 @@ enum ShellNames {
         let script = switch name {
         case "zsh": "print -rl -- ${(k)commands} ${(k)aliases} ${(k)builtins} ${(k)functions} ${(k)reswords}"
         case "bash": "compgen -abck"
+        case "fish": "builtin -n; functions -n; for d in $PATH; command ls $d 2>/dev/null; end"
         default: "echo $PATH | tr : '\\n' | while read d; do ls \"$d\" 2>/dev/null; done"
         }
         let process = Process()
