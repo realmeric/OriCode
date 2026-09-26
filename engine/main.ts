@@ -153,8 +153,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   async send(params: SendParams) {
-    await thread(params.threadId, await requireClaude()).send(params);
-    return { ok: true };
+    const waiting = await thread(params.threadId, await requireClaude()).send(params);
+    return waiting ? { ok: true, waiting: true } : { ok: true };
   },
 
   async interrupt({ threadId }: { threadId: string }) {

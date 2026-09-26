@@ -29,7 +29,9 @@ struct Provenance {
         var turn = 0
         for item in items {
             switch item {
-            case .user(_, let text, _):
+            case .user(_, let text, _, let midTurn):
+                // Taken up in the middle of a turn, a message is part of that turn.
+                guard !midTurn else { continue }
                 turn += 1
                 prompts[turn] = text
             case .tool(_, let call) where call.name == "Bash":

@@ -32,7 +32,11 @@ struct TranscriptView: View {
                         .foregroundStyle(Ink.faint)
                         .padding(.bottom, 20)
                 }
-                let entries = TranscriptEntry.fold(shown)
+                // Messages waiting for Claude to take them up come last, as the bubbles they'll be,
+                // with the ids they'll keep: taken up, one becomes the transcript's item in place.
+                let entries = TranscriptEntry.fold(shown) + conversation.waiting.map {
+                    TranscriptEntry.item(.user(id: $0.id, text: $0.text, images: $0.previews))
+                }
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     view(of: entry)
                         .background {
@@ -71,6 +75,9 @@ struct TranscriptView: View {
             pinned = atBottom
         }
         .onChange(of: conversation.items) {
+            if pinned { position.scrollTo(edge: .bottom) }
+        }
+        .onChange(of: conversation.waiting) {
             if pinned { position.scrollTo(edge: .bottom) }
         }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
@@ -115,17 +122,19 @@ struct TranscriptView: View {
                 // Not while a block is open: Return typed there mustn't answer the card.
                 item: item, cwd: cwd, listening: model.openShell != nil ? nil : conversation.waitingAsk?.requestId,
                 live: conversation.running && item.id == conversation.items.last?.id,
-                resumes: conversation.resumeAt != nil && item.id == conversation.lastLimit)
+                resumes: conversation.resumeAt != nil && item.id == conversation.lastLimit,
+                waiting: conversation.waiting.contains { $0.id == item.id })
         case .run(let items):
             ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id)
         }
     }
 
     /// A message you send comes up out of the composer on the send's glide, and a card asking
-    /// for you rises into place; everything else simply appears as it streams.
+    /// for you rises into place; everything else simply appears as it streams. A waiting message
+    /// handed back to the composer fades out.
     private static func arrival(of item: Item) -> AnyTransition {
         switch item {
-        case .user: .opacity.combined(with: .offset(y: 18))
+        case .user: .asymmetric(insertion: .opacity.combined(with: .offset(y: 18)), removal: .opacity)
         case .ask: .opacity.combined(with: .offset(y: 10)).animation(Motion.move)
         default: .identity
         }
@@ -207,10 +216,12 @@ struct ItemView: View {
     let live: Bool
     /// A limit's line is the one the thread waits out.
     var resumes = false
+    /// A message sent into the turn that Claude hasn't taken up yet.
+    var waiting = false
 
     var body: some View {
         switch item {
-        case .user(_, let text, let images):
+        case .user(_, let text, let images, _):
             VStack(alignment: .trailing, spacing: 6) {
                 if !images.isEmpty {
                     HStack(spacing: 6) {
@@ -227,11 +238,18 @@ struct ItemView: View {
                 }
                 Text(text)
                     .font(Type.body)
-                    .foregroundStyle(Ink.primary)
+                    .foregroundStyle(waiting ? Ink.secondary : Ink.primary)
                     .textSelection(.enabled)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(Surface.userMessage, in: .rect(cornerRadius: 18, style: .continuous))
+                if waiting {
+                    Text("Waiting for the next step")
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.faint)
+                        .padding(.trailing, 6)
+                        .transition(.opacity)
+                }
             }
             .frame(maxWidth: 560, alignment: .trailing)
             .frame(maxWidth: .infinity, alignment: .trailing)

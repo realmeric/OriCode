@@ -403,14 +403,14 @@ extension AppModel {
     /// The last message sent in the open thread.
     var lastUserText: String? {
         currentConversation?.items.reversed().lazy.compactMap { item -> String? in
-            if case .user(_, let text, _) = item { return text }
+            if case .user(_, let text, _, _) = item { return text }
             return nil
         }.first
     }
 
-    /// Claude's text since the last message sent, which is the last reply.
+    /// Claude's text in the last turn, which is the last reply.
     var lastReply: String? {
-        guard let items = currentConversation?.items, let sent = items.lastIndex(where: { if case .user = $0 { true } else { false } }) else { return nil }
+        guard let items = currentConversation?.items, let sent = items.lastIndex(where: \.startsTurn) else { return nil }
         let texts = items[(sent + 1)...].compactMap { item -> String? in
             if case .text(_, let text) = item { return text }
             return nil
@@ -423,7 +423,7 @@ extension AppModel {
         guard let items = currentConversation?.items else { return nil }
         let parts = items.compactMap { item -> String? in
             switch item {
-            case .user(_, let text, _): "**You**\n\n" + text
+            case .user(_, let text, _, _): "**You**\n\n" + text
             case .text(_, let text): "**Claude**\n\n" + text
             default: nil
             }

@@ -16,14 +16,23 @@ extension AppModel {
         return created
     }
 
-    /// Starts a turn with what's typed; false when it didn't, so the composer keeps the text.
+    /// Starts a turn with what's typed, or sends it into the one running; false when it did
+    /// neither, so the composer keeps the text.
     @discardableResult
     func send(_ text: String) -> Bool {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let images = draftAttachments
         guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return false }
         let conversation = conversation(for: chat)
-        guard !conversation.running else { return false }
+        // Waiting on you from before a quit, the thread has no CLI to send into.
+        guard !conversation.waitingAfterQuit else { return false }
+        let typed = trimmed
+        if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
+        if conversation.running || !conversation.waiting.isEmpty {
+            draftAttachments = []
+            sendIntoTurn(conversation.sentIntoTurn(trimmed, typed: typed, images: images), in: chat)
+            return true
+        }
         // Continue in Claude Code gave the session to a block's claude; a turn from here too would
         // make two writers and fork it.
         if let block = handedOff[chat.id] {
@@ -33,7 +42,6 @@ extension AppModel {
             }
             handedOff[chat.id] = nil
         }
-        if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
         draftAttachments = []
         conversation.userSent(trimmed, previews: images.compactMap(\.preview))
         startTurn(in: chat, text: trimmed, images: images)
@@ -47,6 +55,45 @@ extension AppModel {
         holdWhileWorking()
         // The commands run from the shell prompt since Claude last read them go first.
         let (text, readShells) = withShells(text, in: chat)
+        var params = sendParams(in: chat, text: text, images: images)
+        if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
+        Task {
+            do {
+                _ = try await engine.request("send", .object(params))
+                readShells()
+            } catch {
+                conversation.sendFailed(error.localizedDescription)
+                holdWhileWorking()
+            }
+        }
+    }
+
+    /// A message for the running turn, which Claude takes up at its next step. The engine sends
+    /// it with the thread's settings, which only the next turn takes.
+    private func sendIntoTurn(_ message: WaitingMessage, in chat: Chat) {
+        let conversation = conversation(for: chat)
+        // A message into the turn is the next one too, so the shell's new blocks go with it. They
+        // count as read once Claude takes it up; handed back, they go with the next message.
+        let (text, readShells) = withShells(message.text, in: chat)
+        shellReads[message.id] = readShells
+        var params = sendParams(in: chat, text: text, images: message.images)
+        params["id"] = .string(message.id.uuidString)
+        Task {
+            do {
+                // Whether it waits or the turn had ended and it started one, the engine says when
+                // it's taken up with message.taken. That event comes after the ended turn's
+                // turn.done, where this reply could arrive before it.
+                _ = try await engine.request("send", .object(params))
+            } catch {
+                shellReads[message.id] = nil
+                withAnimation(Motion.fade) { conversation.handBack(message.id) }
+                conversation.note(error.localizedDescription)
+                holdWhileWorking()
+            }
+        }
+    }
+
+    private func sendParams(in chat: Chat, text: String, images: [ImageAttachment]) -> [String: JSON] {
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
@@ -54,7 +101,6 @@ extension AppModel {
             "permissionMode": .string(chat.permissionMode),
             "costSoFar": .number(chat.costUSD),
         ]
-        if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = chat.model { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it: an Ultracode left on after
@@ -66,15 +112,7 @@ extension AppModel {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
             })
         }
-        Task {
-            do {
-                _ = try await engine.request("send", .object(params))
-                readShells()
-            } catch {
-                conversation.sendFailed(error.localizedDescription)
-                holdWhileWorking()
-            }
-        }
+        return params
     }
 
     func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil) {
@@ -135,14 +173,23 @@ extension AppModel {
         }
         // The engine let an idle thread's CLI go; its transcript can go too unless it's open.
         if event.name == "released" {
-            if id != selectedChatID, let conversation = conversations[id], !conversation.running {
+            if id != selectedChatID, let conversation = conversations[id], !conversation.running, !conversation.holdsMessages {
                 conversation.flush()
                 conversations[id] = nil
             }
             return
         }
         guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return }
-        conversation(for: chat).receive(event)
+        if event.name.hasPrefix("message.") {
+            // A message taken up brightens in place; one handed back fades out.
+            withAnimation(Motion.fade) { conversation(for: chat).receive(event) }
+            if let message = event.body["messageId"]?.string.flatMap(UUID.init(uuidString:)),
+               let readShells = shellReads.removeValue(forKey: message), event.name == "message.taken" {
+                readShells()
+            }
+        } else {
+            conversation(for: chat).receive(event)
+        }
         holdWhileWorking()
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
@@ -171,7 +218,9 @@ extension AppModel {
             notifier.post(title: chat.title, body: summary, chatID: chat.id)
         } else if let resumeAt = chat.resumeAt {
             notifier.post(title: chat.title, body: "Stopped at Claude's session limit. It goes on at \(Limit.time(resumeAt)).", chatID: chat.id)
-        } else if event.body["stopReason"]?.string != "interrupted" {
+        } else if event.body["stopReason"]?.string != "interrupted",
+                  // A thread still working, on the messages its turn left waiting, isn't finished.
+                  conversations[chat.id]?.running != true {
             notifier.post(title: chat.title, body: "Finished.", chatID: chat.id)
         }
     }
@@ -194,6 +243,9 @@ extension AppModel {
             if midTurn { conversation.note("The engine stopped in the middle of this turn.") }
         }
         for conversation in conversations.values { conversation.endWorkflows() }
+        // Whatever was sent into a turn went with the engine; it goes back to the composer.
+        shellReads = [:]
+        for conversation in conversations.values { withAnimation(Motion.fade) { conversation.handBackAll() } }
         holdWhileWorking()
     }
 }

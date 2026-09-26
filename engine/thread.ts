@@ -39,6 +39,9 @@ export type SendParams = {
   /// A call the user allowed after a quit had ended the CLI that asked about it. Claude makes it
   /// again once resumed, and the first ask for the same call in the turn is allowed unasked.
   grant?: Grant;
+  /// The app's id for the message. The CLI reports on a message by it: when a message sent
+  /// during a turn is taken up, or cancelled before it was.
+  id?: string;
 };
 
 export type Grant = { tool: string; input: Record<string, unknown> };
@@ -152,9 +155,24 @@ export class Thread {
   private limit: SDKRateLimitInfo | undefined;
   private refused = false;
 
-  constructor(id: string, claude: string) {
+  /// Messages sent during a turn that Claude hasn't taken up yet, by the app's id.
+  private waiting = new Set<string>();
+  /// Whether this CLI reports on the messages it's sent and can take waiting ones back, from its
+  /// init; undefined until that arrives.
+  private reports: boolean | undefined;
+  /// Settled by the init, or by the CLI going before one came.
+  private initialized = Promise.withResolvers<void>();
+  /// Waiting messages sent before the init, which the CLI hasn't been given yet.
+  private held = new Set<string>();
+  /// An interrupt on its way to the CLI, which may land on the turn after the one it was for.
+  private stopping = false;
+  private launch: typeof query;
+
+  /// `launch` is the SDK's query; tests hand in one that starts no CLI.
+  constructor(id: string, claude: string, launch: typeof query = query) {
     this.id = id;
     this.claude = claude;
+    this.launch = launch;
   }
 
   get isRunning(): boolean {
@@ -166,8 +184,30 @@ export class Thread {
     return this.query?.supportedCommands();
   }
 
-  async send(params: SendParams): Promise<void> {
-    if (this.running) throw new Error("A turn is already running in this thread.");
+  /// Returns whether the message waits for the running turn to take it up. Sent during a turn,
+  /// it goes into the open inbox, and the CLI folds it into the turn at its next step, or runs
+  /// it as a turn of its own right after when the turn has no step left. The model, level, mode
+  /// and speed sent with it hold from the next send, as they would between turns.
+  async send(params: SendParams): Promise<boolean> {
+    if ((this.running || this.waiting.size > 0) && this.query) {
+      if (!params.id) throw new Error("A turn is already running in this thread.");
+      if (this.reports === undefined) {
+        // Until its init the CLI hasn't said whether it reports taking a message up, so the
+        // message waits for it here, where a Stop or the CLI going hands it back as they would
+        // one the CLI held.
+        this.waiting.add(params.id);
+        this.held.add(params.id);
+        await this.initialized.promise;
+        if (!this.held.delete(params.id)) return true;
+        this.waiting.delete(params.id);
+      }
+      // Without the CLI saying when it takes a message up, the app would wait on it for good.
+      if (!this.reports) throw new Error("This version of Claude Code can't take a message during a turn. Update it, or send this once the turn is over.");
+      log(`send thread=${this.id} into the running turn`);
+      this.waiting.add(params.id);
+      this.push(params);
+      return true;
+    }
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
     const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null]);
     if (!this.query || key !== this.key) {
@@ -188,6 +228,10 @@ export class Thread {
     this.refused = false;
     this.grant = params.grant;
     this.push(params);
+    // Meant for a turn that had ended by the time it arrived, the message starts one. Said as an
+    // event, it reaches the app after that turn's turn.done, which the reply could overtake.
+    if (params.id) event("message.taken", { threadId: this.id, messageId: params.id, newTurn: true });
+    return false;
   }
 
   private push(params: SendParams): void {
@@ -195,19 +239,40 @@ export class Thread {
       type: "user",
       message: { role: "user", content: content(params) },
       parent_tool_use_id: null,
+      uuid: params.id as SDKUserMessage["uuid"],
     });
   }
 
+  /// Stop means stop everything: the turn, and whatever was sent to it and still waits, which
+  /// would otherwise start a turn of its own right after. Messages can wait with no turn running,
+  /// between the end of one that couldn't take them and the start of their own.
   async interrupt(): Promise<void> {
-    if (!this.running || !this.query) return;
+    const running = this.query;
+    if (!running || (!this.running && this.waiting.size === 0)) return;
     this.interrupted = true;
+    this.stopping = true;
     for (const [requestId, ask] of asks) {
       if (ask.threadId !== this.id) continue;
       asks.delete(requestId);
       event("ask.cancelled", { threadId: this.id, requestId });
       ask.resolve({ behavior: "deny", message: "The user stopped this turn.", interrupt: true });
     }
-    await this.query.interrupt();
+    for (const id of this.held) this.cancelled(id);
+    this.held.clear();
+    try {
+      // Each waiting message comes off the CLI's queue by its id before the interrupt, so the
+      // turn that ends can't start the next with it. The interrupt itself stays plain: with
+      // cancelQueued it would also drop the reports of background agents, commands and
+      // workflows queued beside them. The SDK has cancelAsyncMessage but doesn't type it yet;
+      // one it can't take back has already gone into the turn the interrupt stops.
+      const cancel = running as unknown as { cancelAsyncMessage(uuid: string): Promise<boolean> };
+      for (const id of [...this.waiting]) {
+        if (await cancel.cancelAsyncMessage(id).catch(() => false)) this.cancelled(id);
+      }
+      await running.interrupt();
+    } finally {
+      this.stopping = false;
+    }
   }
 
   /// Returns whether the running turn took the new mode. Between turns there is
@@ -232,7 +297,7 @@ export class Thread {
   /// Ends the CLI of a thread idle this long, with no subagents out and nothing asked of the
   /// user. The next send starts one that resumes the session.
   releaseIfIdle(idleMs: number): boolean {
-    if (!this.query || this.running || this.tasks.size > 0 || this.idleSince === undefined) return false;
+    if (!this.query || this.running || this.waiting.size > 0 || this.tasks.size > 0 || this.idleSince === undefined) return false;
     if (Date.now() - this.idleSince < idleMs) return false;
     if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
     this.close();
@@ -252,6 +317,7 @@ export class Thread {
   }
 
   close(): void {
+    this.dropWaiting();
     this.inbox?.close();
     this.query?.close();
     this.query = undefined;
@@ -271,10 +337,12 @@ export class Thread {
     this.fastTold = "";
     this.effortTold = undefined;
     this.asked = params.effort ?? null;
+    this.reports = undefined;
+    this.initialized = Promise.withResolvers<void>();
     const inbox = new Inbox();
     this.inbox = inbox;
     const ultra = params.effort === "ultracode";
-    this.query = query({
+    this.query = this.launch({
       prompt: inbox,
       options: {
         cwd: params.cwd,
@@ -388,6 +456,28 @@ export class Thread {
     event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, summary: summary ?? null });
   }
 
+  /// The CLI holding them is going, so what still waits will never run.
+  private dropWaiting(): void {
+    for (const id of this.waiting) this.cancelled(id);
+    this.held.clear();
+    this.initialized.resolve();
+  }
+
+  private cancelled(id: string): void {
+    if (this.waiting.delete(id)) event("message.cancelled", { threadId: this.id, messageId: id });
+  }
+
+  /// A turn the app didn't start with a send: a background agent reporting back, or a message
+  /// that waited through the end of the turn it was sent to. `stopped` is a Stop that came
+  /// between the two turns and reaches the second.
+  private begin(stopped = false): void {
+    this.running = true;
+    this.started = false;
+    this.interrupted = stopped;
+    this.errored = false;
+    this.refused = false;
+  }
+
   private fail(message: string): void {
     if (this.errored) return;
     this.errored = true;
@@ -456,21 +546,28 @@ export class Thread {
       this.tasks.clear();
       event("tasks", { threadId: this.id, running: 0, tasks: [] });
     }
+    this.dropWaiting();
     if (this.running) {
       this.running = false;
-      event("turn.done", { threadId: this.id, sessionId: this.sessionId, stopReason: "engine_stopped", durationMs: 0, costUSD: 0, usage: emptyUsage });
+      event("turn.done", { threadId: this.id, sessionId: this.sessionId, stopReason: "engine_stopped", durationMs: 0, costUSD: 0, usage: emptyUsage, waiting: 0 });
     }
   }
 
   private handle(message: SDKMessage): void {
     if ("session_id" in message && message.session_id) this.sessionId = message.session_id;
-    // A background agent reporting back makes the CLI start a turn nobody sent.
-    if (!this.running && (message.type === "stream_event" || message.type === "assistant") && !message.parent_tool_use_id) {
-      this.running = true;
-      this.started = false;
-      this.interrupted = false;
-      this.errored = false;
+    if ((message as { type: string }).type === "command_lifecycle") {
+      const told = lifecycleEvent(message as unknown as Lifecycle, this.waiting, this.running);
+      if (!told) return;
+      this.waiting.delete(told.id);
+      event(told.name, { threadId: this.id, ...told.fields });
+      // Taken up after the turn it was sent to, the message is a turn of its own, which Stop
+      // can reach from here on. A Stop pressed since the last turn ended, after the CLI had
+      // already started this one, stops this one.
+      if (told.name !== "message.taken" || !told.fields.newTurn) return;
+      this.begin(this.interrupted);
     }
+    // A background agent reporting back makes the CLI start a turn nobody sent.
+    if (!this.running && (message.type === "stream_event" || message.type === "assistant") && !message.parent_tool_use_id) this.begin();
     if (this.running && !this.started && this.sessionId) {
       this.started = true;
       event("turn.started", { threadId: this.id, sessionId: this.sessionId });
@@ -532,7 +629,12 @@ export class Thread {
         this.limit = message.rate_limit_info;
         return;
       case "system": {
-        if (message.subtype === "init") this.tellFast(message);
+        if (message.subtype === "init") {
+          this.tellFast(message);
+          const capabilities = message.capabilities ?? [];
+          this.reports = capabilities.includes("msg_lifecycle_v1") && capabilities.includes("interrupt_cancel_queued_v1");
+          this.initialized.resolve();
+        }
         if (this.trackTask(message)) return;
         if (message.subtype === "api_retry") {
           event("retrying", { threadId: this.id, attempt: message.attempt, max: message.max_retries, error: message.error });
@@ -590,7 +692,13 @@ export class Thread {
             cacheWrite: message.usage.cache_creation_input_tokens,
           },
           context: { used: this.lastContext, window },
+          // Messages sent during the turn that it ended without taking up: each runs as a turn
+          // of its own, starting now.
+          waiting: this.waiting.size,
         });
+        // Said for this turn. A Stop from here on is for the turn a waiting message starts, and
+        // so is one still on its way, which the CLI may get once it has started that turn.
+        this.interrupted = this.stopping;
         return;
       }
     }
@@ -598,6 +706,26 @@ export class Thread {
 }
 
 const emptyUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+/// What the CLI says about a message that has a uuid, in frames the SDK doesn't type yet.
+/// Besides these states its schema lists discarded and refused, and it may add more.
+export type Lifecycle = { type: "command_lifecycle"; command_uuid: string; state: "queued" | "started" | "completed" | "cancelled" | (string & {}) };
+
+export type Told =
+  | { name: "message.taken"; id: string; fields: { messageId: string; newTurn: boolean } }
+  | { name: "message.cancelled"; id: string; fields: { messageId: string } };
+
+/// The app hears about a waiting message once more: when Claude takes it up, into the running
+/// turn or as a turn of its own when none is running, or when it won't run. A message sent
+/// between turns has an id too, but never waits, so frames about it are nobody's business.
+/// Any end other than started (cancelled, discarded, refused, or one the CLI sends with no
+/// started before it) means the message won't be taken up, and it goes back to the app.
+export function lifecycleEvent(frame: Lifecycle, waiting: ReadonlySet<string>, running: boolean): Told | undefined {
+  const id = frame.command_uuid;
+  if (!waiting.has(id) || frame.state === "queued") return undefined;
+  if (frame.state === "started") return { name: "message.taken", id, fields: { messageId: id, newTurn: !running } };
+  return { name: "message.cancelled", id, fields: { messageId: id } };
+}
 
 /// The effort a reading of the session's settings shows, or undefined when the app was last
 /// told the same.

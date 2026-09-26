@@ -127,6 +127,15 @@ struct Composer: View {
                 focused = model.composerTakesKeyboard
             }
         }
+        // Messages sent into a turn that won't run come back here, in front of what's typed, when
+        // their thread is the one showing.
+        .onChange(of: model.currentConversation?.returning, initial: true) {
+            guard let back = model.currentConversation?.takeHandedBack(), !back.isEmpty else { return }
+            // Messages come back as messages, not as a command.
+            model.shellPrompt = false
+            text = (back.map(\.text) + [text]).filter { !$0.isEmpty }.joined(separator: "\n\n")
+            model.draftAttachments.insert(contentsOf: back.flatMap(\.images), at: 0)
+        }
     }
 
     private var thumbnails: some View {
@@ -316,11 +325,13 @@ struct Composer: View {
         max(1, Int((maxHeight - 28) / 18))
     }
 
+    /// At the shell prompt the button runs the command, whether or not a turn is running. Otherwise,
+    /// while a turn runs, it sends what's typed into it and stops the turn when nothing is; a thread
+    /// waiting on you from before a quit has no turn to send into, so it keeps Stop.
     private var sendButton: some View {
-        // At the shell prompt it runs the command, whether or not a turn is running.
-        let stops = running && !model.shellPrompt
+        let stops = running && !model.shellPrompt && (!canSend || model.currentConversation?.waitingAfterQuit == true)
         return Button {
-            if model.shellPrompt { runCommand() } else if running { model.stop() } else { send() }
+            if model.shellPrompt { runCommand() } else if stops { model.stop() } else { send() }
         } label: {
             Image(systemName: stops ? "stop.fill" : "arrow.up")
                 .font(.system(size: stops ? 12 : 15, weight: .semibold))
@@ -341,8 +352,8 @@ struct Composer: View {
         }
         .buttonStyle(.plain)
         .disabled(!stops && !canSend)
-        .help(model.shellPrompt ? "Run (Return)" : running ? "Stop (⌘.)" : "Send (Return)")
-        .accessibilityLabel(model.shellPrompt ? "Run" : running ? "Stop" : "Send")
+        .help(model.shellPrompt ? "Run (Return)" : stops ? "Stop (⌘.)" : "Send (Return)")
+        .accessibilityLabel(model.shellPrompt ? "Run" : stops ? "Stop" : "Send")
     }
 
     private func placeholder(shell: Bool) -> String {
@@ -449,7 +460,7 @@ struct Composer: View {
     private var history: [String] {
         if model.shellPrompt { return model.shellHistory }
         let sent = model.currentConversation?.items.compactMap { item -> String? in
-            if case .user(_, let text, _) = item { text } else { nil }
+            if case .user(_, let text, _, _) = item { text } else { nil }
         } ?? []
         // What the app sent for you isn't yours to send again.
         return sent.filter { $0 != AppModel.quitLine && $0 != AppModel.limitLine }
@@ -488,7 +499,7 @@ struct Composer: View {
     }
 
     private func send() {
-        guard !running, canSend else { return }
+        guard canSend else { return }
         let moving = model.currentConversation?.items.isEmpty ?? true
         // The first message moves the composer from the middle of an empty thread to the bottom.
         var sent = false

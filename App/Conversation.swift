@@ -98,8 +98,32 @@ struct TurnFooter: Hashable {
     var deleted = 0
 }
 
+/// A message sent while a turn runs, until Claude takes it up. It isn't part of the conversation
+/// yet, so it's kept apart from the items and out of the store.
+struct WaitingMessage: Identifiable, Hashable {
+    let id: UUID
+    /// What's sent and shown: what was typed, or for images alone the question put with them.
+    let text: String
+    /// What was typed, which is what goes back to the composer if the message never runs.
+    let typed: String
+    let images: [ImageAttachment]
+    let previews: [Data]
+    let written = Date.now
+}
+
+/// A message that won't go out after all, until the composer shows its thread and takes it back
+/// into the field.
+struct HandedBack: Hashable {
+    let id: UUID
+    let text: String
+    let images: [ImageAttachment]
+    /// When it was written, which puts it among the others handed back.
+    let written: Date
+}
+
 enum Item: Identifiable, Hashable {
-    case user(id: UUID, text: String, images: [Data] = [])
+    /// `midTurn` is a message Claude took up in the middle of a turn, which doesn't start one.
+    case user(id: UUID, text: String, images: [Data] = [], midTurn: Bool = false)
     case text(id: UUID, text: String)
     case thinking(id: UUID, text: String)
     case tool(id: UUID, call: ToolCall)
@@ -113,7 +137,7 @@ enum Item: Identifiable, Hashable {
 
     var id: UUID {
         switch self {
-        case .user(let id, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
+        case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _), .limited(let id, _, _), .shell(let id, _):
             id
         }
@@ -147,6 +171,12 @@ final class Conversation {
     /// Asks that were waiting on you when OriCode quit, by request id. They stay up, and the turn
     /// with them; the CLI that asked is gone, so an answer resumes the session instead.
     private(set) var askedBeforeQuit: Set<String> = []
+    /// Messages sent into the running turn that Claude hasn't taken up yet, oldest first.
+    private(set) var waiting: [WaitingMessage] = []
+    /// Messages that won't go out after all, oldest first.
+    private(set) var handedBack: [HandedBack] = []
+    /// The turn ended with messages still waiting, and the next one, theirs, starts at once.
+    private var nextFollows = false
     private let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -173,7 +203,7 @@ final class Conversation {
         // Asks and tool calls from an earlier launch will never finish; the engine that ran them is
         // gone. A quit in the middle of the last turn is the exception: what it was waiting on you
         // for is still up, with the call it holds.
-        let lastSent = items.lastIndex { if case .user = $0 { true } else { false } } ?? -1
+        let lastSent = items.lastIndex(where: \.startsTurn) ?? -1
         for index in items.indices {
             guard case .ask(let id, var ask) = items[index], ask.state == .waiting else { continue }
             if chat.quitMidTurn, index > lastSent {
@@ -230,7 +260,12 @@ final class Conversation {
         return nil
     }
 
-    func userSent(_ text: String, previews: [Data] = []) {
+    /// Whether it has anything the composer mustn't lose by letting the conversation go.
+    var holdsMessages: Bool {
+        !waiting.isEmpty || !handedBack.isEmpty
+    }
+
+    func userSent(_ text: String, previews: [Data] = [], id: UUID = UUID()) {
         turn += 1
         running = true
         chat.started = true
@@ -239,9 +274,67 @@ final class Conversation {
         if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {
             chat.title = Chat.title(from: text)
         }
+        recordUser(text, previews: previews, midTurn: false, id: id)
+    }
+
+    private func recordUser(_ text: String, previews: [Data], midTurn: Bool, id: UUID) {
         var body: [String: JSON] = ["event": "user", "text": .string(text)]
         if !previews.isEmpty { body["images"] = .array(previews.map { .string($0.base64EncodedString()) }) }
-        record("user", .object(body))
+        if midTurn { body["midTurn"] = true }
+        record("user", .object(body), id: id)
+    }
+
+    /// A message sent while a turn runs. It shows under the transcript, waiting, until Claude
+    /// takes it up.
+    func sentIntoTurn(_ text: String, typed: String? = nil, images: [ImageAttachment]) -> WaitingMessage {
+        let message = WaitingMessage(id: UUID(), text: text, typed: typed ?? text, images: images, previews: images.compactMap(\.preview))
+        waiting.append(message)
+        return message
+    }
+
+    /// Claude took a waiting message up: into the running turn, where it lands after everything
+    /// so far with Claude's reply after it, or as a turn of its own. It keeps its id, so its
+    /// bubble stays where it is.
+    func taken(_ id: UUID, newTurn: Bool) {
+        guard let index = waiting.firstIndex(where: { $0.id == id }) else { return }
+        let message = waiting.remove(at: index)
+        if newTurn {
+            nextFollows = false
+            userSent(message.text, previews: message.previews, id: message.id)
+        } else {
+            recordUser(message.text, previews: message.previews, midTurn: true, id: message.id)
+        }
+    }
+
+    /// A waiting message that will never run, cancelled or lost with the engine, goes back to
+    /// the composer as it was typed, its images with it.
+    func handBack(_ id: UUID) {
+        guard let index = waiting.firstIndex(where: { $0.id == id }) else { return }
+        let message = waiting.remove(at: index)
+        let back = HandedBack(id: message.id, text: message.typed, images: message.images, written: message.written)
+        handedBack.insert(back, at: handedBack.firstIndex { $0.written > back.written } ?? handedBack.endIndex)
+        // Nothing is left for the turn that was to follow.
+        if nextFollows, waiting.isEmpty {
+            nextFollows = false
+            running = false
+        }
+    }
+
+    func handBackAll() {
+        for message in waiting { handBack(message.id) }
+    }
+
+    /// What the composer takes back: nothing while a message sent into the turn still waits, so
+    /// the ones a Stop cancels one at a time come back together, in the order they were written.
+    var returning: [HandedBack] {
+        waiting.isEmpty ? handedBack : []
+    }
+
+    /// The composer showing this thread takes what was handed back.
+    func takeHandedBack() -> [HandedBack] {
+        let back = returning
+        if !back.isEmpty { handedBack = [] }
+        return back
     }
 
     func sendFailed(_ message: String) {
@@ -304,8 +397,16 @@ final class Conversation {
             record(event.name, event.body)
         case "workflow":
             workflowChanged(event.body)
+        case "message.taken":
+            if let id = event.body["messageId"]?.string.flatMap(UUID.init(uuidString:)) {
+                taken(id, newTurn: event.body["newTurn"]?.bool ?? false)
+            }
+        case "message.cancelled":
+            if let id = event.body["messageId"]?.string.flatMap(UUID.init(uuidString:)) { handBack(id) }
         case "turn.done":
-            running = false
+            // Messages sent during the turn that it ended without taking up are the next turn's.
+            nextFollows = !waiting.isEmpty && (event.body["waiting"]?.int ?? 0) > 0
+            running = nextFollows
             if let sessionId = event.body["sessionId"]?.string { chat.sessionId = sessionId }
             chat.costUSD += event.body["costUSD"]?.double ?? 0
             if let used = event.body["context"]?["used"]?.int, used > 0 {
@@ -422,6 +523,7 @@ final class Conversation {
         tasks = 0
         guard running else { return }
         running = false
+        nextFollows = false
         retrying = nil
         finishOpenTools()
         flush()
@@ -459,7 +561,7 @@ final class Conversation {
         switch kind {
         case "user":
             let images = body["images"]?.array?.compactMap { $0.string.flatMap { Data(base64Encoded: $0) } } ?? []
-            items.append(.user(id: id, text: body["text"]?.string ?? "", images: images))
+            items.append(.user(id: id, text: body["text"]?.string ?? "", images: images, midTurn: body["midTurn"]?.bool ?? false))
         case "text":
             items.append(.text(id: id, text: body["delta"]?.string ?? ""))
         case "thinking":
@@ -515,7 +617,7 @@ final class Conversation {
                 stopReason: body["stopReason"]?.string ?? "")
             var paths = Set<String>()
             for item in items.reversed() {
-                if case .user = item { break }
+                if item.startsTurn { break }
                 guard case .tool(_, let call) = item, call.isEdit, call.result != nil, !call.isError,
                       let diff = Diff.of(call, cwd: chat.cwd)
                 else { continue }
@@ -545,8 +647,13 @@ final class Conversation {
 extension Item {
     var text: String? {
         switch self {
-        case .text(_, let text), .thinking(_, let text), .user(_, let text, _), .note(_, let text): text
+        case .text(_, let text), .thinking(_, let text), .user(_, let text, _, _), .note(_, let text): text
         default: nil
         }
+    }
+
+    /// A message sent between turns, which starts one. One Claude took up mid-turn doesn't.
+    var startsTurn: Bool {
+        if case .user(_, _, _, let midTurn) = self { !midTurn } else { false }
     }
 }

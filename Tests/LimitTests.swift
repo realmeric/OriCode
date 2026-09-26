@@ -71,7 +71,7 @@ struct LimitTests {
         model.scheduleResumes()
         try await Task.sleep(for: .milliseconds(1600))
         let conversation = model.conversation(for: chat)
-        let sent = conversation.items.contains { if case .user(_, let text, _) = $0 { text == AppModel.limitLine } else { false } }
+        let sent = conversation.items.contains { if case .user(_, let text, _, _) = $0 { text == AppModel.limitLine } else { false } }
         #expect(sent)
         #expect(chat.resumeAt == nil)
     }

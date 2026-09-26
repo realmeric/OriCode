@@ -136,6 +136,9 @@ final class AppModel {
     var shellPrompt = false
     /// The commands run from it in this launch, by their block's id, running or ended.
     var shellBlocks: [UUID: ShellBlock] = [:]
+    /// Marks the blocks a message sent into a turn carried as read, by the message, once Claude
+    /// takes it up.
+    var shellReads: [UUID: () -> Void] = [:]
     /// Keeps App Nap off while a command runs.
     var shellActivity: NSObjectProtocol?
     /// Whether each block is in the transcript's view, once it has said.
