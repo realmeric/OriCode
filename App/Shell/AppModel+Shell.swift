@@ -20,6 +20,7 @@ extension AppModel {
         let block = ShellBlock(id: UUID(), chatID: chat.id, command: command, folder: chat.cwd)
         block.onEnd = { [weak self] block in self?.shellEnded(block) }
         block.onTail = { [weak self] block in self?.store(block) }
+        block.onClosed = { [weak self] block in self?.settle(block) }
         // A program taking the whole screen opens its block over the thread, and letting it go
         // puts the block back.
         block.onFullScreen = { [weak self] block in
@@ -41,17 +42,30 @@ extension AppModel {
         close(block)
     }
 
-    /// Writes a command's block into its thread as it stands.
-    private func store(_ block: ShellBlock) {
+    /// Once all a command printed has arrived after its end, its block is stored with it and
+    /// lets go of its terminal, or, its thread deleted meanwhile, goes.
+    private func settle(_ block: ShellBlock) {
+        if store(block) {
+            block.dropTerminal()
+        } else {
+            shellBlocks[block.id] = nil
+            shellsInView[block.id] = nil
+        }
+    }
+
+    /// Writes a command's block into its thread as it stands; false when the thread is gone.
+    @discardableResult
+    private func store(_ block: ShellBlock) -> Bool {
         let chatID = block.chatID
-        guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == chatID })).first else { return }
+        guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == chatID })).first else { return false }
         let conversation = conversation(for: chat)
-        guard case .shell(_, var run) = conversation.items.last(where: { $0.id == block.id }) else { return }
+        guard case .shell(_, var run) = conversation.items.last(where: { $0.id == block.id }) else { return false }
         run.endedAt = block.endedAt
         run.exitCode = block.exitCode
         run.output = block.output.suffix(ShellBlock.kept)
         run.unread = block.unreadLines
         conversation.shellChanged(block.id, run)
+        return true
     }
 
     /// The open thread's latest command still running whose block has gone out of view, and how
@@ -72,12 +86,13 @@ extension AppModel {
     }
 
     /// Hangs every command up, at quit, keeping what each has printed: the app is gone before
-    /// they are.
+    /// they are. The zsh that answers Tab goes too, with its startup folder.
     func endShells() {
         for block in shellBlocks.values where block.running {
             store(block)
             block.end()
         }
+        zshCompletion?.end()
     }
 
     /// A sentence for a dialog about something that ends these threads' commands: "This also stops
@@ -91,9 +106,17 @@ extension AppModel {
         return "This also stops \(list)."
     }
 
-    /// Hangs up the commands a thread has running, when it's deleted.
+    /// Hangs up the commands a thread has running, when it's deleted, and forgets its blocks
+    /// that have ended; the others go once they have.
     func endShells(of chat: Chat) {
-        for block in shellBlocks.values where block.chatID == chat.id { block.end() }
+        for block in shellBlocks.values where block.chatID == chat.id {
+            if block.running {
+                block.end()
+            } else {
+                shellBlocks[block.id] = nil
+                shellsInView[block.id] = nil
+            }
+        }
     }
 
     /// A command left running keeps its speed, and its output keeps coming, behind other windows.

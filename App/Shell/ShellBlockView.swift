@@ -50,8 +50,10 @@ struct ShellBlockView: View {
             guard live == nil, !run.output.isEmpty else { return }
             let output = run.output
             let drawn = await Task.detached(priority: .userInitiated) {
-                let lines = ShellRender.lines(ShellRender.replay(output))
-                return (ShellRender.attributed(lines.suffix(ShellRender.shown)), lines.count)
+                let terminal = ShellRender.replay(output)
+                let tail = ShellRender.tail(terminal)
+                var counted = ShellRender.LineCount()
+                return (ShellRender.attributed(tail.lines), tail.lines.count + counted.lines(above: tail.row, in: terminal))
             }.value
             stored = drawn
         }

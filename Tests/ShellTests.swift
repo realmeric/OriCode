@@ -15,6 +15,36 @@ struct ShellTests {
         #expect(ShellRender.plain(lines) == "one\ntwo three\n\(long)")
     }
 
+    /// A running block draws its last lines read up from the end and counts the others as they
+    /// scroll off, which has to come out as reading the whole buffer does: through wrapped lines,
+    /// a trimmed scrollback, clears, a program taking the whole screen and a resize.
+    @Test func theLastLinesAndTheCountMatchTheWholeBuffer() {
+        let terminal = ShellRender.replay(Data())
+        var counted = ShellRender.LineCount()
+        let long = String(repeating: "w", count: ShellBlock.columns * 2 + 5)
+        func lines(_ range: ClosedRange<Int>, _ line: (Int) -> String) -> String {
+            range.map(line).joined(separator: "\r\n") + "\r\n"
+        }
+        let steps: [(Terminal) -> Void] = [
+            { $0.feed(text: lines(1...300) { "line \($0)" }) },
+            { $0.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J" + lines(1...500) { "cleared \($0)" }) },
+            { $0.feed(text: lines(1...5_000) { $0 % 7 == 0 ? long : "\u{1B}[32mok\u{1B}[0m \($0) 中文" }) },
+            { $0.feed(text: lines(1...6_000) { "more \($0)" } + "\r\n\r\n") },
+            { $0.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J" + lines(1...700) { "again \($0)" }) },
+            { $0.feed(text: "\u{1B}[?1049h\u{1B}[Hfull") },
+            { $0.feed(text: "\u{1B}[?1049l" + long + "\r\n") },
+            { $0.resize(cols: 60, rows: ShellBlock.rows) },
+            { $0.feed(text: lines(1...200) { "narrow \($0) " + long }) },
+        ]
+        for step in steps {
+            step(terminal)
+            let all = ShellRender.lines(terminal)
+            let tail = ShellRender.tail(terminal)
+            #expect(ShellRender.plain(tail.lines) == ShellRender.plain(Array(all.suffix(ShellRender.shown))))
+            #expect(tail.lines.count + counted.lines(above: tail.row, in: terminal) == all.count)
+        }
+    }
+
     @Test func coloursBecomeRunsAndTheDefaultIsLeftToTheBlock() {
         let terminal = ShellRender.replay(Data("\u{1B}[31mred\u{1B}[0m plain".utf8))
         let text = ShellRender.attributed(ShellRender.lines(terminal))
@@ -22,6 +52,13 @@ struct ShellTests {
         #expect(runs.count == 2)
         #expect(runs[0].0 == "red" && runs[0].1 == ShellRender.colour(.ansi256(code: 1)))
         #expect(runs[1].0 == " plain" && runs[1].1 == nil)
+        // Past characters that take two cells, or join the one before them.
+        let mixed = ShellRender.replay(Data("中文 e\u{301} 🇹🇷 \u{1B}[1;4mbold\u{1B}[0m\r\n\u{1B}[38;5;200mpink\u{1B}[0m".utf8))
+        let dressed = ShellRender.attributed(ShellRender.lines(mixed))
+        #expect(String(dressed.characters) == "中文 e\u{301} 🇹🇷 bold\npink")
+        let looks = dressed.runs.map { (String(dressed[$0.range].characters), $0.underlineStyle != nil, $0.foregroundColor) }
+        #expect(looks.map(\.0) == ["中文 e\u{301} 🇹🇷 ", "bold", "\n", "pink"])
+        #expect(looks[1].1 && looks[3].2 == ShellRender.colour(.ansi256(code: 200)))
     }
 
     @Test func claudeReadsTheCommandAndWhatItPrinted() {
@@ -48,28 +85,28 @@ struct ShellTests {
             block.read(to: unread.mark)
             return unread.text
         }
-        block.view.feed(text: "one\r\ntwo\r\nthree\r\n")
+        block.view?.feed(text: "one\r\ntwo\r\nthree\r\n")
         #expect(read() == "one\ntwo\nthree")
         #expect(read() == nil)
-        block.view.feed(text: "four\r\n")
+        block.view?.feed(text: "four\r\n")
         #expect(read() == "four")
         // A watcher clears the screen and its scrollback and prints more lines than before.
         let run = (1...6).map { "pass \($0)" }
-        block.view.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J" + run.joined(separator: "\r\n") + "\r\n")
+        block.view?.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J" + run.joined(separator: "\r\n") + "\r\n")
         #expect(read() == run.joined(separator: "\n"))
         // Only the screen this time, and fewer lines.
-        block.view.feed(text: "\u{1B}[H\u{1B}[2Jfail 1\r\n")
+        block.view?.feed(text: "\u{1B}[H\u{1B}[2Jfail 1\r\n")
         #expect(read() == "fail 1")
         // Past the scrollback, which lets go of its first lines and not of the lines' numbers.
-        block.view.feed(text: (1...ShellBlock.scrollback + 100).map { "line \($0)" }.joined(separator: "\r\n") + "\r\n")
+        block.view?.feed(text: (1...ShellBlock.scrollback + 100).map { "line \($0)" }.joined(separator: "\r\n") + "\r\n")
         #expect(read()?.hasSuffix("line \(ShellBlock.scrollback + 100)") == true)
-        block.view.feed(text: "after\r\n")
+        block.view?.feed(text: "after\r\n")
         #expect(read() == "after")
         #expect(block.unreadLines == 0)
         // A program takes the whole screen, and gives it back.
-        block.view.feed(text: "\u{1B}[?1049h\u{1B}[Hfull")
+        block.view?.feed(text: "\u{1B}[?1049h\u{1B}[Hfull")
         #expect(read() == "full")
-        block.view.feed(text: "\u{1B}[?1049l")
+        block.view?.feed(text: "\u{1B}[?1049l")
         #expect(read()?.hasSuffix("line \(ShellBlock.scrollback + 100)\nafter") == true)
     }
 
@@ -182,6 +219,43 @@ struct ShellTests {
         let runs = Conversation(chat: chat, context: container.mainContext).items.compactMap { if case .shell(_, let run) = $0 { run } else { nil } }
         #expect(runs.count == 20)
         #expect(runs.allSatisfy { $0.output.suffix(12) == Data("3400\r\ndone\r\n".utf8) })
+        // And still there once the blocks have let go of their terminals.
+        for _ in 0..<100 where blocks.contains(where: { $0.view != nil }) { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(blocks.allSatisfy { $0.view == nil && $0.text.hasSuffix("3400\ndone") && String($0.screen.characters.suffix(4)) == "done" })
+    }
+
+    /// Once it has ended and been stored, a block lets go of its terminal and keeps what the
+    /// transcript draws and what Claude hasn't read; it goes with its thread.
+    @Test func anEndedBlockLetsGoOfItsTerminal() async throws {
+        let (model, chat, container) = try thread()
+        let block = try #require(model.runCommand("seq 1 3000"))
+        for _ in 0..<100 where block.view != nil { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(block.view == nil && block.terminal == nil)
+        #expect(block.lineCount == 3000 && String(block.screen.characters.suffix(9)) == "2999\n3000")
+        let message = model.withShells("and?", in: chat)
+        #expect(message.text.hasPrefix("<bash-input>seq 1 3000</bash-input>\n<bash-stdout>1\n2\n"))
+        #expect(message.text.hasSuffix("2999\n3000</bash-stdout>\n\nand?"))
+        message.read()
+        #expect(model.withShells("and?", in: chat).text == "and?")
+        guard case .shell(_, let run) = Conversation(chat: chat, context: container.mainContext).items.last else {
+            Issue.record("no block")
+            return
+        }
+        #expect(run.unread == 0 && run.exitCode == 0)
+        model.delete(chat)
+        #expect(model.shellBlocks.isEmpty && model.shellsInView.isEmpty)
+    }
+
+    /// A job the command leaves running doesn't keep the block: macOS takes the terminal back
+    /// from it when the shell exits, so the pty closes and the block lets go at once.
+    @Test func aJobLeftRunningDoesntHoldTheBlock() async throws {
+        let (model, _, container) = try thread()
+        defer { withExtendedLifetime(container) {} }
+        let block = try #require(model.runCommand("sleep 30 & disown; echo $!"))
+        for _ in 0..<40 where block.view != nil { try await Task.sleep(for: .milliseconds(50)) }
+        let job = try #require(block.text.split(separator: "\n").last.flatMap { Int32($0) })
+        defer { kill(job, SIGKILL) }
+        #expect(block.view == nil && kill(job, 0) == 0)
     }
 
     @Test func aBlockRunWhileAReplyStreamsDoesntSplitIt() throws {

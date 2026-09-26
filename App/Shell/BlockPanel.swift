@@ -30,9 +30,12 @@ struct BlockPanel: View {
             .foregroundStyle(Ink.secondary)
             .padding(.horizontal, 16)
             .frame(height: 36)
-            BlockTerminalPane(view: block.view, takesKeyboard: !model.keyboardTaken)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+            // Only a running block opens, and a block keeps its view until it has ended.
+            if let view = block.view {
+                BlockTerminalPane(view: view, takesKeyboard: !model.keyboardTaken)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
         }
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
         .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))

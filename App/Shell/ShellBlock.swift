@@ -30,19 +30,29 @@ final class ShellBlock {
     private(set) var fullScreen = false
     /// Everything it printed, raw, for the store.
     @ObservationIgnored private(set) var output = Data()
-    /// Told when it ends, when what it printed last arrives after that, and when a program takes
-    /// the whole screen or lets it go.
+    /// Told when it ends, when what it printed last arrives after that, once its pty has closed
+    /// and all of it is drawn, and when a program takes the whole screen or lets it go.
     @ObservationIgnored var onEnd: ((ShellBlock) -> Void)?
     @ObservationIgnored var onTail: ((ShellBlock) -> Void)?
+    @ObservationIgnored var onClosed: ((ShellBlock) -> Void)?
     @ObservationIgnored var onFullScreen: ((ShellBlock) -> Void)?
-    /// The terminal: fed all along, drawn only while the block is open.
-    @ObservationIgnored let view: BlockTerminalView
+    /// The terminal: fed all along, drawn only while the block is open, and let go of once the
+    /// block has ended and been stored.
+    @ObservationIgnored private(set) var view: BlockTerminalView?
     @ObservationIgnored private let link: Link
     @ObservationIgnored private var process: LocalProcess?
     @ObservationIgnored private var redraw: Task<Void, Never>?
     /// Slices the pty has handed over, to tell when they've stopped coming.
     @ObservationIgnored private var slices = 0
+    /// The lines above the ones drawn, counted as they scroll off.
+    @ObservationIgnored private var counted = ShellRender.LineCount()
+    /// Wakes for the pty between the exit and its closing, and waits for a slice while it has
+    /// output SwiftTerm hasn't read.
+    @ObservationIgnored private var closing: (source: DispatchSourceRead, waiting: Bool)?
     @ObservationIgnored private var readTo: Mark?
+    /// Once the terminal is gone, its last lines as numberedText read them, as many as Claude
+    /// could be given.
+    @ObservationIgnored private var lastLines: [(row: Int, text: String)] = []
 
     var running: Bool { endedAt == nil }
 
@@ -53,15 +63,16 @@ final class ShellBlock {
         self.folder = folder
         link = Link()
         // A zero frame keeps the options' size until the block is opened.
-        view = BlockTerminalView(frame: .zero, font: TerminalPalette.font(size: 12.5),
-                                 options: TerminalOptions(cols: Self.columns, rows: Self.rows, scrollback: Self.scrollback))
+        let view = BlockTerminalView(frame: .zero, font: TerminalPalette.font(size: 12.5),
+                                     options: TerminalOptions(cols: Self.columns, rows: Self.rows, scrollback: Self.scrollback))
         TerminalPalette.dress(view)
         view.terminalDelegate = link
         link.block = self
         view.onBufferChange = { [weak self] in self?.bufferChanged() }
+        self.view = view
     }
 
-    var terminal: Terminal { view.getTerminal() }
+    var terminal: Terminal? { view?.getTerminal() }
 
     /// False when the shell couldn't start: no pty left, no fork.
     func start() -> Bool {
@@ -106,9 +117,9 @@ final class ShellBlock {
         kill(shell, SIGHUP)
     }
 
-    /// Everything it printed as plain lines.
+    /// Everything it printed as plain lines, or once it has let go of its terminal, the end of it.
     var text: String {
-        ShellRender.plain(ShellRender.lines(terminal))
+        numberedText().map(\.text).joined(separator: "\n")
     }
 
     /// How far Claude has read: the row after the one its last line starts on, and the line
@@ -143,7 +154,8 @@ final class ShellBlock {
     }
 
     private func numberedText() -> [(row: Int, text: String)] {
-        ShellRender.numbered(terminal).map { ($0.row, ShellRender.plain($0.line)) }
+        guard let terminal else { return lastLines }
+        return ShellRender.numbered(terminal).map { ($0.row, ShellRender.plain($0.line)) }
     }
 
     /// The first line Claude hasn't read, or nil for all of them: it has read none, or there are
@@ -158,10 +170,14 @@ final class ShellBlock {
     }
 
     fileprivate func received(_ bytes: ArraySlice<UInt8>) {
-        view.feed(byteArray: bytes)
+        view?.feed(byteArray: bytes)
         output.append(contentsOf: bytes)
         if output.count > Self.kept * 2 { output = output.suffix(Self.kept) }
         slices += 1
+        if let closing, closing.waiting {
+            self.closing?.waiting = false
+            closing.source.resume()
+        }
         guard redraw == nil else { return }
         redraw = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
@@ -173,13 +189,14 @@ final class ShellBlock {
     }
 
     private func draw() {
-        let lines = ShellRender.lines(terminal)
-        lineCount = lines.count
-        screen = ShellRender.attributed(lines.suffix(ShellRender.shown))
+        guard let terminal else { return }
+        let tail = ShellRender.tail(terminal)
+        lineCount = tail.lines.count + counted.lines(above: tail.row, in: terminal)
+        screen = ShellRender.attributed(tail.lines)
     }
 
     private func bufferChanged() {
-        let now = terminal.isCurrentBufferAlternate
+        guard let now = terminal?.isCurrentBufferAlternate else { return }
         guard now != fullScreen else { return }
         fullScreen = now
         onFullScreen?(self)
@@ -206,13 +223,19 @@ final class ShellBlock {
     /// The exit can come before the last of what it printed, still in the pty or among the slices
     /// SwiftTerm hands the main queue a few at a time, and SwiftTerm's reads hold their
     /// LocalProcess weakly, so letting go of it at the exit loses that tail. It's kept until the
-    /// pty has closed, which SwiftTerm marks by dropping the descriptor, and a turn of the main
-    /// queue brings no more slices.
+    /// pty has closed, SwiftTerm has read the end, and a turn of the main queue brings no more
+    /// slices. Then the block is drawn with all of it and can let go of its terminal. The pty
+    /// closes with the shell, since macOS takes the terminal back from a job it left running,
+    /// except when SwiftTerm stopped reading under a 4MB backlog, and never reads again once the
+    /// shell has gone: then the block waits for good, and without waking.
     private func letGo() async {
-        var wait = 50
-        while let process, process.childfd >= 0 {
-            try? await Task.sleep(for: .milliseconds(wait))
-            wait = min(wait * 2, 1000)
+        if let process, process.childfd >= 0 {
+            await closed(process.childfd)
+            // SwiftTerm reads the end after everything before it and marks it by dropping the
+            // descriptor, a moment after the pty says so.
+            for _ in 0..<200 where process.childfd >= 0 {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
         }
         var seen = -1
         while seen != slices {
@@ -220,6 +243,55 @@ final class ShellBlock {
             await withCheckedContinuation { turn in DispatchQueue.main.async { turn.resume() } }
         }
         process = nil
+        redraw?.cancel()
+        redraw = nil
+        draw()
+        onClosed?(self)
+    }
+
+    /// Waits for the pty to close without waking while nothing happens on it. A read source wakes
+    /// for output and for the end; output is SwiftTerm's to read, and until it does the source
+    /// would wake again at once, so it waits for SwiftTerm's next slice.
+    private func closed(_ descriptor: Int32) async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: .main)
+            source.setEventHandler { [self] in
+                MainActor.assumeIsolated {
+                    // Nothing to read when it woke is the end.
+                    if source.data == 0 {
+                        source.cancel()
+                        closing = nil
+                        done.resume()
+                        return
+                    }
+                    // Output SwiftTerm has already read is gone by now, and nothing to wait for.
+                    // FIONREAD, whose macro Swift can't import, as SwiftTerm spells it.
+                    var waiting: Int32 = 0
+                    guard ioctl(descriptor, 0x4004667F, &waiting) == 0, waiting > 0 else { return }
+                    source.suspend()
+                    closing?.waiting = true
+                }
+            }
+            closing = (source, false)
+            source.activate()
+        }
+    }
+
+    /// Lets go of the terminal and its view once the block has ended and been stored, keeping
+    /// what the transcript draws, the output and, for Claude, as many of the last lines as it
+    /// can be given: an ended block is never opened, and its lines don't change any more.
+    func dropTerminal() {
+        guard !running, process == nil, terminal != nil else { return }
+        let lines = numberedText()
+        var first = lines.endIndex
+        var characters = 0
+        while first > lines.startIndex, characters <= ShellContext.limit {
+            first -= 1
+            characters += lines[first].text.count + 1
+        }
+        lastLines = Array(lines[first...])
+        view = nil
+        counted = ShellRender.LineCount()
     }
 
     /// The pty and the terminal call back on the main queue.

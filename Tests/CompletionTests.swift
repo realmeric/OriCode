@@ -138,6 +138,24 @@ struct CompletionTests {
         #expect(git?.descriptions["cherry-pick"]?.isEmpty == false)
     }
 
+    /// Left without a Tab, the warm zsh is hung up and its startup folder goes with it, and so
+    /// at quit.
+    @Test func zshGoesWhenNobodyTabs() async throws {
+        let home = FileManager.default.temporaryDirectory.appending(path: "zdotdir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let idle = try #require(ZshCompletion(userFolder: home.path, idle: .milliseconds(500)))
+        #expect(idle.running)
+        for _ in 0..<100 where idle.running { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(!idle.running)
+        #expect(!FileManager.default.fileExists(atPath: idle.home.path))
+        let quitting = try #require(ZshCompletion(userFolder: home.path))
+        quitting.end()
+        #expect(!FileManager.default.fileExists(atPath: quitting.home.path))
+        for _ in 0..<100 where quitting.running { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(!quitting.running)
+    }
+
     @Test func theWordIsWhatFollowsTheLastSpaceNotEscaped() {
         #expect(ShellCompletion.split("cat My\\ No").word == "My\\ No")
         #expect(ShellCompletion.split("ls ").word == "")

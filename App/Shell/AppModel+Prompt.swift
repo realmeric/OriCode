@@ -97,8 +97,8 @@ extension AppModel {
         return await asking.value
     }
 
-    /// As the prompt opens: the shell's names, and a zsh user's own zsh started, so its startup
-    /// files have loaded by the first Tab.
+    /// As the prompt opens: the shell's names, and a zsh user's own zsh started, or started again
+    /// once ten minutes without a Tab have ended it, so its startup files have loaded by the first Tab.
     func loadShellCommands() {
         if (TerminalEnvironment.shell as NSString).lastPathComponent == "zsh", zshCompletion?.running != true {
             zshCompletion = ZshCompletion()
