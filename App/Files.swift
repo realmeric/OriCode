@@ -4,6 +4,8 @@ import SwiftUI
 struct OpenFile: Identifiable {
     let id = UUID()
     let path: String
+    /// The line a link pointed at, scrolled to and lit once the file is in.
+    var line: Int?
     var code: AttributedString?
     var lines = 0
     var truncated = false
@@ -24,14 +26,14 @@ extension AppModel {
         }
     }
 
-    /// Opens a path from anywhere: the finder, a tool line or a diff card.
-    func openFile(_ path: String) {
+    /// Opens a path from anywhere: the finder, a tool line, a diff card or a link in a reply.
+    func openFile(_ path: String, line: Int? = nil) {
         guard let chat else { return }
         let cwd = chat.cwd
         let relative = ToolSummary.relative(path, to: cwd)
         withAnimation(Motion.move) {
             fileFinderShown = false
-            openFile = OpenFile(path: relative)
+            openFile = OpenFile(path: relative, line: line)
         }
         let id = openFile?.id
         Task {
@@ -52,6 +54,61 @@ extension AppModel {
 
     func closeFile() {
         withAnimation(Motion.move) { openFile = nil }
+    }
+
+    /// A link clicked in a reply or a plan. A file in the thread's folder opens in the viewer at
+    /// its line, one elsewhere or a folder in its own app, and the web goes to the browser.
+    func openLink(_ url: URL, cwd: String) -> OpenURLAction.Result {
+        guard let file = LinkedFile(url, cwd: cwd) else { return url.scheme == nil ? .discarded : .systemAction }
+        var folder: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: file.path, isDirectory: &folder)
+        let root = (cwd as NSString).standardizingPath
+        if file.path.hasPrefix(root.hasSuffix("/") ? root : root + "/"), !folder.boolValue {
+            openFile(file.path, line: file.line)
+            return .handled
+        }
+        guard exists else { return .discarded }
+        NSWorkspace.shared.open(URL(filePath: file.path))
+        return .handled
+    }
+}
+
+/// A file a link names, however an agent wrote it: relative to the thread's folder, absolute,
+/// `~/`, or a file URL, with its line as `#L42`, `#L42-L50`, `:42` or `:42:7`.
+struct LinkedFile: Equatable {
+    let path: String
+    let line: Int?
+}
+
+extension LinkedFile {
+    /// Nil for a link that isn't a file's: the web, mail, a phone number, any other scheme.
+    init?(_ url: URL, cwd: String) {
+        var link = url.absoluteString
+        if let scheme = url.scheme?.lowercased() {
+            if scheme == "file" {
+                link = url.path(percentEncoded: true) + (url.fragment(percentEncoded: true).map { "#" + $0 } ?? "")
+            } else {
+                // `Foo.swift:42` parses with foo.swift as its scheme. The schemes that take a
+                // bare number are a phone's.
+                let rest = link.dropFirst(scheme.count + 1)
+                guard rest.wholeMatch(of: /\d+(:\d+)?/) != nil, !["tel", "sms", "facetime", "facetime-audio"].contains(scheme) else { return nil }
+            }
+        }
+        var line: Int?
+        if let hash = link.firstIndex(of: "#") {
+            line = link[link.index(after: hash)...].prefixMatch(of: /L(\d+)/).flatMap { Int($0.1) }
+            link = String(link[..<hash])
+        }
+        var path = link.removingPercentEncoding ?? link
+        if let match = path.firstMatch(of: /:(\d+)(:\d+)?$/) {
+            line = line ?? Int(match.1)
+            path.removeSubrange(match.range)
+        }
+        guard !path.isEmpty else { return nil }
+        path = (path as NSString).expandingTildeInPath
+        if !path.hasPrefix("/") { path = (cwd as NSString).appendingPathComponent(path) }
+        self.path = (path as NSString).standardizingPath
+        self.line = line.flatMap { $0 > 0 ? $0 : nil }
     }
 }
 
@@ -161,20 +218,7 @@ struct FileViewer: View {
                     .foregroundStyle(Ink.secondary)
                     .padding(16)
             } else if let code = file.code {
-                ScrollView([.vertical, .horizontal]) {
-                    HStack(alignment: .top, spacing: 14) {
-                        Text((1...max(file.lines, 1)).map(String.init).joined(separator: "\n"))
-                            .font(Type.mono)
-                            .foregroundStyle(Ink.faint)
-                            .multilineTextAlignment(.trailing)
-                        Text(code)
-                            .textSelection(.enabled)
-                            .fixedSize()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-                }
-                .scrollIndicators(.automatic)
+                FileCode(code: code, lines: file.lines, line: file.line)
             } else {
                 ProgressView().controlSize(.small).padding(16)
             }
@@ -182,5 +226,58 @@ struct FileViewer: View {
         .frame(maxWidth: 900, maxHeight: .infinity, alignment: .top)
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
         .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// The lines beside their numbers. The line a link named is scrolled to and lit for a moment.
+private struct FileCode: View {
+    let code: AttributedString
+    let lines: Int
+    let line: Int?
+    /// Measured off the numbers, which are the same font as the code.
+    @State private var lineHeight: CGFloat = 0
+    @State private var lit = false
+    @State private var viewport: CGFloat = 0
+    @State private var position = ScrollPosition()
+
+    var body: some View {
+        ScrollView([.vertical, .horizontal]) {
+            HStack(alignment: .top, spacing: 14) {
+                Text((1...max(lines, 1)).map(String.init).joined(separator: "\n"))
+                    .font(Type.mono)
+                    .foregroundStyle(Ink.faint)
+                    .multilineTextAlignment(.trailing)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height / CGFloat(max(lines, 1)) } action: { lineHeight = $0 }
+                Text(code)
+                    .textSelection(.enabled)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 16)
+            .background(alignment: .topLeading) {
+                if let line, lineHeight > 0 {
+                    Surface.selected
+                        .frame(height: lineHeight)
+                        .opacity(lit ? 1 : 0)
+                        .padding(.top, top(of: line))
+                }
+            }
+            .padding(.bottom, 16)
+        }
+        .scrollIndicators(.automatic)
+        .scrollPosition($position)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in viewport = height }
+        .task(id: lineHeight > 0 && viewport > 0) {
+            guard let line, lineHeight > 0, viewport > 0 else { return }
+            // A third of the way down, with what leads up to it above.
+            position.scrollTo(y: max(top(of: line) - viewport / 3, 0))
+            lit = true
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            withAnimation(Motion.fade) { lit = false }
+        }
+    }
+
+    private func top(of line: Int) -> CGFloat {
+        CGFloat(min(line, max(lines, 1)) - 1) * lineHeight
     }
 }

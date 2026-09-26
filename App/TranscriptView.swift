@@ -50,6 +50,9 @@ struct TranscriptView: View {
             .padding(.bottom, 24)
         }
         .scrollIndicators(.never)
+        // MarkdownUI makes `App/Foo.swift` a URL with no scheme, which the default action hands
+        // to Launch Services, and nothing there opens it.
+        .environment(\.openURL, OpenURLAction { model.openLink($0, cwd: cwd) })
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
         .onScrollGeometryChange(for: Bool.self) { geometry in
