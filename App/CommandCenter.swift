@@ -142,7 +142,7 @@ struct CommandCenter: View {
     private func row(_ item: PaletteItem, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if let project = item.project {
+                if let project = item.project, item.kind != .message {
                     ProjectBadge(project: project)
                 } else {
                     Image(systemName: item.icon ?? "command")
@@ -155,6 +155,9 @@ struct CommandCenter: View {
                     .foregroundStyle(item.unavailable == nil ? Ink.primary : Ink.faint)
                     .lineLimit(1)
                     .layoutPriority(1)
+                if item.kind == .message, let project = item.project {
+                    ProjectBadge(project: project)
+                }
                 if let line = item.unavailable ?? item.subtitle {
                     Text(line)
                         .font(Type.secondary)
@@ -212,7 +215,11 @@ struct CommandCenter: View {
             if level.query.trimmingCharacters(in: .whitespaces).isEmpty {
                 return model.paletteSections().flatMap { section in [.heading(section.title)] + numbered(section.items) }
             }
-            return numbered(Array(Palette.rank(model.paletteSearchable(), by: level.query, recents: model.paletteRecents).prefix(40)))
+            let messages = model.paletteMessages(for: level.query)
+            // Fewer ranked rows over messages, so the Messages heading is still in view.
+            let ranked = numbered(Array(Palette.rank(model.paletteSearchable(), by: level.query, recents: model.paletteRecents)
+                .prefix(messages.isEmpty ? 40 : 6)))
+            return messages.isEmpty ? ranked : ranked + [.heading("Messages")] + numbered(messages)
         case .list(let list):
             var items = Palette.rank(level.items, by: level.query, recents: model.paletteRecents)
             let typed = level.query.trimmingCharacters(in: .whitespaces)
@@ -238,7 +245,7 @@ struct CommandCenter: View {
 
     private func placeholder(of level: PaletteState.Level) -> String {
         switch level.kind {
-        case .root: "Search commands, threads and projects"
+        case .root: "Search commands, threads, projects and messages"
         case .list(let list): list.placeholder
         case .input(let input): input.placeholder
         }

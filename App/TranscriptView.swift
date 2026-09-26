@@ -11,6 +11,8 @@ struct TranscriptView: View {
     @State private var position = ScrollPosition()
     @State private var pinned = true
     @State private var showAll = false
+    /// The item a reveal brought into view, lit for a moment.
+    @State private var lit: UUID?
 
     /// A plain VStack: LazyVStack left a long transcript blank at launch when anchored to the
     /// bottom. To keep a long thread cheap, only the latest items are laid out until asked.
@@ -33,6 +35,14 @@ struct TranscriptView: View {
                 let entries = TranscriptEntry.fold(shown)
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     view(of: entry)
+                        .background {
+                            if lit == entry.id {
+                                Surface.selected
+                                    .clipShape(.rect(cornerRadius: 14, style: .continuous))
+                                    .padding(-8)
+                                    .transition(.opacity)
+                            }
+                        }
                         .id(entry.id)
                         .padding(.top, index == 0 ? 0 : Self.spacing(before: entry.first, after: entries[index - 1].last))
                         .transition(Self.arrival(of: entry.first))
@@ -63,11 +73,9 @@ struct TranscriptView: View {
         .onChange(of: conversation.items) {
             if pinned { position.scrollTo(edge: .bottom) }
         }
-        .onChange(of: model.scrollTarget) { _, target in
-            guard let target else { return }
-            withAnimation(Motion.move) { position.scrollTo(id: target, anchor: .center) }
-            model.scrollTarget = nil
-        }
+        // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
+        .onAppear(perform: takeReveal)
+        .onChange(of: model.reveal) { takeReveal() }
         .mask {
             // Fades under the top edge and above the composer instead of ending at a line.
             VStack(spacing: 0) {
@@ -79,6 +87,23 @@ struct TranscriptView: View {
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
             }
+        }
+    }
+
+    /// Brings the item a reveal asks for into view, laying out the whole thread when it's further
+    /// back than the latest items, and lights it for a moment. Another thread's item is left for
+    /// that thread's transcript.
+    private func takeReveal() {
+        guard let id = model.reveal, conversation.items.contains(where: { $0.id == id }) else { return }
+        model.reveal = nil
+        if !shown.contains(where: { $0.id == id }) { showAll = true }
+        Task {
+            // A beat for the layout a new thread or the earlier items bring.
+            try? await Task.sleep(for: .milliseconds(80))
+            withAnimation(Motion.move) { position.scrollTo(id: id, anchor: .center) }
+            withAnimation(Motion.fade) { lit = id }
+            try? await Task.sleep(for: .seconds(1.2))
+            if lit == id { withAnimation(Motion.fade) { lit = nil } }
         }
     }
 

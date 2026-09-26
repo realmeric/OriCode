@@ -33,6 +33,34 @@ struct PaletteTests {
         #expect(Palette.rank(items, by: "stop").map(\.id) == ["command", "thread"])
     }
 
+    @Test func messagesAreSearchedFromTwoCharacters() {
+        #expect(MessageSearch.words(" a ").isEmpty)
+        #expect(MessageSearch.words("ab") == ["ab"])
+        #expect(MessageSearch.words(" dynamic  island ") == ["dynamic", "island"])
+    }
+
+    @Test func aMessageHoldsEveryWordInAnyOrder() {
+        let text = "The capsule grows the way the Dynamic Island does."
+        #expect(MessageSearch.match(["island", "capsule"], in: text) != nil)
+        #expect(MessageSearch.match(["island", "notch"], in: text) == nil)
+    }
+
+    @Test func caseAndAccentsDontMatter() {
+        #expect(MessageSearch.snippet(["cafe"], in: "Meet at the Café") == "Meet at the Café")
+        #expect(MessageSearch.snippet(["SISE"], in: "Şişe kırıldı") == "Şişe kırıldı")
+        #expect(MessageSearch.snippet(["kirildi"], in: "Şişe kırıldı") == "Şişe kırıldı")
+        #expect(MessageSearch.match(["istanbul"], in: "İstanbul'da") != nil)
+    }
+
+    @Test func aSnippetIsOneLineAroundTheFirstWordFound() {
+        let text = "The capsule sits in the toolbar's row,\nlevel with the traffic lights, and each surface drops from the top edge today."
+        #expect(MessageSearch.snippet(["lights", "traffic"], in: text) == "…with the traffic lights, and each…")
+        #expect(MessageSearch.snippet(["traffic", "notch"], in: text) == nil)
+        #expect(MessageSearch.snippet(["capsule"], in: text) == "The capsule sits in the toolbar's row,…")
+        #expect(MessageSearch.snippet(["island"], in: "Make the review grow out of the capsule, the way the Dynamic Island grows.")
+            == "…the way the Dynamic Island grows.")
+    }
+
     @Test func levelsStackAndComeBack() {
         let state = PaletteState()
         state.push(.input(PaletteInput(title: "Branch", placeholder: "Name", submit: { _ in nil })), query: "x")

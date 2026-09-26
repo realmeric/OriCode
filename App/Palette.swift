@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// A row of the command center (⌘K): a command, a thread, a project, or a choice from a list.
+/// A row of the command center (⌘K): a command, a thread, a project, a choice from a list, or
+/// something said in a thread.
 struct PaletteItem: Identifiable {
     /// Also the order ties are broken in.
     enum Kind: Int {
-        case command, thread, project, choice
+        case command, thread, project, choice, message
     }
 
     let id: String
@@ -15,7 +16,7 @@ struct PaletteItem: Identifiable {
     var keywords: [String] = []
     var shortcut: String?
     var icon: String?
-    /// Threads and projects show the project's badge.
+    /// Threads and projects show the project's badge, and a message shows it by its thread's name.
     var project: Project?
     /// The current model, level or mode in a list.
     var checked = false
@@ -130,5 +131,51 @@ enum Palette {
             }
             .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.kind.rawValue < $1.0.kind.rawValue }
             .map(\.0)
+    }
+}
+
+/// ⌘K's search through what was said. A message holds a query when every word typed is in it,
+/// whatever the case or accents, which a subsequence match would find in any long reply.
+enum MessageSearch {
+    /// The words typed, or none before two characters are.
+    static func words(_ query: String) -> [String] {
+        let typed = query.trimmingCharacters(in: .whitespaces)
+        guard typed.count >= 2 else { return [] }
+        return typed.split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    /// Where the earliest of the words is in the text, when every one of them is there.
+    static func match(_ words: [String], in text: String) -> Range<String.Index>? {
+        let folded = fold(text)
+        var earliest: Range<Int>?
+        for word in words {
+            guard let found = folded.range(of: fold(word), options: [.caseInsensitive, .diacriticInsensitive]) else { return nil }
+            let from = folded.distance(from: folded.startIndex, to: found.lowerBound)
+            let range = from..<(from + folded.distance(from: found.lowerBound, to: found.upperBound))
+            if earliest.map({ range.lowerBound < $0.lowerBound }) ?? true { earliest = range }
+        }
+        return earliest.map { text.index(text.startIndex, offsetBy: $0.lowerBound)..<text.index(text.startIndex, offsetBy: $0.upperBound) }
+    }
+
+    /// The dotless ı and dotted İ read as i, which diacritic folding leaves alone, so "kirildi"
+    /// finds "kırıldı". One character for one, so offsets carry back to the text.
+    private static func fold(_ text: String) -> String {
+        String(text.map { $0 == "ı" || $0 == "İ" ? "i" : $0 })
+    }
+
+    /// The text on one line, about `length` characters of it around the match, cut between words
+    /// with … where it's cut; nil when a word isn't there.
+    static func snippet(_ words: [String], in text: String, length: Int = 40) -> String? {
+        let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !words.isEmpty, let found = match(words, in: line) else { return nil }
+        let characters = Array(line)
+        let from = line.distance(from: line.startIndex, to: found.lowerBound)
+        let to = line.distance(from: line.startIndex, to: found.upperBound)
+        // A few words before the match and the rest after it, since a line reads on from there.
+        var lower = max(0, min(from - 12, characters.count - length))
+        var upper = min(characters.count, max(lower + length, to))
+        if lower > 0, characters[lower - 1] != " ", let space = characters[lower..<from].firstIndex(of: " ") { lower = space + 1 }
+        if upper < characters.count, characters[upper] != " ", let space = characters[to..<upper].lastIndex(of: " ") { upper = space }
+        return (lower > 0 ? "…" : "") + String(characters[lower..<upper]) + (upper < characters.count ? "…" : "")
     }
 }

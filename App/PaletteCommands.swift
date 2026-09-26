@@ -1,4 +1,5 @@
 import AppKit
+import SwiftData
 import SwiftUI
 
 /// What the command center offers: every command the app has, the threads and projects, and
@@ -44,7 +45,8 @@ extension AppModel {
             return
         }
         guard palette.busy == nil else { return }
-        rememberInPalette(item.id)
+        // A message found once isn't a row to come back to.
+        if item.kind != .message { rememberInPalette(item.id) }
         switch item.action {
         case .run(let run):
             closeCommandCenter()
@@ -159,6 +161,34 @@ extension AppModel {
                             icon: "bubble.left", project: project, checked: chat.id == self.chat?.id,
                             action: .run { [weak self] in self?.open(chatID: chat.id) })
             }
+    }
+
+    /// What was said in the threads that holds every word typed, your messages and the replies,
+    /// newest first and three a thread at most. It reads the stored `user` and `text` events,
+    /// which every agent's thread has.
+    func paletteMessages(for query: String) -> [PaletteItem] {
+        let words = MessageSearch.words(query)
+        guard !words.isEmpty else { return [] }
+        let said = FetchDescriptor<Event>(predicate: #Predicate { $0.kind == "user" || $0.kind == "text" },
+                                          sortBy: [SortDescriptor(\.createdAt, order: .reverse), SortDescriptor(\.seq, order: .reverse)])
+        var found: [PaletteItem] = []
+        var perThread: [UUID: Int] = [:]
+        for event in (try? context.fetch(said)) ?? [] {
+            guard let chat = event.chat, chat.started, let project = chat.project, perThread[chat.id, default: 0] < 3,
+                  let body = try? JSONDecoder().decode(JSON.self, from: event.payload),
+                  let snippet = MessageSearch.snippet(words, in: body[event.kind == "user" ? "text" : "delta"]?.string ?? "")
+            else { continue }
+            perThread[chat.id, default: 0] += 1
+            let chatID = chat.id, eventID = event.id
+            found.append(PaletteItem(id: "message." + eventID.uuidString, kind: .message, title: snippet, subtitle: chat.title,
+                                     icon: event.kind == "user" ? "person" : "text.bubble", project: project,
+                                     action: .run { [weak self] in
+                                         self?.open(chatID: chatID)
+                                         self?.reveal = eventID
+                                     }))
+            if found.count == 20 { break }
+        }
+        return found
     }
 
     private var paletteProjects: [PaletteItem] {

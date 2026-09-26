@@ -139,8 +139,10 @@ final class AppModel {
     var shellActivity: NSObjectProtocol?
     /// Whether each block is in the transcript's view, once it has said.
     var shellsInView: [UUID: Bool] = [:]
-    /// A block the transcript is asked to bring into view.
-    var scrollTarget: UUID?
+    /// An item the transcript is asked to bring into view and light for a moment: a block's Show,
+    /// or a message ⌘K found. It waits for the transcript that holds it, so it can be set in the
+    /// same moment as the thread switch that brings that transcript.
+    var reveal: UUID?
     /// What the user's shell can run as a first word, for Tab at the prompt, once asked.
     var shellNames: Task<[String], Never>?
     /// Tab's list of matches is up in the composer, and Esc puts it away first.

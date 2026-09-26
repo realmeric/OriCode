@@ -354,7 +354,7 @@ struct RunningLine: View {
             Text(ToolSummary.firstLine(block.command)).font(Type.mono).lineLimit(1).truncationMode(.middle)
             Text(more > 0 ? "and \(more) more are running" : "is running")
             Text("·").foregroundStyle(Ink.faint)
-            Button("Show") { model.scrollTarget = block.id }
+            Button("Show") { model.reveal = block.id }
                 .buttonStyle(.plain)
                 .foregroundStyle(Ink.primary)
             Button("Stop") { block.stop() }
