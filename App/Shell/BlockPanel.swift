@@ -30,7 +30,7 @@ struct BlockPanel: View {
             .foregroundStyle(Ink.secondary)
             .padding(.horizontal, 16)
             .frame(height: 36)
-            BlockTerminalPane(view: block.view)
+            BlockTerminalPane(view: block.view, takesKeyboard: !model.keyboardTaken)
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
         }
@@ -43,18 +43,23 @@ struct BlockPanel: View {
 /// window, and the block goes on in the thread.
 private struct BlockTerminalPane: NSViewRepresentable {
     let view: BlockTerminalView
+    /// Not when the block opened by itself under ⌘K, ⌘P or a rename, which keep the keyboard
+    /// until they go and hand it on.
+    let takesKeyboard: Bool
 
     func makeNSView(context: Context) -> Host {
-        Host(terminal: view)
+        Host(terminal: view, takesKeyboard: takesKeyboard)
     }
 
     func updateNSView(_ host: Host, context: Context) {}
 
     final class Host: NSView {
         let terminal: NSView
+        let takesKeyboard: Bool
 
-        init(terminal: NSView) {
+        init(terminal: NSView, takesKeyboard: Bool) {
             self.terminal = terminal
+            self.takesKeyboard = takesKeyboard
             super.init(frame: terminal.frame)
             terminal.removeFromSuperview()
             addSubview(terminal)
@@ -74,7 +79,7 @@ private struct BlockTerminalPane: NSViewRepresentable {
         // The keys go to the program as soon as it's in the window, not to the composer.
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            window?.makeFirstResponder(terminal)
+            if takesKeyboard { window?.makeFirstResponder(terminal) }
         }
     }
 }

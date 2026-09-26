@@ -18,22 +18,32 @@ extension AppModel {
 
     /// The block drawn full over the open thread, if one is.
     var openShell: ShellBlock? {
-        openBlock.flatMap { shellBlocks[$0] }.flatMap { $0.chatID == chat?.id ? $0 : nil }
+        chat.flatMap { openBlocks[$0.id] }.flatMap { shellBlocks[$0] }
     }
 
-    /// Draws a running block full over the conversation, to be typed into.
+    /// Draws a running block full over its thread, to be typed into. One whose thread isn't on
+    /// screen is open there when it comes back.
     func open(_ block: ShellBlock) {
-        guard block.running, block.chatID == chat?.id else { return }
+        guard block.running else { return }
+        guard block.chatID == chat?.id else {
+            openBlocks[block.chatID] = block.id
+            return
+        }
         if reviewShown { closeReview() }
         modelPickerShown = false
-        withAnimation(Motion.move) { openBlock = block.id }
+        withAnimation(Motion.move) { openBlocks[block.chatID] = block.id }
     }
 
-    /// Puts the open block back in the thread, and the keyboard back in the composer.
+    /// Puts the open thread's block back in the thread.
     func closeBlock() {
-        guard openBlock != nil else { return }
-        withAnimation(Motion.move) { openBlock = nil }
-        composerFocus += 1
+        if let block = openShell { close(block) }
+    }
+
+    /// Puts a block back in its thread, handing the keyboard on if that thread is on screen.
+    func close(_ block: ShellBlock) {
+        guard openBlocks[block.chatID] == block.id else { return }
+        withAnimation(Motion.move) { openBlocks[block.chatID] = nil }
+        if block.chatID == chat?.id { returnKeyboard() }
     }
 
     /// Gives the open block's terminal the keyboard back when a panel that came over it goes.
@@ -42,11 +52,24 @@ extension AppModel {
         view.window?.makeFirstResponder(view)
     }
 
+    /// Whether something over the thread has the keyboard on purpose, which a block opening or
+    /// closing by itself leaves alone: ⌘K, ⌘P, a rename, the picker, a file.
+    var keyboardTaken: Bool {
+        commandCenterShown || fileFinderShown || renamingChatID != nil || modelPickerShown || openFile != nil
+    }
+
+    /// Whether the composer takes the keyboard when nothing else asks for it: not under an open
+    /// block, whose program has it, nor while a card waits, whose Return and Esc the field would eat.
+    var composerTakesKeyboard: Bool {
+        openShell == nil && currentConversation?.waitingAsk == nil
+    }
+
     /// Hands the keyboard back when a surface that had it goes, to an open block or else the
-    /// composer, unless it went somewhere on purpose: a rename, the picker, a file.
+    /// composer, unless it went somewhere on purpose. With a card waiting it stays with the
+    /// window, so Return presses the card's button.
     func returnKeyboard() {
-        guard renamingChatID == nil, !modelPickerShown, openFile == nil else { return }
-        if openShell != nil { focusOpenBlock() } else { composerFocus += 1 }
+        guard !keyboardTaken else { return }
+        if openShell != nil { focusOpenBlock() } else if composerTakesKeyboard { composerFocus += 1 }
     }
 
     private static let shellHistoryKey = "shellHistory"

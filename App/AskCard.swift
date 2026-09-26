@@ -63,7 +63,7 @@ private struct PermissionForm: View {
                 Button("Deny") { model.answer(ask, allow: false) }
                     .buttonStyle(AskButtonStyle())
                 Button("Allow") { model.answer(ask, allow: true) }
-                    .buttonStyle(AskButtonStyle(prominent: true))
+                    .buttonStyle(AskButtonStyle(prominent: listens))
                     .keyboardShortcut(listens ? .defaultAction : nil)
             }
         }
@@ -153,13 +153,22 @@ private struct QuestionForm: View {
                             let label = option["label"]?.string ?? ""
                             let lit = picked[text]?.contains(label) == true
                             if multiple {
-                                OptionRow(lit: lit) {
-                                    Toggle(isOn: binding(text, label).animation(Motion.fade)) {
-                                        optionLabel(label, option["description"]?.string)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                // The whole lit row is the checkbox's, so the row takes the click
+                                // and the box only shows it.
+                                Button {
+                                    withAnimation(Motion.fade) { binding(text, label).wrappedValue.toggle() }
+                                } label: {
+                                    OptionRow(lit: lit) {
+                                        Toggle(isOn: binding(text, label)) {
+                                            optionLabel(label, option["description"]?.string)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .toggleStyle(.checkbox)
+                                        .allowsHitTesting(false)
                                     }
-                                    .toggleStyle(.checkbox)
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(lit ? .isSelected : [])
                             } else {
                                 Button {
                                     withAnimation(Motion.fade) {
@@ -202,7 +211,7 @@ private struct QuestionForm: View {
                     .buttonStyle(AskButtonStyle())
                 if questions.count > 1 || questions.contains(where: { $0["multiSelect"]?.bool == true }) {
                     Button("Answer", action: submit)
-                        .buttonStyle(AskButtonStyle(prominent: true))
+                        .buttonStyle(AskButtonStyle(prominent: listens))
                         .keyboardShortcut(listens ? .defaultAction : nil)
                         .disabled(!complete)
                 }

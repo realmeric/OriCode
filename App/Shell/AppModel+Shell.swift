@@ -22,7 +22,7 @@ extension AppModel {
         // puts the block back.
         block.onFullScreen = { [weak self] block in
             guard let self else { return }
-            if block.fullScreen { open(block) } else if openBlock == block.id { closeBlock() }
+            if block.fullScreen { open(block) } else { close(block) }
         }
         shellBlocks[block.id] = block
         withAnimation(Motion.fade) { conversation.shellStarted(ShellRun(command: command, folder: chat.cwd), id: block.id) }
@@ -34,7 +34,7 @@ extension AppModel {
     private func shellEnded(_ block: ShellBlock) {
         holdForShells()
         store(block)
-        if openBlock == block.id { closeBlock() }
+        close(block)
     }
 
     /// Writes a command's block into its thread as it stands.
@@ -50,11 +50,11 @@ extension AppModel {
     }
 
     /// The open thread's latest command still running whose block has gone out of view, and how
-    /// many more are, for the line under the composer.
+    /// many more are, for the line under the composer. The one open over the thread is in view.
     var runningOutOfView: (block: ShellBlock, more: Int)? {
         guard let chat else { return nil }
         let away = shellBlocks.values
-            .filter { $0.chatID == chat.id && $0.running && shellsInView[$0.id] == false }
+            .filter { $0.chatID == chat.id && $0.running && shellsInView[$0.id] == false && openBlocks[chat.id] != $0.id }
             .sorted { $0.startedAt > $1.startedAt }
         return away.first.map { ($0, away.count - 1) }
     }

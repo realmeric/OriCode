@@ -129,8 +129,9 @@ final class AppModel {
     let customActions = CustomActionStore()
     /// Threads whose session Continue in Claude Code gave to a block's claude, and that block.
     var handedOff: [UUID: UUID] = [:]
-    /// The block drawn full over the conversation.
-    var openBlock: UUID?
+    /// The block drawn full over each thread's conversation, by thread: another thread keeps its
+    /// own keyboard and asks, and coming back finds its block where it was.
+    var openBlocks: [UUID: UUID] = [:]
     /// Whether the composer is a shell prompt for the thread's folder, after a `!` at its start.
     var shellPrompt = false
     /// The commands run from it in this launch, by their block's id, running or ended.
@@ -201,6 +202,7 @@ final class AppModel {
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
             refreshBranch(for: chat)
             readReview()
+            returnKeyboard()
         }
     }
 

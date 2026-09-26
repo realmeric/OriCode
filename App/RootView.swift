@@ -74,7 +74,7 @@ struct RootView: View {
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.openFile != nil { model.closeFile() }
                     if model.reviewShown { model.closeReview() }
-                    if model.openBlock != nil { model.closeBlock() }
+                    if model.openShell != nil { model.closeBlock() }
                 })
             }
         }
@@ -157,6 +157,7 @@ struct RootView: View {
                 // is; under the other panels, which can open over it.
                 GeometryReader { area in
                     BlockPanel(block: block)
+                        .id(block.id)
                         .frame(maxWidth: 900)
                         .frame(height: max(60, model.composerTop - area.frame(in: .global).minY - 24))
                         .padding(.top, 12)

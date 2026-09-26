@@ -72,7 +72,7 @@ struct Composer: View {
             }
         }
         .onChange(of: model.modelPickerShown) { _, shown in
-            if !shown { focused = true }
+            if !shown { focused = model.composerTakesKeyboard }
         }
         .overlay(alignment: .bottomLeading) {
             if !slashMatches.isEmpty {
@@ -109,14 +109,18 @@ struct Composer: View {
         .onChange(of: dropTarget) { _, over in
             if over { Haptics.detent() }
         }
-        .onAppear { focused = true }
+        .onAppear { focused = model.composerTakesKeyboard }
         // Not while a block is open, which has the keyboard until it goes.
         .onChange(of: model.composerFocus) {
-            if model.openBlock == nil { focused = true }
+            if model.openShell == nil { focused = true }
         }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
-            if model.openBlock == nil { focused = waiting == nil }
+            if waiting != nil {
+                focused = false
+            } else if !model.keyboardTaken {
+                focused = model.composerTakesKeyboard
+            }
         }
     }
 
@@ -334,7 +338,8 @@ struct Composer: View {
             text = ""
             draft = UUID()
             try? await Task.sleep(for: .milliseconds(30))
-            focused = true
+            // A program that took the whole screen meanwhile, vim run as the first command, keeps it.
+            if model.openShell == nil { focused = true }
         }
     }
 

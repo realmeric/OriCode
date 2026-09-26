@@ -9,10 +9,6 @@ extension AppModel {
             modelPickerShown = false
             return true
         }
-        if composerMenu {
-            composerMenu = false
-            return true
-        }
         if openFile != nil {
             closeFile()
             returnKeyboard()
@@ -42,6 +38,11 @@ extension AppModel {
         // The drawer's rename field sits over an open block.
         if renamingChatID != nil {
             renamingChatID = nil
+            return true
+        }
+        // Tab's list is the composer's, under whatever came down over it.
+        if composerMenu {
+            composerMenu = false
             return true
         }
         if let block = openShell {
