@@ -53,6 +53,7 @@ test: project engine
 
 app: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
+	scripts/prune.sh $(RELEASE_APP)
 	codesign --force --deep --sign $(SIGN) $(RELEASE_APP)
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app

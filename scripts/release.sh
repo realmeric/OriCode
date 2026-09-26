@@ -34,6 +34,7 @@ notes=$(awk -v h="## $tag " 'index($0, h) == 1 { on = 1; next } /^## / { on = 0 
 
 xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 \
   -derivedDataPath "$derived" -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION="$build" build
+scripts/prune.sh "$app"
 codesign --force --deep --sign OriCode "$app"
 codesign --verify --deep --strict "$app"
 rm -rf "$out" && mkdir -p "$out"
