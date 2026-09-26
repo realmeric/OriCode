@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { claude } from "./claude.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
-import { answer, type Answer, type Provider, type SendParams, type Session } from "./provider.ts";
+import { answer, type Answer, type Availability, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
@@ -42,6 +42,22 @@ function session(threadId: string, agent: Provider, path: string): Session {
   return found;
 }
 
+/// An agent as hello gives it to the app: whether it can run here, and what a thread on it can do.
+function described(agent: Provider, found: Availability) {
+  return {
+    id: agent.id,
+    name: agent.name,
+    agent: agent.agent,
+    state: found.state,
+    hint: found.hint,
+    cli: found.cli,
+    version: found.version,
+    capabilities: agent.capabilities,
+    levels: agent.levels,
+    modes: agent.modes,
+  };
+}
+
 const methods: Record<string, (params: any) => Promise<unknown>> = {
   async hello() {
     const found = await claude.availability();
@@ -50,7 +66,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     // Nothing awaits after this, so it runs once the reply is written: a `models` event
     // arriving first would be undone by the reply.
     setImmediate(replied.resolve);
-    return { version, models, claude: found.cli, loggedIn: found.state === "ready" };
+    return { version, models, claude: found.cli, loggedIn: found.state === "ready", providers: [described(claude, found)] };
   },
 
   async send(params: SendParams & { provider?: string }) {

@@ -26,6 +26,9 @@ final class Chat {
     var project: Project?
     var title: String
     var sessionId: String?
+    /// The agent it runs on, set as it's made and never after, since a session doesn't move
+    /// between agents. Nil on a thread from before there were others, which is Claude Code's.
+    var provider: String?
     var model: String?
     var effort: String?
     var permissionMode: String

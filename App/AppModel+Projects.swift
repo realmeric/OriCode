@@ -174,6 +174,7 @@ extension AppModel {
             context.delete(draft)
         }
         let chat = Chat(project: project, permissionMode: startingPermissionMode)
+        chat.provider = startingProvider
         chat.model = startingModel
         let levels = option(for: chat)?.levels ?? []
         chat.effort = startingEffort.flatMap { levels.contains($0) ? $0 : nil }

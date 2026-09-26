@@ -12,10 +12,12 @@ struct SlashCommandInfo: Codable, Hashable, Sendable, Identifiable {
 extension AppModel {
     func loadCommands(for chat: Chat) {
         let cwd = chat.cwd
-        guard slashCommands[cwd] == nil else { return }
-        slashCommands[cwd] = []
+        let agent = chat.providerID
+        guard slashCommands[agent]?[cwd] == nil else { return }
+        slashCommands[agent, default: [:]][cwd] = []
         Task {
-            let reply = try? await engine.request("commands", ["threadId": .string(chat.id.uuidString), "cwd": .string(cwd)])
+            let params: [String: JSON] = ["threadId": .string(chat.id.uuidString), "cwd": .string(cwd)]
+            let reply = try? await engine.request("commands", .object(params.naming(agent)))
             let commands: [SlashCommandInfo]
             do {
                 commands = try reply?["commands"]?.decode([SlashCommandInfo].self) ?? []
@@ -23,7 +25,7 @@ extension AppModel {
                 Engine.logger.error("commands didn't decode: \(String(describing: error), privacy: .public)")
                 commands = []
             }
-            if commands.isEmpty { slashCommands[cwd] = nil } else { slashCommands[cwd] = commands }
+            slashCommands[agent]?[cwd] = commands.isEmpty ? nil : commands
         }
     }
 }

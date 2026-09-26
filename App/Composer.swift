@@ -567,7 +567,7 @@ struct Composer: View {
     }
 
     private var slashMatches: [SlashCommandInfo] {
-        guard let query = slashQuery, let chat = model.chat, let commands = model.slashCommands[chat.cwd] else { return [] }
+        guard let query = slashQuery, let chat = model.chat, let commands = model.slashCommands[chat.providerID]?[chat.cwd] else { return [] }
         return Array(Fuzzy.rank(commands, by: query) { $0.name }.prefix(8))
     }
 

@@ -31,8 +31,8 @@ struct MarkPicker: View {
         .animation(Motion.glide, value: page)
         .onAppear {
             // Asked now, so the Fast button already knows Claude Code's answer when it's clicked.
-            if let option = model.option(for: chat), option.fast, model.fastReadings[option.id] == nil {
-                model.checkFast(model: option.id)
+            if let option = model.option(for: chat), option.fast, model.fastReading(for: chat) == nil {
+                model.checkFast(model: option.id, on: model.providerID(for: chat))
             }
         }
     }

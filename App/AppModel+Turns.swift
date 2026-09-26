@@ -142,7 +142,7 @@ extension AppModel {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
             })
         }
-        return params
+        return params.naming(chat.providerID)
     }
 
     func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil) {
@@ -188,7 +188,7 @@ extension AppModel {
             // A check names its model; a thread's own CLI speaks for the model the thread is on.
             let chat = event.threadId.flatMap(UUID.init(uuidString:)).flatMap(chat(withID:))
             let modelID = event.body["model"]?.string ?? chat?.model ?? ModelOption.claudeDefault
-            fastReadings[modelID] = FastReading(state: state, reason: event.body["reason"]?.string)
+            fastReadings[ModelRef(provider: providerID(for: chat), id: modelID).stored] = FastReading(state: state, reason: event.body["reason"]?.string)
         }
         guard let threadId = event.threadId, let id = UUID(uuidString: threadId) else {
             if event.name == "error", let message = event.body["message"]?.string {
@@ -231,7 +231,7 @@ extension AppModel {
         holdWhileWorking()
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
-        if event.name == "limits" { takeLimits(event.body) }
+        if event.name == "limits" { takeLimits(event.body, for: chat.providerID) }
         if event.name == "turn.done" { refreshBranch(for: chat) }
         // The count at the top right follows every turn in the open folder, and an open review
         // follows every edit.
@@ -301,7 +301,9 @@ extension AppModel {
     /// With no thread open, a pick is for the thread about to start, and a default fixed in
     /// Settings would win over it there; so that thread starts now, empty, with the pick.
     func setModel(_ id: String, for chat: Chat?) {
-        lastModel = id
+        let agent = providerID(for: chat)
+        lastProvider = agent
+        lastModel = ModelRef(provider: agent, id: id)
         guard let chat = chat ?? (id == startingModel ? nil : newChat()) else { return }
         chat.model = id
         if let levels = models.first(where: { $0.id == id })?.levels, let effort = chat.effort, !levels.contains(effort) {
@@ -353,18 +355,19 @@ extension AppModel {
     /// Asks the CLI, without sending it anything, whether it would serve the thread's model fast,
     /// so the switch can say why not before a turn is spent finding out.
     func checkFast(_ chat: Chat) {
-        checkFast(model: chat.model ?? ModelOption.claudeDefault, thread: chat.id.uuidString)
+        checkFast(model: chat.model ?? ModelOption.claudeDefault, on: chat.providerID, thread: chat.id.uuidString)
     }
 
     /// The same question for a model, before any thread has asked it: the picker asks as it opens,
     /// so the Fast button already knows when it's clicked.
-    func checkFast(model: String, thread: String = "picker") {
-        Task { _ = try? await engine.request("fast.check", ["threadId": .string(thread), "model": .string(model)]) }
+    func checkFast(model: String, on agent: String, thread: String = "picker") {
+        let params: [String: JSON] = ["threadId": .string(thread), "model": .string(model)]
+        Task { _ = try? await engine.request("fast.check", .object(params.naming(agent))) }
     }
 
     /// What Claude Code last said about fast mode for a thread's model, or the next thread's.
     func fastReading(for chat: Chat?) -> FastReading? {
-        option(for: chat).flatMap { fastReadings[$0.id] }
+        option(for: chat).flatMap { fastReadings[ModelRef(provider: providerID(for: chat), id: $0.id).stored] }
     }
 
     func setPermissionMode(_ mode: String, for chat: Chat?) {
@@ -399,7 +402,7 @@ extension AppModel {
         let fixed = UserDefaults.standard
         let effort = fixed.string(forKey: NewThreads.effort) ?? ""
         return ThreadDefaults(
-            model: fixed.string(forKey: NewThreads.model)?.nonEmpty ?? ModelOption.claudeDefault,
+            model: Self.storedModel(NewThreads.model).flatMap { $0.provider == ProviderInfo.claudeID ? $0.id : nil } ?? ModelOption.claudeDefault,
             effort: effort.isEmpty || effort == NewThreads.claudeDefault ? nil : effort,
             fast: fixed.string(forKey: NewThreads.fast) == NewThreads.on,
             permissionMode: fixed.string(forKey: NewThreads.permissionMode)?.nonEmpty ?? PermissionModeOption.ask.rawValue)

@@ -49,6 +49,8 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
 
 /// Settings › New threads. Each setting is fixed there, or left empty to follow the last pick.
 enum NewThreads {
+    static let provider = "newThreadProvider"
+    /// A model named the way ModelRef stores it.
     static let model = "newThreadModel"
     static let effort = "newThreadEffort"
     static let fast = "newThreadFast"
@@ -76,6 +78,7 @@ struct Hello: Codable, Sendable {
     let models: [ModelOption]
     let claude: String?
     let loggedIn: Bool
+    let providers: [ProviderInfo]
 }
 
 @MainActor
@@ -91,6 +94,8 @@ final class AppModel {
     }
 
     var engineState: EngineState = .starting
+    /// The agents hello lists, Claude Code alone until it answers.
+    var providers: [ProviderInfo] = [.claude]
     var models: [ModelOption] = []
     /// The effortLevel in the user's Claude Code settings, which is where Default lands when set.
     var settingsEffort: String?
@@ -100,22 +105,24 @@ final class AppModel {
     /// Every write to UserDefaults posts the same notification, the window's frame on each move
     /// among them, so the revision moves only when one of the keys those choices read has.
     private static let startingKeys = [
-        NewThreads.model, NewThreads.effort, NewThreads.fast, NewThreads.permissionMode, "lastModel", "lastEffort", "lastFast", "lastPermissionMode",
+        NewThreads.provider, NewThreads.model, NewThreads.effort, NewThreads.fast, NewThreads.permissionMode,
+        "lastProvider", "lastModel", "lastEffort", "lastFast", "lastPermissionMode",
     ]
     @ObservationIgnored private var startingSeen: [String] = []
     /// Whether the main window can be seen: not hidden, minimised, on another Space or covered.
     @ObservationIgnored private var windowVisible = true {
         didSet { if windowVisible != oldValue { tellWindow() } }
     }
-    /// What Claude Code last said about fast mode for each model, by the model's id: whether it
+    /// What Claude Code last said about fast mode for each model, by ModelRef's key: whether it
     /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
     /// thread that hasn't asked yet, or no thread at all, shows what's already known.
     var fastReadings: [String: FastReading] = [:]
     /// Bumped to put the cursor in the composer when nothing else would move it there: ⌘N on the
     /// draft that's already open.
     var composerFocus = 0
-    /// The models the user starred, by id, in the order starred; the models page and the model
-    /// pickers put them first. One Claude Code stops listing stays here, unseen, in case it's back.
+    /// The models the user starred, by ModelRef's key, in the order starred; the models page and
+    /// the model pickers put them first. One Claude Code stops listing stays here, unseen, in case
+    /// it's back.
     var favoriteModels = UserDefaults.standard.stringArray(forKey: "favoriteModels") ?? [] {
         didSet { UserDefaults.standard.set(favoriteModels, forKey: "favoriteModels") }
     }
@@ -189,15 +196,16 @@ final class AppModel {
     /// Whether the engine has been told a turn is running, so it keeps App Nap off.
     var holdingForTurns = false
     var draftAttachments: [ImageAttachment] = []
-    var usage: PlanUsage?
-    var usageAt: Date?
+    /// Each agent's plan usage by its id, and when the engine last read it.
+    var usages: [String: PlanUsage] = [:]
+    var usagesAt: [String: Date] = [:]
     var usageStale = false
     var usageLoading = false
     var fileFinderShown = false
     var projectFiles: [String] = []
     var openFile: OpenFile?
-    /// Slash commands by folder; an empty list means they're being fetched.
-    var slashCommands: [String: [SlashCommandInfo]] = [:]
+    /// Slash commands by agent, then by folder; an empty list means they're being fetched.
+    var slashCommands: [String: [String: [SlashCommandInfo]]] = [:]
     var drawerShown = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
@@ -241,9 +249,9 @@ final class AppModel {
         set { UserDefaults.standard.set(newValue, forKey: "lastPermissionMode") }
     }
 
-    var lastModel: String? {
-        get { UserDefaults.standard.string(forKey: "lastModel") }
-        set { UserDefaults.standard.set(newValue, forKey: "lastModel") }
+    var lastModel: ModelRef? {
+        get { Self.storedModel("lastModel") }
+        set { UserDefaults.standard.set(newValue?.stored, forKey: "lastModel") }
     }
 
     var lastEffort: String? {
@@ -260,7 +268,8 @@ final class AppModel {
     /// pick in the composer for what it leaves to that.
     var startingModel: String? {
         _ = defaultsRevision
-        return UserDefaults.standard.string(forKey: NewThreads.model)?.nonEmpty ?? lastModel
+        let agent = startingProvider
+        return [Self.storedModel(NewThreads.model), lastModel].compactMap { $0 }.first { $0.provider == agent }?.id
     }
 
     var startingEffort: String? {
@@ -402,6 +411,7 @@ final class AppModel {
             let hello = try reply.decode(Hello.self)
             // Which models run Ultracode comes a moment later, in the models event.
             models = hello.models.map(\.assumingUltracode)
+            providers = hello.providers
             engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
             refreshBranch(for: chat)
             tellWindow()
