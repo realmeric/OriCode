@@ -1,4 +1,4 @@
-import type { Thread } from "./thread.ts";
+import type { Session } from "./provider.ts";
 
 /// A thread's CLI stays up between turns so a quick reply starts at once, but idle it still
 /// holds about 136MB and wakes the Mac a few times a second, so it goes after this long. The
@@ -11,7 +11,7 @@ export type Shown = { threadId: string | null; visible: boolean };
 /// Ends each CLI idle past its limit: 90 seconds, or none at all for a thread that isn't open
 /// while the window can't be seen, since nobody is about to write to it. Returns the threads let
 /// go, and how long until the next one could be.
-export function releaseIdle(threads: Map<string, Thread>, shown: Shown, now = Date.now()): { released: string[]; next: number | undefined } {
+export function releaseIdle(threads: Map<string, Session>, shown: Shown, now = Date.now()): { released: string[]; next: number | undefined } {
   const released: string[] = [];
   let next: number | undefined;
   for (const [threadId, thread] of threads) {

@@ -17,68 +17,19 @@ import {
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { Heads } from "./heads.ts";
+import { asks, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
 import { workflowShape, type WorkflowShape } from "./workflow.ts";
-
-export type Attachment = { mediaType: string; data: string };
-
-export type SendParams = {
-  threadId: string;
-  sessionId?: string;
-  cwd: string;
-  text: string;
-  model?: string;
-  /// A level, or `ultracode`: xhigh with Claude Code's standing multi-agent workflows.
-  effort?: EffortLevel | "ultracode";
-  permissionMode: PermissionMode;
-  attachments?: Attachment[];
-  /// Fast mode for the thread. SDK sessions get it only when their flag settings ask for it.
-  fast?: boolean;
-  /// What the thread's turns have cost so far. A resumed CLI reports the session's saved
-  /// running total in its first result, so this is the baseline a turn's cost is taken from.
-  costSoFar?: number;
-  /// A call the user allowed after a quit had ended the CLI that asked about it. Claude makes it
-  /// again once resumed, and the first ask for the same call in the turn is allowed unasked.
-  grant?: Grant;
-  /// The app's id for the message. The CLI reports on a message by it: when a message sent
-  /// during a turn is taken up, or cancelled before it was.
-  id?: string;
-};
-
-export type Grant = { tool: string; input: Record<string, unknown> };
-
-type Ask = {
-  threadId: string;
-  kind: "permission" | "question";
-  input: Record<string, unknown>;
-  resolve: (result: PermissionResult) => void;
-};
-
-export type Answer = {
-  requestId: string;
-  allow: boolean;
-  updatedInput?: Record<string, unknown>;
-  answers?: Record<string, string>;
-  message?: string;
-};
 
 /// What an `effort` event tells the app: the level the session sends, null for none, and
 /// whether it runs as Ultracode.
 type Effort = { level: string | null; ultracode: boolean };
 
-const asks = new Map<string, Ask>();
-
-export function answer(params: Answer): void {
-  const ask = asks.get(params.requestId);
-  if (!ask) throw new Error("That question is no longer waiting.");
-  asks.delete(params.requestId);
-  if (!params.allow) {
-    ask.resolve({ behavior: "deny", message: params.message ?? "The user denied this. Stop and wait for them." });
-    return;
-  }
-  const updatedInput =
-    params.updatedInput ?? (ask.kind === "question" ? { ...ask.input, answers: params.answers ?? {} } : ask.input);
-  ask.resolve({ behavior: "allow", updatedInput });
+/// The SDK's answer to an ask: a question's answers go back in its input.
+function permission(params: Answer, kind: "permission" | "question", input: Record<string, unknown>): PermissionResult {
+  if (!params.allow) return { behavior: "deny", message: params.message ?? "The user denied this. Stop and wait for them." };
+  const updatedInput = params.updatedInput ?? (kind === "question" ? { ...input, answers: params.answers ?? {} } : input);
+  return { behavior: "allow", updatedInput };
 }
 
 /// A queue the SDK reads user messages from. Keeping one open per thread is what
@@ -115,7 +66,7 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-export class Thread {
+export class Thread implements Session {
   readonly id: string;
   private claude: string;
   private query: Query | undefined;
@@ -261,7 +212,7 @@ export class Thread {
       if (ask.threadId !== this.id) continue;
       asks.delete(requestId);
       event("ask.cancelled", { threadId: this.id, requestId });
-      ask.resolve({ behavior: "deny", message: "The user stopped this turn.", interrupt: true });
+      ask.stop();
     }
     for (const id of this.held) this.cancelled(id);
     this.held.clear();
@@ -520,7 +471,11 @@ export class Thread {
     const requestId = randomUUID();
     const kind = tool === "AskUserQuestion" ? "question" : "permission";
     return new Promise((resolve) => {
-      asks.set(requestId, { threadId: this.id, kind, input, resolve });
+      asks.set(requestId, {
+        threadId: this.id,
+        answer: (params) => resolve(permission(params, kind, input)),
+        stop: () => resolve({ behavior: "deny", message: "The user stopped this turn.", interrupt: true }),
+      });
       signal.addEventListener(
         "abort",
         () => {

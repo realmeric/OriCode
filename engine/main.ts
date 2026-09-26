@@ -1,243 +1,85 @@
 import { createInterface } from "node:readline";
-import { homedir } from "node:os";
-import { query, type FastModeDisabledReason, type FastModeState, type ModelInfo, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
-import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./cache.ts";
-import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
-import { claudeVersion, cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
+import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+import { claude } from "./claude.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
-import { fallback, helloList, withDefaults, type Model } from "./models.ts";
-import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
+import { answer, type Answer, type Provider, type SendParams, type Session } from "./provider.ts";
+import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { listFiles, readProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
-import { usage } from "./usage.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
-const threads = new Map<string, Thread>();
+const providers = new Map<string, Provider>([[claude.id, claude]]);
+const sessions = new Map<string, Session>();
 /// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
 const watched = new Set<string>();
-let models: Model[] | undefined;
-const cacheFolder = process.env.ORICODE_CACHE;
-let cache: Cache | undefined;
 
-async function requireClaude(): Promise<string> {
-  const claude = await findClaude();
-  if (!claude) throw new Error("claude isn't installed. Install Claude Code, run `claude` in Terminal and log in.");
-  return claude;
-}
-
-const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }) };
-const commandsByFolder = new Map<string, Promise<SlashCommand[]>>();
-
-/// Commands for a folder when no thread there has a CLI yet: one probe with the user's and
-/// the project's settings, kept for the engine's lifetime.
-function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
-  let found = commandsByFolder.get(cwd);
-  if (!found) {
-    found = (async () => {
-      const probe = query({
-        prompt: idle,
-        options: { cwd, pathToClaudeCodeExecutable: claude, settingSources: ["user", "project", "local"], env: cleanEnvironment() },
-      });
-      try {
-        return await probe.supportedCommands();
-      } finally {
-        probe.close();
-      }
-    })();
-    found.catch(() => commandsByFolder.delete(cwd));
-    commandsByFolder.set(cwd, found);
-  }
+/// The agent a request names, Claude Code when it names none.
+function provider(id: string | undefined): Provider {
+  const found = providers.get(id ?? "claude");
+  if (!found) throw new Error(`Unknown provider ${id}`);
   return found;
 }
 
-/// Claude Code is moving its list of models to the catalog it caches, behind a flag, and serves
-/// that list only while its copy is fresh: the rows and their ids change from one launch to the
-/// next. With the catalog off the probe lists the same rows every time, and the engine adds the
-/// catalog's names, older models and newer ones itself.
-async function supportedModels(claude: string): Promise<ModelInfo[]> {
-  const env = { ...cleanEnvironment(), CLAUDE_CODE_MODEL_CATALOG: "0" };
-  const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env, stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
-  try {
-    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    return await Promise.race([probe.supportedModels(), timeout]);
-  } finally {
-    probe.close();
-  }
+/// The agent's CLI, found without asking it anything, so a send never waits on a login check.
+async function cli(agent: Provider): Promise<string> {
+  const path = await agent.found();
+  if (!path) throw new Error(agent.missing);
+  return path;
 }
 
-async function listFrom(sdk: ModelInfo[]): Promise<Model[]> {
-  const [catalog, settingsEffort] = await Promise.all([readCatalog(), readSettingsEffort()]);
-  return helloList(sdk, catalog, settingsEffort);
-}
-
-/// Hello's list. The SDK's part comes from the cache while Claude Code is the version that gave
-/// it, and a probe reads it again a minute after a launch that finds it a day old; the catalog
-/// and the settings are read each time. The defaults follow as a `models` event, from the cache
-/// while the list and the user's settings are the ones they were read under.
-async function startingModels(claude: string, cli: string | null): Promise<Model[]> {
-  cache = await readCache(cacheFolder);
-  const cached = cachedModels(cache, cli);
-  if (cached) {
-    const list = await listFrom(cached.models);
-    if (cached.stale) setTimeout(() => void refresh(claude), 60_000).unref();
-    const known = cache?.defaults;
-    if (known?.key === defaultsKey(list, await readSettings())) {
-      // Sent once hello's reply is out: arriving first, it would be undone by the reply.
-      setImmediate(() => event("models", { models: known.models, settingsEffort: known.settingsEffort, ultraKnown: known.ultraKnown }));
-      return known.models;
-    }
-    void learnDefaults(claude, list);
-    return list;
-  }
-  const sdk = await supportedModels(claude);
-  if (cli) {
-    cache = { version: cli, at: Date.now(), models: sdk };
-    await writeCache(cacheFolder, cache).catch((error) => log(`models cache not written: ${describe(error)}`));
-  }
-  const list = await listFrom(sdk);
-  void learnDefaults(claude, list);
-  return list;
-}
-
-/// A day-old list read again. The defaults are read again with it, even for the same list, and
-/// the `models` event carries both to the app.
-async function refresh(claude: string): Promise<void> {
-  if (!cache) return;
-  try {
-    const sdk = await supportedModels(claude);
-    cache = { version: cache.version, at: Date.now(), models: sdk };
-    await writeCache(cacheFolder, cache);
-    await learnDefaults(claude, await listFrom(sdk));
-  } catch (error) {
-    log(`models list not read again: ${describe(error)}`);
-  }
-}
-
-/// Each model's default effort and Ultracode, which take a model switch each in two idle CLIs,
-/// the second launched with Ultracode on (about two seconds in all), so hello answers without
-/// them and the list follows as a `models` event. The user's own settings are read, since an
-/// effortLevel there is what a thread's default turns into, but not their hooks, which have no
-/// business with a probe. A reading the CLIs can't give leaves that model on its fallback, and
-/// the event goes out all the same.
-async function learnDefaults(claude: string, base: Model[]): Promise<void> {
-  const key = defaultsKey(base, await readSettings());
-  const probe = query({
-    prompt: idle,
-    options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true }, env: cleanEnvironment() },
-  });
-  const ultraProbe = query({
-    prompt: idle,
-    options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true, ultracode: true }, env: cleanEnvironment() },
-  });
-  try {
-    const learned = await withDefaults(probe, ultraProbe, base);
-    for (const miss of learned.missed) {
-      log(`model defaults: the ${miss.ultracode ? "Ultracode " : ""}probe missed ${miss.id}: ${describe(miss.error)}`);
-    }
-    models = learned.models;
-    event("models", { models, settingsEffort: learned.settingsEffort, ultraKnown: learned.ultraKnown });
-    // A model a probe couldn't switch to keeps the default the catalog gives it until the daily
-    // reading; a probe that never answered at all is asked again next launch.
-    if (cache && !learned.missed.some((miss) => miss.id === "settings")) {
-      cache.defaults = { key, models, settingsEffort: learned.settingsEffort, ultraKnown: learned.ultraKnown };
-      await writeCache(cacheFolder, cache).catch((error) => log(`models cache not written: ${describe(error)}`));
-    }
-  } catch (error) {
-    log(`model defaults unavailable: ${describe(error)}`);
-  } finally {
-    probe.close();
-    ultraProbe.close();
-  }
-}
-
-/// Whether the user's CLI would serve a model fast, asked without sending it anything: the
-/// initialize handshake carries the state, and the reason when it can't be on.
-async function fastCheck(claude: string, model: string | undefined): Promise<{ state: FastModeState; reason: FastModeDisabledReason | null }> {
-  const probe = query({
-    prompt: idle,
-    options: { cwd: homedir(), model, pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), settings: { fastMode: true } },
-  });
-  try {
-    const init = await probe.initializationResult();
-    return { state: init.fast_mode_state ?? "off", reason: init.fast_mode_disabled_reason ?? null };
-  } finally {
-    probe.close();
-  }
-}
-
-/// One small Haiku call, no tools and no settings, so hooks and MCP servers stay out of it.
-async function writeMessage(claude: string, cwd: string, diff: string): Promise<string> {
-  const prompt =
-    "Write a git commit message for this diff. Imperative subject under 60 characters, no prefix, " +
-    "then a short body only if the why isn't obvious from the diff. Reply with the message and nothing else.\n\n" +
-    diff;
-  const run = query({
-    prompt,
-    options: { cwd, model: "haiku", tools: [], maxTurns: 1, settingSources: [], pathToClaudeCodeExecutable: claude, env: cleanEnvironment() },
-  });
-  let text = "";
-  for await (const message of run) {
-    if (message.type === "result") {
-      if (message.subtype !== "success") throw new Error("Couldn't write a message just now.");
-      text = message.result;
-    }
-  }
-  return text.trim();
-}
-
-function thread(threadId: string, claude: string): Thread {
-  let found = threads.get(threadId);
+function session(threadId: string, agent: Provider, path: string): Session {
+  let found = sessions.get(threadId);
   if (!found) {
-    found = new Thread(threadId, claude);
+    found = agent.session(threadId, path);
     found.watchHeads(watched.has(threadId));
     // After the turn.done it's called from, and outside the CLI's message loop it would close.
     found.onIdle = () => setImmediate(letGo);
-    threads.set(threadId, found);
+    sessions.set(threadId, found);
   }
   return found;
 }
 
 const methods: Record<string, (params: any) => Promise<unknown>> = {
   async hello() {
-    const claude = await findClaude();
-    if (!claude) return { version, models: fallback, claude: null, loggedIn: false };
-    const [login, cli] = await Promise.all([loggedIn(claude), claudeVersion(claude)]);
-    if (login && !models) {
-      models = await startingModels(claude, cli).catch((error) => {
-        log(`supported models unavailable, using the fallback list: ${describe(error)}`);
-        return undefined;
-      });
-    }
-    return { version, models: models ?? fallback, claude, loggedIn: login };
+    const found = await claude.availability();
+    const replied = Promise.withResolvers<void>();
+    const models = await claude.models(found, (fields) => void replied.promise.then(() => event("models", fields)));
+    // Nothing awaits after this, so it runs once the reply is written: a `models` event
+    // arriving first would be undone by the reply.
+    setImmediate(replied.resolve);
+    return { version, models, claude: found.cli, loggedIn: found.state === "ready" };
   },
 
-  async send(params: SendParams) {
-    const waiting = await thread(params.threadId, await requireClaude()).send(params);
+  async send(params: SendParams & { provider?: string }) {
+    const agent = provider(params.provider);
+    const waiting = await session(params.threadId, agent, await cli(agent)).send(params);
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },
 
   async interrupt({ threadId }: { threadId: string }) {
-    await threads.get(threadId)?.interrupt();
+    await sessions.get(threadId)?.interrupt();
     return { ok: true };
   },
 
   async setMode({ threadId, permissionMode }: { threadId: string; permissionMode: PermissionMode }) {
-    const found = threads.get(threadId);
+    const found = sessions.get(threadId);
     return { applied: found ? await found.setMode(permissionMode) : true };
   },
 
   async setFast({ threadId, fast }: { threadId: string; fast: boolean }) {
-    const found = threads.get(threadId);
+    const found = sessions.get(threadId);
     return { applied: found ? await found.setFast(fast) : true };
   },
 
   /// Tells the app, as a `fast` event for the thread, what the CLI would say about fast mode for
   /// the model it names.
-  async "fast.check"({ threadId, model }: { threadId: string; model?: string }) {
-    const result = await fastCheck(await requireClaude(), model);
+  async "fast.check"({ threadId, model, provider: id }: { threadId: string; model?: string; provider?: string }) {
+    const agent = provider(id);
+    if (!agent.fastCheck) throw new Error(`${agent.name} has no fast mode.`);
+    const result = await agent.fastCheck(await cli(agent), model);
     event("fast", { threadId, model: model ?? null, ...result });
     return result;
   },
@@ -300,9 +142,15 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   /// The app sends the diff it's about to commit, cut to keep the Haiku call small.
-  async "git.message"({ cwd, diff }: { cwd: string; diff: string }) {
+  async "git.message"({ cwd, diff, provider: id }: { cwd: string; diff: string; provider?: string }) {
     if (!diff?.trim()) throw new Error("Nothing to describe.");
-    return { message: await writeMessage(await requireClaude(), cwd, diff.slice(0, 60_000)) };
+    const agent = provider(id);
+    if (!agent.oneShot) throw new Error(`${agent.name} can't write a commit message.`);
+    const prompt =
+      "Write a git commit message for this diff. Imperative subject under 60 characters, no prefix, " +
+      "then a short body only if the why isn't obvious from the diff. Reply with the message and nothing else.\n\n" +
+      diff.slice(0, 60_000);
+    return { message: await agent.oneShot(await cli(agent), cwd, prompt) };
   },
 
   async "worktree.add"({ cwd, slug }: { cwd: string; slug: string }) {
@@ -318,13 +166,16 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { ok: true };
   },
 
-  async usage() {
-    return usage(await requireClaude());
+  async usage({ provider: id }: { provider?: string }) {
+    const agent = provider(id);
+    if (!agent.usage) return { available: false, plan: null, windows: [] };
+    return agent.usage(await cli(agent));
   },
 
-  async commands({ threadId, cwd }: { threadId?: string; cwd: string }) {
-    const live = threadId ? await threads.get(threadId)?.commands().catch(() => undefined) : undefined;
-    const commands = live ?? (await folderCommands(await requireClaude(), cwd));
+  async commands({ threadId, cwd, provider: id }: { threadId?: string; cwd: string; provider?: string }) {
+    const live = threadId ? await sessions.get(threadId)?.commands().catch(() => undefined) : undefined;
+    const agent = provider(id);
+    const commands = live ?? (agent.folderCommands ? await agent.folderCommands(await cli(agent), cwd) : []);
     return {
       commands: commands.map((command) => ({ name: command.name, description: command.description, hint: command.argumentHint })),
     };
@@ -346,20 +197,20 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "heads.watch"({ threadId, on }: { threadId: string; on: boolean }) {
     if (on) watched.add(threadId);
     else watched.delete(threadId);
-    threads.get(threadId)?.watchHeads(on);
+    sessions.get(threadId)?.watchHeads(on);
     return { ok: true };
   },
 
   async "task.stop"({ threadId, taskId }: { threadId: string; taskId: string }) {
-    const found = threads.get(threadId);
+    const found = sessions.get(threadId);
     if (!found) throw new Error("That has already stopped.");
     await found.stopTask(taskId);
     return { ok: true };
   },
 
   async close({ threadId }: { threadId: string }) {
-    threads.get(threadId)?.close();
-    threads.delete(threadId);
+    sessions.get(threadId)?.close();
+    sessions.delete(threadId);
     watched.delete(threadId);
     return { ok: true };
   },
@@ -403,7 +254,7 @@ let sweep: NodeJS.Timeout | undefined;
 /// The app hears about each and drops the transcript it no longer needs in memory.
 function letGo(): void {
   clearTimeout(sweep);
-  const { released, next } = releaseIdle(threads, shown);
+  const { released, next } = releaseIdle(sessions, shown);
   for (const threadId of released) {
     log(`released thread=${threadId}`);
     event("released", { threadId });
@@ -421,9 +272,9 @@ input.on("close", () => {
   setInterval(() => {
     // Reparented to launchd means the app died; a turn nobody can see isn't worth finishing.
     const orphaned = process.ppid === 1;
-    if (!orphaned && (inFlight > 0 || [...threads.values()].some((found) => found.isRunning))) return;
+    if (!orphaned && (inFlight > 0 || [...sessions.values()].some((found) => found.isRunning))) return;
     stopAll();
-    for (const found of threads.values()) found.close();
+    for (const found of sessions.values()) found.close();
     process.exit(0);
   }, 200);
 });
@@ -431,6 +282,6 @@ input.on("close", () => {
 // The app's restart and its quit end the engine with SIGTERM; quiet actions go with it.
 process.on("SIGTERM", () => {
   stopAll();
-  for (const found of threads.values()) found.close();
+  for (const found of sessions.values()) found.close();
   process.exit(0);
 });
