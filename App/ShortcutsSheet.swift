@@ -1,10 +1,25 @@
 import SwiftUI
 
-/// Every shortcut, for the ⌘/ sheet and Settings › Shortcuts alike.
+/// Every shortcut, for the ⌘/ sheet and Settings › Shortcuts alike, grouped as the menus are.
+/// An action's keys are whatever Shortcuts has for it now; a fixed row's never move.
 enum ShortcutList {
-    struct Row {
-        let name: String
-        let keys: String
+    enum Row: Hashable {
+        case action(ShortcutAction)
+        case fixed(String, keys: String)
+
+        var title: String {
+            switch self {
+            case .action(let action): action.title
+            case .fixed(let title, _): title
+            }
+        }
+
+        @MainActor func keys(_ shortcuts: Shortcuts) -> String {
+            switch self {
+            case .action(let action): shortcuts.label(action)
+            case .fixed(_, let keys): keys
+            }
+        }
     }
 
     struct Group {
@@ -13,73 +28,91 @@ enum ShortcutList {
     }
 
     static let groups: [Group] = [
-        Group(title: "Threads", rows: [
-            Row(name: "New thread", keys: "⌘N"),
-            Row(name: "New thread on its own branch", keys: "⌘⇧N"),
-            Row(name: "Add project", keys: "⌘O"),
-            Row(name: "Go to thread 1–9", keys: "⌘1 … ⌘9"),
-            Row(name: "Show or hide the thread list", keys: "⌘B"),
-            Row(name: "Close the thread, then the window", keys: "⌘W"),
-            Row(name: "Rename thread", keys: "⌘R"),
-            Row(name: "Delete thread", keys: "⌘⌫"),
+        Group(title: Build.name, rows: [
+            .fixed("Settings", keys: "⌘,"),
+        ]),
+        Group(title: "File", rows: [
+            .action(.newThread),
+            .action(.newThreadOnBranch),
+            .action(.addProject),
+            .action(.close),
+        ]),
+        Group(title: "View", rows: [
+            .action(.toggleThreads),
+            .action(.commandCenter),
+            .action(.shellPrompt),
+            .action(.heads),
+            .action(.findFile),
+            .action(.review),
+        ]),
+        Group(title: "Thread", rows: [
+            .action(.stop),
+            .action(.switchBranch),
+            .action(.nextThread),
+            .action(.previousThread),
+            .fixed("Go to Thread 1–9", keys: "⌘1 … ⌘9"),
+            .action(.modelPicker),
+            .action(.rename),
+            .action(.delete),
+        ]),
+        Group(title: "Help", rows: [
+            .action(.shortcuts),
+        ]),
+        Group(title: "Composer", rows: [
+            .action(.send),
+            .action(.queue),
+            .action(.newLine),
+            .fixed("Complete a command or path", keys: "Tab"),
+            .fixed("Earlier messages and commands", keys: "↑ ↓"),
+            .fixed("Leave an empty shell prompt", keys: "⌫"),
+            .fixed("Slash commands and skills", keys: "/ at the start"),
+            .fixed("Shell prompt", keys: "! at the start"),
+            .fixed("Allow what the thread asks", keys: "Return"),
+            .fixed("Deny it, or close what's on top", keys: "Esc"),
         ]),
         Group(title: "Review", rows: [
-            Row(name: "Review changes", keys: "⌘⇧D"),
-            Row(name: "Next and previous hunk", keys: "↓ ↑  or  J K"),
-            Row(name: "Mark reviewed, then the next", keys: "Space"),
-            Row(name: "Add a note", keys: "N"),
-            Row(name: "Take it back", keys: "⌫"),
-            Row(name: "Undo that", keys: "⌘Z"),
-            Row(name: "Open the file", keys: "O"),
-            Row(name: "Commit", keys: "⌘Return"),
-        ]),
-        Group(title: "Conversation", rows: [
-            Row(name: "Send", keys: "Return"),
-            Row(name: "New line", keys: "⇧Return"),
-            Row(name: "Slash commands and skills", keys: "/ at the start"),
-            Row(name: "Stop", keys: "⌘."),
-            Row(name: "What each head is doing", keys: "⌘I"),
-            Row(name: "Model and effort", keys: "⌘⇧M"),
-            Row(name: "Allow what the thread asks", keys: "Return"),
-            Row(name: "Deny it, or close what's on top", keys: "Esc"),
-        ]),
-        Group(title: "App", rows: [
-            Row(name: "Command center", keys: "⌘K"),
-            Row(name: "Shell prompt", keys: "⌘J"),
-            Row(name: "Switch branch", keys: "⌘⇧B"),
-            Row(name: "Next and previous thread", keys: "⌃Tab ⌃⇧Tab"),
-            Row(name: "Find a file", keys: "⌘P"),
-            Row(name: "Settings", keys: "⌘,"),
-            Row(name: "These shortcuts", keys: "⌘/"),
+            .fixed("Next and previous hunk", keys: "↓ ↑  or  J K"),
+            .fixed("Fold or open the file", keys: "← →"),
+            .fixed("Mark reviewed, then the next", keys: "Space"),
+            .fixed("Add a note", keys: "N"),
+            .fixed("Take it back", keys: "⌫"),
+            .fixed("Undo that", keys: "⌘Z"),
+            .fixed("Open the file", keys: "O"),
+            .fixed("Commit", keys: "⌘Return"),
         ]),
     ]
 }
 
-/// ⌘/ : every shortcut in one place.
+/// ⌘/ : every shortcut in one place, as it is now.
 struct ShortcutsSheet: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
     private let groups = ShortcutList.groups
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
-                ForEach(groups, id: \.title) { group in
-                    GridRow {
-                        Text(group.title)
-                            .font(Type.secondary)
-                            .foregroundStyle(Ink.secondary)
-                            .padding(.top, group.title == groups.first?.title ? 0 : 12)
-                            .gridCellColumns(2)
-                    }
-                    ForEach(group.rows, id: \.name) { row in
+            ScrollView {
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
+                    ForEach(groups, id: \.title) { group in
                         GridRow {
-                            Text(row.name).font(Type.body).foregroundStyle(Ink.primary)
-                            Text(row.keys).font(Type.mono).foregroundStyle(Ink.secondary)
+                            Text(group.title)
+                                .font(Type.secondary)
+                                .foregroundStyle(Ink.secondary)
+                                .padding(.top, group.title == groups.first?.title ? 0 : 12)
+                                .gridCellColumns(2)
+                        }
+                        ForEach(group.rows, id: \.self) { row in
+                            GridRow {
+                                Text(row.title).font(Type.body).foregroundStyle(Ink.primary)
+                                Text(row.keys(model.shortcuts)).font(Type.mono).foregroundStyle(Ink.secondary)
+                            }
                         }
                     }
                 }
             }
+            .scrollIndicators(.never)
+            .frame(maxHeight: 560)
             HStack {
                 Spacer()
                 Button("Done") { dismiss() }
@@ -91,7 +124,7 @@ struct ShortcutsSheet: View {
                 .frame(height: 0)
         }
         .padding(24)
-        .frame(width: 420)
+        .frame(width: 440)
         .preferredColorScheme(.dark)
     }
 }

@@ -33,7 +33,7 @@ extension AppModel {
         let onBranch: String? = branch == nil ? "No branch here" : branch == "HEAD" ? "Not on a branch" : nil
         var items: [PaletteItem] = []
         items.append(PaletteItem(id: "git.switch", kind: .command, title: "Switch branch…", subtitle: branch, keywords: ["checkout", "git"],
-                                 shortcut: "⌘⇧B", icon: "arrow.triangle.swap", unavailable: blocked, action: .list(branchList)))
+                                 shortcut: shortcuts.label(.switchBranch), icon: "arrow.triangle.swap", unavailable: blocked, action: .list(branchList)))
         items.append(PaletteItem(id: "git.create", kind: .command, title: "Create branch…", keywords: ["new branch", "checkout -b", "git"],
                                  icon: "plus.square.on.square", unavailable: blocked, action: .input(createBranchInput)))
         items.append(PaletteItem(id: "git.previous", kind: .command, title: "Previous branch", keywords: ["switch -", "back", "git"],

@@ -139,7 +139,7 @@ extension AppModel {
         guard let chat, let conversation = currentConversation else { return [] }
         var now: [PaletteItem] = []
         if conversation.running {
-            now.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: "⌘.") { [weak self] in self?.stop() })
+            now.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop)) { [weak self] in self?.stop() })
         } else {
             if chat.sessionId != nil, chat.contextWindow > 0, Double(chat.contextUsed) / Double(chat.contextWindow) > 0.7 {
                 now.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left",
@@ -222,12 +222,12 @@ extension AppModel {
         var items: [PaletteItem] = []
 
         // Threads
-        items.append(command("thread.new", "New thread", icon: "square.and.pencil", shortcut: "⌘N", unavailable: noProject) { [weak self] in
+        items.append(command("thread.new", "New thread", icon: "square.and.pencil", shortcut: shortcuts.label(.newThread), unavailable: noProject) { [weak self] in
             self?.openNewThread()
         })
-        items.append(command("thread.branch", "New thread on its own branch", icon: "arrow.triangle.branch", shortcut: "⌘⇧N",
+        items.append(command("thread.branch", "New thread on its own branch", icon: "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
                              keywords: ["worktree"], unavailable: noProject) { [weak self] in self?.newWorktreeChat() })
-        items.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: "⌘.", keywords: ["interrupt", "cancel"],
+        items.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
                              unavailable: running ? nil : "Nothing is running") { [weak self] in self?.stop() })
         items.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left", keywords: ["context", "summarize"],
                              unavailable: chat?.sessionId == nil ? "Nothing to compact yet" : busy) { [weak self] in self?.send("/compact") })
@@ -251,23 +251,23 @@ extension AppModel {
                              unavailable: unsent) { [weak self] in
             if let chat { withAnimation(Motion.move) { self?.togglePin(chat) } }
         })
-        items.append(command("thread.rename", "Rename thread", icon: "pencil", shortcut: "⌘R", unavailable: unsent) { [weak self] in
+        items.append(command("thread.rename", "Rename thread", icon: "pencil", shortcut: shortcuts.label(.rename), unavailable: unsent) { [weak self] in
             if let chat { self?.startRename(chat) }
         })
-        items.append(command("thread.delete", "Delete thread…", icon: "trash", shortcut: "⌘⌫", unavailable: noThread) { [weak self] in
+        items.append(command("thread.delete", "Delete thread…", icon: "trash", shortcut: shortcuts.label(.delete), unavailable: noThread) { [weak self] in
             self?.askToDelete(chat)
         })
-        items.append(command("thread.close", "Close thread", icon: "xmark", shortcut: "⌘W", unavailable: noThread) { [weak self] in
+        items.append(command("thread.close", "Close thread", icon: "xmark", shortcut: shortcuts.label(.close), unavailable: noThread) { [weak self] in
             self?.close()
         })
         let others: String? = chats.count > 1 ? nil : "No other thread"
-        items.append(command("thread.next", "Next thread", icon: "chevron.down", shortcut: "⌃Tab", unavailable: others) { [weak self] in
+        items.append(command("thread.next", "Next thread", icon: "chevron.down", shortcut: shortcuts.label(.nextThread), unavailable: others) { [weak self] in
             self?.stepThread(1)
         })
-        items.append(command("thread.previous", "Previous thread", icon: "chevron.up", shortcut: "⌃⇧Tab", unavailable: others) { [weak self] in
+        items.append(command("thread.previous", "Previous thread", icon: "chevron.up", shortcut: shortcuts.label(.previousThread), unavailable: others) { [weak self] in
             self?.stepThread(-1)
         })
-        items.append(command("threads.toggle", drawerPinned ? "Hide threads" : "Show threads", icon: "sidebar.left", shortcut: "⌘B",
+        items.append(command("threads.toggle", drawerPinned ? "Hide threads" : "Show threads", icon: "sidebar.left", shortcut: shortcuts.label(.toggleThreads),
                              keywords: ["drawer", "sidebar"]) { [weak self] in self?.toggleDrawerPin() })
 
         // Model, effort and permissions
@@ -300,7 +300,7 @@ extension AppModel {
             items.append(command("model.star", starred ? "Unstar \(option.name)" : "Star \(option.name)", icon: starred ? "star.slash" : "star",
                                  keywords: ["favorite", "favourite"]) { [weak self] in self?.toggleFavorite(option.id) })
         }
-        items.append(command("model.card", "Model and effort", icon: "slider.horizontal.3", shortcut: "⌘⇧M", unavailable: noProject) { [weak self] in
+        items.append(command("model.card", "Model and effort", icon: "slider.horizontal.3", shortcut: shortcuts.label(.modelPicker), unavailable: noProject) { [weak self] in
             self?.modelPickerShown.toggle()
         })
 
@@ -315,13 +315,13 @@ extension AppModel {
         items.append(PaletteItem(id: "project.list", kind: .command, title: "Switch project…", subtitle: project?.name, icon: "folder",
                                  unavailable: projects.count > 1 ? nil : "There's only one project",
                                  action: .list(PaletteList(title: "Project", placeholder: "Search projects") { [weak self] in self?.paletteProjects ?? [] })))
-        items.append(command("project.add", "Add project…", icon: "folder.badge.plus", shortcut: "⌘O") { [weak self] in self?.addProject() })
-        items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: "⌘I", keywords: ["agents", "tasks", "running"],
+        items.append(command("project.add", "Add project…", icon: "folder.badge.plus", shortcut: shortcuts.label(.addProject)) { [weak self] in self?.addProject() })
+        items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: shortcuts.label(.heads), keywords: ["agents", "tasks", "running"],
                              unavailable: noThread) { [weak self] in self?.toggleHeads() })
-        items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: "⌘P", unavailable: noThread) { [weak self] in
+        items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: shortcuts.label(.findFile), unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })
-        items.append(command("changes", "Review changes", icon: "plus.forwardslash.minus", shortcut: "⌘⇧D",
+        items.append(command("changes", "Review changes", icon: "plus.forwardslash.minus", shortcut: shortcuts.label(.review),
                              keywords: ["commit", "diff", "changes", "stage", "git", "revert"],
                              unavailable: noProject) { [weak self] in self?.openReview() })
 
@@ -330,7 +330,7 @@ extension AppModel {
 
         // The app
         items.append(command("settings", "Settings", icon: "gearshape", shortcut: "⌘,") { [weak self] in self?.openSettings(nil) })
-        items.append(command("shortcuts", "Keyboard shortcuts", icon: "keyboard", shortcut: "⌘/", keywords: ["keys"]) { [weak self] in
+        items.append(command("shortcuts", "Keyboard shortcuts", icon: "keyboard", shortcut: shortcuts.label(.shortcuts), keywords: ["keys"]) { [weak self] in
             self?.showingShortcuts = true
         })
         return items

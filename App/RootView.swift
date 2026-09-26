@@ -279,7 +279,7 @@ struct SidebarButton: View {
             hovering = inside
             model.hotZone(inside)
         }
-        .help(model.drawerPinned ? "Hide threads (⌘B)" : "Show threads (⌘B)")
+        .help((model.drawerPinned ? "Hide threads" : "Show threads") + " (\(model.shortcuts.label(.toggleThreads)))")
         .accessibilityLabel(model.drawerPinned ? "Hide threads" : "Show threads")
     }
 }

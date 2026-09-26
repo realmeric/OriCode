@@ -12,54 +12,54 @@ struct OriCodeCommands: Commands {
         }
         CommandGroup(replacing: .newItem) {
             Button("New Thread") { model.openNewThread() }
-                .keyboardShortcut("n")
+                .keyboardShortcut(shortcuts.key(.newThread))
                 .disabled(model.project == nil)
             Button("New Thread on Its Own Branch") { model.newWorktreeChat() }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.key(.newThreadOnBranch))
                 .disabled(model.project == nil)
             Button("Add Project…") { model.addProject() }
-                .keyboardShortcut("o")
+                .keyboardShortcut(shortcuts.key(.addProject))
         }
         // One ⌘W for both: the open thread first, then the window. A disabled Close Thread
         // beside the system's Close held on to ⌘W, so the window never closed.
         CommandGroup(replacing: .saveItem) {
             Button(model.closesThread ? "Close Thread" : "Close") { model.close() }
-                .keyboardShortcut("w")
+                .keyboardShortcut(shortcuts.key(.close))
         }
         CommandGroup(before: .toolbar) {
             Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
-                .keyboardShortcut("b")
+                .keyboardShortcut(shortcuts.key(.toggleThreads))
             Button("Command Center…") { model.toggleCommandCenter() }
-                .keyboardShortcut("k")
+                .keyboardShortcut(shortcuts.key(.commandCenter))
             Button(model.shellPrompt ? "Leave Shell Prompt" : "Shell Prompt") { model.toggleShellPrompt() }
-                .keyboardShortcut("j")
+                .keyboardShortcut(shortcuts.key(.shellPrompt))
                 .disabled(model.project == nil)
             Button(model.headsShown ? "Hide Heads" : "Show Heads") { model.toggleHeads() }
-                .keyboardShortcut("i")
+                .keyboardShortcut(shortcuts.key(.heads))
                 .disabled(model.chat == nil)
             Button("Find File…") { model.toggleFileFinder() }
-                .keyboardShortcut("p")
+                .keyboardShortcut(shortcuts.key(.findFile))
                 .disabled(model.chat == nil)
             Button(model.reviewShown ? "Hide Review" : "Review Changes") { model.toggleReview() }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.key(.review))
                 .disabled(model.project == nil)
             Divider()
         }
         CommandMenu("Thread") {
             Button("Stop") { model.stop() }
-                .keyboardShortcut(".")
+                .keyboardShortcut(shortcuts.key(.stop))
                 .disabled(!(model.currentConversation?.running ?? false))
             Button("Compact") { model.send("/compact") }
                 .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))
             Divider()
             Button("Switch Branch…") { model.openBranchSwitcher() }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.key(.switchBranch))
                 .disabled(model.project == nil)
             Button("Next Thread") { model.stepThread(1) }
-                .keyboardShortcut(.tab, modifiers: .control)
+                .keyboardShortcut(shortcuts.key(.nextThread))
                 .disabled(model.chats.count < 2)
             Button("Previous Thread") { model.stepThread(-1) }
-                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                .keyboardShortcut(shortcuts.key(.previousThread))
                 .disabled(model.chats.count < 2)
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }
@@ -89,7 +89,7 @@ struct OriCodeCommands: Commands {
                 }
             }
             Button(model.modelPickerShown ? "Hide Model and Effort" : "Model and Effort…") { model.modelPickerShown.toggle() }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .keyboardShortcut(shortcuts.key(.modelPicker))
                 .disabled(model.project == nil)
             Button("Back to Defaults") { model.resetToDefaults(for: model.chat) }
                 .disabled(model.project == nil || model.atDefaults(model.chat))
@@ -106,17 +106,19 @@ struct OriCodeCommands: Commands {
             Button("Rename Thread…") {
                 if let chat = model.chat { model.startRename(chat) }
             }
-            .keyboardShortcut("r")
+            .keyboardShortcut(shortcuts.key(.rename))
             .disabled(model.chat == nil)
             Button("Delete Thread…") { model.askToDelete(model.chat) }
-                .keyboardShortcut(.delete)
+                .keyboardShortcut(shortcuts.key(.delete))
                 .disabled(model.chat == nil)
         }
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { model.showingShortcuts = true }
-                .keyboardShortcut("/")
+                .keyboardShortcut(shortcuts.key(.shortcuts))
         }
     }
+
+    private var shortcuts: Shortcuts { model.shortcuts }
 
     private var modelBinding: Binding<String> {
         Binding {

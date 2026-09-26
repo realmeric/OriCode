@@ -333,9 +333,11 @@ struct Composer: View {
             }
             .onKeyPress(.return, phases: .down) { press in
                 completions = []
-                if press.modifiers.contains(.option), !model.shellPrompt, working {
+                // Which Return does what is Settings › Shortcuts' to say; the prompt has no queue.
+                let action = model.shortcuts.returnPress(press.modifiers, working: working && !model.shellPrompt)
+                if action == .queue {
                     sendAfterTurn()
-                } else if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
+                } else if action == .newLine {
                     text += "\n"
                 } else if model.shellPrompt {
                     runCommand()
@@ -431,8 +433,16 @@ struct Composer: View {
         }
         .buttonStyle(.plain)
         .disabled(!stops && !canSend)
-        .help(model.shellPrompt ? "Run (Return)" : stops ? "Stop (⌘.)" : working ? "Send now (Return), or after this turn (⌥Return)" : "Send (Return)")
+        .help(help(stops: stops))
         .accessibilityLabel(model.shellPrompt ? "Run" : stops ? "Stop" : "Send")
+    }
+
+    private func help(stops: Bool) -> String {
+        let shortcuts = model.shortcuts
+        let send = shortcuts.label(.send)
+        if model.shellPrompt { return "Run (\(send))" }
+        if stops { return "Stop (\(shortcuts.label(.stop)))" }
+        return working ? "Send now (\(send)), or after this turn (\(shortcuts.label(.queue)))" : "Send (\(send))"
     }
 
     private func placeholder(shell: Bool) -> String {

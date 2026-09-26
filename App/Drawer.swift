@@ -102,7 +102,7 @@ struct Drawer: View {
         }
         .buttonStyle(.plain)
         .onHover { addHovered = $0 }
-        .help("Add project (⌘O)")
+        .help("Add project (\(model.shortcuts.label(.addProject)))")
         .accessibilityLabel("Add project")
     }
 

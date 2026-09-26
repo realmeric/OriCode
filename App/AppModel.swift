@@ -149,6 +149,7 @@ final class AppModel {
     var headsWatched: UUID?
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
+    let shortcuts = Shortcuts()
     /// Threads whose session Continue in Claude Code gave to a block's claude, and that block.
     var handedOff: [UUID: UUID] = [:]
     /// The block drawn full over each thread's conversation, by thread: another thread keeps its

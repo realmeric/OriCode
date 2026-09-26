@@ -104,7 +104,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
-        case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
+        case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.title) }
         case .about: ["version", "source", "oricode"]
         }
     }
@@ -458,23 +458,126 @@ private struct NotificationsPane: View {
     }
 }
 
+/// Every shortcut, as ⌘/ lists them, each action's with a button that takes the next key typed.
+/// SwiftUI and AppKit have no shortcut recorder, so the button is the app's own action button and
+/// a key monitor, which lives only while a row is recording.
 private struct ShortcutsPane: View {
+    @Environment(AppModel.self) private var model
+    @State private var recording: ShortcutAction?
+    /// What each row last refused, and why.
+    @State private var refusals: [ShortcutAction: String] = [:]
+    @State private var monitor: Any?
+
     var body: some View {
         PaneTitle(text: "Shortcuts")
+        Text("Click a shortcut and type the new one, or Esc to leave it. Keys without a button stay as they are.")
+            .font(Type.secondary)
+            .foregroundStyle(Ink.secondary)
+            .padding(.top, 6)
         ForEach(ShortcutList.groups, id: \.title) { group in
             SectionHeading(group.title)
             SettingsCard {
-                ForEach(group.rows, id: \.name) { row in
-                    HStack {
-                        Text(row.name).font(.system(size: 14)).foregroundStyle(Ink.primary)
-                        Spacer()
-                        Text(row.keys).font(Type.mono).foregroundStyle(Ink.secondary)
+                ForEach(group.rows, id: \.self) { row in
+                    switch row {
+                    case .action(let action): actionRow(action)
+                    case .fixed(let title, let keys): fixedRow(title, keys: keys)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
                 }
             }
         }
+        HStack {
+            Spacer()
+            Button("Restore Defaults") {
+                stop()
+                refusals = [:]
+                model.shortcuts.restoreAll()
+            }
+            .buttonStyle(.action)
+            .disabled(model.shortcuts.changed.isEmpty)
+        }
+        .padding(.top, 22)
+        .onDisappear { stop() }
+        // A click in another window ends recording, so the keys typed there reach it.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            if recording != nil { stop() }
+        }
+    }
+
+    private func actionRow(_ action: ShortcutAction) -> some View {
+        let shortcuts = model.shortcuts
+        let listening = recording == action
+        return HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(action.title).font(.system(size: 14)).foregroundStyle(Ink.primary)
+                if let refusal = refusals[action] {
+                    Text(refusal).font(Type.secondary).foregroundStyle(Ink.secondary)
+                }
+            }
+            Spacer(minLength: 12)
+            if shortcuts[action] != action.standard, !listening {
+                Button("Default") { refusals[action] = shortcuts.restore(action) }
+                    .buttonStyle(.action(small: true))
+                    .help("Back to \(action.standard.label)")
+            }
+            Button {
+                if listening { stop() } else { record(action) }
+            } label: {
+                Text(listening ? "Type a shortcut…" : shortcuts.label(action))
+                    .font(listening ? Type.secondary : Type.mono)
+                    // Wide enough for "Type a shortcut…", so the row doesn't shift as it records.
+                    .frame(minWidth: 104)
+            }
+            .buttonStyle(.action(small: true))
+            .accessibilityLabel(action.title)
+            .accessibilityValue(listening ? "Type a shortcut" : shortcuts.label(action))
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .frame(minHeight: 42)
+        .animation(Motion.fade, value: refusals[action])
+    }
+
+    private func fixedRow(_ title: String, keys: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
+            Spacer()
+            Text(keys).font(Type.mono).foregroundStyle(Ink.secondary)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .frame(minHeight: 42)
+    }
+
+    /// The next key-down goes to this row, in whichever window it's typed, and nowhere else: a
+    /// menu's key typed here is recorded rather than run.
+    private func record(_ action: ShortcutAction) {
+        stop()
+        refusals[action] = nil
+        recording = action
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            take(event, for: action)
+            return nil
+        }
+    }
+
+    private func take(_ event: NSEvent, for action: ShortcutAction) {
+        if event.keyCode == 53, EventModifiers(event.modifierFlags).isEmpty {
+            refusals[action] = nil
+            stop()
+            return
+        }
+        guard let combo = KeyCombo(event) else {
+            refusals[action] = "That key can't be a shortcut"
+            return
+        }
+        refusals[action] = model.shortcuts.set(combo, for: action)
+        if refusals[action] == nil { stop() }
+    }
+
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        recording = nil
     }
 }
 

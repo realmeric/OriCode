@@ -55,7 +55,7 @@ struct TitleCapsule: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help("Command center (⌘K)")
+            .help("Command center (\(model.shortcuts.label(.commandCenter)))")
             // While the thread works, its mark at the capsule's left end, which opens its heads.
             .overlay(alignment: .leading) {
                 if working, let conversation = model.currentConversation {
@@ -70,7 +70,7 @@ struct TitleCapsule: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .help("What each head is doing (⌘I)")
+                    .help("What each head is doing (\(model.shortcuts.label(.heads)))")
                     .transition(.opacity)
                 }
             }
