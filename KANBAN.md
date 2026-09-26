@@ -140,6 +140,10 @@ Meriç: a program left running, a log say, should stay alive in view while you u
 Two costs K-161 measured and left. The frame a reply settles in, where its code takes its colours, went from 15 to 62 to 68ms in the Debug host, since coloured code is laid out all at once there: a reply's finished parts, each paragraph and code block, are drawn as views of their own, so a delta or a settle lays out only what changed, and a block's colours arrive on it alone. A composer keystroke still takes 11.5 to 12.3ms with no fetch left in it: what runs per key is found and cut until a key costs under a 120Hz frame, 8.3ms. Both are measured in a Release build under a name of its own, as well as Debug, since Release is what people run.
 Done when: before and after, measured in Release and in the Notes: the settle frame of a 12,000-character reply with code, ms per composer keystroke, and ms per delta while streaming, none past 8.3ms; make test passes.
 
+#### K-165 · The settle and the stream under 8.3ms
+What K-164 left. A reply ending in a long open code block still settles in 20 to 34ms, since that block takes its colours in one frame: colour a growing block's finished lines as they come, in the background, so the settle has little left to draw, or show its colours a stretch at a time. Deltas got 13% slower with K-164's StreamingCodeHighlighter, 4.8ms in Release at one every 10ms, for no hot spot a profile shows: find why, or go back to K-161's version without its 186 background runs a reply. Measured in Release, as K-164 was.
+Done when: before and after, in Release: the settle frame of K-164's bench reply and ms per delta under 8.3ms, and a key under 8.3ms in the test host too; make test passes.
+
 ### Later
 
 Cards written during the freeze, each on Linear too: K-107 is REA-177 and K-116 is REA-176.
