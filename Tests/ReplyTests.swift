@@ -83,6 +83,8 @@ struct ReplyTests {
                 .frame(maxWidth: .infinity, alignment: .leading))
         let apart = try await height(Reply(id: UUID(), text: text, live: false))
         #expect(whole > 400)
-        #expect(abs(whole - apart) < 0.5)
+        // Each block lays out on whole points, so a reply split in eleven can round a point away;
+        // a broken spacing rule is off by a block margin, 8pt or more.
+        #expect(abs(whole - apart) < 2)
     }
 }
