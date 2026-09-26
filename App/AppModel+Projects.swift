@@ -3,9 +3,13 @@ import Foundation
 import SwiftData
 
 extension AppModel {
+    /// Fetched again only after a save that could have added or removed one: the composer asks
+    /// for the open thread on every key, and a fetch each time was most of a keystroke's cost.
     var projects: [Project] {
-        _ = revision
-        return (try? context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
+        if let fetched, fetched.revision == revision { return fetched.projects }
+        let projects = (try? context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
+        fetched = (revision, projects)
+        return projects
     }
 
     var project: Project? {
@@ -48,7 +52,12 @@ extension AppModel {
 
     var chat: Chat? {
         guard let selectedChatID else { return nil }
-        return project?.chats.first { $0.id == selectedChatID }
+        if let selected, (selected.revision, selected.project, selected.id) == (revision, selectedProjectID, selectedChatID) {
+            return selected.chat
+        }
+        let chat = project?.chats.first { $0.id == selectedChatID }
+        selected = (revision, selectedProjectID, selectedChatID, chat)
+        return chat
     }
 
     func addProject() {
@@ -194,6 +203,8 @@ extension AppModel {
         let wasSelected = deleted == selectedChatID
         endShells(of: chat)
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
+        // Its events can't find it through the conversation any more.
+        conversations[deleted] = nil
         context.delete(chat)
         save()
         guard wasSelected else { return }

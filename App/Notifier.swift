@@ -7,6 +7,8 @@ import UserNotifications
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     var open: ((UUID) -> Void)?
     private var asked = false
+    /// The count the Dock shows, which is set again only when it changes.
+    private var badged = 0
 
     override init() {
         super.init()
@@ -35,6 +37,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func badge(_ waiting: Int) {
+        guard waiting != badged else { return }
+        badged = waiting
         NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
     }
 

@@ -13,16 +13,21 @@ struct RootView: View {
                 Color.black.opacity(glass)
                     .ignoresSafeArea()
                 let conversation = model.currentConversation
-                let started = conversation.map { !$0.items.isEmpty } ?? false
+                // A thread whose events are still being read lays out as it will once they're in,
+                // so the composer doesn't move for the moment it takes.
+                let started = conversation?.started ?? model.chat?.started ?? false
                 // An unpinned drawer passes over the conversation for a moment, and the composer's
                 // left end draws back out from under it while it's out. The right end, with the
                 // picker and Send, doesn't move.
                 let clear = model.drawerShown && !model.drawerPinned ? Self.clearing(width: window.size.width) : 0
                 VStack(spacing: 0) {
-                    if let conversation, let chat = model.chat, started {
-                        TranscriptView(conversation: conversation, cwd: chat.cwd)
-                            .id(chat.id)
-                            .transition(.asymmetric(insertion: hadTranscript ? Self.swap : Self.rise, removal: Self.leave))
+                    if let chat = model.chat, started {
+                        ZStack {
+                            if let conversation { TranscriptView(conversation: conversation, cwd: chat.cwd) }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .id(chat.id)
+                        .transition(.asymmetric(insertion: hadTranscript ? Self.swap : Self.rise, removal: Self.leave))
                     } else {
                         Spacer(minLength: 0)
                         EmptyStateView(

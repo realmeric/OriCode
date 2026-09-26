@@ -135,6 +135,31 @@ enum Item: Identifiable, Hashable {
     }
 }
 
+/// A stored event as a conversation replays it, read and decoded where the main thread
+/// needn't wait for it.
+struct StoredEvent: Sendable {
+    let id: UUID
+    let kind: String
+    let turn: Int
+    let seq: Int
+    /// Nil for a payload that doesn't decode, which still counts for the turn and the order.
+    let body: JSON?
+    /// For the events a conversation writes again, a command's and a workflow's.
+    let model: PersistentIdentifier?
+
+    /// A thread's events in order, from any context: opening a thread reads them on a context of
+    /// its own, off the main thread.
+    nonisolated static func read(_ chatID: UUID, from context: ModelContext) -> [StoredEvent] {
+        let descriptor = FetchDescriptor<Event>(predicate: #Predicate { $0.chat?.id == chatID }, sortBy: [SortDescriptor(\.seq)])
+        return ((try? context.fetch(descriptor)) ?? []).map { event in
+            StoredEvent(
+                id: event.id, kind: event.kind, turn: event.turn, seq: event.seq,
+                body: try? JSONDecoder().decode(JSON.self, from: event.payload),
+                model: event.kind == "shell" || event.kind == "workflow" ? event.persistentModelID : nil)
+        }
+    }
+}
+
 /// One thread's transcript: the stored events replayed into items, then kept current
 /// from the engine's live events. Streaming text lands in one event per assistant
 /// message, updated in place.
@@ -142,6 +167,11 @@ enum Item: Identifiable, Hashable {
 @Observable
 final class Conversation {
     private(set) var items: [Item] = []
+    /// Whether it has anything in it yet. Kept apart from `items`, so a view that only asks this
+    /// isn't drawn again by every delta.
+    private(set) var started = false
+    /// The oldest ask still waiting, which is the one Return and Esc answer.
+    private(set) var waitingAsk: PendingAsk?
     private(set) var running = false
     /// Subagents, commands and workflows out for this thread, as the engine last listed them.
     let heads = Heads()
@@ -174,25 +204,39 @@ final class Conversation {
     private var nextFollows = false
     /// Whether an error came in since the turn started, which makes it one that failed.
     private var failed = false
-    private let chat: Chat
+    let chat: Chat
     private let context: ModelContext
     private var seq = 0
     private var open: (item: Int, event: Event, kind: String)?
+    /// Deltas for the open item that haven't reached it yet: a fast stream reaches the view at
+    /// most once a frame.
+    private var held = ""
+    private var holding = false
+    private var shownAt = ContinuousClock.now
     private var unsaved = false
+    /// ⌘K's index of what was said, kept up as messages and replies are written.
+    private let said: MessageIndex?
     /// Each command's event, updated when it ends and when Claude reads it.
     private var shellEvents: [UUID: Event] = [:]
     /// Each workflow's one event, by its task, written again as it moves.
     private var workflowEvents: [String: Event] = [:]
 
-    init(chat: Chat, context: ModelContext) {
+    convenience init(chat: Chat, context: ModelContext, said: MessageIndex? = nil) {
+        self.init(chat: chat, context: context, stored: StoredEvent.read(chat.id, from: context), said: said)
+    }
+
+    init(chat: Chat, context: ModelContext, stored: [StoredEvent], said: MessageIndex? = nil) {
         self.chat = chat
         self.context = context
-        for event in chat.events.sorted(by: { $0.seq < $1.seq }) {
+        self.said = said
+        for event in stored {
             seq = max(seq, event.seq + 1)
             turn = max(turn, event.turn)
-            guard let body = try? JSONDecoder().decode(JSON.self, from: event.payload) else { continue }
-            if event.kind == "shell" { shellEvents[event.id] = event }
-            if event.kind == "workflow", let taskId = body["taskId"]?.string { workflowEvents[taskId] = event }
+            guard let body = event.body else { continue }
+            if let model = event.model, let object = context.model(for: model) as? Event {
+                if event.kind == "shell" { shellEvents[event.id] = object }
+                if event.kind == "workflow", let taskId = body["taskId"]?.string { workflowEvents[taskId] = object }
+            }
             apply(event.kind, body, id: event.id)
         }
         open = nil
@@ -210,6 +254,7 @@ final class Conversation {
                 items[index] = .ask(id: id, ask: ask)
             }
         }
+        findWaitingAsk()
         running = waitingAfterQuit
         finishOpenTools(except: waitingCalls)
     }
@@ -243,12 +288,13 @@ final class Conversation {
         })
     }
 
-    /// The oldest ask still waiting, which is the one Return and Esc answer.
-    var waitingAsk: PendingAsk? {
-        for item in items {
-            if case .ask(_, let ask) = item, ask.state == .waiting { return ask }
-        }
-        return nil
+    /// Looked for again whenever an ask comes or goes, so what shows it isn't drawn again by
+    /// every delta.
+    private func findWaitingAsk() {
+        let found = items.lazy.compactMap { item -> PendingAsk? in
+            if case .ask(_, let ask) = item, ask.state == .waiting { ask } else { nil }
+        }.first
+        if found != waitingAsk { waitingAsk = found }
     }
 
     /// Whether it has anything the composer mustn't lose by letting the conversation go.
@@ -406,11 +452,7 @@ final class Conversation {
         case "text", "thinking":
             let delta = event.body["delta"]?.string ?? ""
             if let open, open.kind == event.name {
-                let current = items[open.item]
-                let text = (current.text ?? "") + delta
-                items[open.item] = event.name == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
-                open.event.payload = (try? JSON.object(["event": .string(event.name), "delta": .string(text)]).data()) ?? Data()
-                unsaved = true
+                hold(delta)
             } else {
                 record(event.name, ["event": .string(event.name), "delta": .string(delta)], keepOpen: true)
             }
@@ -553,8 +595,38 @@ final class Conversation {
         flush()
     }
 
+    /// A delta waits for the frame after the last one shown; one after a pause shows at once.
+    private func hold(_ delta: String) {
+        held += delta
+        let wait = Self.frame - shownAt.duration(to: .now)
+        guard wait > .zero else { return showHeld() }
+        guard !holding else { return }
+        holding = true
+        Task {
+            try? await Task.sleep(for: wait, tolerance: .milliseconds(1))
+            showHeld()
+        }
+    }
+
+    private static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
+
+    /// The held deltas onto the open item and its event, which the store takes at the next save.
+    private func showHeld() {
+        holding = false
+        guard let open, !held.isEmpty else { return }
+        let current = items[open.item]
+        let text = (current.text ?? "") + held
+        held = ""
+        shownAt = .now
+        items[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
+        open.event.payload = (try? JSON.object(["event": .string(open.kind), "delta": .string(text)]).data()) ?? Data()
+        if open.kind == "text" { said?.update(open.event.id, text: text) }
+        unsaved = true
+    }
+
     /// Streaming deltas only touch objects in memory; the store is written here.
     func flush() {
+        showHeld()
         guard unsaved || context.hasChanges else { return }
         unsaved = false
         chat.updatedAt = .now
@@ -587,6 +659,7 @@ final class Conversation {
 
     @discardableResult
     private func record(_ kind: String, _ body: JSON, keepOpen: Bool = false, id: UUID? = nil) -> Event {
+        showHeld()
         let event = Event(turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
         if let id { event.id = id }
         seq += 1
@@ -595,6 +668,9 @@ final class Conversation {
         unsaved = true
         open = nil
         apply(kind, body, id: event.id)
+        if kind == "user" || kind == "text" {
+            said?.add(event.id, in: chat.id, user: kind == "user", text: body[kind == "user" ? "text" : "delta"]?.string ?? "")
+        }
         if keepOpen, let last = items.indices.last { open = (last, event, kind) }
         if !keepOpen { flush() }
         return event
@@ -684,6 +760,8 @@ final class Conversation {
         default:
             break
         }
+        if !started, !items.isEmpty { started = true }
+        if kind == "ask" || kind == "answer" || kind == "ask.cancelled" { findWaitingAsk() }
     }
 }
 

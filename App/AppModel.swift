@@ -128,7 +128,13 @@ final class AppModel {
     let context: ModelContext
     /// Bumped on every save so views reading fetched lists redraw.
     private(set) var revision = 0
+    /// The projects as of a revision, and the open thread as of a revision and a selection.
+    @ObservationIgnored var fetched: (revision: Int, projects: [Project])?
+    @ObservationIgnored var selected: (revision: Int, project: UUID?, id: UUID, chat: Chat?)?
     var conversations: [UUID: Conversation] = [:]
+    /// What was said in every thread, for ⌘K, and the rows it gave the last query.
+    let said = MessageIndex()
+    @ObservationIgnored var paletteFound: (query: String, revision: Int, ready: Bool, items: [PaletteItem])?
     var branches: [UUID: BranchInfo] = [:]
     /// ⌘⇧D's review, and what it has read of the open thread's folder, which the button at
     /// the top right counts from even while it's closed.
@@ -325,11 +331,19 @@ final class AppModel {
         (NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true } ?? NSApp.mainWindow)?.makeKeyAndOrderFront(nil)
     }
 
+    /// Reads the thread's events on a context of its own, off the main thread, and replays them
+    /// here. Anything that needs the conversation meanwhile, an engine event or a send, makes it
+    /// at once through `conversation(for:)`, and then this one is dropped.
     private func loadSelectedConversation() {
-        guard let id = selectedChatID, conversations[id] == nil,
-              let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
-        else { return }
-        conversations[id] = Conversation(chat: chat, context: context)
+        guard let id = selectedChatID, conversations[id] == nil else { return }
+        let container = context.container
+        Task {
+            let stored = await Task.detached(priority: .userInitiated) { StoredEvent.read(id, from: ModelContext(container)) }.value
+            guard selectedChatID == id, conversations[id] == nil,
+                  let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
+            else { return }
+            conversations[id] = Conversation(chat: chat, context: context, stored: stored, said: said)
+        }
     }
 
     func say(_ line: String) {

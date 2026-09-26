@@ -117,25 +117,81 @@ actor CodeHighlighter {
     }
 }
 
-/// Code blocks in the transcript. MarkdownUI asks synchronously, from the view update, and a
-/// streaming message asks for the same block on every delta, so results are cached.
-final class TranscriptCodeHighlighter: CodeSyntaxHighlighter, @unchecked Sendable {
-    static let shared = TranscriptCodeHighlighter()
-
-    private let lock = NSLock()
-    private var cache: [String: AttributedString] = [:]
+/// Code blocks in a reply still streaming show plain: the reply is drawn again on every frame,
+/// and coloured code cost more to draw than all the rest of it. Each block is coloured in the
+/// background as it closes, so the reply has its colours at once when it settles.
+struct StreamingCodeHighlighter: CodeSyntaxHighlighter {
+    let text: String
 
     func highlightCode(_ code: String, language: String?) -> Text {
-        lock.lock()
-        defer { lock.unlock() }
+        if !Self.isOpen(code, in: text) {
+            MainActor.assumeIsolated { TranscriptCodeHighlighter.shared.prepare(code, language: language) }
+        }
+        return Text(code)
+    }
+
+    /// An open block runs to the end of the text, where a closed one ends in its fence.
+    static func isOpen(_ code: String, in text: String) -> Bool {
+        func trimmed(_ text: String) -> Substring {
+            var end = text[...]
+            while end.last?.isNewline == true { end = end.dropLast() }
+            return end
+        }
+        return trimmed(text).hasSuffix(trimmed(code))
+    }
+}
+
+/// Code blocks in the transcript. MarkdownUI asks from the view update, where colouring a block
+/// could take several frames, so a block with no colours yet shows plain while it's coloured off
+/// the main thread; the view that asked reads the block's entry and is drawn again when they're
+/// in. It keeps 300 blocks, the one used longest ago going first.
+@MainActor
+final class TranscriptCodeHighlighter: CodeSyntaxHighlighter {
+    static let shared = TranscriptCodeHighlighter()
+    private static let capacity = 300
+
+    @Observable
+    final class Colours {
+        var text: AttributedString?
+        @ObservationIgnored var used = 0
+    }
+
+    private var cache: [String: Colours] = [:]
+    private var uses = 0
+
+    nonisolated func highlightCode(_ code: String, language: String?) -> Text {
+        MainActor.assumeIsolated {
+            let colours = entry(code, language: language)
+            uses += 1
+            colours.used = uses
+            return colours.text.map(Text.init) ?? Text(code)
+        }
+    }
+
+    /// Colours a block before it's asked for.
+    func prepare(_ code: String, language: String?) {
+        _ = entry(code, language: language)
+    }
+
+    private func entry(_ code: String, language: String?) -> Colours {
         let key = (language ?? "") + "\u{0}" + code
-        if let cached = cache[key] { return Text(cached) }
+        if let colours = cache[key] { return colours }
+        if cache.count >= Self.capacity, let oldest = cache.min(by: { $0.value.used < $1.value.used })?.key {
+            cache[oldest] = nil
+        }
+        let colours = Colours()
+        cache[key] = colours
+        guard code.utf8.count < 100_000 else {
+            colours.text = AttributedString(code)
+            return colours
+        }
         let name = language.flatMap { CodeHighlighter.language(forExtension: $0.lowercased()) }
-        guard code.utf8.count < 100_000, let rendered = CodeHighlighter.render(code, as: name),
-              let muted = CodeHighlighter.mute(rendered)
-        else { return Text(code) }
-        if cache.count > 300 { cache.removeAll() }
-        cache[key] = muted
-        return Text(muted)
+        Task {
+            let muted = await Task.detached(priority: .userInitiated) {
+                CodeHighlighter.render(code, as: name).flatMap(CodeHighlighter.mute)
+            }.value
+            cache[key]?.text = muted ?? AttributedString(code)
+        }
+        return colours
     }
 }

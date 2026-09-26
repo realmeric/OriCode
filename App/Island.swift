@@ -104,7 +104,7 @@ struct Island: View {
     /// Down to 12pt above the composer, however tall it has grown; in a thread with nothing in it
     /// yet, whose composer waits in the middle of the window, the whole height.
     private func reviewHeight(_ room: CGSize) -> CGFloat {
-        let low = !(model.currentConversation?.items.isEmpty ?? true)
+        let low = model.currentConversation?.started ?? false
         let bottom = low ? model.composerTop - 12 : room.height - 20
         return max(160, bottom - Self.top)
     }

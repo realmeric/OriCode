@@ -157,9 +157,15 @@ enum MessageSearch {
         return earliest.map { text.index(text.startIndex, offsetBy: $0.lowerBound)..<text.index(text.startIndex, offsetBy: $0.upperBound) }
     }
 
+    /// Whether a text holds every word, the words already folded: MessageIndex's test for each
+    /// message, on an NSString because Foundation searches its own strings many times faster.
+    static func holds(_ folded: [String], in text: NSString) -> Bool {
+        folded.allSatisfy { text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]).location != NSNotFound }
+    }
+
     /// The dotless ı and dotted İ read as i, which diacritic folding leaves alone, so "kirildi"
     /// finds "kırıldı". One character for one, so offsets carry back to the text.
-    private static func fold(_ text: String) -> String {
+    static func fold(_ text: String) -> String {
         String(text.map { $0 == "ı" || $0 == "İ" ? "i" : $0 })
     }
 

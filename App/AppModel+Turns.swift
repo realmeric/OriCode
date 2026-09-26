@@ -11,7 +11,7 @@ extension AppModel {
 
     func conversation(for chat: Chat) -> Conversation {
         if let existing = conversations[chat.id] { return existing }
-        let created = Conversation(chat: chat, context: context)
+        let created = Conversation(chat: chat, context: context, said: said)
         conversations[chat.id] = created
         return created
     }
@@ -186,8 +186,7 @@ extension AppModel {
     func route(_ event: EngineEvent) {
         if event.name == "fast", let state = event.body["state"]?.string {
             // A check names its model; a thread's own CLI speaks for the model the thread is on.
-            let thread = event.threadId.flatMap(UUID.init(uuidString:))
-            let chat = thread.flatMap { id in try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first }
+            let chat = event.threadId.flatMap(UUID.init(uuidString:)).flatMap(chat(withID:))
             let modelID = event.body["model"]?.string ?? chat?.model ?? ModelOption.claudeDefault
             fastReadings[modelID] = FastReading(state: state, reason: event.body["reason"]?.string)
         }
@@ -213,7 +212,7 @@ extension AppModel {
             }
             return
         }
-        guard let chat = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return }
+        guard let chat = chat(withID: id) else { return }
         if event.name.hasPrefix("message.") {
             // A message taken up brightens in place; one handed back fades out.
             withAnimation(Motion.fade) { conversation(for: chat).receive(event) }
@@ -241,6 +240,11 @@ extension AppModel {
         if chat.cwd == self.chat?.cwd, event.name == "turn.done" || (reviewShown && event.name == "tool.result") {
             readReview(after: .milliseconds(event.name == "turn.done" ? 200 : 500))
         }
+    }
+
+    /// A thread by its id: the one its conversation holds, or from the store.
+    func chat(withID id: UUID) -> Chat? {
+        conversations[id]?.chat ?? (try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first)
     }
 
     /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.

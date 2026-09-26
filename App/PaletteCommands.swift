@@ -12,6 +12,8 @@ extension AppModel {
             closeCommandCenter()
         } else {
             palette.reset()
+            // What was said since it was last open is found too.
+            paletteFound = nil
             // A terminal can move the branch behind the app's back, and actions.json can change.
             refreshBranch(for: chat)
             customActions.refresh()
@@ -164,31 +166,29 @@ extension AppModel {
     }
 
     /// What was said in the threads that holds every word typed, your messages and the replies,
-    /// newest first and three a thread at most. It reads the stored `user` and `text` events,
-    /// which every agent's thread has.
+    /// newest first and three a thread at most. It searches the stored `user` and `text` events,
+    /// which every agent's thread has, through the index `said` keeps of them in memory.
+    /// Worked out once for each query: an arrow key draws the rows again but asks nothing new.
     func paletteMessages(for query: String) -> [PaletteItem] {
         let words = MessageSearch.words(query)
         guard !words.isEmpty else { return [] }
-        let said = FetchDescriptor<Event>(predicate: #Predicate { $0.kind == "user" || $0.kind == "text" },
-                                          sortBy: [SortDescriptor(\.createdAt, order: .reverse), SortDescriptor(\.seq, order: .reverse)])
-        var found: [PaletteItem] = []
-        var perThread: [UUID: Int] = [:]
-        for event in (try? context.fetch(said)) ?? [] {
-            guard let chat = event.chat, chat.started, let project = chat.project, perThread[chat.id, default: 0] < 3,
-                  let body = try? JSONDecoder().decode(JSON.self, from: event.payload),
-                  let snippet = MessageSearch.snippet(words, in: body[event.kind == "user" ? "text" : "delta"]?.string ?? "")
-            else { continue }
-            perThread[chat.id, default: 0] += 1
-            let chatID = chat.id, eventID = event.id
-            found.append(PaletteItem(id: "message." + eventID.uuidString, kind: .message, title: snippet, subtitle: chat.title,
-                                     icon: event.kind == "user" ? "person" : "text.bubble", project: project,
-                                     action: .run { [weak self] in
-                                         self?.open(chatID: chatID)
-                                         self?.reveal = eventID
-                                     }))
-            if found.count == 20 { break }
+        said.read(from: context.container)
+        if let found = paletteFound, (found.query, found.revision, found.ready) == (query, revision, said.ready) { return found.items }
+        let threads = Dictionary(uniqueKeysWithValues: chats.map { ($0.id, $0) })
+        let items = said.search(words, in: Set(threads.keys)).compactMap { message -> PaletteItem? in
+            guard let chat = threads[message.chat], let project = chat.project,
+                  let snippet = MessageSearch.snippet(words, in: message.text as String)
+            else { return nil }
+            let chatID = chat.id, eventID = message.id
+            return PaletteItem(id: "message." + eventID.uuidString, kind: .message, title: snippet, subtitle: chat.title,
+                               icon: message.user ? "person" : "text.bubble", project: project,
+                               action: .run { [weak self] in
+                                   self?.open(chatID: chatID)
+                                   self?.reveal = eventID
+                               })
         }
-        return found
+        paletteFound = (query, revision, said.ready, items)
+        return items
     }
 
     private var paletteProjects: [PaletteItem] {

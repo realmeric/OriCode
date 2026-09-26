@@ -37,8 +37,10 @@ struct TranscriptView: View {
                 let entries = TranscriptEntry.fold(shown) + conversation.waiting.map {
                     TranscriptEntry.item(.user(id: $0.id, text: $0.text, images: $0.previews))
                 }
+                // Not while a block is open: Return typed there mustn't answer the card.
+                let listening = model.openShell != nil ? nil : conversation.waitingAsk?.requestId
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    view(of: entry)
+                    view(of: entry, listening: listening)
                         .background {
                             if lit == entry.id {
                                 Surface.selected
@@ -117,12 +119,11 @@ struct TranscriptView: View {
     }
 
     @ViewBuilder
-    private func view(of entry: TranscriptEntry) -> some View {
+    private func view(of entry: TranscriptEntry, listening: String?) -> some View {
         switch entry {
         case .item(let item):
             ItemView(
-                // Not while a block is open: Return typed there mustn't answer the card.
-                item: item, cwd: cwd, listening: model.openShell != nil ? nil : conversation.waitingAsk?.requestId,
+                item: item, cwd: cwd, listening: listening,
                 live: conversation.running && item.id == conversation.items.last?.id,
                 resumes: conversation.resumeAt != nil && item.id == conversation.lastLimit,
                 waiting: conversation.waiting.contains { $0.id == item.id })
@@ -221,20 +222,29 @@ struct ItemView: View {
     /// A message sent into the turn that Claude hasn't taken up yet.
     var waiting = false
 
+    /// Your messages' pictures, decoded once by the message rather than on every render.
+    private static let decoded = NSCache<NSUUID, NSArray>()
+
+    private func pictures(_ images: [Data]) -> [NSImage] {
+        let key = item.id as NSUUID
+        if let cached = Self.decoded.object(forKey: key) as? [NSImage] { return cached }
+        let pictures = images.compactMap(NSImage.init(data:))
+        Self.decoded.setObject(pictures as NSArray, forKey: key)
+        return pictures
+    }
+
     var body: some View {
         switch item {
         case .user(_, let text, let images, _):
             VStack(alignment: .trailing, spacing: 6) {
                 if !images.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { _, data in
-                            if let image = NSImage(data: data) {
-                                Image(nsImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 96, height: 72)
-                                    .clipShape(.rect(cornerRadius: 10, style: .continuous))
-                            }
+                        ForEach(Array(pictures(images).enumerated()), id: \.offset) { _, image in
+                            Image(nsImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 96, height: 72)
+                                .clipShape(.rect(cornerRadius: 10, style: .continuous))
                         }
                     }
                 }
@@ -259,7 +269,7 @@ struct ItemView: View {
             Markdown(text)
                 .markdownTheme(.glass)
                 .markdownSoftBreakMode(.lineBreak)
-                .markdownCodeSyntaxHighlighter(TranscriptCodeHighlighter.shared)
+                .markdownCodeSyntaxHighlighter(live ? StreamingCodeHighlighter(text: text) as CodeSyntaxHighlighter : TranscriptCodeHighlighter.shared)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .thinking(_, let text):
