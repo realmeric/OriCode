@@ -231,10 +231,8 @@ extension AppModel {
         holdWhileWorking()
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
-        if event.name == "turn.done" {
-            refreshBranch(for: chat)
-            refreshUsage(fresh: true)
-        }
+        if event.name == "limits" { takeLimits(event.body) }
+        if event.name == "turn.done" { refreshBranch(for: chat) }
         // The count at the top right follows every turn in the open folder, and an open review
         // follows every edit.
         if chat.cwd == self.chat?.cwd, event.name == "turn.done" || (reviewShown && event.name == "tool.result") {
@@ -257,8 +255,9 @@ extension AppModel {
                 ? "A question for you."
                 : "Waiting on you: " + ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: event.body["input"] ?? .null), cwd: chat.cwd)
             notifier.post(title: chat.title, body: summary, chatID: chat.id)
-        } else if let resumeAt = chat.resumeAt {
-            notifier.post(title: chat.title, body: "Stopped at Claude's session limit. It goes on at \(Limit.time(resumeAt)).", chatID: chat.id)
+        } else if let limit = conversation(for: chat).turnLimit {
+            let when = chat.resumeAt.map { "It goes on at \(Limit.time($0))." } ?? "Resets at \(Limit.time(limit.resetsAt))."
+            notifier.post(title: chat.title, body: "Stopped at Claude's \(Limit.name(of: limit.window)). " + when, chatID: chat.id)
         } else if event.body["stopReason"]?.string != "interrupted",
                   // A thread still working, on the messages its turn left waiting or its queue's
                   // next, isn't finished: Finished comes when the last one ends.

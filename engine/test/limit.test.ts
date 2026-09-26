@@ -29,7 +29,7 @@ function eventsFor(messages: object[]): Record<string, any>[] {
   } finally {
     process.stdout.write = write;
   }
-  return lines.map((line) => JSON.parse(line)).filter((event) => ["limited", "error", "turn.done"].includes(event.event));
+  return lines.map((line) => JSON.parse(line)).filter((event) => ["limited", "limits", "note", "error", "turn.done"].includes(event.event));
 }
 
 // What the CLI sent when this very thread met the session limit on 2026-09-24.
@@ -56,13 +56,97 @@ test("a turn the session limit refused says when it can go on, and nothing about
   const limit = { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1790281800, rateLimitType: "five_hour" } };
   const names = eventsFor([limit, refusal, result]).map((event) => [event.event, event.resetsAt, event.window]);
   assert.deepEqual(names, [
+    ["limits", 1790281800000, undefined],
     ["limited", 1790281800000, "five_hour"],
     ["turn.done", undefined, undefined],
   ]);
 });
 
-test("a refusal with no limit reached behind it is the plain rate-limit line", () => {
+test("a refusal with no limit behind it is Claude slowing requests for a moment", () => {
   const events = eventsFor([refusal, result]);
   assert.deepEqual(events.map((event) => event.event), ["error", "turn.done"]);
-  assert.match(events[0].message, /Rate limited/);
+  assert.equal(events[0].message, "Claude is limiting requests for a moment. Try again shortly.");
+});
+
+test("a limit the CLI says was reached without saying when it resets is a usage limit", () => {
+  const limit = { type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "seven_day" } };
+  const events = eventsFor([limit, refusal, result]).filter((event) => event.event !== "limits");
+  assert.deepEqual(events.map((event) => event.event), ["error", "turn.done"]);
+  assert.equal(events[0].message, "Stopped at one of Claude's usage limits.");
+});
+
+/// A report as Claude Code 2.1.283 sends one, with each window's reading beside the limit it names.
+function report(status: string, used: number, session = 0.3) {
+  return {
+    type: "rate_limit_event",
+    rate_limit_info: {
+      status,
+      resetsAt: 1790281800,
+      rateLimitType: "seven_day",
+      utilization: used,
+      surpassedThreshold: status === "allowed_warning" ? 0.75 : undefined,
+      unifiedWindows: { five_hour: { utilization: session, resetsAt: 1790262000 }, seven_day: { utilization: used, resetsAt: 1790281800 } },
+    },
+  };
+}
+
+test("the plan's limits go to the app as fractions and milliseconds", () => {
+  const [limits] = eventsFor([report("allowed_warning", 0.76)]);
+  assert.deepEqual(limits, {
+    event: "limits",
+    threadId: "t",
+    status: "allowed_warning",
+    rateLimitType: "seven_day",
+    utilization: 0.76,
+    resetsAt: 1790281800000,
+    surpassedThreshold: 0.75,
+    windows: [
+      { id: "five_hour", used: 0.3, resetsAt: 1790262000000 },
+      { id: "seven_day", used: 0.76, resetsAt: 1790281800000 },
+    ],
+  });
+});
+
+test("the limits are sent again only when a status or a whole percent moves", () => {
+  const events = eventsFor([
+    report("allowed_warning", 0.76),
+    report("allowed_warning", 0.762),
+    report("allowed_warning", 0.762, 0.304),
+    report("allowed_warning", 0.77),
+    report("allowed_warning", 0.77, 0.31),
+    report("rejected", 0.77, 0.31),
+  ]);
+  assert.deepEqual(
+    events.map((event) => [event.status, event.utilization, event.windows[0].used]),
+    [
+      ["allowed_warning", 0.76, 0.3],
+      ["allowed_warning", 0.77, 0.3],
+      ["allowed_warning", 0.77, 0.31],
+      ["rejected", 0.77, 0.31],
+    ],
+  );
+});
+
+test("a report without each window's reading still names its limit", () => {
+  const [limits] = eventsFor([{ type: "rate_limit_event", rate_limit_info: { status: "allowed" } }]);
+  assert.deepEqual(limits.windows, []);
+  assert.equal(limits.utilization, null);
+  assert.equal(limits.resetsAt, null);
+});
+
+test("Claude Code's notices come to the thread as notes, and its quieter lines don't", () => {
+  const notice = (level: string, content: string) => ({ type: "system", subtype: "informational", level, content });
+  const events = eventsFor([
+    notice("notice", "Approaching your 5-hour usage limit — Claude will wrap up the current step."),
+    notice("info", "Hook ran"),
+    notice("suggestion", "Try /compact"),
+    notice("warning", "Stop hook prevented continuation"),
+  ]);
+  assert.deepEqual(
+    events.map((event) => [event.event, event.text]),
+    [
+      ["note", "Approaching your 5-hour usage limit — Claude will wrap up the current step."],
+      ["note", "Stop hook prevented continuation"],
+    ],
+  );
 });

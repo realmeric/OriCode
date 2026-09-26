@@ -123,13 +123,15 @@ enum Item: Identifiable, Hashable {
     case note(id: UUID, text: String)
     /// One of the plan's limits refused a turn: when it resets, and which limit it was.
     case limited(id: UUID, resetsAt: Date, window: String?)
+    /// A limit getting close: how much of its window is used, when that resets, and when it was said.
+    case nearLimit(id: UUID, window: String, used: Double, resetsAt: Date, said: Date)
     /// A command run from the composer's shell prompt.
     case shell(id: UUID, run: ShellRun)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
-             .footer(let id, _), .note(let id, _), .limited(let id, _, _), .shell(let id, _):
+             .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _):
             id
         }
     }
@@ -259,14 +261,40 @@ final class Conversation {
         finishOpenTools(except: waitingCalls)
     }
 
-    /// When the thread goes on by itself, once the session limit that stopped it resets.
+    /// When the thread goes on by itself, once the limit that stopped it resets.
     var resumeAt: Date? {
         chat.resumeAt
     }
 
-    /// The latest limit's line, the one a waiting thread waits out.
+    /// The latest limit's card, the one a waiting thread waits out.
     var lastLimit: UUID? {
-        items.last { if case .limited = $0 { true } else { false } }?.id
+        latestLimit?.id
+    }
+
+    /// Which limit that was.
+    var lastLimitWindow: String? {
+        if case .limited(_, _, let window) = latestLimit { window } else { nil }
+    }
+
+    private var latestLimit: Item? {
+        items.last { if case .limited = $0 { true } else { false } }
+    }
+
+    /// The limit that stopped the thread's latest turn, when one did.
+    var turnLimit: (resetsAt: Date, window: String?)? {
+        for item in items.reversed().drop(while: { if case .footer = $0 { true } else { false } }) {
+            if case .limited(_, let resetsAt, let window) = item { return (resetsAt, window) }
+            if item.startsTurn { return nil }
+            if case .footer = item { return nil }
+        }
+        return nil
+    }
+
+    /// The thread goes on by itself when the limit resets, whichever limit it is.
+    func resume(at resetsAt: Date) {
+        chat.resumeAt = resetsAt
+        unsaved = true
+        flush()
     }
 
     /// The thread won't go on by itself after all.
@@ -461,19 +489,21 @@ final class Conversation {
             // refused too: it goes back to the field.
             failed = true
             record(event.name, event.body)
-            if let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }),
+            if Limit.goesOn, let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }),
                Limit.resumes(window: event.body["window"]?.string, resetsAt: resetsAt) {
                 // Refused again past the reset, a Mac's clock ahead of Claude's: a while longer.
                 chat.resumeAt = resetsAt > .now ? resetsAt : .now.addingTimeInterval(300)
                 flush()
             }
+        case "limits":
+            nearLimit(event.body)
         case "session.lost":
             chat.sessionId = nil
             record("note", ["event": "note", "text": "The earlier session is gone, so this thread carries on in a new one."])
         case "compacted":
             chat.contextUsed = event.body["after"]?.int ?? 0
             record(event.name, event.body)
-        case "tool.use", "tool.result", "ask", "ask.cancelled", "error":
+        case "tool.use", "tool.result", "ask", "ask.cancelled", "error", "note":
             if event.name == "error" { failed = true }
             record(event.name, event.body)
         case "workflow":
@@ -501,6 +531,21 @@ final class Conversation {
         default:
             break
         }
+    }
+
+    /// A limit nearing its ceiling puts one line in the thread each time its window fills: once
+    /// said, it isn't said again until the reset it named has passed.
+    private func nearLimit(_ body: JSON) {
+        guard body["status"]?.string == "allowed_warning", let window = body["rateLimitType"]?.string,
+              let used = body["utilization"]?.double ?? body["surpassedThreshold"]?.double,
+              let resetsAt = body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) })
+        else { return }
+        let said = items.contains { item in
+            if case .nearLimit(_, window, _, let reset, _) = item { reset > .now } else { false }
+        }
+        guard !said else { return }
+        record("limits", ["event": "limits", "rateLimitType": .string(window), "utilization": .number(used),
+                          "resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000), "said": .number(Date.now.timeIntervalSince1970 * 1000)])
     }
 
     func answered(_ requestId: String, allow: Bool) {
@@ -751,6 +796,10 @@ final class Conversation {
         case "limited":
             let resetsAt = Date(timeIntervalSince1970: (body["resetsAt"]?.double ?? 0) / 1000)
             items.append(.limited(id: id, resetsAt: resetsAt, window: body["window"]?.string))
+        case "limits":
+            let date = { (key: String) in Date(timeIntervalSince1970: (body[key]?.double ?? 0) / 1000) }
+            items.append(.nearLimit(id: id, window: body["rateLimitType"]?.string ?? "", used: body["utilization"]?.double ?? 0,
+                                    resetsAt: date("resetsAt"), said: date("said")))
         case "shell":
             items.append(.shell(id: id, run: ShellRun(body)))
         case "compacted":

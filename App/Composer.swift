@@ -542,7 +542,7 @@ struct Composer: View {
             if case .user(_, let text, _, _) = item { text } else { nil }
         } ?? []
         // What the app sent for you isn't yours to send again.
-        return sent.filter { $0 != AppModel.quitLine && $0 != AppModel.limitLine }
+        return sent.filter { $0 != AppModel.quitLine && !$0.hasSuffix(AppModel.limitLineEnd) }
     }
 
     /// The word after a leading "/", while it's still being typed.

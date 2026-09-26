@@ -155,6 +155,8 @@ export class Thread {
   /// The plan's limits as the CLI last reported them, and whether this turn was refused by one.
   private limit: SDKRateLimitInfo | undefined;
   private refused = false;
+  /// The limits last told to the app, so a report that repeats them isn't sent again.
+  private limitsTold = "";
 
   /// Messages sent during a turn that Claude hasn't taken up yet, by the app's id.
   private waiting = new Set<string>();
@@ -637,9 +639,15 @@ export class Thread {
         }
         return;
       }
-      case "rate_limit_event":
+      case "rate_limit_event": {
         this.limit = message.rate_limit_info;
+        const limits = limitsOf(message.rate_limit_info);
+        const told = limitsKey(limits);
+        if (told === this.limitsTold) return;
+        this.limitsTold = told;
+        event("limits", { threadId: this.id, ...limits });
         return;
+      }
       case "system": {
         if (message.subtype === "init") {
           this.tellFast(message);
@@ -648,6 +656,11 @@ export class Thread {
           this.initialized.resolve();
         }
         if (this.trackTask(message)) return;
+        // What Claude Code shows in its own transcript, such as the wrap-up it starts near a limit.
+        if (message.subtype === "informational") {
+          if (message.level === "notice" || message.level === "warning") event("note", { threadId: this.id, text: message.content });
+          return;
+        }
         if (message.subtype === "api_retry") {
           event("retrying", { threadId: this.id, attempt: message.attempt, max: message.max_retries, error: message.error });
           return;
@@ -677,6 +690,7 @@ export class Thread {
           this.refused = false;
           const limited = limitReached(this.limit);
           if (limited) event("limited", { threadId: this.id, ...limited });
+          else if (this.limit?.status === "rejected") this.fail("Stopped at one of Claude's usage limits.");
           else this.fail(errorText("rate_limit"));
         }
         this.idleSince = Date.now();
@@ -756,6 +770,43 @@ export function limitReached(info: SDKRateLimitInfo | undefined): { resetsAt: nu
   return { resetsAt: info.resetsAt * 1000, window: info.rateLimitType ?? null };
 }
 
+type Limits = {
+  status: SDKRateLimitInfo["status"];
+  rateLimitType: string | null;
+  utilization: number | null;
+  resetsAt: number | null;
+  surpassedThreshold: number | null;
+  windows: { id: string; used: number; resetsAt: number }[];
+};
+
+/// The plan's limits as the app hears them, fractions used and resets in milliseconds. The CLI
+/// names one limit, the one nearest its ceiling; `windows` is each window's reading, which the
+/// CLI sends without its types listing it, so it may be missing.
+function limitsOf(info: SDKRateLimitInfo): Limits {
+  const unified = (info as { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number } | undefined> }).unifiedWindows ?? {};
+  const windows = Object.entries(unified).flatMap(([id, window]) =>
+    typeof window?.utilization === "number" && typeof window.resetsAt === "number" ? [{ id, used: window.utilization, resetsAt: window.resetsAt * 1000 }] : [],
+  );
+  return {
+    status: info.status,
+    rateLimitType: info.rateLimitType ?? null,
+    utilization: info.utilization ?? null,
+    resetsAt: info.resetsAt ? info.resetsAt * 1000 : null,
+    surpassedThreshold: info.surpassedThreshold ?? null,
+    windows,
+  };
+}
+
+/// What the app would see of a report: a reading that moved less than a percent looks the same.
+function limitsKey(limits: Limits): string {
+  const percent = (fraction: number | null) => (fraction === null ? null : Math.round(fraction * 100));
+  return JSON.stringify({
+    ...limits,
+    utilization: percent(limits.utilization),
+    windows: limits.windows.map((window) => ({ ...window, used: percent(window.used) })),
+  });
+}
+
 /// Whether a call is the one the user allowed. Claude words a command's description afresh when
 /// it makes the call again, so that's left out; everything else must match.
 export function sameCall(grant: Grant, tool: string, input: Record<string, unknown>): boolean {
@@ -803,7 +854,7 @@ function errorText(error: string): string {
     case "authentication_failed":
       return "Claude isn't logged in. Run `claude` in Terminal and log in.";
     case "rate_limit":
-      return "Rate limited. Try again in a moment.";
+      return "Claude is limiting requests for a moment. Try again shortly.";
     case "server_error":
     case "unknown":
       return "Couldn't reach Claude. Check the network, then send again.";

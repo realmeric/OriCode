@@ -53,7 +53,7 @@ final class Chat {
     /// OriCode quit while its turn ran. The next launch sends it on, or, when it was waiting on
     /// you, puts the question back up.
     var quitMidTurn: Bool = false
-    /// Claude's session limit stopped its turn; when the limit resets the thread goes on.
+    /// A limit stopped its turn and the thread waits for it: when the limit resets it goes on.
     var resumeAt: Date?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 

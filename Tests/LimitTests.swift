@@ -3,7 +3,8 @@ import SwiftData
 import Testing
 @testable import OriCode
 
-/// A thread Claude's plan limits stopped, and the session limit's reset sending it on.
+/// A thread Claude's plan limits stopped, and the session limit's reset sending it on; the limits
+/// as a thread's CLI reports them on the way there.
 @MainActor
 struct LimitTests {
     private let container: ModelContainer
@@ -71,9 +72,94 @@ struct LimitTests {
         model.scheduleResumes()
         try await Task.sleep(for: .milliseconds(1600))
         let conversation = model.conversation(for: chat)
-        let sent = conversation.items.contains { if case .user(_, let text, _, _) = $0 { text == AppModel.limitLine } else { false } }
+        let sent = conversation.items.contains { if case .user(_, let text, _, _) = $0 { text.hasSuffix(AppModel.limitLineEnd) } else { false } }
         #expect(sent)
         #expect(chat.resumeAt == nil)
+    }
+
+    @Test func withSettingsSayingNoTheSessionLimitDoesntWait() {
+        UserDefaults.standard.set(false, forKey: Limit.goOnKey)
+        defer { UserDefaults.standard.removeObject(forKey: Limit.goOnKey) }
+        let conversation = Conversation(chat: chat, context: container.mainContext)
+        conversation.receive(limited("five_hour", at: .now.addingTimeInterval(3600)))
+        #expect(chat.resumeAt == nil)
+        #expect(conversation.lastLimit != nil)
+    }
+
+    @Test func theCardsToggleWaitsForAWeeklyLimitAndCallsItOff() {
+        let model = AppModel(container: container)
+        model.selectedProjectID = chat.project?.id
+        model.selectedChatID = chat.id
+        let reset = Date.now.addingTimeInterval(3 * 86_400).rounded
+        model.conversation(for: chat).receive(limited("seven_day", at: reset))
+        #expect(chat.resumeAt == nil)
+        model.goOn(true, at: reset)
+        #expect(chat.resumeAt == reset)
+        #expect(model.conversation(for: chat).lastLimitWindow == "seven_day")
+        model.goOn(false, at: reset)
+        #expect(chat.resumeAt == nil)
+        model.resumeTask?.cancel()
+        #expect(AppModel.limitLine("seven_day") == "The weekly limit has reset. Please continue from where you left off.")
+    }
+
+    @Test func theLimitThatStoppedTheLatestTurnIsKnownUntilTheNextOne() {
+        let conversation = Conversation(chat: chat, context: container.mainContext)
+        conversation.userSent("Run the tests")
+        conversation.receive(limited("seven_day", at: .now.addingTimeInterval(3600)))
+        conversation.receive(EngineEvent(name: "turn.done", threadId: chat.id.uuidString, body: ["event": "turn.done", "stopReason": "end_turn"]))
+        #expect(conversation.turnLimit?.window == "seven_day")
+        conversation.userSent("Try again")
+        conversation.receive(EngineEvent(name: "turn.done", threadId: chat.id.uuidString, body: ["event": "turn.done", "stopReason": "end_turn"]))
+        #expect(conversation.turnLimit == nil)
+    }
+
+    private func limits(_ status: String, _ window: String, used: Double, resetsAt: Date) -> EngineEvent {
+        EngineEvent(name: "limits", threadId: chat.id.uuidString, body: [
+            "event": "limits", "status": .string(status), "rateLimitType": .string(window), "utilization": .number(used),
+            "resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000), "surpassedThreshold": .number(0.75),
+            "windows": [["id": "five_hour", "used": .number(used), "resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000)]],
+        ])
+    }
+
+    private func nearLines(_ conversation: Conversation) -> [(String, Double)] {
+        conversation.items.compactMap { if case .nearLimit(_, let window, let used, _, _) = $0 { (window, used) } else { nil } }
+    }
+
+    @Test func nearALimitTheThreadSaysSoOncePerWindow() {
+        let conversation = Conversation(chat: chat, context: container.mainContext)
+        let reset = Date.now.addingTimeInterval(4200)
+        conversation.receive(limits("allowed", "five_hour", used: 0.6, resetsAt: reset))
+        conversation.receive(limits("allowed_warning", "five_hour", used: 0.9, resetsAt: reset))
+        conversation.receive(limits("allowed_warning", "five_hour", used: 0.93, resetsAt: reset))
+        conversation.receive(limits("allowed_warning", "seven_day", used: 0.76, resetsAt: .now.addingTimeInterval(3 * 86_400)))
+        #expect(nearLines(conversation).map(\.0) == ["five_hour", "seven_day"])
+        #expect(nearLines(conversation).first?.1 == 0.9)
+        // Stored, so a relaunch shows it and doesn't say it again.
+        let again = Conversation(chat: chat, context: container.mainContext)
+        again.receive(limits("allowed_warning", "five_hour", used: 0.95, resetsAt: reset))
+        #expect(nearLines(again).map(\.0) == ["five_hour", "seven_day"])
+    }
+
+    @Test func aWindowThatHasResetCanBeNearItsLimitAgain() {
+        let conversation = Conversation(chat: chat, context: container.mainContext)
+        conversation.receive(limits("allowed_warning", "five_hour", used: 0.9, resetsAt: .now.addingTimeInterval(-60)))
+        conversation.receive(limits("allowed_warning", "five_hour", used: 0.8, resetsAt: .now.addingTimeInterval(5 * 3600)))
+        #expect(nearLines(conversation).count == 2)
+    }
+
+    @Test func theGlassReadsWhatTheCLIReportsAsItGoes() {
+        let model = AppModel(container: container)
+        #expect(model.usage == nil)
+        model.route(limits("allowed", "seven_day", used: 0.42, resetsAt: .now.addingTimeInterval(3600)))
+        // A fraction, as the probe's readings are once the engine has divided them.
+        #expect(model.usage?.headline?.id == "five_hour")
+        #expect(model.usage?.headline?.used == 0.42)
+        #expect(model.usage?.headline?.label == "Session")
+        #expect(model.usage?.windows.map(\.id) == ["five_hour", "seven_day"])
+        #expect(Band.of(model.usage?.headline?.used ?? 0) == .ample)
+        model.route(limits("allowed_warning", "five_hour", used: 0.72, resetsAt: .now.addingTimeInterval(3600)))
+        #expect(model.usage?.headline?.used == 0.72)
+        #expect(Band.of(model.usage?.headline?.used ?? 0) == .critical)
     }
 }
 

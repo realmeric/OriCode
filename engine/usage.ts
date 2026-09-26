@@ -22,8 +22,8 @@ let inFlight: Promise<Usage> | undefined;
 
 /// Plan usage the way `/usage` reports it, asked of the user's own CLI so the engine never
 /// holds a token. Each ask spawns the CLI for about a second, so an answer is kept a minute.
-export function usage(claude: string, maxAgeMs = 60_000): Promise<Usage> {
-  if (cached && Date.now() - cached.at < maxAgeMs) return Promise.resolve(cached.usage);
+export function usage(claude: string): Promise<Usage> {
+  if (cached && Date.now() - cached.at < 60_000) return Promise.resolve(cached.usage);
   inFlight ??= (async () => {
     const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment() } });
     try {

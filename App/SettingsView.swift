@@ -102,7 +102,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     private var words: [String] {
         switch self {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
-        case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript"]
+        case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.name) }
@@ -416,6 +416,7 @@ private struct GeneralPane: View {
 private struct ConversationPane: View {
     @AppStorage(TranscriptSettings.showTime) private var showTime = false
     @AppStorage(TranscriptSettings.showCost) private var showCost = false
+    @AppStorage(Limit.goOnKey) private var goOn = true
 
     var body: some View {
         PaneTitle(text: "Conversation")
@@ -426,6 +427,15 @@ private struct ConversationPane: View {
             }
             SettingsRow(title: "What it cost", detail: "What the turn would cost on the metered API, not a bill.") {
                 Toggle("What it cost", isOn: $showCost).labelsHidden().toggleStyle(.switch)
+            }
+        }
+        SectionHeading("At a usage limit")
+        SettingsCard {
+            SettingsRow(
+                title: "Go on when a limit resets",
+                detail: "A thread stopped at Claude's session limit carries on by itself once the limit resets. For a weekly limit, turn it on in the limit's card."
+            ) {
+                Toggle("Go on when a limit resets", isOn: $goOn).labelsHidden().toggleStyle(.switch)
             }
         }
     }

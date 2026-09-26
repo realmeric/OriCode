@@ -1,12 +1,17 @@
 import SwiftData
 import SwiftUI
 
-/// Threads Claude's session limit stopped go on by themselves once it resets: one wait, for the
-/// soonest reset, and when it's over every thread that's due is sent the line as a message of its
-/// own. The wait counts time the Mac spends asleep, and a reset that came while OriCode was closed
-/// is picked up as soon as the engine is ready.
+/// Threads a limit stopped go on by themselves once it resets, when they wait for it: one wait,
+/// for the soonest reset, and when it's over every thread that's due is sent the line as a message
+/// of its own. The wait counts time the Mac spends asleep, and a reset that came while OriCode was
+/// closed is picked up as soon as the engine is ready.
 extension AppModel {
-    static let limitLine = "The session limit has reset. Please continue from where you left off."
+    static let limitLineEnd = " has reset. Please continue from where you left off."
+
+    /// What a thread is sent when the limit that stopped it resets.
+    static func limitLine(_ window: String?) -> String {
+        "The \(Limit.name(of: window))" + limitLineEnd
+    }
 
     func scheduleResumes() {
         resumeTask?.cancel()
@@ -34,16 +39,22 @@ extension AppModel {
                 conversation.cancelResume()
                 continue
             }
-            Engine.logger.notice("thread \(chat.id.uuidString, privacy: .public) goes on after the session limit")
-            conversation.userSent(Self.limitLine)
-            startTurn(in: chat, text: Self.limitLine)
+            Engine.logger.notice("thread \(chat.id.uuidString, privacy: .public) goes on after its limit")
+            let line = Self.limitLine(conversation.lastLimitWindow)
+            conversation.userSent(line)
+            startTurn(in: chat, text: line)
         }
         scheduleResumes()
     }
 
-    func cancelResume() {
+    /// The limit card's toggle: the open thread waits for its limit to reset, a weekly one too,
+    /// or no longer does.
+    func goOn(_ on: Bool, at resetsAt: Date) {
         guard let chat else { return }
-        withAnimation(Motion.fade) { conversation(for: chat).cancelResume() }
+        let conversation = conversation(for: chat)
+        withAnimation(Motion.fade) {
+            if on { conversation.resume(at: resetsAt) } else { conversation.cancelResume() }
+        }
         scheduleResumes()
     }
 }

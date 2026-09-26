@@ -13,25 +13,12 @@ struct UsageGlass: View {
     @State private var overCard = false
     @State private var pending: Task<Void, Never>?
 
-    private let side: CGFloat = 18
-    private let rim: CGFloat = 2
-
     var body: some View {
         let used = model.usage?.headline?.used
         // Empty until the first reading, which it rises to.
         let level = min(max(used ?? 0, 0), 1)
-        let inner = side - rim * 2
-        ZStack {
-            Circle().fill(Surface.selected)
-            Rectangle()
-                .fill(Band.of(level).color)
-                // A sliver at least, so a live 1% is visible.
-                .frame(height: level > 0 ? max(1.5, inner * level) : 0)
-                .frame(width: inner, height: inner, alignment: .bottom)
-                .clipShape(.circle)
-        }
-        .frame(width: side, height: side)
-        .animation(Motion.reading, value: level)
+        GlassLevel(level: level)
+            .animation(Motion.reading, value: level)
         .opacity(model.usageStale ? 0.45 : 1)
         .padding(6)
         // Lit while its card is out, as the model button is while its picker is.
@@ -64,6 +51,27 @@ struct UsageGlass: View {
             guard !Task.isCancelled, (overGlass || overCard) == wanted else { return }
             shown = wanted
         }
+    }
+}
+
+/// The glass itself, a disc of the send button's tint inside a rim of it, filled from the bottom
+/// in the band's colour: 18pt in the composer, larger on a limit's card.
+struct GlassLevel: View {
+    let level: Double
+    var side: CGFloat = 18
+
+    var body: some View {
+        let inner = side - side / 9 * 2
+        ZStack {
+            Circle().fill(Surface.selected)
+            Rectangle()
+                .fill(Band.of(level).color)
+                // A sliver at least, so a live 1% is visible.
+                .frame(height: level > 0 ? max(1.5, inner * level) : 0)
+                .frame(width: inner, height: inner, alignment: .bottom)
+                .clipShape(.circle)
+        }
+        .frame(width: side, height: side)
     }
 }
 

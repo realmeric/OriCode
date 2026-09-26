@@ -12,7 +12,7 @@ struct PlanUsage: Sendable {
 
     let available: Bool
     let plan: String?
-    let windows: [Window]
+    private(set) var windows: [Window]
 
     /// What the ring means: the session window, as kullanym-notch shows it.
     var headline: Window? {
@@ -28,6 +28,19 @@ struct PlanUsage: Sendable {
                 label: window["label"]?.string ?? "",
                 used: window["used"]?.double,
                 resetsAt: window["resetsAt"]?.string.flatMap(Self.date))
+        }
+    }
+
+    /// A window as a thread's CLI just reported it, over the probe's older reading. Windows the
+    /// probe doesn't name are left out, as it leaves them out.
+    mutating func take(_ id: String, used: Double, resetsAt: Date?) {
+        let names = ["five_hour": "Session", "seven_day": "Week", "seven_day_opus": "Opus week", "seven_day_sonnet": "Sonnet week"]
+        guard let label = windows.first(where: { $0.id == id })?.label ?? names[id] else { return }
+        let window = Window(id: id, label: label, used: used, resetsAt: resetsAt)
+        if let index = windows.firstIndex(where: { $0.id == id }) {
+            windows[index] = window
+        } else {
+            windows.append(window)
         }
     }
 
@@ -86,15 +99,15 @@ enum ResetCopy {
 }
 
 extension AppModel {
-    /// Asks the engine, which keeps an answer a minute; `fresh` after a turn, when it moved.
-    func refreshUsage(fresh: Bool = false) {
+    /// Asks the engine for the whole picture, which it keeps a minute.
+    func refreshUsage() {
         guard engineState == .ready, !usageLoading else { return }
-        if !fresh, let usageAt, Date.now.timeIntervalSince(usageAt) < 60 { return }
+        if let usageAt, Date.now.timeIntervalSince(usageAt) < 60 { return }
         usageLoading = true
         Task {
             defer { usageLoading = false }
             do {
-                let reply = try await engine.request("usage", ["fresh": .bool(fresh)])
+                let reply = try await engine.request("usage", [:])
                 usage = PlanUsage(json: reply)
                 usageAt = .now
                 usageStale = false
@@ -102,5 +115,24 @@ extension AppModel {
                 usageStale = usage != nil
             }
         }
+    }
+
+    /// A thread's CLI reporting the plan's limits as its turn goes, which keeps the glass current
+    /// without spawning a probe. Its readings are fractions already, as the probe's are once the
+    /// engine has divided them.
+    func takeLimits(_ body: JSON) {
+        var readings = (body["windows"]?.array ?? []).compactMap { window -> (String, Double, Date?)? in
+            guard let id = window["id"]?.string, let used = window["used"]?.double else { return nil }
+            return (id, used, window["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) })
+        }
+        // The limit the CLI names, when it didn't send each window's reading.
+        if let id = body["rateLimitType"]?.string, let used = body["utilization"]?.double, !readings.contains(where: { $0.0 == id }) {
+            readings.append((id, used, body["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }))
+        }
+        guard !readings.isEmpty else { return }
+        var taken = usage ?? PlanUsage(json: ["available": true])
+        for (id, used, resetsAt) in readings { taken.take(id, used: used, resetsAt: resetsAt) }
+        usage = taken
+        usageStale = false
     }
 }

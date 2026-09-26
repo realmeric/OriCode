@@ -318,8 +318,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { ok: true };
   },
 
-  async usage({ fresh }: { fresh?: boolean }) {
-    return usage(await requireClaude(), fresh ? 15_000 : 60_000);
+  async usage() {
+    return usage(await requireClaude());
   },
 
   async commands({ threadId, cwd }: { threadId?: string; cwd: string }) {

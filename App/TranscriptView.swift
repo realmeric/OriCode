@@ -38,8 +38,9 @@ struct TranscriptView: View {
                 }
                 // Not while a block is open: Return typed there mustn't answer the card.
                 let listening = model.openShell != nil ? nil : conversation.waitingAsk?.requestId
+                let lastLimit = conversation.lastLimit
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    view(of: entry, listening: listening)
+                    view(of: entry, listening: listening, lastLimit: lastLimit)
                         .background {
                             if lit == entry.id {
                                 Surface.selected
@@ -118,13 +119,14 @@ struct TranscriptView: View {
     }
 
     @ViewBuilder
-    private func view(of entry: TranscriptEntry, listening: String?) -> some View {
+    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?) -> some View {
         switch entry {
         case .item(let item):
             ItemView(
                 item: item, cwd: cwd, listening: listening,
                 live: conversation.running && item.id == conversation.items.last?.id,
-                resumes: conversation.resumeAt != nil && item.id == conversation.lastLimit,
+                limitCard: item.id == lastLimit,
+                resumes: conversation.resumeAt != nil && item.id == lastLimit,
                 waiting: conversation.waiting.contains { $0.id == item.id })
         case .run(let items):
             ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id)
@@ -216,7 +218,9 @@ struct ItemView: View {
     let cwd: String
     let listening: String?
     let live: Bool
-    /// A limit's line is the one the thread waits out.
+    /// The thread's latest limit, which gets the card.
+    var limitCard = false
+    /// That limit is the one the thread waits out.
     var resumes = false
     /// A message sent into the turn that Claude hasn't taken up yet.
     var waiting = false
@@ -286,7 +290,13 @@ struct ItemView: View {
                 .foregroundStyle(Ink.secondary)
                 .textSelection(.enabled)
         case .limited(_, let resetsAt, let window):
-            LimitLine(resetsAt: resetsAt, window: window, pending: resumes)
+            if limitCard {
+                LimitCard(resetsAt: resetsAt, window: window, resumes: resumes)
+            } else {
+                LimitLine(resetsAt: resetsAt, window: window)
+            }
+        case .nearLimit(_, let window, let used, let resetsAt, let said):
+            NearLimitLine(window: window, used: used, resetsAt: resetsAt, said: said)
         case .shell(let id, let run):
             ShellBlockView(id: id, run: run)
         }
