@@ -14,6 +14,7 @@ struct ActionsPane: View {
             SettingsCard {
                 SettingsRow(title: "The file didn't read", detail: problem) {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.file]) }
+                        .buttonStyle(.action)
                 }
             }
         }
@@ -39,6 +40,7 @@ struct ActionsPane: View {
             }
             HStack {
                 Button("Add Action…") { editing = CustomAction(name: "", command: "") }
+                    .buttonStyle(.action)
                 Spacer()
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([store.file]) }
                     .buttonStyle(.plain)

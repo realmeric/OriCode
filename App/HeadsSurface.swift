@@ -268,12 +268,7 @@ private struct HeadLine<Icon: View, Title: View, Detail: View, Trailing: View>: 
                 trailing.opacity(under && stop != nil ? 0 : 1)
                 if under, let stop {
                     Button("Stop", action: stop)
-                        .buttonStyle(.plain)
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.primary)
-                        .padding(.horizontal, 10)
-                        .frame(height: 24)
-                        .background(Surface.selected, in: .capsule)
+                        .buttonStyle(.action(small: true))
                         .transition(.opacity)
                 }
             }

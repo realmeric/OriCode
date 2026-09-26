@@ -61,9 +61,9 @@ private struct PermissionForm: View {
             HStack(spacing: 8) {
                 Spacer()
                 Button("Deny") { model.answer(ask, allow: false) }
-                    .buttonStyle(AskButtonStyle())
+                    .buttonStyle(.action)
                 Button("Allow") { model.answer(ask, allow: true) }
-                    .buttonStyle(AskButtonStyle(prominent: listens))
+                    .buttonStyle(.action(prominent: listens))
                     .keyboardShortcut(listens ? .defaultAction : nil)
             }
         }
@@ -208,10 +208,10 @@ private struct QuestionForm: View {
             HStack(spacing: 8) {
                 Spacer()
                 Button("Skip") { model.answer(ask, allow: false, message: AskCard.skipMessage) }
-                    .buttonStyle(AskButtonStyle())
+                    .buttonStyle(.action)
                 if questions.count > 1 || questions.contains(where: { $0["multiSelect"]?.bool == true }) {
                     Button("Answer", action: submit)
-                        .buttonStyle(AskButtonStyle(prominent: listens))
+                        .buttonStyle(.action(prominent: listens))
                         .keyboardShortcut(listens ? .defaultAction : nil)
                         .disabled(!complete)
                 }
@@ -299,36 +299,5 @@ private struct OtherField: View {
             .onHover { hovering = $0 }
             .animation(Motion.fade, value: lit)
             .padding(.top, 4)
-    }
-}
-
-/// The card's buttons in the glass's own tints, lit under the pointer so it's plain what can be
-/// pressed: white at 10%, 16% under the pointer; the one Return presses is white, like Send.
-private struct AskButtonStyle: ButtonStyle {
-    var prominent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        AskButton(configuration: configuration, prominent: prominent)
-    }
-
-    private struct AskButton: View {
-        let configuration: ButtonStyleConfiguration
-        let prominent: Bool
-        @Environment(\.isEnabled) private var enabled
-        @State private var hovering = false
-
-        var body: some View {
-            let lit = enabled && (hovering || configuration.isPressed)
-            configuration.label
-                .font(Type.body)
-                .foregroundStyle(prominent ? Color.black.opacity(0.85) : Ink.primary)
-                .padding(.horizontal, 14)
-                .frame(height: 30)
-                .background(prominent ? Color.white.opacity(lit ? 1 : 0.8) : Color.white.opacity(lit ? 0.16 : 0.10), in: .capsule)
-                .opacity(enabled ? 1 : 0.4)
-                .contentShape(.capsule)
-                .onHover { hovering = $0 }
-                .animation(Motion.fade, value: lit)
-        }
     }
 }

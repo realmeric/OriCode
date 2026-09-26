@@ -116,14 +116,10 @@ private struct ReviewHeader: View {
             }
             if book.toReview > 0 {
                 Button("Mark All Reviewed") { model.setReviewed(book.units.filter { !$0.reviewed }, true) }
-                    .buttonStyle(.plain)
-                    .font(Type.secondary)
-                    .foregroundStyle(Ink.secondary)
+                    .buttonStyle(.action(small: true))
             }
             Button("Close") { model.closeReview() }
-                .buttonStyle(.plain)
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
+                .buttonStyle(.action(small: true))
                 .help("Close the review (⌘⇧D)")
         }
         .padding(.horizontal, 16)
@@ -720,6 +716,7 @@ private struct NoteEditor: View {
                 .focused($focused)
                 .onSubmit { model.addNote(on: unit, text: text) }
             Button("Add") { model.addNote(on: unit, text: text) }
+                .buttonStyle(.action(prominent: true, small: true))
                 .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal, 12)
@@ -762,6 +759,7 @@ private struct ReviewFooter: View {
                         .help(running ? "The thread is still working; send when it's done." : "Send the notes as your next message")
                 }
                 .font(Type.secondary)
+                .buttonStyle(.action(small: true))
             }
             if let step = review.lastTakeback {
                 HStack(spacing: 10) {
@@ -793,22 +791,34 @@ private struct ReviewFooter: View {
                     Button(review.writing ? "Writing…" : "Write Message") { model.writeReviewMessage(reviewedOnly: reviewedOnly) }
                         .disabled(review.writing)
                         .help("Haiku writes a message from the diff")
-                    Menu(reviewedOnly ? "Commit Reviewed" : "Commit") {
+                        .buttonStyle(.action)
+                    Button(reviewedOnly ? "Commit Reviewed" : "Commit") { commit(reviewedOnly) }
+                        .buttonStyle(.action(prominent: true))
+                        .disabled(!canCommit)
+                        .help(reviewedOnly ? "Commit only the hunks you marked reviewed (⌘Return)" : "Commit every change here (⌘Return)")
+                    // The other way to commit, beside the one ⌘Return takes: a menu of the same
+                    // kind, since a menu drawn as the white button hides its arrow.
+                    Menu {
                         if reviewedOnly {
                             Button("Commit All Changes") { commit(false) }
                         } else {
                             Button("Commit Reviewed Only") { commit(true) }
                                 .disabled(!book.units.contains(where: \.reviewed))
                         }
-                    } primaryAction: {
-                        commit(reviewedOnly)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
                     }
                     .menuStyle(.button)
+                    .menuIndicator(.hidden)
+                    .buttonStyle(.action)
                     .fixedSize()
                     .disabled(!canCommit)
-                    .help(reviewedOnly ? "Commit only the hunks you marked reviewed (⌘Return)" : "Commit every change here (⌘Return)")
+                    .help(reviewedOnly ? "Commit all changes instead" : "Commit only the hunks you marked reviewed")
+                    .accessibilityLabel("Other ways to commit")
                     Button("Push") { model.pushReview() }
                         .disabled(review.busy != nil || (model.currentBranch.map { $0.upstream && $0.ahead == 0 } ?? true))
+                        .buttonStyle(.action)
                 }
             }
             if let busy = review.busy {
@@ -824,7 +834,6 @@ private struct ReviewFooter: View {
                     .lineLimit(2)
             }
         }
-        .tint(Color(white: 0.5))
         .padding(12)
     }
 

@@ -65,7 +65,6 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .tint(Color(white: 0.62))
     }
 }
 
@@ -201,7 +200,7 @@ private struct SliderRow: View {
                 Spacer()
                 if abs(value - standard) > 0.005 {
                     Button("Default") { withAnimation(Motion.move) { value = standard } }
-                        .controlSize(.small)
+                        .buttonStyle(.action(small: true))
                         .transition(.opacity)
                 }
                 Text("\(Int((value * 100).rounded()))%")
@@ -359,6 +358,7 @@ private struct GeneralPane: View {
                     }
                     Button("Choose…", action: choose)
                 }
+                .buttonStyle(.action)
             }
         }
     }

@@ -209,9 +209,7 @@ struct FileViewer: View {
                 }
                 Spacer()
                 Button("Close") { model.closeFile() }
-                    .buttonStyle(.plain)
-                    .font(Type.secondary)
-                    .foregroundStyle(Ink.secondary)
+                    .buttonStyle(.action(small: true))
             }
             .padding(.horizontal, 16)
             .frame(height: 40)

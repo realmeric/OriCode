@@ -25,7 +25,7 @@ struct BlockPanel: View {
                 Button("Close") { model.closeBlock() }
                     .help("Back into the thread (⌘J)")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.action(small: true))
             .font(Type.mono)
             .foregroundStyle(Ink.secondary)
             .padding(.horizontal, 16)

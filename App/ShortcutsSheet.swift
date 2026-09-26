@@ -84,7 +84,6 @@ struct ShortcutsSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
-                    .tint(Color(white: 0.5))
             }
             Button("") { dismiss() }
                 .keyboardShortcut(.cancelAction)
