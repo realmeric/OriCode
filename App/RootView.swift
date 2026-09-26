@@ -162,15 +162,28 @@ struct RootView: View {
                 // the composer however tall it has grown, rising out of the thread where its block
                 // is; under the other panels, which can open over it.
                 GeometryReader { area in
-                    BlockPanel(block: block)
-                        .id(block.id)
-                        .frame(maxWidth: 900)
-                        .frame(height: max(60, model.composerTop - area.frame(in: .global).minY - 24))
-                        .padding(.top, 12)
-                        .frame(maxWidth: .infinity)
+                    let height = max(60, model.composerTop - area.frame(in: .global).minY - 24)
+                    ZStack(alignment: .top) {
+                        // Around the panel the transcript is blank scroll view, whose clicks never
+                        // reach the conversation's tap that puts a block back, so this takes them.
+                        // A button, since a tap gesture on clear space didn't take the clicks the
+                        // panel's buttons did.
+                        Button { model.closeBlock() } label: {
+                            Color.clear.contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHidden(true)
+                        .frame(height: height + 12)
+                        BlockPanel(block: block)
+                            .id(block.id)
+                            .frame(maxWidth: 900)
+                            .frame(height: height)
+                            .padding(.top, 12)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 40)
+                            .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
+                    }
                 }
-                .padding(.horizontal, 40)
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                 .transition(.scale(scale: 0.96, anchor: .bottom).combined(with: .opacity))
             }
         }

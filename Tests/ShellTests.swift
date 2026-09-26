@@ -165,6 +165,33 @@ struct ShellTests {
         block.stop()
     }
 
+    /// Stopped while it's open over the thread, a block goes back into it, and its panel and
+    /// terminal leave the window: closed in the turn it ended, they stayed drawn with nothing open.
+    @Test func aBlockEndingWhileOpenLetsGoOfTheWindow() async throws {
+        let (model, chat, container) = try thread()
+        chat.started = true
+        let window = NSWindow(contentViewController: NSHostingController(rootView:
+            RootView().environment(model).environment(Updates()).modelContainer(container).frame(width: 1000, height: 700)))
+        window.alphaValue = 0
+        window.orderFrontRegardless()
+        defer { window.close() }
+        func terminals(in view: NSView) -> Int {
+            (view is BlockTerminalView ? 1 : 0) + view.subviews.map { terminals(in: $0) }.reduce(0, +)
+        }
+        let block = try #require(model.runCommand("sleep 5"))
+        try await Task.sleep(for: .milliseconds(300))
+        model.open(block)
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(terminals(in: try #require(window.contentView)) == 1)
+        let focus = model.composerFocus
+        block.stop()
+        for _ in 0..<60 where block.running { try await Task.sleep(for: .milliseconds(50)) }
+        try await Task.sleep(for: .milliseconds(800))
+        #expect(model.openShell == nil)
+        #expect(model.composerFocus == focus + 1)
+        #expect(terminals(in: try #require(window.contentView)) == 0)
+    }
+
     @Test func blocksGoToClaudeOnceWithTheNextMessage() async throws {
         let (model, chat, container) = try thread()
         let block = try #require(model.runCommand("echo hello from the shell"))

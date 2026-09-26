@@ -25,7 +25,7 @@ extension AppModel {
         // puts the block back.
         block.onFullScreen = { [weak self] block in
             guard let self else { return }
-            if block.fullScreen { open(block) } else { close(block) }
+            if block.fullScreen { open(block) } else { putBack(block) }
         }
         shellBlocks[block.id] = block
         var run = ShellRun(command: command, folder: chat.cwd)
@@ -39,7 +39,19 @@ extension AppModel {
     private func shellEnded(_ block: ShellBlock) {
         holdForShells()
         store(block)
-        close(block)
+        putBack(block)
+    }
+
+    /// A block putting itself back, its program letting go of the screen or its command ending,
+    /// closes a turn of the main queue later. Closed in the same turn as the block's own changes
+    /// and the transcript scrolling to them, RootView never drew again for it: the panel stayed
+    /// with nothing open, so Close, ⌘J and Esc had nothing to put away.
+    private func putBack(_ block: ShellBlock) {
+        DispatchQueue.main.async { [weak self] in
+            // A program that took the screen again meanwhile keeps its block open.
+            guard let self, !(block.running && block.fullScreen) else { return }
+            close(block)
+        }
     }
 
     /// Once all a command printed has arrived after its end, its block is stored with it and
