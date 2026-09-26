@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftData
+import SwiftUI
 
 struct Hunk: Hashable {
     let oldStart: Int
@@ -111,16 +112,6 @@ struct WaitingMessage: Identifiable, Hashable {
     let written = Date.now
 }
 
-/// A message that won't go out after all, until the composer shows its thread and takes it back
-/// into the field.
-struct HandedBack: Hashable {
-    let id: UUID
-    let text: String
-    let images: [ImageAttachment]
-    /// When it was written, which puts it among the others handed back.
-    let written: Date
-}
-
 enum Item: Identifiable, Hashable {
     /// `midTurn` is a message Claude took up in the middle of a turn, which doesn't start one.
     case user(id: UUID, text: String, images: [Data] = [], midTurn: Bool = false)
@@ -173,10 +164,16 @@ final class Conversation {
     private(set) var askedBeforeQuit: Set<String> = []
     /// Messages sent into the running turn that Claude hasn't taken up yet, oldest first.
     private(set) var waiting: [WaitingMessage] = []
-    /// Messages that won't go out after all, oldest first.
-    private(set) var handedBack: [HandedBack] = []
+    /// Messages written while the turn ran, in the order they'll go. Kept in memory like the
+    /// composer's draft, so a quit loses them. Every change to it is animated here, a turn's end
+    /// included, so the composer's glass and its place in the window move with the lines.
+    private(set) var queue: [QueuedMessage] = []
+    /// Messages that won't go out after all, queued or sent into the turn, oldest first.
+    private(set) var handedBack: [QueuedMessage] = []
     /// The turn ended with messages still waiting, and the next one, theirs, starts at once.
     private var nextFollows = false
+    /// Whether an error came in since the turn started, which makes it one that failed.
+    private var failed = false
     private let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -262,12 +259,13 @@ final class Conversation {
 
     /// Whether it has anything the composer mustn't lose by letting the conversation go.
     var holdsMessages: Bool {
-        !waiting.isEmpty || !handedBack.isEmpty
+        !waiting.isEmpty || !queue.isEmpty || !handedBack.isEmpty
     }
 
     func userSent(_ text: String, previews: [Data] = [], id: UUID = UUID()) {
         turn += 1
         running = true
+        failed = false
         chat.started = true
         chat.quitMidTurn = false
         chat.resumeAt = nil
@@ -311,8 +309,7 @@ final class Conversation {
     func handBack(_ id: UUID) {
         guard let index = waiting.firstIndex(where: { $0.id == id }) else { return }
         let message = waiting.remove(at: index)
-        let back = HandedBack(id: message.id, text: message.typed, images: message.images, written: message.written)
-        handedBack.insert(back, at: handedBack.firstIndex { $0.written > back.written } ?? handedBack.endIndex)
+        handBack([QueuedMessage(id: message.id, text: message.typed, images: message.images, written: message.written)])
         // Nothing is left for the turn that was to follow.
         if nextFollows, waiting.isEmpty {
             nextFollows = false
@@ -324,21 +321,63 @@ final class Conversation {
         for message in waiting { handBack(message.id) }
     }
 
+    /// Everything still queued, and any messages given, goes back to the field instead of out:
+    /// nothing is lost, and nothing goes out after Stop.
+    func handBackQueue(with messages: [QueuedMessage] = []) {
+        guard !messages.isEmpty || !queue.isEmpty else { return }
+        handBack(messages + queue)
+        withAnimation(Motion.fade) { queue = [] }
+    }
+
+    private func handBack(_ messages: [QueuedMessage]) {
+        for message in messages {
+            handedBack.insert(message, at: handedBack.firstIndex { $0.written > message.written } ?? handedBack.endIndex)
+        }
+    }
+
     /// What the composer takes back: nothing while a message sent into the turn still waits, so
-    /// the ones a Stop cancels one at a time come back together, in the order they were written.
-    var returning: [HandedBack] {
+    /// the ones a Stop cancels one at a time come back with the queue, in the order they were
+    /// written.
+    var returning: [QueuedMessage] {
         waiting.isEmpty ? handedBack : []
     }
 
     /// The composer showing this thread takes what was handed back.
-    func takeHandedBack() -> [HandedBack] {
+    func takeHandedBack() -> [QueuedMessage] {
         let back = returning
         if !back.isEmpty { handedBack = [] }
         return back
     }
 
+    func enqueue(_ text: String, images: [ImageAttachment] = []) {
+        withAnimation(Motion.fade) { queue.append(QueuedMessage(text: text, images: images)) }
+    }
+
+    func removeQueued(_ id: QueuedMessage.ID) {
+        withAnimation(Motion.fade) { queue.removeAll { $0.id == id } }
+    }
+
+    /// A queued message leaving the queue for the field, to be edited.
+    func takeBack(_ id: QueuedMessage.ID) -> QueuedMessage? {
+        guard let index = queue.firstIndex(where: { $0.id == id }) else { return nil }
+        return withAnimation(Motion.fade) { queue.remove(at: index) }
+    }
+
+    /// After a turn that ended by itself, the first queued message goes out through `send` and
+    /// the rest wait for its turn to end; so do all of them while a message sent into the turn
+    /// still waits to run. A background agent, command or workflow still out doesn't hold them:
+    /// the CLI takes its report in when it comes, and a server left running would hold them for
+    /// good. One `send` refuses, in a thread handed to the terminal for instance, goes back to the
+    /// field with the rest, since no turn would run to send them.
+    func sendNext(through send: (QueuedMessage) -> Bool) {
+        guard !running, waiting.isEmpty, !queue.isEmpty else { return }
+        let next = withAnimation(Motion.fade) { queue.removeFirst() }
+        if !send(next) { handBackQueue(with: [next]) }
+    }
+
     func sendFailed(_ message: String) {
         running = false
+        handBackQueue()
         record("note", ["event": "note", "text": .string(message)])
     }
 
@@ -364,6 +403,8 @@ final class Conversation {
             retrying = "Can't reach Claude. Trying again, \(attempt) of \(max)…"
         case "turn.started":
             running = true
+            // A turn nobody sent, a background agent reporting back, doesn't carry the last one's error.
+            failed = false
             if let sessionId = event.body["sessionId"]?.string, chat.sessionId != sessionId {
                 chat.sessionId = sessionId
                 unsaved = true
@@ -380,6 +421,9 @@ final class Conversation {
                 record(event.name, ["event": .string(event.name), "delta": .string(delta)], keepOpen: true)
             }
         case "limited":
+            // Refused by a limit, the turn didn't end by itself, and the queue's next would only be
+            // refused too: it goes back to the field.
+            failed = true
             record(event.name, event.body)
             if let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }),
                Limit.resumes(window: event.body["window"]?.string, resetsAt: resetsAt) {
@@ -394,6 +438,7 @@ final class Conversation {
             chat.contextUsed = event.body["after"]?.int ?? 0
             record(event.name, event.body)
         case "tool.use", "tool.result", "ask", "ask.cancelled", "error":
+            if event.name == "error" { failed = true }
             record(event.name, event.body)
         case "workflow":
             workflowChanged(event.body)
@@ -414,6 +459,7 @@ final class Conversation {
                 chat.contextWindow = event.body["context"]?["window"]?.int ?? chat.contextWindow
             }
             record(event.name, event.body)
+            if !QueuedMessage.endedByItself(event.body["stopReason"]?.string, failed: failed) { handBackQueue() }
             flush()
         default:
             break
@@ -499,6 +545,7 @@ final class Conversation {
         settleAfterQuit(except: nil)
         record("turn.done", ["event": "turn.done", "stopReason": "interrupted"])
         running = false
+        handBackQueue()
     }
 
     private func settleAfterQuit(except answered: String?) {
@@ -521,6 +568,7 @@ final class Conversation {
 
     func stopped() {
         tasks = 0
+        handBackQueue()
         guard running else { return }
         running = false
         nextFollows = false

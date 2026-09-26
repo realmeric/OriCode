@@ -20,19 +20,41 @@ extension AppModel {
     /// neither, so the composer keeps the text.
     @discardableResult
     func send(_ text: String) -> Bool {
-        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let images = draftAttachments
         guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return false }
         let conversation = conversation(for: chat)
         // Waiting on you from before a quit, the thread has no CLI to send into.
         guard !conversation.waitingAfterQuit else { return false }
-        let typed = trimmed
-        if trimmed.isEmpty { trimmed = "What's in \(images.count == 1 ? "this image" : "these images")?" }
         if conversation.running || !conversation.waiting.isEmpty {
-            draftAttachments = []
-            sendIntoTurn(conversation.sentIntoTurn(trimmed, typed: typed, images: images), in: chat)
-            return true
+            sendIntoTurn(conversation.sentIntoTurn(Self.asked(trimmed, images), typed: trimmed, images: images), in: chat)
+        } else {
+            guard send(trimmed, images: images, in: chat) else { return false }
         }
+        draftAttachments = []
+        return true
+    }
+
+    /// ⌥Return: while the thread works, what's typed waits in its queue to go out once the turn
+    /// ends; false when there's nothing to queue or no turn to wait for.
+    @discardableResult
+    func queue(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let images = draftAttachments
+        guard !trimmed.isEmpty || !images.isEmpty, let conversation = currentConversation,
+              conversation.running || !conversation.waiting.isEmpty
+        else { return false }
+        conversation.enqueue(trimmed, images: images)
+        draftAttachments = []
+        return true
+    }
+
+    /// Starts a turn in any thread, on screen or not.
+    func send(_ text: String, images: [ImageAttachment], in chat: Chat) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || !images.isEmpty else { return false }
+        let conversation = conversation(for: chat)
+        guard !conversation.running else { return false }
         // Continue in Claude Code gave the session to a block's claude; a turn from here too would
         // make two writers and fork it.
         if let block = handedOff[chat.id] {
@@ -42,10 +64,15 @@ extension AppModel {
             }
             handedOff[chat.id] = nil
         }
-        draftAttachments = []
-        conversation.userSent(trimmed, previews: images.compactMap(\.preview))
-        startTurn(in: chat, text: trimmed, images: images)
+        let text = Self.asked(trimmed, images)
+        conversation.userSent(text, previews: images.compactMap(\.preview))
+        startTurn(in: chat, text: text, images: images)
         return true
+    }
+
+    /// What goes out: what was typed, or for images alone a question about them.
+    private static func asked(_ typed: String, _ images: [ImageAttachment]) -> String {
+        typed.isEmpty ? "What's in \(images.count == 1 ? "this image" : "these images")?" : typed
     }
 
     /// Hands a message the transcript already shows, or one it needn't, to the thread's session
@@ -64,6 +91,9 @@ extension AppModel {
             } catch {
                 conversation.sendFailed(error.localizedDescription)
                 holdWhileWorking()
+                // A queued message the engine turned down ends the thread's work, and the turn
+                // before it held back its Finished for it.
+                if isAway(chat) { notifier.post(title: chat.title, body: error.localizedDescription, chatID: chat.id) }
             }
         }
     }
@@ -137,9 +167,13 @@ extension AppModel {
         }
     }
 
+    /// Stop ends the turn and takes back everything still to go: the engine cancels what was sent
+    /// into the turn, and the queue goes back now, not when the turn ends, since a turn already
+    /// ending by itself as the interrupt goes out would still send its next.
     func stop() {
         guard let chat else { return }
         let conversation = conversation(for: chat)
+        conversation.handBackQueue()
         if conversation.waitingAfterQuit {
             withAnimation(Motion.move) { conversation.stopAfterQuit() }
             holdWhileWorking()
@@ -190,6 +224,11 @@ extension AppModel {
         } else {
             conversation(for: chat).receive(event)
         }
+        // On screen or not, a turn that ended by itself lets the thread's queue send its next, and
+        // so does the last message it left waiting going back.
+        if event.name == "turn.done" || event.name == "message.cancelled" {
+            conversation(for: chat).sendNext { send($0.text, images: $0.images, in: chat) }
+        }
         holdWhileWorking()
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
@@ -207,9 +246,7 @@ extension AppModel {
     /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.
     private func tellIfAway(_ event: EngineEvent, chat: Chat) {
         notifier.badge(conversations.values.count { $0.waitingAsk != nil })
-        guard event.name == "turn.done" || event.name == "ask" else { return }
-        let away = !NSApp.isActive || chat.id != selectedChatID
-        guard away else { return }
+        guard event.name == "turn.done" || event.name == "ask", isAway(chat) else { return }
         if event.name == "ask" {
             let tool = event.body["tool"]?.string ?? ""
             let summary = event.body["kind"]?.string == "question"
@@ -219,10 +256,15 @@ extension AppModel {
         } else if let resumeAt = chat.resumeAt {
             notifier.post(title: chat.title, body: "Stopped at Claude's session limit. It goes on at \(Limit.time(resumeAt)).", chatID: chat.id)
         } else if event.body["stopReason"]?.string != "interrupted",
-                  // A thread still working, on the messages its turn left waiting, isn't finished.
+                  // A thread still working, on the messages its turn left waiting or its queue's
+                  // next, isn't finished: Finished comes when the last one ends.
                   conversations[chat.id]?.running != true {
             notifier.post(title: chat.title, body: "Finished.", chatID: chat.id)
         }
+    }
+
+    private func isAway(_ chat: Chat) -> Bool {
+        !NSApp.isActive || chat.id != selectedChatID
     }
 
     /// Tells the engine whether any thread's turn is running, for App Nap.

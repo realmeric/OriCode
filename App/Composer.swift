@@ -29,6 +29,8 @@ struct Composer: View {
     @State private var attachHovered = false
     /// An image or file held over the composer, about to land in it.
     @State private var dropTarget = false
+    /// Whether the queue's lines are scrolled to the last, which leaves nothing below to fade into.
+    @State private var queueAtEnd = true
     @FocusState private var focused: Bool
 
     /// The tallest picker, its gap and the 52pt title bar: with less room than this above the
@@ -39,6 +41,9 @@ struct Composer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if !queue.isEmpty {
+                queuedLines
+            }
             if !model.draftAttachments.isEmpty {
                 thumbnails
             }
@@ -127,15 +132,69 @@ struct Composer: View {
                 focused = model.composerTakesKeyboard
             }
         }
-        // Messages sent into a turn that won't run come back here, in front of what's typed, when
-        // their thread is the one showing.
-        .onChange(of: model.currentConversation?.returning, initial: true) {
-            guard let back = model.currentConversation?.takeHandedBack(), !back.isEmpty else { return }
-            // Messages come back as messages, not as a command.
-            model.shellPrompt = false
-            text = (back.map(\.text) + [text]).filter { !$0.isEmpty }.joined(separator: "\n\n")
-            model.draftAttachments.insert(contentsOf: back.flatMap(\.images), at: 0)
+        // Messages that won't go out after all, sent into the turn or queued, come back here when
+        // their thread is the one showing: oldest first, ahead of what's typed. Not into a command
+        // being typed at the prompt; they wait for the prompt to turn back into the composer.
+        .onChange(of: model.shellPrompt ? nil : model.currentConversation?.returning, initial: true) {
+            guard !model.shellPrompt, let back = model.currentConversation?.takeHandedBack(), !back.isEmpty else { return }
+            withAnimation(Motion.fade) {
+                text = QueuedMessage.joined(back.map(\.text) + [text])
+                model.draftAttachments = back.flatMap(\.images) + model.draftAttachments
+            }
         }
+    }
+
+    /// The thread's queue, in the order it goes, inside the composer's glass as the thumbnails are.
+    private var queuedLines: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(queue) { message in
+                    // A message taken back to edit would land in the command being typed.
+                    QueuedLine(message: message, editable: !model.shellPrompt) {
+                        takeBack(message)
+                    } remove: {
+                        model.currentConversation?.removeQueued(message.id)
+                    }
+                    .transition(.opacity)
+                }
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 1
+        } action: { _, atEnd in
+            queueAtEnd = atEnd
+        }
+        // The half line under the third fades out, as the transcript does above the composer.
+        .mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, queueAtEnd ? .black : .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: QueuedLine.height / 2)
+            }
+        }
+        .frame(height: queueHeight)
+        .padding(.horizontal, 6)
+        .padding(.top, 2)
+    }
+
+    private var queue: [QueuedMessage] {
+        model.currentConversation?.queue ?? []
+    }
+
+    /// Up to three lines and half of a fourth, which says the rest scroll.
+    private var queueHeight: CGFloat {
+        min(CGFloat(queue.count), 3.5) * QueuedLine.height
+    }
+
+    /// A queued message back in the field to be edited, after what's typed, its images with it.
+    private func takeBack(_ message: QueuedMessage) {
+        withAnimation(Motion.fade) {
+            guard let taken = model.currentConversation?.takeBack(message.id) else { return }
+            text = QueuedMessage.joined([text, taken.text])
+            model.draftAttachments += taken.images
+        }
+        focused = true
     }
 
     private var thumbnails: some View {
@@ -249,6 +308,11 @@ struct Composer: View {
                     tab(backward: true)
                     return .handled
                 }
+                // The last message queued comes back to be edited before any sent before it.
+                if text.isEmpty, !model.shellPrompt, let last = queue.last {
+                    takeBack(last)
+                    return .handled
+                }
                 return recall(older: true) ? .handled : .ignored
             }
             // Tab never takes the keyboard out of the composer: it completes, or does nothing.
@@ -259,7 +323,9 @@ struct Composer: View {
             }
             .onKeyPress(.return, phases: .down) { press in
                 completions = []
-                if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
+                if press.modifiers.contains(.option), !model.shellPrompt, working {
+                    sendAfterTurn()
+                } else if press.modifiers.contains(.shift) || press.modifiers.contains(.option) {
                     text += "\n"
                 } else if model.shellPrompt {
                     runCommand()
@@ -322,12 +388,15 @@ struct Composer: View {
     }
 
     private var maxLines: Int {
-        max(1, Int((maxHeight - 28) / 18))
+        // The queue's lines, their gap and padding count against the same 40%.
+        let queued = queue.isEmpty ? 0 : queueHeight + 8
+        return max(1, Int((maxHeight - 28 - queued) / 18))
     }
 
     /// At the shell prompt the button runs the command, whether or not a turn is running. Otherwise,
     /// while a turn runs, it sends what's typed into it and stops the turn when nothing is; a thread
-    /// waiting on you from before a quit has no turn to send into, so it keeps Stop.
+    /// waiting on you from before a quit has no turn to send into, so it keeps Stop. ⌥Return queues
+    /// what's typed for after the turn instead, which the help says.
     private var sendButton: some View {
         let stops = running && !model.shellPrompt && (!canSend || model.currentConversation?.waitingAfterQuit == true)
         return Button {
@@ -352,7 +421,7 @@ struct Composer: View {
         }
         .buttonStyle(.plain)
         .disabled(!stops && !canSend)
-        .help(model.shellPrompt ? "Run (Return)" : stops ? "Stop (⌘.)" : "Send (Return)")
+        .help(model.shellPrompt ? "Run (Return)" : stops ? "Stop (⌘.)" : working ? "Send now (Return), or after this turn (⌥Return)" : "Send (Return)")
         .accessibilityLabel(model.shellPrompt ? "Run" : stops ? "Stop" : "Send")
     }
 
@@ -510,5 +579,73 @@ struct Composer: View {
         // A new field is inserted at its final place, so while the composer is still sliding
         // it would draw apart from it; it's rebuilt once the slide is over.
         rebuild(after: moving)
+    }
+
+    /// A turn running, or messages sent into one still to run.
+    private var working: Bool {
+        running || model.currentConversation?.waiting.isEmpty == false
+    }
+
+    /// ⌥Return while the thread works: what's typed fades into the queue's lines.
+    private func sendAfterTurn() {
+        guard canSend, model.queue(text) else { return }
+        text = ""
+        recalled = nil
+        rebuild(after: false)
+    }
+}
+
+/// One queued message: a click takes it back into the field, and the cross at its end drops it.
+private struct QueuedLine: View {
+    let message: QueuedMessage
+    let editable: Bool
+    let takeBack: () -> Void
+    let remove: () -> Void
+    @State private var hovered = false
+    @State private var removeHovered = false
+
+    static let height: CGFloat = 28
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button(action: takeBack) {
+                HStack(spacing: 8) {
+                    Image(systemName: message.images.isEmpty ? "arrow.turn.down.right" : "photo")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Ink.faint)
+                        .frame(width: 14)
+                    Text(message.line)
+                        .font(Type.secondary)
+                        .foregroundStyle(hovered ? Ink.primary : Ink.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 8)
+                .frame(height: Self.height)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(!editable)
+            .onHover { hovered = $0 && editable }
+            .help("Edit")
+            .accessibilityLabel("Edit queued message: \(message.line)")
+            Button(action: remove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(removeHovered ? Ink.primary : Ink.faint)
+                    .frame(width: 24, height: 24)
+                    .background(removeHovered ? Surface.hover : .clear, in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .onHover { removeHovered = $0 }
+            .help("Remove")
+            .accessibilityLabel("Remove queued message")
+        }
+        .padding(.trailing, 2)
+        .background(hovered ? Surface.hover : .clear, in: .rect(cornerRadius: 10, style: .continuous))
+        .animation(Motion.fade, value: hovered)
+        .animation(Motion.fade, value: removeHovered)
     }
 }
