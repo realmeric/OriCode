@@ -6,6 +6,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { AcpSession, answer, listModels, modes, type AcpAgent } from "../acp.ts";
 import { hunks, stopReason, toolKind, toolView } from "../acp-map.ts";
+import { answer as answerThroughRegistry, asks } from "../provider.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
 const events: Record<string, any>[] = [];
@@ -149,6 +150,22 @@ test("a turn: thinking, text, a read, an edit with its diff after an ask, a plan
   assert.deepEqual(log.find((message) => message.method === "session/set_config_option").params, { sessionId: "s-1", configId: "model", value: "large" });
   assert.deepEqual(log.find((message) => message.id === 100).result, { outcome: { outcome: "selected", optionId: "once" } });
   assert.equal(listModels(session).current, "large");
+});
+
+test("an answer through the app's registry picks the agent's own option by its id", async () => {
+  const { session, cwd, sent } = await standIn("choice");
+  sessions.push(session);
+  const from = events.length;
+  await session.send({ threadId: "choice", cwd, text: "work" });
+  const ask = await until(named("ask", "choice"), from);
+  assert.equal(ask.toolKind, "edit");
+  assert.ok(asks.has(ask.requestId));
+  answerThroughRegistry({ requestId: ask.requestId, allow: true, optionId: "always" });
+  assert.equal(asks.has(ask.requestId), false);
+  assert.equal(answer({ requestId: ask.requestId, allow: true }), false);
+  await until(named("turn.done", "choice"), from);
+  const log = await sent();
+  assert.deepEqual(log.find((message) => message.id === 100).result, { outcome: { outcome: "selected", optionId: "always" } });
 });
 
 test("Stop mid-turn cancels the session and its ask, and the turn ends interrupted", async () => {

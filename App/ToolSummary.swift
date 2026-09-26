@@ -5,24 +5,38 @@ enum ToolSummary {
     static func line(for call: ToolCall, cwd: String) -> String {
         let input = call.input
         func path(_ key: String = "file_path") -> String {
-            relative(input[key]?.string ?? input["path"]?.string ?? "", to: cwd)
+            relative(call.view["path"]?.string ?? input[key]?.string ?? input["path"]?.string ?? "", to: cwd)
         }
-        switch call.name {
-        case "Read": return "Read \(path())"
-        case "Edit", "MultiEdit": return "Edit \(path())"
-        case "Write": return "Write \(path())"
-        case "NotebookEdit": return "Edit \(path("notebook_path"))"
-        case "Bash": return "Bash: \(firstLine(input["command"]?.string ?? ""))"
-        case "Grep": return "Grep \(input["pattern"]?.string ?? "")"
-        case "Glob": return "Glob \(input["pattern"]?.string ?? "")"
-        case "WebFetch": return "Fetch \(input["url"]?.string ?? "")"
-        case "WebSearch": return "Search \(input["query"]?.string ?? "")"
-        case "Task", "Agent": return "Agent: \(input["description"]?.string ?? "")"
-        case "TodoWrite": return "Update the plan"
-        case "AskUserQuestion": return "Ask you"
-        case "ExitPlanMode": return "Finish planning"
-        case "Skill": return "Skill: \(input["skill"]?.string ?? input["command"]?.string ?? "")"
-        default: return name(call.name)
+        /// A fixed verb and what it's on. An agent's call that doesn't say what it's on keeps its
+        /// own title, where Claude's has always shown the verb alone.
+        func verb(_ verb: String, _ target: String) -> String {
+            target.isEmpty && !call.namedByClaude ? call.name : "\(verb) \(target)"
+        }
+        switch call.kind {
+        case .read: return verb("Read", path())
+        case .edit: return verb("Edit", path())
+        case .write: return verb("Write", path())
+        case .notebook: return "Edit \(path("notebook_path"))"
+        case .delete: return verb("Delete", path())
+        case .move: return verb("Move", path())
+        case .run:
+            // Claude's tool by its name, "Bash: make test". An agent's title is a word or a
+            // sentence depending on the agent, so its command goes under the kind's own word.
+            let command = firstLine(call.shown("command") ?? "")
+            if call.namedByClaude { return "\(call.name): \(command)" }
+            return command.isEmpty ? call.name : "Run: \(command)"
+        case .search:
+            if call.namedByClaude { return "\(call.name) \(input["pattern"]?.string ?? "")" }
+            return verb("Search", call.shown("pattern") ?? call.shown("query") ?? "")
+        case .fetch: return verb("Fetch", call.shown("url") ?? "")
+        case .web: return verb("Search", call.shown("query") ?? call.shown("url") ?? "")
+        case .list where !call.namedByClaude: return verb("List", path())
+        case .agent: return "Agent: \(call.shown("description") ?? "")"
+        case .plan: return "Update the plan"
+        case .question: return "Ask you"
+        case .planning: return "Finish planning"
+        case .skill: return "Skill: \(input["skill"]?.string ?? input["command"]?.string ?? "")"
+        case .list, .think, .workflow, .mcp, .other: return name(call.name)
         }
     }
 
@@ -34,10 +48,9 @@ enum ToolSummary {
     /// What a call is on, without the tool: the file, the command's first line, the pattern, the
     /// page or the question, in the shape the engine gives an agent's step.
     static func target(for call: ToolCall, cwd: String) -> String? {
-        let input = call.input
-        if let path = input["file_path"]?.string ?? input["notebook_path"]?.string { return relative(path, to: cwd) }
-        if let command = input["command"]?.string { return firstLine(command) }
-        return ["pattern", "url", "query", "description", "skill", "path"].lazy.compactMap { input[$0]?.string }.first { !$0.isEmpty }
+        if let path = call.file ?? call.input["notebook_path"]?.string { return relative(path, to: cwd) }
+        if let command = call.shown("command") { return firstLine(command) }
+        return ["pattern", "url", "query", "description", "skill", "path"].lazy.compactMap { call.shown($0) }.first { !$0.isEmpty }
     }
 
     /// What a run of calls did, in Claude Code's words, each kind where it first came: "Read 2
@@ -47,7 +60,7 @@ enum ToolSummary {
         var kinds: [RunKind] = []
         var seen: [RunKind: Set<String>] = [:]
         for call in calls {
-            let kind = RunKind(call.name)
+            let kind = RunKind(call.kind)
             if seen[kind] == nil { kinds.append(kind) }
             seen[kind, default: []].insert(path(for: call) ?? call.toolUseId)
         }
@@ -58,21 +71,21 @@ enum ToolSummary {
     private enum RunKind {
         case read, edit, command, search, list, fetch, web, agent, plan, skill, question, planning, other
 
-        init(_ name: String) {
-            switch name {
-            case "Read": self = .read
-            case "Edit", "MultiEdit", "Write", "NotebookEdit": self = .edit
-            case "Bash": self = .command
-            case "Grep", "Glob": self = .search
-            case "LS": self = .list
-            case "WebFetch": self = .fetch
-            case "WebSearch": self = .web
-            case "Task", "Agent": self = .agent
-            case "TodoWrite": self = .plan
-            case "Skill": self = .skill
-            case "AskUserQuestion": self = .question
-            case "ExitPlanMode": self = .planning
-            default: self = .other
+        init(_ kind: ToolKind) {
+            switch kind {
+            case .read: self = .read
+            case .edit, .write, .notebook, .delete, .move: self = .edit
+            case .run: self = .command
+            case .search: self = .search
+            case .list: self = .list
+            case .fetch: self = .fetch
+            case .web: self = .web
+            case .agent: self = .agent
+            case .plan: self = .plan
+            case .skill: self = .skill
+            case .question: self = .question
+            case .planning: self = .planning
+            case .think, .workflow, .mcp, .other: self = .other
             }
         }
 
@@ -96,11 +109,11 @@ enum ToolSummary {
         }
     }
 
-    /// The file a Read, Edit, MultiEdit, Write or NotebookEdit call touched, as given to the tool.
+    /// The file a call that reads, edits, writes, deletes or moves one touched, as given to the tool.
     static func path(for call: ToolCall) -> String? {
-        switch call.name {
-        case "Read", "Edit", "MultiEdit", "Write": call.input["file_path"]?.string
-        case "NotebookEdit": call.input["notebook_path"]?.string
+        switch call.kind {
+        case .read, .edit, .write, .delete, .move: call.file
+        case .notebook: call.view["path"]?.string ?? call.input["notebook_path"]?.string
         default: nil
         }
     }

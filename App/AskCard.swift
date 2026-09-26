@@ -36,7 +36,7 @@ struct AskCard: View {
     }
 
     private var settledLine: String {
-        let what = ask.kind == "question" ? "Question" : ToolSummary.line(for: ToolCall(toolUseId: "", name: ask.tool, input: ask.input), cwd: cwd)
+        let what = ask.kind == "question" ? "Question" : ToolSummary.line(for: ask.call, cwd: cwd)
         switch ask.state {
         case .allowed: return ask.kind == "question" ? "Answered" : "Allowed · \(what)"
         case .denied: return "Denied · \(what)"
@@ -60,38 +60,52 @@ private struct PermissionForm: View {
             detail
             HStack(spacing: 8) {
                 Spacer()
-                Button("Deny") { model.answer(ask, allow: false) }
-                    .buttonStyle(.action)
-                Button("Allow") { model.answer(ask, allow: true) }
-                    .buttonStyle(.action(prominent: listens))
-                    .keyboardShortcut(listens ? .defaultAction : nil)
+                if ask.choices.isEmpty {
+                    Button("Deny") { model.answer(ask, allow: false) }
+                        .buttonStyle(.action)
+                    Button("Allow") { model.answer(ask, allow: true) }
+                        .buttonStyle(.action(prominent: listens))
+                        .keyboardShortcut(listens ? .defaultAction : nil)
+                } else {
+                    // The agent's own answers, in its order, with the one Return gives last.
+                    let main = ask.choices.first { $0.kind == "allow_once" } ?? ask.choices.first(where: \.allows)
+                    ForEach(ask.choices.filter { $0 != main }, id: \.id) { choice in
+                        Button(choice.name) { model.answer(ask, allow: choice.allows, choice: choice) }
+                            .buttonStyle(.action)
+                    }
+                    if let main {
+                        Button(main.name) { model.answer(ask, allow: true, choice: main) }
+                            .buttonStyle(.action(prominent: listens))
+                            .keyboardShortcut(listens ? .defaultAction : nil)
+                    }
+                }
             }
         }
     }
 
     private var title: String {
-        switch ask.tool {
-        case "Bash": "Run a command?"
-        case "Edit", "MultiEdit": "Edit \(path)?"
-        case "Write": "Write \(path)?"
-        case "ExitPlanMode": "Start on this plan?"
-        case "WebFetch": "Fetch a page?"
+        switch ask.toolKind {
+        case .run: "Run a command?"
+        case .edit: "Edit \(path)?"
+        case .write: "Write \(path)?"
+        case .planning: "Start on this plan?"
+        case .fetch: "Fetch a page?"
         default: "Use \(ask.tool)?"
         }
     }
 
     private var path: String {
-        ToolSummary.relative(ask.input["file_path"]?.string ?? "", to: cwd)
+        ToolSummary.relative(ask.call.file ?? "", to: cwd)
     }
 
     @ViewBuilder
     private var detail: some View {
-        if ask.tool == "Bash" {
-            Text(ask.input["command"]?.string ?? "")
+        if ask.toolKind == .run {
+            Text(ask.call.shown("command") ?? "")
                 .font(Type.mono)
                 .foregroundStyle(Ink.secondary)
                 .textSelection(.enabled)
-        } else if ask.tool == "ExitPlanMode", let plan = ask.input["plan"]?.string {
+        } else if ask.toolKind == .planning, let plan = ask.input["plan"]?.string {
             ScrollView {
                 Markdown(plan).markdownTheme(.glass)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,7 +122,7 @@ private struct PermissionForm: View {
                 }
                 .font(Type.secondary)
             }
-        } else if let url = ask.input["url"]?.string {
+        } else if let url = ask.call.shown("url") {
             Text(url)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)

@@ -123,6 +123,8 @@ export type Answer = {
   updatedInput?: Record<string, unknown>;
   answers?: Record<string, string>;
   message?: string;
+  /// The choice the user picked, for an ask that came with the agent's own.
+  optionId?: string;
 };
 
 /// An ask waiting on the user, from whichever thread's session asked it.

@@ -1,7 +1,8 @@
 import Foundation
 
-/// Claude's plan as a TodoWrite call wrote it: its items in order, each pending, in progress or
-/// done. Read from the call's input, so another agent's plan tool with the same shape fills it too.
+/// An agent's plan as a call of kind plan wrote it: its items in order, each pending, in progress
+/// or done. Read from the call's view, whose todos are in TodoWrite's shape, or from a TodoWrite's
+/// input.
 struct Plan: Hashable {
     struct Todo: Hashable {
         enum State: String {

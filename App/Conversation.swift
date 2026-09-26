@@ -7,6 +7,16 @@ struct Hunk: Hashable {
     let oldStart: Int
     let newStart: Int
     let lines: [String]
+
+    /// A patch as the engine sends it, `[{ oldStart, newStart, lines }]`.
+    static func list(_ patch: JSON?) -> [Hunk]? {
+        patch?.array?.map { hunk in
+            Hunk(
+                oldStart: hunk["oldStart"]?.int ?? 0,
+                newStart: hunk["newStart"]?.int ?? 0,
+                lines: hunk["lines"]?.array?.compactMap(\.string) ?? [])
+        }
+    }
 }
 
 struct ToolCall: Hashable {
@@ -21,10 +31,31 @@ struct ToolCall: Hashable {
     /// On the TodoWrite call that first wrote a plan, the plan as its latest call has it. A later
     /// call that carries the plan on has none, and no line of its own.
     var plan: Plan?
+    /// What the call does. Apply sets it once from the event, or from Claude Code's name when the
+    /// event says nothing, so neither the fold nor a line reads the names table per body.
+    var declared: ToolKind?
+    /// The arguments the app shows, in the words every agent's are told in: path, command,
+    /// pattern, url, query, description, todos and patch. Claude's calls have none, and their
+    /// input is read instead.
+    var view: JSON = .null
 
-    static let edits: Set<String> = ["Edit", "MultiEdit", "Write"]
+    var kind: ToolKind { declared ?? ToolKind(claude: name) }
 
-    var isEdit: Bool { Self.edits.contains(name) }
+    var isEdit: Bool { kind == .edit || kind == .write }
+
+    /// Whether the call is under a name Claude Code gives that kind, "Bash" or "Grep", rather
+    /// than an agent's own title for it.
+    var namedByClaude: Bool { ToolKind(claude: name) == kind }
+
+    /// An argument the view names, or else Claude's input under the same key.
+    func shown(_ key: String) -> String? {
+        view[key]?.string ?? input[key]?.string
+    }
+
+    /// The file it's on, as given to the tool.
+    var file: String? {
+        view["path"]?.string ?? input["file_path"]?.string
+    }
 }
 
 struct PendingAsk: Hashable {
@@ -35,6 +66,16 @@ struct PendingAsk: Hashable {
         case cancelled
     }
 
+    /// One of an agent's own answers to a permission ask: allow once, allow always, reject.
+    struct Choice: Hashable {
+        let id: String
+        let name: String
+        /// ACP's `allow_once`, `allow_always`, `reject_once` or `reject_always`.
+        let kind: String
+
+        var allows: Bool { kind.hasPrefix("allow") }
+    }
+
     let requestId: String
     let kind: String
     let tool: String
@@ -43,6 +84,18 @@ struct PendingAsk: Hashable {
     var state: State = .waiting
     /// The call it holds, whose line waits with it.
     var toolUseId: String?
+    /// What the call asked about does, set in apply as a ToolCall's is.
+    var declared: ToolKind?
+    var view: JSON = .null
+    /// The agent's own answers, when it gave them; Claude's asks have none.
+    var choices: [Choice] = []
+
+    var toolKind: ToolKind { declared ?? ToolKind(claude: tool) }
+
+    /// The call it asks about, as a line would show it.
+    var call: ToolCall {
+        ToolCall(toolUseId: toolUseId ?? "", name: tool, input: input, declared: declared, view: view)
+    }
 }
 
 /// A command run from the composer's shell prompt, as the thread keeps it: what it printed, raw,
@@ -737,8 +790,11 @@ final class Conversation {
         case "thinking":
             items.append(.thinking(id: id, text: body["delta"]?.string ?? ""))
         case "tool.use":
-            var call = ToolCall(toolUseId: body["toolUseId"]?.string ?? "", name: body["name"]?.string ?? "", input: body["input"] ?? .null)
-            if call.name == "TodoWrite" { call.plan = planned(call.input, at: id) }
+            let name = body["name"]?.string ?? ""
+            var call = ToolCall(
+                toolUseId: body["toolUseId"]?.string ?? "", name: name, input: body["input"] ?? .null,
+                declared: ToolKind(body["kind"], tool: name), view: body["view"] ?? .null)
+            if call.kind == .plan { call.plan = planned(call.view["todos"] == nil ? call.input : call.view, at: id) }
             items.append(.tool(id: id, call: call))
         case "tool.result":
             let toolUseId = body["toolUseId"]?.string
@@ -747,12 +803,7 @@ final class Conversation {
             {
                 call.result = body["content"]?.string ?? ""
                 call.isError = body["isError"]?.bool ?? false
-                call.patch = body["patch"]?.array?.map { hunk in
-                    Hunk(
-                        oldStart: hunk["oldStart"]?.int ?? 0,
-                        newStart: hunk["newStart"]?.int ?? 0,
-                        lines: hunk["lines"]?.array?.compactMap(\.string) ?? [])
-                }
+                call.patch = Hunk.list(body["patch"])
                 items[index] = .tool(id: itemId, call: call)
             }
         case "workflow":
@@ -764,13 +815,19 @@ final class Conversation {
                 items[index] = .tool(id: itemId, call: call)
             }
         case "ask":
+            let tool = body["tool"]?.string ?? ""
             let ask = PendingAsk(
                 requestId: body["requestId"]?.string ?? "",
                 kind: body["kind"]?.string ?? "permission",
-                tool: body["tool"]?.string ?? "",
+                tool: tool,
                 input: body["input"] ?? .null,
                 options: body["options"],
-                toolUseId: body["toolUseId"]?.string)
+                toolUseId: body["toolUseId"]?.string,
+                declared: ToolKind(body["toolKind"], tool: tool),
+                view: body["view"] ?? .null,
+                choices: (body["choices"]?.array ?? []).map { choice in
+                    PendingAsk.Choice(id: choice["id"]?.string ?? "", name: choice["name"]?.string ?? "", kind: choice["kind"]?.string ?? "")
+                })
             items.append(.ask(id: id, ask: ask))
         case "answer", "ask.cancelled":
             let requestId = body["requestId"]?.string

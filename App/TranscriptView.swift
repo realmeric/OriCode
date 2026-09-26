@@ -199,10 +199,10 @@ enum TranscriptEntry: Identifiable {
         }
         for item in items {
             switch item {
-            case .tool(_, let call) where call.name == "Workflow" && !call.isError || call.plan != nil:
+            case .tool(_, let call) where call.kind == .workflow && !call.isError || call.plan != nil:
                 close()
                 entries.append(.item(item))
-            case .tool(_, let call) where call.name == "TodoWrite":
+            case .tool(_, let call) where call.kind == .plan:
                 continue
             case .tool, .thinking:
                 run.append(item)
@@ -278,7 +278,7 @@ struct ItemView: View {
         case .tool(_, let call):
             if call.isEdit && !call.isError {
                 DiffCard(call: call, cwd: cwd)
-            } else if call.name == "Workflow" && !call.isError {
+            } else if call.kind == .workflow && !call.isError {
                 WorkflowCard(call: call)
             } else if let plan = call.plan {
                 PlanCard(plan: plan)

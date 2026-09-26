@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { diffOf, hunks, resultText, stopReason, todos, toolKind, toolView, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
+import { asks as registry } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
@@ -106,6 +107,7 @@ export function answer(params: { requestId: string; allow: boolean; optionId?: s
   const ask = asks.get(params.requestId);
   if (!ask) return false;
   asks.delete(params.requestId);
+  registry.delete(params.requestId);
   const wanted = params.allow ? "allow" : "reject";
   const option =
     ask.options.find((option) => option.optionId === params.optionId) ??
@@ -430,6 +432,7 @@ export class AcpSession {
     for (const [requestId, ask] of asks) {
       if (ask.session !== this) continue;
       asks.delete(requestId);
+      registry.delete(requestId);
       event("ask.cancelled", { threadId: this.id, requestId });
       ask.resolve({ outcome: { outcome: "cancelled" } });
     }
@@ -605,11 +608,14 @@ export class AcpSession {
     const requestId = randomUUID();
     return new Promise((resolve) => {
       asks.set(requestId, { session: this, options: params.options, resolve });
+      // main.ts answers every ask through the shared registry, which hands this one the optionId.
+      registry.set(requestId, { threadId: this.id, answer, stop: () => this.cancelAsks() });
       event("ask", {
         threadId: this.id,
         requestId,
         kind: "permission",
         tool: call.name ?? call.title ?? "Tool",
+        toolKind: toolKind(call.kind),
         toolUseId: call.toolCallId,
         input: call.rawInput ?? {},
         view: toolView(call.rawInput, call.locations, call.content),

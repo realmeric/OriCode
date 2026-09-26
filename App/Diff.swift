@@ -46,10 +46,13 @@ struct Diff: Hashable {
         return lines
     }
 
-    /// What an edit did: the hunks it reported once it ran, or the diff of its input before then.
+    /// What an edit did: the hunks it reported once it ran, or those its view carries, or before
+    /// then the diff of Claude's input.
     static func of(_ call: ToolCall, cwd: String) -> Diff? {
         guard call.isEdit else { return nil }
-        guard let patch = call.patch, !patch.isEmpty else { return of(tool: call.name, input: call.input, cwd: cwd) }
+        guard let patch = call.patch ?? Hunk.list(call.view["patch"]), !patch.isEmpty else {
+            return of(tool: call.name, input: call.input, cwd: cwd)
+        }
         var lines: [Line] = []
         for (index, hunk) in patch.enumerated() {
             if index > 0 { lines.append(Line(kind: .gap, text: "")) }
@@ -63,10 +66,11 @@ struct Diff: Hashable {
                 }
             }
         }
-        return Diff(path: ToolSummary.relative(call.input["file_path"]?.string ?? "", to: cwd), lines: lines)
+        return Diff(path: ToolSummary.relative(call.file ?? "", to: cwd), lines: lines)
     }
 
-    /// The diff an Edit, MultiEdit or Write call would make, or nil for any other tool.
+    /// The diff Claude's Edit, MultiEdit or Write would make, read from its input, or nil for any
+    /// other tool: no other agent's input says what it will write.
     static func of(tool: String, input: JSON, cwd: String) -> Diff? {
         let path = ToolSummary.relative(input["file_path"]?.string ?? "", to: cwd)
         switch tool {

@@ -254,6 +254,9 @@ extension Conversation {
         case .text:
             return Head.Step(tool: "Writing", detail: nil)
         case .tool(_, let call) where call.result == nil:
+            // An agent's name for a call is a title that often says its target already, so its
+            // step is the call's line.
+            if !call.namedByClaude { return Head.Step(tool: ToolSummary.line(for: call, cwd: cwd), detail: nil) }
             return Head.Step(tool: call.name, detail: ToolSummary.target(for: call, cwd: cwd))
         default:
             return Head.Step(tool: "Thinking", detail: nil)

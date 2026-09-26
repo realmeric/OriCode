@@ -145,26 +145,33 @@ extension AppModel {
         return params.naming(chat.providerID)
     }
 
-    func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil) {
+    /// `choice` is one of the agent's own answers, which it gets back by its id.
+    func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil, choice: PendingAsk.Choice? = nil) {
         guard let chat else { return }
         if conversation(for: chat).askedBeforeQuit.contains(ask.requestId) {
             answerAfterQuit(ask, in: chat, allow: allow, answers: answers, message: message)
             return
         }
-        var params: [String: JSON] = ["requestId": .string(ask.requestId), "allow": .bool(allow)]
-        if let answers { params["answers"] = .object(answers.mapValues(JSON.string)) }
-        if !allow {
-            params["message"] = .string(message ?? Self.deniedMessage)
-        }
+        let params = Self.answerParams(ask, allow: allow, answers: answers, message: message, choice: choice)
         // The card folds into its one line and what's under it closes up, rather than jumping.
         withAnimation(Motion.move) { conversation(for: chat).answered(ask.requestId, allow: allow) }
         Task {
             do {
-                _ = try await engine.request("answer", .object(params))
+                _ = try await engine.request("answer", params)
             } catch {
                 say(error.localizedDescription)
             }
         }
+    }
+
+    static func answerParams(_ ask: PendingAsk, allow: Bool, answers: [String: String]?, message: String?, choice: PendingAsk.Choice?) -> JSON {
+        var params: [String: JSON] = ["requestId": .string(ask.requestId), "allow": .bool(allow)]
+        if let answers { params["answers"] = .object(answers.mapValues(JSON.string)) }
+        if !allow {
+            params["message"] = .string(message ?? deniedMessage)
+        }
+        if let choice { params["optionId"] = .string(choice.id) }
+        return .object(params)
     }
 
     /// Stop ends the turn and takes back everything still to go: the engine cancels what was sent
@@ -253,7 +260,9 @@ extension AppModel {
             let tool = event.body["tool"]?.string ?? ""
             let summary = event.body["kind"]?.string == "question"
                 ? "A question for you."
-                : "Waiting on you: " + ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: event.body["input"] ?? .null), cwd: chat.cwd)
+                : "Waiting on you: " + ToolSummary.line(for: ToolCall(
+                    toolUseId: "", name: tool, input: event.body["input"] ?? .null,
+                    declared: ToolKind(event.body["toolKind"], tool: tool), view: event.body["view"] ?? .null), cwd: chat.cwd)
             notifier.post(title: chat.title, body: summary, chatID: chat.id)
         } else if let limit = conversation(for: chat).turnLimit {
             let when = chat.resumeAt.map { "It goes on at \(Limit.time($0))." } ?? "Resets at \(Limit.time(limit.resetsAt))."

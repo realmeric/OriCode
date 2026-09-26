@@ -23,8 +23,8 @@ struct Provenance {
 
     init() {}
 
-    /// `resolve` turns an edit's file_path into a path from the repository's top, or nil for a
-    /// file outside it.
+    /// `resolve` turns an edit's file, its view's path or Claude's file_path, into a path from the
+    /// repository's top, or nil for a file outside it.
     init(items: [Item], resolve: (String) -> String?) {
         var turn = 0
         for item in items {
@@ -34,14 +34,14 @@ struct Provenance {
                 guard !midTurn else { continue }
                 turn += 1
                 prompts[turn] = text
-            case .tool(_, let call) where call.name == "Bash":
-                guard let command = call.input["command"]?.string, call.result != nil, Self.checks(command) else { continue }
+            case .tool(_, let call) where call.kind == .run:
+                guard let command = call.shown("command"), call.result != nil, Self.checks(command) else { continue }
                 let check = Check(command: command, failed: call.isError)
                 checks[turn, default: []].removeAll { $0.command == command }
                 checks[turn, default: []].append(check)
             case .tool(_, let call):
                 guard call.isEdit, call.result != nil, !call.isError,
-                      let file = call.input["file_path"]?.string, let path = resolve(file),
+                      let file = call.file, let path = resolve(file),
                       let diff = Diff.of(call, cwd: "")
                 else { continue }
                 lastEdit[path] = turn
