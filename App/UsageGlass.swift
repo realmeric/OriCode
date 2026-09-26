@@ -55,17 +55,19 @@ struct UsageGlass: View {
 }
 
 /// The glass itself, a disc of the send button's tint inside a rim of it, filled from the bottom
-/// in the band's colour: 18pt in the composer, larger on a limit's card.
+/// in the band's colour: 18pt in the composer, larger on a limit's card. A plan's tally fills it
+/// in one ink, since there a full glass is good news.
 struct GlassLevel: View {
     let level: Double
     var side: CGFloat = 18
+    var fill: Color?
 
     var body: some View {
         let inner = side - side / 9 * 2
         ZStack {
             Circle().fill(Surface.selected)
             Rectangle()
-                .fill(Band.of(level).color)
+                .fill(fill ?? Band.of(level).color)
                 // A sliver at least, so a live 1% is visible.
                 .frame(height: level > 0 ? max(1.5, inner * level) : 0)
                 .frame(width: inner, height: inner, alignment: .bottom)

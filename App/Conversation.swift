@@ -18,6 +18,9 @@ struct ToolCall: Hashable {
     var patch: [Hunk]?
     /// A Workflow call's run, as the engine last told of it.
     var workflow: WorkflowRun?
+    /// On the TodoWrite call that first wrote a plan, the plan as its latest call has it. A later
+    /// call that carries the plan on has none, and no line of its own.
+    var plan: Plan?
 
     static let edits: Set<String> = ["Edit", "MultiEdit", "Write"]
 
@@ -222,6 +225,9 @@ final class Conversation {
     private var shellEvents: [UUID: Event] = [:]
     /// Each workflow's one event, by its task, written again as it moves.
     private var workflowEvents: [String: Event] = [:]
+    /// Claude's plan as its latest TodoWrite has it, and the item whose card shows it.
+    private(set) var plan: Plan?
+    private var planCard: UUID?
 
     convenience init(chat: Chat, context: ModelContext, said: MessageIndex? = nil) {
         self.init(chat: chat, context: context, stored: StoredEvent.read(chat.id, from: context), said: said)
@@ -731,7 +737,8 @@ final class Conversation {
         case "thinking":
             items.append(.thinking(id: id, text: body["delta"]?.string ?? ""))
         case "tool.use":
-            let call = ToolCall(toolUseId: body["toolUseId"]?.string ?? "", name: body["name"]?.string ?? "", input: body["input"] ?? .null)
+            var call = ToolCall(toolUseId: body["toolUseId"]?.string ?? "", name: body["name"]?.string ?? "", input: body["input"] ?? .null)
+            if call.name == "TodoWrite" { call.plan = planned(call.input, at: id) }
             items.append(.tool(id: id, call: call))
         case "tool.result":
             let toolUseId = body["toolUseId"]?.string
@@ -811,6 +818,22 @@ final class Conversation {
         }
         if !started, !items.isEmpty { started = true }
         if kind == "ask" || kind == "answer" || kind == "ask.cancelled" { findWaitingAsk() }
+    }
+
+    /// A TodoWrite's list goes onto the card of the plan it carries on, or, for a new plan, onto a
+    /// card of its own at its call, which is the plan this returns.
+    private func planned(_ input: JSON, at id: UUID) -> Plan? {
+        let next = Plan(input)
+        defer { plan = next }
+        if let next, let plan, plan.continues(into: next), let card = planCard,
+           let index = items.lastIndex(where: { $0.id == card }), case .tool(_, var call) = items[index]
+        {
+            call.plan = next
+            items[index] = .tool(id: card, call: call)
+            return nil
+        }
+        planCard = next == nil ? nil : id
+        return next
     }
 }
 

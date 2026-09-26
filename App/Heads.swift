@@ -237,6 +237,11 @@ extension Conversation {
         running || !heads.isEmpty
     }
 
+    /// The plan's item in progress while a turn runs, as Claude words it then: "Running the tests".
+    var planStep: String? {
+        running ? plan?.current?.activeForm : nil
+    }
+
     /// What the main loop is on, read off the end of the transcript: thinking, writing, a call still
     /// out and what on, waiting on you, or, with its turn over, waiting on its agents.
     func mainStep(cwd: String) -> Head.Step {

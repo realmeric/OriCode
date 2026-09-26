@@ -103,12 +103,24 @@ private struct MainRow: View {
 
     var body: some View {
         let step = conversation.mainStep(cwd: cwd)
+        let planStep = conversation.planStep
         HeadLine(id: HeadsSurface.main, hovered: $hovered, stop: conversation.running ? { model.stop() } : nil) {
             RaysMark(restingOpacity: 0.16, dotOpacity: conversation.running ? 0.92 : 0.3)
         } title: {
-            Text("Main loop")
-                .font(Type.body)
-                .foregroundStyle(conversation.running ? Ink.primary : Ink.secondary)
+            HStack(spacing: 6) {
+                Text("Main loop")
+                    .font(Type.body)
+                    .foregroundStyle(conversation.running ? Ink.primary : Ink.secondary)
+                if let planStep {
+                    Text(planStep)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.secondary)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                        .transition(.opacity)
+                }
+            }
+            .animation(Motion.fade, value: planStep)
         } detail: {
             StepText(step: step)
         } trailing: {
