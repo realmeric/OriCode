@@ -136,6 +136,10 @@ K-150 to K-158 come from Meriç trying the cards since 0.1.0 and from a review o
 #### K-158 · The tray: what's running, live, under the prompt
 Meriç: a program left running, a log say, should stay alive in view while you use the prompt for something else, and wondered whether a terminal coming up from the bottom and moving everything up would do it. Written for Meriç's yes before it's built. On Linear as REA-161.
 
+#### K-164 · A reply settles, and a key lands, inside a frame
+Two costs K-161 measured and left. The frame a reply settles in, where its code takes its colours, went from 15 to 62 to 68ms in the Debug host, since coloured code is laid out all at once there: a reply's finished parts, each paragraph and code block, are drawn as views of their own, so a delta or a settle lays out only what changed, and a block's colours arrive on it alone. A composer keystroke still takes 11.5 to 12.3ms with no fetch left in it: what runs per key is found and cut until a key costs under a 120Hz frame, 8.3ms. Both are measured in a Release build under a name of its own, as well as Debug, since Release is what people run.
+Done when: before and after, measured in Release and in the Notes: the settle frame of a 12,000-character reply with code, ms per composer keystroke, and ms per delta while streaming, none past 8.3ms; make test passes.
+
 ### Later
 
 Cards written during the freeze, each on Linear too: K-107 is REA-177 and K-116 is REA-176.
