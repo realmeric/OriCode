@@ -139,14 +139,15 @@ private struct ReviewScroll: View {
         case chapter(ReviewChapter)
         case folded(ReviewChapter)
         case file(ReviewFileSection)
-        case unit(ReviewUnit)
+        /// A hunk of an open file, which knows whether it's the file's only one and its last.
+        case unit(ReviewUnit, alone: Bool, last: Bool)
 
         var id: String {
             switch self {
             case .chapter(let chapter): "c:" + chapter.id
             case .folded(let chapter): "f:" + chapter.id
             case .file(let section): "s:" + section.id
-            case .unit(let unit): unit.id
+            case .unit(let unit, _, _): unit.id
             }
         }
     }
@@ -162,7 +163,9 @@ private struct ReviewScroll: View {
             }
             for section in chapter.files {
                 rows.append(.file(section))
-                if review.openFiles.contains(section.id) { rows += section.units.map(Row.unit) }
+                if review.openFiles.contains(section.id) {
+                    rows += section.units.map { .unit($0, alone: section.units.count == 1, last: $0.id == section.units.last?.id) }
+                }
             }
         }
         return rows
@@ -180,9 +183,12 @@ private struct ReviewScroll: View {
                             FoldedChapter(chapter: chapter)
                         case .file(let section):
                             FileHeader(section: section)
-                        case .unit(let unit):
-                            UnitView(unit: unit)
-                                .padding(.top, 6)
+                        case .unit(let unit, let alone, let last):
+                            UnitView(unit: unit, alone: alone)
+                                .padding(.horizontal, 4)
+                                .padding(.top, 4)
+                                .padding(.bottom, last ? 4 : 0)
+                                .background(Surface.card, in: .fileCard(bottom: last))
                         }
                     }
                 }
@@ -320,6 +326,7 @@ private struct FoldedChapter: View {
 
 /// A file's path, what happened to it, and its counts for this chapter. A click shows its hunks
 /// or folds the file to this line; its circle, in the column of its hunks' circles, marks them all.
+/// Open, it's the top of the file's card, with its hunks under it.
 private struct FileHeader: View {
     @Environment(AppModel.self) private var model
     let section: ReviewFileSection
@@ -371,13 +378,14 @@ private struct FileHeader: View {
             .buttonStyle(.plain)
             .foregroundStyle(Ink.secondary)
             .help(reviewed ? "Mark this file not reviewed" : "Mark this file reviewed and go on to the next")
-            .padding(.trailing, 12)
         }
         .font(Type.secondary)
-        .padding(.top, 14)
-        .frame(minHeight: 24)
+        .padding(.horizontal, 16)
+        .frame(minHeight: 32)
+        .background(open ? Surface.card : .clear, in: .fileCard(top: true))
         .contentShape(.rect)
         .onHover { hovering = $0 }
+        .padding(.top, 8)
     }
 
     static func status(_ file: FileDiff) -> String? {
@@ -391,12 +399,26 @@ private struct FileHeader: View {
     }
 }
 
+private extension Shape where Self == UnevenRoundedRectangle {
+    /// A piece of a file's card, which the review's rows draw one at a time so a long file stays
+    /// lazy: the header rounds the top, the last hunk the bottom, and the rows between are square.
+    static func fileCard(top: Bool = false, bottom: Bool = false) -> Self {
+        UnevenRoundedRectangle(
+            cornerRadii: RectangleCornerRadii(
+                topLeading: top ? 12 : 0, bottomLeading: bottom ? 12 : 0, bottomTrailing: bottom ? 12 : 0, topTrailing: top ? 12 : 0),
+            style: .continuous)
+    }
+}
+
 /// One hunk: its lines with both sides' numbers, the words that changed, where it came from,
-/// and what you can do with it. Folded to one line once reviewed.
+/// and what you can do with it. Folded to one line once reviewed. It sits on its file's card,
+/// lit when the keyboard is on it by the card's tint laid over again, as bright as Surface.selected.
 private struct UnitView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.undoManager) private var undoManager
     let unit: ReviewUnit
+    /// The file's only hunk, whose circle would say what the header's does.
+    let alone: Bool
     @State private var hovering = false
 
     /// Past this many lines a hunk shows its start until asked, so one new file can't stall the list.
@@ -423,9 +445,9 @@ private struct UnitView: View {
                 }
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
                 .frame(height: 26)
-                .background(selected ? Surface.selected : .clear, in: .rect(cornerRadius: 10, style: .continuous))
+                .background(selected ? Surface.card : .clear, in: .rect(cornerRadius: 8, style: .continuous))
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -448,7 +470,7 @@ private struct UnitView: View {
                     NoteEditor(unit: unit)
                 }
             }
-            .background(selected ? Surface.selected : Surface.card, in: .rect(cornerRadius: 12, style: .continuous))
+            .background(selected ? Surface.card : .clear, in: .rect(cornerRadius: 8, style: .continuous))
             .contentShape(.rect)
             .onTapGesture {
                 review.selected = unit.id
@@ -495,12 +517,14 @@ private struct UnitView: View {
                 }
                 .help(unit.file.revertsByHunk ? "Take this back out of the file (⌫)" : "Put the file back as it was at the last commit (⌫)")
             }
-            Button {
-                model.toggleReviewed(unit)
-            } label: {
-                Image(systemName: unit.reviewed ? "checkmark.circle.fill" : "circle")
+            if !alone {
+                Button {
+                    model.toggleReviewed(unit)
+                } label: {
+                    Image(systemName: unit.reviewed ? "checkmark.circle.fill" : "circle")
+                }
+                .help(unit.reviewed ? "Mark not reviewed (Space)" : "Mark reviewed (Space)")
             }
-            .help(unit.reviewed ? "Mark not reviewed (Space)" : "Mark reviewed (Space)")
         }
         .buttonStyle(.plain)
         .font(Type.secondary)

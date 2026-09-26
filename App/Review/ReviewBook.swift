@@ -59,8 +59,9 @@ struct ReviewUnit: Identifiable, Hashable, Sendable {
     var added: Int { hunk == nil ? file.added : lines.count { $0.kind == .added } }
     var deleted: Int { hunk == nil ? file.deleted : lines.count { $0.kind == .deleted } }
 
-    /// The file section it's shown under: its turn's changes to its file.
-    var section: String { "\(turn ?? 0)/\(file.status)/\(file.path)" }
+    /// The file section it's shown under: its turn's changes to its file. A new file is the same
+    /// section untracked or added, so staging it doesn't fold it.
+    var section: String { "\(turn ?? 0)/\(file.isNew ? "A" : file.status)/\(file.path)" }
 }
 
 struct ReviewFileSection: Identifiable, Hashable, Sendable {

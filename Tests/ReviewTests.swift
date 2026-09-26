@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import OriCode
 
@@ -282,6 +283,9 @@ struct ReviewTests {
         let untracked = file("n.swift", status: "?", [hunk(["+let n = 1"])])
         let added = file("n.swift", status: "A", [hunk(["+let n = 1"])])
         #expect(Fingerprint.of(path: "n.swift", status: untracked.status, hunk: untracked.hunks[0]) == Fingerprint.of(path: "n.swift", status: added.status, hunk: added.hunks[0]))
+        // Its section keeps its name too, so staging it doesn't fold it under the reader.
+        let section = { (file: FileDiff) in ReviewBook(diff: WorkingDiff(root: Self.root, head: nil, files: [file]), provenance: Provenance()).units[0].section }
+        #expect(section(untracked) == section(added))
     }
 
     @Test func crlfLinesSplitWhereTheFileDoes() {
@@ -358,6 +362,103 @@ struct ReviewTests {
         review.toggle(book.chapters[0].files[1], all: true)
         #expect(review.openFiles.isEmpty)
         #expect(review.noting == nil)
+    }
+
+    @Test func eachThreadGetsItsOwnFirstLook() {
+        let diff = WorkingDiff(root: Self.root, head: nil, files: [
+            file("a.swift", [hunk(["+let a = 1"])]),
+            file("b.swift", [hunk(["+let b = 1"])]),
+        ])
+        // The first thread made b.swift; the second, in the same folder, made nothing.
+        let first = ReviewBook(diff: diff, provenance: provenance([user("Add b"), edit("b.swift", ["+let b = 1"])])).marked(with: [:])
+        let second = ReviewBook(diff: diff, provenance: Provenance()).marked(with: [:])
+        let (one, two) = (UUID(), UUID())
+        let review = ReviewState()
+        review.look(at: Self.root, for: one)
+        review.book = first
+        review.placeFiles()
+        review.move(1)
+        #expect(review.openFiles == [first.chapters[0].files[0].id])
+        #expect(review.selectedUnit != nil)
+
+        // Another thread in the folder starts from nothing and gets a first look of its own.
+        review.look(at: Self.root, for: two)
+        #expect(review.openFiles.isEmpty && review.selected == nil && !review.placed)
+        review.book = second
+        review.placeFiles()
+        #expect(review.openFiles == [second.units[0].section])
+        review.look(at: Self.root, for: two)
+        #expect(review.openFiles == [second.units[0].section])
+
+        // A read whose book no longer has the open files lets them go and looks again.
+        review.openFiles = [first.units[0].section]
+        review.keepOpenFiles()
+        #expect(review.openFiles.isEmpty && !review.placed)
+        review.placeFiles()
+        #expect(review.openFiles == [second.units[0].section])
+        // Folding every file by hand isn't undone by the next read.
+        review.toggle(second.chapters[0].files[0])
+        review.keepOpenFiles()
+        #expect(review.openFiles.isEmpty && review.placed)
+    }
+
+    @Test func aCircleMovesOnAndFoldsWhatItLeaves() throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let model = AppModel(container: container)
+        let review = model.review
+        review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-marks-\(UUID().uuidString).json"))
+        let found = provenance([
+            user("One"), edit("a.swift", ["+let a = 1", "+let a = 2"]), edit("b.swift", ["+let b = 1"]),
+            user("Two"), edit("c.swift", ["+let c = 1"]), edit("d.swift", ["+let d = 1"]), edit("e.swift", ["+let e = 1"]),
+        ])
+        let diff = WorkingDiff(root: Self.root, head: "abc", files: [
+            file("a.swift", [hunk(["+let a = 1"]), hunk(["+let a = 2"], at: 20)]),
+            file("b.swift", [hunk(["+let b = 1"])]),
+            file("c.swift", [hunk(["+let c = 1"])]),
+            file("d.swift", [hunk(["+let d = 1"])]),
+            file("e.swift", [hunk(["+let e = 1"])]),
+        ])
+        review.diff = diff
+        review.base = ReviewBook(diff: diff, provenance: found)
+        model.applyMarks()
+        review.placeFiles()
+        let sections = review.book.chapters.flatMap(\.files).map(\.id)
+        let unit = { (index: Int) in review.book.units[index] }
+        #expect(review.openFiles == [sections[0]])
+
+        // A hunk's circle goes on to the file's next hunk.
+        model.toggleReviewed(unit(0))
+        #expect(review.selected == unit(1).id)
+        #expect(review.openFiles == [sections[0]])
+
+        // Finishing a.swift with a note being written on its first hunk lets the note go with it.
+        review.unfolded.insert(unit(0).id)
+        review.noting = unit(0).id
+        model.toggleReviewed(unit(1))
+        #expect(review.selected == unit(2).id)
+        #expect(review.openFiles == [sections[1]])
+        #expect(review.noting == nil)
+
+        // Finishing the first turn folds it and opens only the next file, not the one that took
+        // the finished hunk's place in the list.
+        model.toggleReviewed(unit(2))
+        #expect(review.selected == unit(3).id)
+        #expect(review.openFiles == [sections[2]])
+
+        // A file's circle folds its file and the one the keyboard was in, and opens the next.
+        review.toggle(review.book.chapters[1].files[1])
+        #expect(review.openFiles == [sections[2], sections[3]])
+        model.toggleReviewed(review.book.chapters[1].files[1])
+        #expect(unit(4).reviewed)
+        #expect(review.selected == unit(5).id)
+        #expect(review.openFiles == [sections[4]])
+
+        // Pressed again, it unmarks the file and leaves the keyboard where it is.
+        model.toggleReviewed(review.book.chapters[1].files[1])
+        #expect(!unit(4).reviewed)
+        #expect(review.selected == unit(5).id)
+        #expect(review.openFiles == [sections[4]])
     }
 }
 

@@ -61,6 +61,9 @@ final class Takeback {
 final class ReviewState {
     /// The folder the diff was read in.
     var folder: String?
+    /// The thread looking at it. The files open and the keyboard's hunk are its own, since the
+    /// files are grouped by its turns.
+    var thread: UUID?
     var diff: WorkingDiff?
     /// The book before marks: chapters, lines, words and signals, worked out once per read.
     var base = ReviewBook()
@@ -76,7 +79,7 @@ final class ReviewState {
     var expanded: Set<String> = []
     /// Files whose hunks show; a closed one is its header alone.
     var openFiles: Set<String> = []
-    /// Whether the review has been seen in this folder, with its first file opened.
+    /// Whether the review has been seen in this thread, with its first file opened.
     var placed = false
     var notes: [ReviewNote] = []
     /// The unit a note is being written on.
@@ -94,7 +97,7 @@ final class ReviewState {
     var focusTick = 0
     /// Hunks to select once the next read has them: the ones a put-back brings back.
     @ObservationIgnored var reselect: [String] = []
-    @ObservationIgnored let marks = ReviewMarks()
+    @ObservationIgnored var marks = ReviewMarks()
     @ObservationIgnored var trigger: Task<Void, Never>?
     @ObservationIgnored var reading = false
     @ObservationIgnored var wanted = false
@@ -129,7 +132,36 @@ final class ReviewState {
         return book.units.first { $0.id == selected && openFiles.contains($0.section) }
     }
 
-    /// The first look at a folder's changes opens one file, the first with something to review,
+    /// Points the review at a thread's folder. Another folder starts over; another thread in the
+    /// same folder keeps the diff until the next read, and gets a first look of its own.
+    func look(at folder: String, for thread: UUID?) {
+        if self.folder != folder {
+            self.folder = folder
+            diff = nil
+            base = ReviewBook()
+            book = ReviewBook()
+            problem = nil
+            lastTakeback = nil
+        } else if self.thread == thread {
+            return
+        }
+        self.thread = thread
+        selected = nil
+        noting = nil
+        openFiles = []
+        placed = false
+    }
+
+    /// After a read: an open file that's gone from the book is let go, and when that leaves none
+    /// open, the first look comes again.
+    func keepOpenFiles() {
+        let kept = openFiles.intersection(book.chapters.flatMap(\.files).map(\.id))
+        guard kept != openFiles else { return }
+        if kept.isEmpty { placed = false }
+        openFiles = kept
+    }
+
+    /// The first look at a thread's changes opens one file, the first with something to review,
     /// and leaves the rest closed.
     func placeFiles() {
         guard !placed else { return }
@@ -139,12 +171,16 @@ final class ReviewState {
         placed = true
     }
 
-    /// Puts the keyboard on a hunk and opens its file. Moving on from a hunk in another file
-    /// closes that one, so the keyboard reads one file at a time.
+    /// Puts the keyboard on a hunk and opens its file. Moving on to another file folds the one
+    /// the keyboard was in, and the one it's leaving when a circle marked a hunk there, so the
+    /// keyboard reads one file at a time.
     func select(_ unit: ReviewUnit?, leaving: ReviewUnit? = nil) {
+        let here = book.units.first { $0.id == selected }
         selected = unit?.id
         guard let unit else { return }
-        if let leaving, leaving.section != unit.section { openFiles.remove(leaving.section) }
+        for left in [here, leaving].compactMap({ $0 }) where left.section != unit.section {
+            setOpen(left.section, false)
+        }
         openFiles.insert(unit.section)
     }
 
@@ -226,18 +262,7 @@ extension AppModel {
     /// back, and after every edit while the review is open, so it keeps up with Claude.
     func readReview(in folder: String? = nil, after delay: Duration = .zero) {
         guard let folder = folder ?? workingFolder, engineState == .ready else { return }
-        if review.folder != folder {
-            review.folder = folder
-            review.diff = nil
-            review.base = ReviewBook()
-            review.book = ReviewBook()
-            review.problem = nil
-            review.selected = nil
-            review.noting = nil
-            review.lastTakeback = nil
-            review.openFiles = []
-            review.placed = false
-        }
+        review.look(at: folder, for: chat?.id)
         review.wanted = true
         review.trigger?.cancel()
         review.trigger = Task {
@@ -288,6 +313,7 @@ extension AppModel {
         review.problem = nil
         review.marks.prune(in: diff.root, head: diff.head, keeping: Set(diff.files.map(\.path)))
         applyMarks()
+        review.keepOpenFiles()
         if reviewShown { review.placeFiles() }
         colour(review.book.units)
     }
@@ -386,7 +412,7 @@ extension AppModel {
     func toggleReviewed(_ unit: ReviewUnit) {
         if unit.reviewed {
             setReviewed([unit], false)
-            review.selected = unit.id
+            review.select(unit)
         } else {
             let next = review.next(after: unit)
             setReviewed([unit], true)
@@ -394,8 +420,8 @@ extension AppModel {
         }
     }
 
-    /// A file's circle: marks every hunk in it, folds it and opens the next file to review; or,
-    /// with all of them marked, unmarks them.
+    /// A file's circle: marks every hunk in it, folds it and the file the keyboard was in, and
+    /// opens the next file to review; or, with all of them marked, unmarks them.
     func toggleReviewed(_ section: ReviewFileSection) {
         let open = section.units.filter { !$0.reviewed }
         guard !open.isEmpty else {
