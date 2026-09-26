@@ -22,27 +22,27 @@ extension Theme {
         }
         .heading1 { configuration in
             configuration.label
-                .markdownMargin(top: 16, bottom: 8)
+                .blockMargin(top: 16, bottom: 8)
                 .markdownTextStyle { FontWeight(.semibold); FontSize(18) }
         }
         .heading2 { configuration in
             configuration.label
-                .markdownMargin(top: 14, bottom: 6)
+                .blockMargin(top: 14, bottom: 6)
                 .markdownTextStyle { FontWeight(.semibold); FontSize(16) }
         }
         .heading3 { configuration in
             configuration.label
-                .markdownMargin(top: 12, bottom: 4)
+                .blockMargin(top: 12, bottom: 4)
                 .markdownTextStyle { FontWeight(.semibold); FontSize(14) }
         }
         .paragraph { configuration in
             configuration.label
                 .lineSpacing(3)
-                .markdownMargin(top: 0, bottom: 10)
+                .blockMargin(top: 0, bottom: 10)
         }
         .listItem { configuration in
             configuration.label
-                .markdownMargin(top: 3)
+                .blockMargin(top: 3)
         }
         .blockquote { configuration in
             configuration.label
@@ -61,18 +61,46 @@ extension Theme {
             }
             .scrollIndicators(.never)
             .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
-            .markdownMargin(top: 4, bottom: 12)
+            .blockMargin(top: 4, bottom: 12)
         }
         .table { configuration in
             configuration.label
                 .markdownTableBorderStyle(.init(color: .clear))
                 .markdownTableBackgroundStyle(.alternatingRows(Surface.card, .clear))
-                .markdownMargin(top: 4, bottom: 12)
+                .blockMargin(top: 4, bottom: 12)
         }
         .thematicBreak {
             Rectangle()
                 .fill(Surface.card)
                 .frame(height: 1)
-                .markdownMargin(top: 10, bottom: 10)
+                .blockMargin(top: 10, bottom: 10)
         }
+}
+
+/// A block's margins, the largest of each among it and the blocks inside it, as MarkdownUI works
+/// out its own, which are internal to it: Reply spaces its blocks with these.
+struct ReplyMargin: PreferenceKey {
+    struct Value: Equatable {
+        var top: CGFloat?
+        var bottom: CGFloat?
+
+        mutating func merge(_ other: Value) {
+            top = [top, other.top].compactMap { $0 }.max()
+            bottom = [bottom, other.bottom].compactMap { $0 }.max()
+        }
+    }
+
+    static let defaultValue = Value()
+
+    static func reduce(value: inout Value, nextValue: () -> Value) {
+        value.merge(nextValue())
+    }
+}
+
+extension View {
+    /// MarkdownUI's margin, told to Reply as well.
+    func blockMargin(top: CGFloat? = nil, bottom: CGFloat? = nil) -> some View {
+        markdownMargin(top: top, bottom: bottom)
+            .transformPreference(ReplyMargin.self) { $0.merge(.init(top: top, bottom: bottom)) }
+    }
 }

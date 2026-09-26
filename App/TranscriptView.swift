@@ -1,5 +1,4 @@
 import AppKit
-import MarkdownUI
 import SwiftUI
 
 struct TranscriptView: View {
@@ -265,13 +264,8 @@ struct ItemView: View {
             }
             .frame(maxWidth: 560, alignment: .trailing)
             .frame(maxWidth: .infinity, alignment: .trailing)
-        case .text(_, let text):
-            Markdown(text)
-                .markdownTheme(.glass)
-                .markdownSoftBreakMode(.lineBreak)
-                .markdownCodeSyntaxHighlighter(live ? StreamingCodeHighlighter(text: text) as CodeSyntaxHighlighter : TranscriptCodeHighlighter.shared)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        case .text(let id, let text):
+            Reply(id: id, text: text, live: live)
         case .thinking(_, let text):
             ThinkingLine(text: text, live: live)
         case .tool(_, let call):

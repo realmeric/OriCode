@@ -16,6 +16,10 @@ packages:
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
     from: 2.4.1
+  # The CommonMark parser MarkdownUI is built on, which a reply's blocks are found with (Reply.swift).
+  swift-cmark:
+    url: https://github.com/swiftlang/swift-cmark
+    from: 0.4.0
   Highlightr:
     url: https://github.com/raspu/Highlightr
     from: 2.3.0
@@ -36,6 +40,10 @@ targets:
       - App
     dependencies:
       - package: MarkdownUI
+      - package: swift-cmark
+        product: cmark-gfm
+      - package: swift-cmark
+        product: cmark-gfm-extensions
       - package: Highlightr
       - package: SwiftTerm
       - package: Sparkle

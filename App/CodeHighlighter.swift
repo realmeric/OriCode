@@ -117,27 +117,27 @@ actor CodeHighlighter {
     }
 }
 
-/// Code blocks in a reply still streaming show plain: the reply is drawn again on every frame,
-/// and coloured code cost more to draw than all the rest of it. Each block is coloured in the
-/// background as it closes, so the reply has its colours at once when it settles.
+/// Code still streaming into the block a reply is growing shows plain: that block is drawn again
+/// on every frame, and coloured code costs more to draw than all the rest of it. Once its fence
+/// closes it's coloured in the background and shows its colours as they come in, rather than in
+/// the frame the reply settles or moves past it.
 struct StreamingCodeHighlighter: CodeSyntaxHighlighter {
     let text: String
 
     func highlightCode(_ code: String, language: String?) -> Text {
-        if !Self.isOpen(code, in: text) {
-            MainActor.assumeIsolated { TranscriptCodeHighlighter.shared.prepare(code, language: language) }
-        }
-        return Text(code)
+        guard !Self.isOpen(code, in: text) else { return Text(code) }
+        return MainActor.assumeIsolated { TranscriptCodeHighlighter.shared }.highlightCode(code, language: language)
     }
 
-    /// An open block runs to the end of the text, where a closed one ends in its fence.
+    /// The text is the block's own. It's closed once its last line is a fence with the code right
+    /// before it; code that isn't is still streaming, or is the frame before's copy, which
+    /// MarkdownUI asks for once more as it swaps in the new one.
     static func isOpen(_ code: String, in text: String) -> Bool {
-        func trimmed(_ text: String) -> Substring {
-            var end = text[...]
-            while end.last?.isNewline == true { end = end.dropLast() }
-            return end
-        }
-        return trimmed(text).hasSuffix(trimmed(code))
+        var rest = text[...]
+        while rest.last?.isWhitespace == true { rest = rest.dropLast() }
+        guard let newline = rest.lastIndex(of: "\n") else { return true }
+        let fence = rest[rest.index(after: newline)...].drop { $0 == " " }
+        return !(fence.hasPrefix("```") || fence.hasPrefix("~~~")) || !rest[..<newline].hasSuffix(code)
     }
 }
 
@@ -166,11 +166,6 @@ final class TranscriptCodeHighlighter: CodeSyntaxHighlighter {
             colours.used = uses
             return colours.text.map(Text.init) ?? Text(code)
         }
-    }
-
-    /// Colours a block before it's asked for.
-    func prepare(_ code: String, language: String?) {
-        _ = entry(code, language: language)
     }
 
     private func entry(_ code: String, language: String?) -> Colours {

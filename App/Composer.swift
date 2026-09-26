@@ -6,10 +6,12 @@ struct Composer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let running: Bool
     let maxHeight: CGFloat
-    @State private var text = ""
+    /// What's typed, in an object of its own: the body never reads it, so a key redraws only the
+    /// field and the few views below that do.
+    @State private var draft = Draft()
     /// A new id after each send rebuilds the field, whose editor otherwise sometimes writes the
     /// sent text back after Return.
-    @State private var draft = UUID()
+    @State private var field = UUID()
     @State private var slashSelected = 0
     /// What Tab found when several things match, as the last word would read with each, and the
     /// one the text holds while Tab cycles through them.
@@ -38,6 +40,11 @@ struct Composer: View {
     static let pickerRoom: CGFloat = 380
     /// A text field's placeholder, as AppKit draws it.
     private static let placeholderInk = Color(nsColor: .placeholderTextColor)
+
+    private var text: String {
+        get { draft.text }
+        nonmutating set { draft.text = newValue }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -85,16 +92,18 @@ struct Composer: View {
             if !shown { focused = model.composerTakesKeyboard }
         }
         .overlay(alignment: .bottomLeading) {
-            if !slashMatches.isEmpty {
-                SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }
-                    .frame(maxWidth: 520, alignment: .leading)
-                    .padding(.bottom, height + 8)
-                    .transition(.opacity)
-            } else if !completions.isEmpty {
-                CompletionMenu(candidates: completions, descriptions: completionNotes, selected: completionIndex) { pick($0) }
-                    .frame(maxWidth: 520, alignment: .leading)
-                    .padding(.bottom, height + 8)
-                    .transition(.opacity)
+            Isolated {
+                if !slashMatches.isEmpty {
+                    SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }
+                        .frame(maxWidth: 520, alignment: .leading)
+                        .padding(.bottom, height + 8)
+                        .transition(.opacity)
+                } else if !completions.isEmpty {
+                    CompletionMenu(candidates: completions, descriptions: completionNotes, selected: completionIndex) { pick($0) }
+                        .frame(maxWidth: 520, alignment: .leading)
+                        .padding(.bottom, height + 8)
+                        .transition(.opacity)
+                }
             }
         }
         // Esc puts the list away before anything else hears it.
@@ -107,10 +116,6 @@ struct Composer: View {
             recalled = nil
             // Tab at the prompt wants the shell's commands; asked once, as the prompt opens.
             if prompt { model.loadShellCommands() }
-        }
-        .onChange(of: slashQuery) { _, query in
-            slashSelected = 0
-            if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
         }
         .onDrop(of: [.image, .fileURL], isTargeted: $dropTarget) { providers in
             accept(providers)
@@ -259,7 +264,7 @@ struct Composer: View {
             // keyboard; SwiftUI's opacity doesn't reach its AppKit view, so its colours fade instead.
             KeyframeAnimator(initialValue: 1.0, trigger: model.shellPrompt) { shown in
                 let placeholder = placeholder(shell: model.shellPrompt)
-                TextField(placeholder, text: $text, prompt: Text(placeholder).foregroundStyle(Self.placeholderInk.opacity(shown)), axis: .vertical)
+                TextField(placeholder, text: Bindable(draft).text, prompt: Text(placeholder).foregroundStyle(Self.placeholderInk.opacity(shown)), axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(model.shellPrompt ? Type.mono : Type.body)
                     .foregroundStyle(Ink.primary.opacity(shown))
@@ -269,18 +274,23 @@ struct Composer: View {
                         // In and out with the keyframes alone, not faded in by the move spring.
                         if shown < 1 { ghost.opacity(1 - shown).transition(.identity) }
                     }
+                    // Here, where a key already redraws, rather than in the composer's body.
+                    // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
+                    .onChange(of: text) { _, now in
+                        if now != completed { completions = [] }
+                        guard !model.shellPrompt, now.hasPrefix("!") else { return }
+                        model.shellPrompt = true
+                        text = String(now.dropFirst())
+                    }
+                    .onChange(of: slashQuery) { _, query in
+                        slashSelected = 0
+                        if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
+                    }
             } keyframes: { _ in
                 MoveKeyframe(0)
                 LinearKeyframe(1, duration: 0.18, timingCurve: .easeOut)
             }
-            .id(draft)
-            // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
-            .onChange(of: text) { _, now in
-                if now != completed { completions = [] }
-                guard !model.shellPrompt, now.hasPrefix("!") else { return }
-                model.shellPrompt = true
-                text = String(now.dropFirst())
-            }
+            .id(field)
             // ⌫ in an empty prompt turns it back. The Backspace key sends DEL, 0x7F, which
             // isn't SwiftUI's .delete, 0x08.
             .onKeyPress(keys: [.delete, KeyEquivalent("\u{7F}")]) { _ in
@@ -347,7 +357,7 @@ struct Composer: View {
                 UsageGlass(chat: model.chat)
             }
             .frame(height: 36)
-            sendButton
+            Isolated { sendButton }
         }
         // The prompt comes and goes with the move spring, or, with Reduce Motion, fades in place.
         .animation(reduceMotion ? nil : Motion.move, value: model.shellPrompt)
@@ -448,7 +458,7 @@ struct Composer: View {
         Task { @MainActor in
             if moving { try? await Task.sleep(for: .milliseconds(650)) }
             text = ""
-            draft = UUID()
+            field = UUID()
             try? await Task.sleep(for: .milliseconds(30))
             // A program that took the whole screen meanwhile, vim run as the first command, keeps it.
             if model.openShell == nil { focused = true }
@@ -564,7 +574,7 @@ struct Composer: View {
     }
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.draftAttachments.isEmpty
+        !draft.blank || !model.draftAttachments.isEmpty
     }
 
     private func send() {
@@ -592,6 +602,28 @@ struct Composer: View {
         text = ""
         recalled = nil
         rebuild(after: false)
+    }
+}
+
+@Observable
+private final class Draft {
+    var text = "" {
+        didSet {
+            let blank = text.allSatisfy(\.isWhitespace)
+            if blank != self.blank { self.blank = blank }
+        }
+    }
+    /// Nothing but spaces and newlines. The send button reads this rather than the text, so it's
+    /// drawn again when this changes, not at every key.
+    private(set) var blank = true
+}
+
+/// Its content drawn in a body of its own, so what only the content reads redraws it alone.
+private struct Isolated<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
     }
 }
 

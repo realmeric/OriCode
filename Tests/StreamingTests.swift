@@ -61,12 +61,14 @@ struct StreamingTests {
         #expect(Conversation(chat: chat, context: context).items.last?.text == "Half and the rest")
     }
 
-    @Test func onlyTheBlockStillGrowingIsOpen() {
-        let text = "Here:\n\n```swift\nlet a = 1\n```\n\nAnd:\n\n```swift\nlet b = 2\nlet c"
-        #expect(!StreamingCodeHighlighter.isOpen("let a = 1\n", in: text))
-        #expect(StreamingCodeHighlighter.isOpen("let b = 2\nlet c\n", in: text))
+    @Test func aBlockIsOpenUntilItsFenceCloses() {
+        let growing = "```swift\nlet b = 2\nlet c"
+        #expect(StreamingCodeHighlighter.isOpen("let b = 2\nlet c", in: growing))
         #expect(StreamingCodeHighlighter.isOpen("", in: "```swift\n"))
-        #expect(!StreamingCodeHighlighter.isOpen("let b = 2\n", in: text + "\n```\n"))
+        #expect(!StreamingCodeHighlighter.isOpen("let b = 2\nlet c", in: growing + "\n```\n\n"))
+        #expect(!StreamingCodeHighlighter.isOpen("", in: "```\n```"))
+        // The frame before's copy, which the block has grown past.
+        #expect(StreamingCodeHighlighter.isOpen("let b = 2\nle", in: growing + "\n```\n"))
     }
 
     @Test func theIndexFindsTheNewestThreeAThread() {
