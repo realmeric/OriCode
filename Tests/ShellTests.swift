@@ -25,20 +25,52 @@ struct ShellTests {
     }
 
     @Test func claudeReadsTheCommandAndWhatItPrinted() {
-        #expect(ShellContext.block(command: "make test", text: "ok\nFAIL x", from: 0, exitCode: 2, running: false) == """
+        #expect(ShellContext.block(command: "make test", output: "ok\nFAIL x", exitCode: 2, running: false) == """
             <bash-input>make test</bash-input>
             <bash-stdout>ok
             FAIL x</bash-stdout>
             (It exited with code 2.)
             """)
-        #expect(ShellContext.block(command: "npm run dev", text: "ready\nGET /", from: 6, exitCode: nil, running: true) == """
+        #expect(ShellContext.block(command: "npm run dev", output: "GET /", exitCode: nil, running: true) == """
             <bash-input>npm run dev</bash-input>
             <bash-stdout>GET /</bash-stdout>
             (It's still running.)
             """)
         let long = String(repeating: "y", count: ShellContext.limit + 5)
-        #expect(ShellContext.block(command: "cat big", text: long, from: 0, exitCode: 0, running: false)
+        #expect(ShellContext.block(command: "cat big", output: long, exitCode: 0, running: false)
             .contains("[5 earlier characters left out]"))
+    }
+
+    @Test func claudeReadsOnFromWhereItWasEvenAfterAClear() throws {
+        let block = ShellBlock(id: UUID(), chatID: UUID(), command: "npm test -- --watch", folder: NSTemporaryDirectory())
+        func read() -> String? {
+            guard let unread = block.unread() else { return nil }
+            block.read(to: unread.mark)
+            return unread.text
+        }
+        block.view.feed(text: "one\r\ntwo\r\nthree\r\n")
+        #expect(read() == "one\ntwo\nthree")
+        #expect(read() == nil)
+        block.view.feed(text: "four\r\n")
+        #expect(read() == "four")
+        // A watcher clears the screen and its scrollback and prints more lines than before.
+        let run = (1...6).map { "pass \($0)" }
+        block.view.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J" + run.joined(separator: "\r\n") + "\r\n")
+        #expect(read() == run.joined(separator: "\n"))
+        // Only the screen this time, and fewer lines.
+        block.view.feed(text: "\u{1B}[H\u{1B}[2Jfail 1\r\n")
+        #expect(read() == "fail 1")
+        // Past the scrollback, which lets go of its first lines and not of the lines' numbers.
+        block.view.feed(text: (1...ShellBlock.scrollback + 100).map { "line \($0)" }.joined(separator: "\r\n") + "\r\n")
+        #expect(read()?.hasSuffix("line \(ShellBlock.scrollback + 100)") == true)
+        block.view.feed(text: "after\r\n")
+        #expect(read() == "after")
+        #expect(block.unreadLines == 0)
+        // A program takes the whole screen, and gives it back.
+        block.view.feed(text: "\u{1B}[?1049h\u{1B}[Hfull")
+        #expect(read() == "full")
+        block.view.feed(text: "\u{1B}[?1049l")
+        #expect(read()?.hasSuffix("line \(ShellBlock.scrollback + 100)\nafter") == true)
     }
 
     @Test func aCommandRunsInItsFolderAndEnds() async throws {
@@ -97,12 +129,82 @@ struct ShellTests {
     }
 
     @Test func blocksGoToClaudeOnceWithTheNextMessage() async throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "shell-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
+        let (model, chat, container) = try thread()
+        let block = try #require(model.runCommand("echo hello from the shell"))
+        for _ in 0..<100 where block.running || !block.text.hasSuffix("hello from the shell") { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(chat.started)
+        #expect(chat.title == "echo hello from the shell")
+        let message = model.withShells("what happened?", in: chat)
+        #expect(message.text.hasPrefix("<bash-input>echo hello from the shell</bash-input>"))
+        #expect(message.text.hasSuffix("hello from the shell</bash-stdout>\n\nwhat happened?"))
+        // Read once the message has been taken, and not before.
+        #expect(model.withShells("and now?", in: chat).text != "and now?")
+        message.read()
+        #expect(model.withShells("and now?", in: chat).text == "and now?")
+        // The block and what Claude has read of it are stored with the thread.
+        let again = Conversation(chat: chat, context: container.mainContext)
+        guard case .shell(_, let run) = again.items.last else {
+            Issue.record("no block")
+            return
+        }
+        #expect(run.exitCode == 0 && run.unread == 0 && !run.output.isEmpty)
+    }
+
+    @Test func aSlashCommandGoesAloneAndAFailedSendLeavesBlocksUnread() async throws {
+        let (model, chat, container) = try thread()
+        let block = try #require(model.runCommand("echo waiting"))
+        for _ in 0..<100 where block.running || !block.text.hasSuffix("waiting") { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(model.withShells("/compact", in: chat).text == "/compact")
+        // No engine runs here, so every send fails, and the block waits for the next message.
+        let conversation = model.conversation(for: chat)
+        for text in ["/compact", "why?"] {
+            #expect(model.send(text))
+            for _ in 0..<100 where conversation.running { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        #expect(model.withShells("why?", in: chat).text.hasPrefix("<bash-input>echo waiting</bash-input>"))
+        let again = Conversation(chat: chat, context: container.mainContext)
+        #expect(again.items.contains { if case .shell(_, let run) = $0 { run.unread == -1 } else { false } })
+    }
+
+    @Test func aFastCommandsLastLinesArriveAfterItEnds() async throws {
+        let (model, chat, container) = try thread()
+        // About 300KB through the pty, printed faster than the main queue takes it, and gone.
+        var blocks: [ShellBlock] = []
+        for _ in 0..<20 {
+            let block = try #require(model.runCommand("seq -f '%089.0f' 1 3400; echo done"))
+            for _ in 0..<200 where block.running || String(block.screen.characters.suffix(4)) != "done" {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            blocks.append(block)
+        }
+        #expect(blocks.allSatisfy { $0.exitCode == 0 && $0.text.hasSuffix("3399\n" + String(repeating: "0", count: 85) + "3400\ndone") })
+        // Stored as soon as it's drawn.
+        let runs = Conversation(chat: chat, context: container.mainContext).items.compactMap { if case .shell(_, let run) = $0 { run } else { nil } }
+        #expect(runs.count == 20)
+        #expect(runs.allSatisfy { $0.output.suffix(12) == Data("3400\r\ndone\r\n".utf8) })
+    }
+
+    @Test func aBlockRunWhileAReplyStreamsDoesntSplitIt() throws {
+        let (model, chat, container) = try thread()
+        let conversation = model.conversation(for: chat)
+        func delta(_ text: String) -> EngineEvent {
+            EngineEvent(name: "text", threadId: chat.id.uuidString, body: ["event": "text", "delta": .string(text)])
+        }
+        conversation.receive(delta("Running the "))
+        conversation.shellStarted(ShellRun(command: "ls", folder: chat.cwd), id: UUID())
+        conversation.receive(delta("tests now."))
+        conversation.flush()
+        // And after a relaunch.
+        for items in [conversation.items, Conversation(chat: chat, context: container.mainContext).items] {
+            #expect(items.map(\.text) == ["Running the tests now.", nil])
+        }
+    }
+
+    /// A model with one thread open.
+    private func thread() throws -> (AppModel, Chat, ModelContainer) {
         let container = try ModelContainer(
             for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
-        let project = Project(name: "alpha", path: folder.path)
+        let project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
         // After the model, whose launch clears threads that never started.
         let model = AppModel(container: container)
@@ -111,20 +213,6 @@ struct ShellTests {
         try container.mainContext.save()
         model.selectedProjectID = project.id
         model.selectedChatID = chat.id
-        model.runCommand("echo hello from the shell")
-        for _ in 0..<100 where model.shellBlocks.values.contains(where: \.running) { try await Task.sleep(for: .milliseconds(50)) }
-        #expect(chat.started)
-        #expect(chat.title == "echo hello from the shell")
-        let context = model.shellContext(for: chat)
-        #expect(context?.contains("<bash-input>echo hello from the shell</bash-input>") == true)
-        #expect(context?.contains("hello from the shell</bash-stdout>") == true)
-        #expect(model.shellContext(for: chat) == nil)
-        // The block and what Claude has read of it are stored with the thread.
-        let again = Conversation(chat: chat, context: container.mainContext)
-        guard case .shell(_, let run) = again.items.last else {
-            Issue.record("no block")
-            return
-        }
-        #expect(run.exitCode == 0 && run.sentUpTo > 0 && !run.output.isEmpty)
+        return (model, chat, container)
     }
 }

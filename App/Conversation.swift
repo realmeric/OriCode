@@ -42,7 +42,7 @@ struct PendingAsk: Hashable {
 }
 
 /// A command run from the composer's shell prompt, as the thread keeps it: what it printed, raw,
-/// and how far of that, as text, Claude has read.
+/// and how much of that Claude hasn't read.
 struct ShellRun: Hashable {
     let command: String
     let folder: String
@@ -50,14 +50,15 @@ struct ShellRun: Hashable {
     var endedAt: Date?
     var exitCode: Int32?
     var output = Data()
-    /// Characters of its text given to Claude; -1 until it has been given at all.
-    var sentUpTo = -1
+    /// How many of its last lines Claude hasn't read, counted from the end because a relaunch
+    /// rebuilds the terminal from the end of the output; -1 for all of them, as until it's read.
+    var unread = -1
 
     var body: JSON {
         var body: [String: JSON] = [
             "event": "shell", "command": .string(command), "folder": .string(folder),
             "startedAt": .number(startedAt.timeIntervalSince1970), "output": .string(output.base64EncodedString()),
-            "sentUpTo": .number(Double(sentUpTo)),
+            "unread": .number(Double(unread)),
         ]
         if let endedAt { body["endedAt"] = .number(endedAt.timeIntervalSince1970) }
         if let exitCode { body["exitCode"] = .number(Double(exitCode)) }
@@ -77,7 +78,9 @@ struct ShellRun: Hashable {
         endedAt = body["endedAt"]?.double.map(Date.init(timeIntervalSince1970:))
         exitCode = body["exitCode"]?.int.map(Int32.init)
         output = body["output"]?.string.flatMap { Data(base64Encoded: $0) } ?? Data()
-        sentUpTo = body["sentUpTo"]?.int ?? -1
+        // A block stored by an earlier build counts how many characters Claude read, and one read
+        // at all had nearly always been read after it ended.
+        unread = body["unread"]?.int ?? ((body["sentUpTo"]?.int ?? -1) < 0 ? -1 : 0)
     }
 }
 
@@ -320,7 +323,11 @@ final class Conversation {
     func shellStarted(_ run: ShellRun, id: UUID) {
         chat.started = true
         if !chat.titleIsCustom, chat.title == Chat.untitled { chat.title = Chat.title(from: run.command) }
+        // A reply streaming meanwhile goes on in its own item, above the block, which is where
+        // its event, written before the block's, puts it after a relaunch.
+        let streaming = open
         shellEvents[id] = record("shell", run.body, id: id)
+        open = streaming
     }
 
     /// A command's block as it stands now: ended, or read by Claude.

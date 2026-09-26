@@ -18,6 +18,7 @@ extension AppModel {
         // Known before its block goes into the thread, whose view looks it up as it first draws.
         let block = ShellBlock(id: UUID(), chatID: chat.id, command: command, folder: chat.cwd)
         block.onEnd = { [weak self] block in self?.shellEnded(block) }
+        block.onTail = { [weak self] block in self?.store(block) }
         // A program taking the whole screen opens its block over the thread, and letting it go
         // puts the block back.
         block.onFullScreen = { [weak self] block in
@@ -46,6 +47,7 @@ extension AppModel {
         run.endedAt = block.endedAt
         run.exitCode = block.exitCode
         run.output = block.output.suffix(ShellBlock.kept)
+        run.unread = block.unreadLines
         conversation.shellChanged(block.id, run)
     }
 
@@ -102,23 +104,45 @@ extension AppModel {
         }
     }
 
-    /// Every block in the thread with something Claude hasn't read, as Claude Code gives its `!`
-    /// commands: the command, then what it printed since Claude last read it. Marks them read.
-    func shellContext(for chat: Chat) -> String? {
+    /// A message as Claude gets it: first every block in the thread with something Claude hasn't
+    /// read, as Claude Code gives its `!` commands, the command and then what it printed since
+    /// Claude last read it. A slash command goes out alone, since anything before it would make it
+    /// a message, and the blocks wait for the next one. `read` marks them read, once the message
+    /// has been taken.
+    func withShells(_ text: String, in chat: Chat) -> (text: String, read: () -> Void) {
+        guard !text.hasPrefix("/") else { return (text, {}) }
         let conversation = conversation(for: chat)
         var parts: [String] = []
+        var marks: [(id: UUID, mark: ShellBlock.Mark?)] = []
         for item in conversation.items {
-            guard case .shell(let id, var run) = item else { continue }
-            let live = shellBlocks[id]
-            let text = live?.text ?? ShellRender.plain(ShellRender.lines(ShellRender.replay(run.output)))
-            let running = live?.running ?? false
-            guard text.count > run.sentUpTo || run.sentUpTo < 0 else { continue }
-            parts.append(ShellContext.block(command: run.command, text: text, from: max(run.sentUpTo, 0),
-                                            exitCode: live?.exitCode ?? run.exitCode, running: running))
-            run.sentUpTo = text.count
-            conversation.shellChanged(id, run)
+            guard case .shell(let id, let run) = item else { continue }
+            if let live = shellBlocks[id] {
+                guard let unread = live.unread() else { continue }
+                parts.append(ShellContext.block(command: run.command, output: unread.text, exitCode: live.exitCode, running: live.running))
+                marks.append((id, unread.mark))
+            } else if run.unread != 0 {
+                // A block from an earlier launch, whose terminal is rebuilt from the end of its output.
+                let lines = ShellRender.lines(ShellRender.replay(run.output))
+                let output = ShellRender.plain(run.unread < 0 ? lines : Array(lines.suffix(run.unread)))
+                parts.append(ShellContext.block(command: run.command, output: output, exitCode: run.exitCode, running: false))
+                marks.append((id, nil))
+            }
         }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+        guard !parts.isEmpty else { return (text, {}) }
+        return (parts.joined(separator: "\n") + "\n\n" + text, { [weak self] in
+            for (id, mark) in marks { self?.markRead(id, to: mark, in: conversation) }
+        })
+    }
+
+    private func markRead(_ id: UUID, to mark: ShellBlock.Mark?, in conversation: Conversation) {
+        guard case .shell(_, var run) = conversation.items.last(where: { $0.id == id }) else { return }
+        if let mark, let live = shellBlocks[id] {
+            live.read(to: mark)
+            run.unread = live.unreadLines
+        } else {
+            run.unread = 0
+        }
+        conversation.shellChanged(id, run)
     }
 }
 
@@ -127,8 +151,8 @@ enum ShellContext {
     /// What Claude reads of one command's output at most: the end of it.
     static let limit = 30_000
 
-    static func block(command: String, text: String, from: Int, exitCode: Int32?, running: Bool) -> String {
-        var output = String(text.dropFirst(from))
+    static func block(command: String, output: String, exitCode: Int32?, running: Bool) -> String {
+        var output = output
         if output.count > limit {
             let cut = output.dropFirst(output.count - limit)
             output = "[\(output.count - limit) earlier characters left out]\n" + cut

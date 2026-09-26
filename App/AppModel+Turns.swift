@@ -46,7 +46,7 @@ extension AppModel {
         let conversation = conversation(for: chat)
         holdWhileWorking()
         // The commands run from the shell prompt since Claude last read them go first.
-        let text = shellContext(for: chat).map { $0 + "\n\n" + text } ?? text
+        let (text, readShells) = withShells(text, in: chat)
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
@@ -69,6 +69,7 @@ extension AppModel {
         Task {
             do {
                 _ = try await engine.request("send", .object(params))
+                readShells()
             } catch {
                 conversation.sendFailed(error.localizedDescription)
                 holdWhileWorking()

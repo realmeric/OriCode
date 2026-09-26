@@ -30,14 +30,19 @@ final class ShellBlock {
     private(set) var fullScreen = false
     /// Everything it printed, raw, for the store.
     @ObservationIgnored private(set) var output = Data()
-    /// Told when it ends, and when a program takes the whole screen or lets it go.
+    /// Told when it ends, when what it printed last arrives after that, and when a program takes
+    /// the whole screen or lets it go.
     @ObservationIgnored var onEnd: ((ShellBlock) -> Void)?
+    @ObservationIgnored var onTail: ((ShellBlock) -> Void)?
     @ObservationIgnored var onFullScreen: ((ShellBlock) -> Void)?
     /// The terminal: fed all along, drawn only while the block is open.
     @ObservationIgnored let view: BlockTerminalView
     @ObservationIgnored private let link: Link
     @ObservationIgnored private var process: LocalProcess?
     @ObservationIgnored private var redraw: Task<Void, Never>?
+    /// Slices the pty has handed over, to tell when they've stopped coming.
+    @ObservationIgnored private var slices = 0
+    @ObservationIgnored private var readTo: Mark?
 
     var running: Bool { endedAt == nil }
 
@@ -101,21 +106,69 @@ final class ShellBlock {
         kill(shell, SIGHUP)
     }
 
-    /// Everything it printed as plain lines, for Claude.
+    /// Everything it printed as plain lines.
     var text: String {
         ShellRender.plain(ShellRender.lines(terminal))
+    }
+
+    /// How far Claude has read: the row after the one its last line starts on, and the line
+    /// before that one as Claude read it, which a clear or a program redrawing the screen writes
+    /// over.
+    struct Mark {
+        let row: Int
+        let before: (row: Int, text: String)?
+    }
+
+    /// What Claude hasn't read, as plain lines, and the mark reading it leaves; nil when there's
+    /// nothing new. It's all of it the first time, and again once what Claude read is gone: a
+    /// watcher cleared the screen, a program took it whole, the scrollback let go of the lines
+    /// after the mark.
+    func unread() -> (text: String, mark: Mark)? {
+        let lines = numberedText()
+        let from = firstUnread(lines)
+        guard from.map({ $0 < lines.count }) ?? (readTo == nil || !lines.isEmpty) else { return nil }
+        let mark = Mark(row: (lines.last?.row ?? -1) + 1, before: lines.count > 1 ? lines[lines.count - 2] : nil)
+        return (lines[(from ?? 0)...].map(\.text).joined(separator: "\n"), mark)
+    }
+
+    func read(to mark: Mark) {
+        readTo = mark
+    }
+
+    /// How many of its last lines Claude hasn't read, for the store, which rebuilds the terminal
+    /// from the end of the output after a relaunch; -1 for all of them.
+    var unreadLines: Int {
+        let lines = numberedText()
+        return firstUnread(lines).map { lines.count - $0 } ?? -1
+    }
+
+    private func numberedText() -> [(row: Int, text: String)] {
+        ShellRender.numbered(terminal).map { ($0.row, ShellRender.plain($0.line)) }
+    }
+
+    /// The first line Claude hasn't read, or nil for all of them: it has read none, or there are
+    /// fewer lines than it read, or the line before its last one has been written over.
+    private func firstUnread(_ lines: [(row: Int, text: String)]) -> Int? {
+        guard let readTo, (lines.last?.row ?? -1) >= readTo.row - 1 else { return nil }
+        if let before = readTo.before, let first = lines.first, before.row >= first.row,
+           !lines.contains(where: { $0.row == before.row && $0.text == before.text }) {
+            return nil
+        }
+        return lines.firstIndex { $0.row >= readTo.row } ?? lines.count
     }
 
     fileprivate func received(_ bytes: ArraySlice<UInt8>) {
         view.feed(byteArray: bytes)
         output.append(contentsOf: bytes)
         if output.count > Self.kept * 2 { output = output.suffix(Self.kept) }
+        slices += 1
         guard redraw == nil else { return }
         redraw = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
             guard let self, !Task.isCancelled else { return }
             redraw = nil
             draw()
+            if !running { onTail?(self) }
         }
     }
 
@@ -146,8 +199,27 @@ final class ShellBlock {
         draw()
         endedAt = .now
         exitCode = code
-        process = nil
         onEnd?(self)
+        Task { await letGo() }
+    }
+
+    /// The exit can come before the last of what it printed, still in the pty or among the slices
+    /// SwiftTerm hands the main queue a few at a time, and SwiftTerm's reads hold their
+    /// LocalProcess weakly, so letting go of it at the exit loses that tail. It's kept until the
+    /// pty has closed, which SwiftTerm marks by dropping the descriptor, and a turn of the main
+    /// queue brings no more slices.
+    private func letGo() async {
+        var wait = 50
+        while let process, process.childfd >= 0 {
+            try? await Task.sleep(for: .milliseconds(wait))
+            wait = min(wait * 2, 1000)
+        }
+        var seen = -1
+        while seen != slices {
+            seen = slices
+            await withCheckedContinuation { turn in DispatchQueue.main.async { turn.resume() } }
+        }
+        process = nil
     }
 
     /// The pty and the terminal call back on the main queue.

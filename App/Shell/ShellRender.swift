@@ -11,7 +11,13 @@ enum ShellRender {
     typealias Line = [(character: Character, attribute: Attribute)]
 
     static func lines(_ terminal: Terminal) -> [Line] {
-        var lines: [Line] = []
+        numbered(terminal).map(\.line)
+    }
+
+    /// The same lines, each with the row it starts on, counted from the terminal's first row with
+    /// the ones the scrollback has let go of, so a line keeps its number as the scrollback trims.
+    static func numbered(_ terminal: Terminal) -> [(row: Int, line: Line)] {
+        var lines: [(row: Int, line: Line)] = []
         var row = terminal.buffer.totalLinesTrimmed
         while let line = terminal.getScrollInvariantLine(row: row) {
             var cells: Line = []
@@ -23,23 +29,25 @@ enum ShellRender {
                 cells.append((character == "\0" ? " " : character, cell.attribute))
             }
             if line.isWrapped, !lines.isEmpty {
-                lines[lines.count - 1] += cells
+                lines[lines.count - 1].line += cells
             } else {
-                lines.append(cells)
+                lines.append((row, cells))
             }
             row += 1
         }
-        lines = lines.map { line in
-            var line = line
-            while line.last?.character == " " { line.removeLast() }
-            return line
+        for index in lines.indices {
+            while lines[index].line.last?.character == " " { lines[index].line.removeLast() }
         }
-        while lines.last?.isEmpty == true { lines.removeLast() }
+        while lines.last?.line.isEmpty == true { lines.removeLast() }
         return lines
     }
 
     static func plain(_ lines: [Line]) -> String {
-        lines.map { String($0.map(\.character)) }.joined(separator: "\n")
+        lines.map(plain).joined(separator: "\n")
+    }
+
+    static func plain(_ line: Line) -> String {
+        String(line.map(\.character))
     }
 
     /// In the terminal's colours, a run for each stretch of cells that look the same.
