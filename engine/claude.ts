@@ -98,11 +98,15 @@ export function cliDebugFile(name: string): string | undefined {
 
 const missing = "claude isn't installed. Install Claude Code, run `claude` in Terminal and log in.";
 
-/// Whether Claude Code can run, asked of the CLI the way hello always has.
+let cliVersion: Promise<string | null> | undefined;
+
+/// Whether Claude Code can run, asked of the CLI the way hello always has. The version is read
+/// once, like the path, so a check after a login in Terminal asks the CLI only for the login.
 async function availability(): Promise<Availability> {
   const claude = await findClaude();
-  if (!claude) return { state: "missing", cli: null, version: null, hint: missing };
-  const [login, cli] = await Promise.all([loggedIn(claude), claudeVersion(claude)]);
+  if (!claude) return { state: "missing", cli: null, version: null, hint: "Install Claude Code, then run `claude` in Terminal and log in." };
+  cliVersion ??= claudeVersion(claude);
+  const [login, cli] = await Promise.all([loggedIn(claude), cliVersion]);
   return { state: login ? "ready" : "signedOut", cli: claude, version: cli, hint: login ? null : "Run `claude` in Terminal and log in." };
 }
 

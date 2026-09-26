@@ -104,6 +104,8 @@ export type Provider = {
   missing: string;
   /// The CLI, or null. It asks nothing of it, so a send never waits on a login check.
   found(): Promise<string | null>;
+  /// Asked at hello and again by provider.check, so after the first it asks the CLI only what a
+  /// login in Terminal changes.
   availability(): Promise<Availability>;
   /// Hello's list, read once `ready` says the CLI can be asked; `tell` sends the `models`
   /// events that follow it.

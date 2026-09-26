@@ -13,6 +13,8 @@ import { emit, event, log, type Request } from "./wire.ts";
 
 const providers = new Map<string, Provider>([[claude.id, claude]]);
 const sessions = new Map<string, Session>();
+/// Agents whose models were read while they could run; hello's list for one signed out is a fallback.
+const listed = new Set<string>();
 /// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
 const watched = new Set<string>();
 
@@ -42,6 +44,19 @@ function session(threadId: string, agent: Provider, path: string): Session {
   return found;
 }
 
+/// An agent's models, read once a check finds it signed in after hello didn't, as `models`
+/// events: the list, unless its defaults came with it, and then the defaults.
+async function listAfterLogin(agent: Provider, found: Availability): Promise<void> {
+  let told = false;
+  const listedFirst = Promise.withResolvers<void>();
+  const models = await agent.models(found, (fields) => {
+    told = true;
+    void listedFirst.promise.then(() => event("models", fields));
+  });
+  if (!told) event("models", { models, settingsEffort: null, ultraKnown: false });
+  listedFirst.resolve();
+}
+
 /// An agent as hello gives it to the app: whether it can run here, and what a thread on it can do.
 function described(agent: Provider, found: Availability) {
   return {
@@ -61,12 +76,26 @@ function described(agent: Provider, found: Availability) {
 const methods: Record<string, (params: any) => Promise<unknown>> = {
   async hello() {
     const found = await claude.availability();
+    if (found.state === "ready") listed.add(claude.id);
     const replied = Promise.withResolvers<void>();
     const models = await claude.models(found, (fields) => void replied.promise.then(() => event("models", fields)));
     // Nothing awaits after this, so it runs once the reply is written: a `models` event
     // arriving first would be undone by the reply.
     setImmediate(replied.resolve);
     return { version, models, claude: found.cli, loggedIn: found.state === "ready", providers: [described(claude, found)] };
+  },
+
+  /// One agent asked again, after a login in Terminal, without a restart that would end every
+  /// thread's CLI.
+  async "provider.check"({ provider: id }: { provider?: string }) {
+    const agent = provider(id);
+    const found = await agent.availability();
+    if (found.state === "ready" && !listed.has(agent.id)) {
+      listed.add(agent.id);
+      // After the reply, as hello's are.
+      setImmediate(() => void listAfterLogin(agent, found).catch((error) => log(`models not read after a login: ${describe(error)}`)));
+    }
+    return described(agent, found);
   },
 
   async send(params: SendParams & { provider?: string }) {

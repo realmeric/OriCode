@@ -16,12 +16,13 @@ extension AppModel {
         for conversation in conversations.values { conversation.quitting() }
     }
 
-    /// Once the engine is ready: a thread cut off while it worked gets the line, on screen or
-    /// not, and one cut off while it waited on you keeps its card up and its turn with it.
+    /// Once the engine and the thread's agent are ready: a thread cut off while it worked gets the
+    /// line, on screen or not, and one cut off while it waited on you keeps its card up and its
+    /// turn with it. A thread whose agent isn't ready waits for a check that finds it so.
     func pickUpAfterQuit() {
         guard engineState == .ready else { return }
         let cutOff = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.quitMidTurn }))) ?? []
-        for chat in cutOff {
+        for chat in cutOff where agentReady(for: chat) {
             let conversation = conversation(for: chat)
             guard !conversation.waitingAfterQuit, !conversation.running else { continue }
             // A quit before the session had begun leaves nothing to go back to.

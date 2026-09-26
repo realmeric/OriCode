@@ -111,6 +111,40 @@ extension AppModel {
         return providers.first { $0.id == id }
     }
 
+    /// Whether a turn can start on the thread's agent without the user: hello listed it and found
+    /// it signed in. Pick-up after a quit and a limit's reset wait on it; what the user sends doesn't.
+    func agentReady(for chat: Chat?) -> Bool {
+        provider(for: chat)?.state == .ready
+    }
+
+    /// The open thread's agent while the engine is up and the agent can't run, whose hint is the
+    /// line under the composer.
+    var agentDown: ProviderInfo? {
+        guard engineState == .ready, let agent = provider(for: chat), agent.state != .ready, agent.hint != nil else { return nil }
+        return agent
+    }
+
+    /// Asks the engine about one agent again, after a login in Terminal, instead of restarting it
+    /// and ending every thread's turn.
+    func checkProvider(_ id: String) async {
+        guard engineState == .ready,
+              let reply = try? await engine.request("provider.check", ["provider": .string(id)]),
+              let found = try? reply.decode(ProviderInfo.self)
+        else { return }
+        checked(found)
+    }
+
+    /// What a check said of an agent. One that has just become ready takes up what waited
+    /// on it: threads a quit cut off, and limits that have reset.
+    func checked(_ found: ProviderInfo) {
+        guard let at = providers.firstIndex(where: { $0.id == found.id }) else { return }
+        let was = providers[at].state
+        providers[at] = found
+        guard was != .ready, found.state == .ready else { return }
+        pickUpAfterQuit()
+        scheduleResumes()
+    }
+
     /// The agent a new thread starts on: the one Settings fixes, or the last one picked, as long
     /// as hello lists it.
     var startingProvider: String {

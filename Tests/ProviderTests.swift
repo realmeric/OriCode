@@ -63,6 +63,92 @@ struct ProviderTests {
         #expect(model.provider(for: chat) == nil)
     }
 
+    private static func claude(_ state: ProviderInfo.State, hint: String? = nil) -> ProviderInfo {
+        let assumed = ProviderInfo.claude
+        return ProviderInfo(
+            id: assumed.id, name: assumed.name, agent: assumed.agent, state: state, hint: hint, cli: "/usr/local/bin/claude",
+            version: "2.1.282 (Claude Code)", capabilities: assumed.capabilities, levels: assumed.levels, modes: assumed.modes)
+    }
+
+    private static let signedOut = claude(.signedOut, hint: "Run `claude` in Terminal and log in.")
+
+    /// The engine up, with this thread open. Started, or the model would clear it as a draft.
+    private func opened() -> AppModel {
+        chat.started = true
+        let model = AppModel(container: container)
+        model.engineState = .ready
+        model.selectedProjectID = chat.project?.id
+        model.selectedChatID = chat.id
+        return model
+    }
+
+    @Test func eachStateSaysItsOwnLineUnderTheComposer() {
+        let model = opened()
+        #expect(model.agentDown == nil)
+        model.providers = [Self.signedOut]
+        #expect(model.agentDown?.hint == "Run `claude` in Terminal and log in.")
+        model.providers = [Self.claude(.missing, hint: "Install Claude Code, then run `claude` in Terminal and log in.")]
+        #expect(model.agentDown?.hint == "Install Claude Code, then run `claude` in Terminal and log in.")
+        model.providers = [Self.claude(.ready)]
+        #expect(model.agentDown == nil)
+        // A thread on another agent says that agent's line, whatever Claude's state.
+        model.providers = [Self.claude(.ready), ProviderInfo(
+            id: "codex", name: "Codex", agent: "Codex", state: .signedOut, hint: "Run `codex login` in Terminal.", cli: nil, version: nil,
+            capabilities: ProviderInfo.claude.capabilities, levels: [], modes: [])]
+        chat.provider = "codex"
+        #expect(model.agentDown?.hint == "Run `codex login` in Terminal.")
+        // While the engine starts, only the engine speaks.
+        model.engineState = .starting
+        #expect(model.agentDown == nil)
+    }
+
+    @Test func signedOutGitTheReviewAndCommandKsGitRowsStillWork() {
+        let model = opened()
+        model.providers = [Self.signedOut]
+        #expect(model.gitUnavailable == nil)
+        #expect(model.gitCommands.allSatisfy { $0.unavailable == nil || $0.unavailable == "No branch here" })
+        model.readReview()
+        #expect(model.review.wanted)
+    }
+
+    @Test func signedOutUsageIsntAskedFor() {
+        let model = opened()
+        model.providers = [Self.signedOut]
+        model.refreshUsage()
+        #expect(!model.usageLoading)
+        model.providers = [Self.claude(.ready)]
+        model.refreshUsage()
+        #expect(model.usageLoading)
+    }
+
+    @Test func aThreadCutOffByAQuitWaitsForItsAgentAndGoesOnOnceACheckFindsItReady() {
+        chat.sessionId = "s"
+        chat.quitMidTurn = true
+        let model = opened()
+        model.providers = [Self.signedOut]
+        model.pickUpAfterQuit()
+        let sentLine = { model.conversation(for: self.chat).items.contains { if case .user(_, let text, _, _) = $0 { text == AppModel.quitLine } else { false } } }
+        #expect(chat.quitMidTurn)
+        #expect(!sentLine())
+        model.checked(Self.claude(.ready))
+        #expect(sentLine())
+    }
+
+    @Test func aLimitThatResetWaitsForItsAgentWithoutWakingTheMac() async throws {
+        chat.sessionId = "s"
+        chat.resumeAt = .now.addingTimeInterval(-30)
+        let model = opened()
+        model.providers = [Self.signedOut]
+        model.scheduleResumes()
+        #expect(model.resumeTask == nil)
+        model.checked(Self.claude(.ready))
+        #expect(model.resumeTask != nil)
+        try await Task.sleep(for: .milliseconds(1600))
+        let sent = model.conversation(for: chat).items.contains { if case .user(_, let text, _, _) = $0 { text.hasSuffix(AppModel.limitLineEnd) } else { false } }
+        #expect(sent)
+        #expect(chat.resumeAt == nil)
+    }
+
     @Test func onlyAnotherAgentsRequestsNameIt() {
         let params: [String: JSON] = ["threadId": "t", "cwd": "/tmp/alpha"]
         #expect(params.naming("claude") == params)

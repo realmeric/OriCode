@@ -110,7 +110,7 @@ extension AppModel {
 
     /// Asks the engine for the whole picture, which it keeps a minute.
     func refreshUsage() {
-        guard engineState == .ready, !usageLoading, provider(for: chat)?.capabilities.usage == true else { return }
+        guard engineState == .ready, !usageLoading, agentReady(for: chat), provider(for: chat)?.capabilities.usage == true else { return }
         if let usageAt, Date.now.timeIntervalSince(usageAt) < 60 { return }
         let agent = providerID(for: chat)
         usageLoading = true

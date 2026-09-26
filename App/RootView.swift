@@ -316,7 +316,8 @@ struct EngineNote: View {
         Group {
             if let note = model.modeNote ?? model.note {
                 Text(note)
-            } else if model.engineState == .ready || model.engineState == .starting, let away = model.runningOutOfView {
+            } else if model.engineState == .ready || model.engineState == .starting, model.agentDown == nil,
+                      let away = model.runningOutOfView {
                 RunningLine(block: away.block, more: away.more)
             } else {
                 engineLine
@@ -325,6 +326,7 @@ struct EngineNote: View {
         .font(Type.secondary)
         .foregroundStyle(Ink.secondary)
         .animation(Motion.fade, value: model.engineState)
+        .animation(Motion.fade, value: model.agentDown)
         .animation(Motion.fade, value: model.note)
         .animation(Motion.fade, value: model.modeNote)
     }
@@ -333,29 +335,34 @@ struct EngineNote: View {
     private var engineLine: some View {
         Group {
             switch model.engineState {
-            case .starting, .ready:
+            case .starting:
                 EmptyView()
+            case .ready:
+                if let agent = model.agentDown, let hint = agent.hint {
+                    // A CLI that isn't there won't be found by asking again; a login can be.
+                    if agent.state == .missing {
+                        Text(LocalizedStringKey(hint))
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(LocalizedStringKey(hint))
+                            retry { await model.checkProvider(agent.id) }
+                        }
+                    }
+                }
             case .noNode(let message):
                 Text(LocalizedStringKey(message))
-            case .noClaude:
-                Text("Install Claude Code, then run `claude` in Terminal and log in.")
-            case .notLoggedIn:
-                HStack(spacing: 6) {
-                    Text("Run `claude` in Terminal and log in.")
-                    retry
-                }
             case .stopped:
                 HStack(spacing: 6) {
                     Text("Engine stopped.")
-                    retry
+                    retry { await model.startEngine() }
                 }
             }
         }
     }
 
-    private var retry: some View {
+    private func retry(_ action: @escaping @MainActor () async -> Void) -> some View {
         Button("Retry") {
-            Task { await model.startEngine() }
+            Task { await action() }
         }
         .buttonStyle(.plain)
         .foregroundStyle(Ink.primary)

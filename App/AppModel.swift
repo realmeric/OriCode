@@ -76,20 +76,18 @@ struct FastReading: Equatable {
 struct Hello: Codable, Sendable {
     let version: String
     let models: [ModelOption]
-    let claude: String?
-    let loggedIn: Bool
     let providers: [ProviderInfo]
 }
 
 @MainActor
 @Observable
 final class AppModel {
+    /// The engine's own state. Whether an agent can run is the agent's, in `providers`: the
+    /// engine is ready once hello answers, signed in or not, so git and the review work either way.
     enum EngineState: Equatable {
         case starting
         case ready
         case noNode(String)
-        case noClaude
-        case notLoggedIn
         case stopped
     }
 
@@ -412,7 +410,7 @@ final class AppModel {
             // Which models run Ultracode comes a moment later, in the models event.
             models = hello.models.map(\.assumingUltracode)
             providers = hello.providers
-            engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
+            engineState = .ready
             refreshBranch(for: chat)
             tellWindow()
             readReview()

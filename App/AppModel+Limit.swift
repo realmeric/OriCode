@@ -13,10 +13,12 @@ extension AppModel {
         "The \(Limit.name(of: window))" + limitLineEnd
     }
 
+    /// A thread whose agent can't run waits out of the reckoning, or a reset already past would
+    /// wake the Mac every second; a check that finds the agent ready schedules again.
     func scheduleResumes() {
         resumeTask?.cancel()
         let waiting = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.resumeAt != nil }))) ?? []
-        guard let soonest = waiting.compactMap(\.resumeAt).min() else { return }
+        guard let soonest = waiting.filter({ agentReady(for: $0) }).compactMap(\.resumeAt).min() else { return }
         // A little past the reset, for a Mac whose clock runs ahead of Claude's.
         let wait = max(soonest.timeIntervalSinceNow + 20, 1)
         resumeTask = Task { [weak self] in
@@ -31,7 +33,7 @@ extension AppModel {
         guard engineState == .ready else { return }
         let now = Date.now
         let due = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.resumeAt != nil }))) ?? []
-        for chat in due where chat.resumeAt.map({ $0.addingTimeInterval(20) <= now }) == true {
+        for chat in due where chat.resumeAt.map({ $0.addingTimeInterval(20) <= now }) == true && agentReady(for: chat) {
             let conversation = conversation(for: chat)
             // A thread handed to Claude Code in a block goes on there.
             let handedOver = handedOff[chat.id].flatMap { shellBlocks[$0] }?.running == true
