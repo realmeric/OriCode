@@ -126,6 +126,43 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 The 0.2.0 milestone on Linear comes next: REA-153, REA-161 and REA-162.
 
+K-150 to K-158 come from Meriç trying the cards since 0.1.0 and from a review of them on 2026-09-26 (its findings are in ~/Library/Developer/OriCode/scratch/try-and-review-2026-09-26.md). Other agents than Claude Code are coming (REA-147), so every fix here goes through what OriCode itself keeps, stored events, blocks and the file viewer, and none reads anything only Claude Code says.
+
+#### K-150 · Links in a reply open the file
+Meriç: a file link in Claude's answer gives an error when clicked. Nothing handles a link, so a relative path goes to Launch Services, which has no app for it. The transcript and a plan's card get an open-URL action: a path relative to the thread's folder, an absolute one or a file URL opens in the file viewer, with `#L42`, `#L42-L50`, `:42` or `:42:7` taken as the line it scrolls to and lights; a file outside the project opens in its own app; web links go to the browser as now.
+Done when: a unit test covers each link form; frames show a reply's link opening the viewer at its line; make test passes. Needs Meriç's click on a real link.
+
+#### K-151 · An open file is one card in the review
+Meriç: an open file shows two circles, the header's and its hunk's, that do the same thing. An open file becomes one card: its header on top and its hunks inside it, parted by space. A file with one hunk has only the header's circle; a file with several keeps a circle per hunk, and the header's marks them all. With it, the review's own findings: the files open, the first look and the keyboard's hunk belong to a thread, not only its folder; a file's section id doesn't change when a new file is staged; a circle that folds a file with a note being written keeps the keys working; the file circle folds the file the keyboard was in; finishing a turn opens only the next file; and the test presses a circle.
+Done when: unit tests cover the per-thread first look and the circle paths; frames show an open one-hunk file as one card with one circle and a three-hunk file with its hunks inside; make test passes. Needs Meriç's eye.
+
+#### K-152 · ⌘K finds words inside threads
+Meriç wants ⌘K to find what was said, not only thread titles. With two or more characters typed, a Messages section under the ranked rows lists your messages and the agent's replies that hold every word typed, newest first, at most three a thread: a snippet around the match, the thread's name and badge. Return opens the thread at that message and lights it for a moment, however far back it is; K-145's Show goes through the same reveal, so it works past the transcript's last 200 items too. It reads the stored `user` and `text` events, which every agent's thread has.
+Done when: a unit test covers matching and snippets; frames show ⌘K finding a word from an old message and the thread opening at it; make test passes.
+
+#### K-153 · A command's output arrives whole
+From the review of K-144. A block drops its process only once the pty has closed, so the last lines of a command that prints and exits at once are kept, the lines Claude reads and the stored event included. What Claude has read is counted in lines of the terminal, not characters, so a screen cleared by a watcher, a trimmed scrollback or a program that took the whole screen doesn't skip or cut what's new. A slash command and Thread › Compact go out on their own, with the unread blocks waiting for the next message. A block run while a reply streams doesn't split the reply. A send that fails leaves its blocks unread.
+Done when: ShellTests covers a fast command's tail arriving after its exit, reading after a clear, and a slash command leaving blocks unread; make test passes.
+
+#### K-154 · Blocks and the keyboard stay with their thread
+From the review of K-146 and K-149. The open block belongs to its thread: another thread on screen gets its own keyboard and asks, and coming back finds the block where it was. A block opening over another shows its own terminal. The first command of an empty thread keeps the keyboard when it takes the whole screen. The composer doesn't take the keyboard while an ask waits, so Return answers it after ⌘K, ⌘P or the review fold away and at launch. Only the card Return presses is drawn white. A checkbox row takes a click anywhere it lights. Esc puts away what's on top first.
+Done when: unit tests cover a thread switch with a block open and the focus rules; keys sent to the real window in a local harness show Return answering a card after ⌘P and Esc; make test passes.
+
+#### K-155 · Loose ends from the review
+A thread handed to Claude Code can't be handed over twice, Claude Code's screen in its block isn't sent to the model, and a thread waiting on a session limit stops waiting when it's handed over. Restart engine ends the workflow cards it stops, as the engine going does. ⌘K and ⌘P over an open file draw above it. The test host doesn't start the engine or pick threads up, so make test never reaches a model through OriCode Molten's store.
+Done when: unit tests cover the handoff guards and restart ending a workflow; make test passes with a Molten thread marked quitMidTurn left unsent.
+
+#### K-156 · Tab completes what your shell would
+Meriç: Tab doesn't work in the terminal. Past the first word the prompt completes only paths, so `git che`, `npm run bu`, a branch or an option get nothing. For zsh, the user's own completion answers: a zsh behind a pty with compinit loaded is asked for the matches of the line so far, the way zsh would list them, and they go in the same list above the composer; bash and fish, or a zsh that doesn't answer in time, keep today's paths. An `@` mention completes to the path as the agent reads it, `@"…"` when it has a space, not shell-escaped. Tab with no thread open completes against the project's folder.
+Done when: a unit test covers reading the matches zsh gives; keys sent to the real window show `git che` and `npm run` completing in this repo; make test passes.
+
+#### K-157 · The prompt grows out of the composer
+`!` and ⌘J turn the composer into the shell prompt with a morph rather than a swap: the `$` grows in from the left as the text slides over and the field's type turns to SF Mono, with the motion spring, and it goes back the same way. With Reduce Motion it fades.
+Done when: frames show the prompt coming and going; make test passes. Needs Meriç's eye.
+
+#### K-158 · The tray: what's running, live, under the prompt
+Meriç: a program left running, a log say, should stay alive in view while you use the prompt for something else, and wondered whether a terminal coming up from the bottom and moving everything up would do it. Written for Meriç's yes before it's built. On Linear as REA-161.
+
 ### Later
 
 Cards written during the freeze, each on Linear too: K-107 is REA-177 and K-116 is REA-176.
