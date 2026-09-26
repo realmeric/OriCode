@@ -338,7 +338,12 @@ struct Composer: View {
                 if action == .queue {
                     sendAfterTurn()
                 } else if action == .newLine {
-                    text += "\n"
+                    // Where the cursor is, as a text field would: at the start it pushes the text down.
+                    if let editor = NSApp.keyWindow?.firstResponder as? NSTextView {
+                        editor.insertNewlineIgnoringFieldEditor(nil)
+                    } else {
+                        text += "\n"
+                    }
                 } else if model.shellPrompt {
                     runCommand()
                 } else if let command = selectedSlash, text != "/" + command.name {
