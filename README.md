@@ -44,7 +44,7 @@ The app never sees a password, a token or an API key. It starts a Node process, 
 
 ## Where things are
 
-`App/` is the Swift app and `engine/` the TypeScript engine it speaks newline-delimited JSON with. `KANBAN.md` is the plan and the record of every change so far, and `project.yml` generates the Xcode project through XcodeGen.
+`App/` is the Swift app and `engine/` the TypeScript engine it speaks newline-delimited JSON with, and `project.yml` generates the Xcode project through XcodeGen.
 
 ## License
 

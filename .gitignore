@@ -6,3 +6,8 @@ engine/node_modules/
 xcuserdata/
 # A screenshot of another company's app, kept as a local design reference.
 docs/reference.png
+# Kept on this Mac only, in Documents, which iCloud Drive syncs: the plan with every card's
+# Notes, the instructions agents work it by, and the agents' worktrees and settings.
+KANBAN.md
+CLAUDE.md
+.claude/
