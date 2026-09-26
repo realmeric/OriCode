@@ -168,6 +168,8 @@ export class Thread {
   /// An interrupt on its way to the CLI, which may land on the turn after the one it was for.
   private stopping = false;
   private launch: typeof query;
+  /// Called once a turn has ended and the CLI sits idle.
+  onIdle: (() => void) | undefined;
 
   /// `launch` is the SDK's query; tests hand in one that starts no CLI.
   constructor(id: string, claude: string, launch: typeof query = query) {
@@ -298,12 +300,19 @@ export class Thread {
 
   /// Ends the CLI of a thread idle this long, with no subagents out and nothing asked of the
   /// user. The next send starts one that resumes the session.
-  releaseIfIdle(idleMs: number): boolean {
+  releaseIfIdle(idleMs: number, now = Date.now()): boolean {
     if (!this.query || this.running || this.waiting.size > 0 || this.heads.size > 0 || this.idleSince === undefined) return false;
-    if (Date.now() - this.idleSince < idleMs) return false;
+    if (now - this.idleSince < idleMs) return false;
     if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
     this.close();
     return true;
+  }
+
+  /// How long until the CLI has been idle `idleMs`, 0 once it has; undefined with no CLI, or
+  /// while a turn runs, whose end calls onIdle.
+  idleLeft(idleMs: number, now = Date.now()): number | undefined {
+    if (!this.query || this.running || this.idleSince === undefined) return undefined;
+    return Math.max(0, this.idleSince + idleMs - now);
   }
 
   /// Applied to the running CLI through its flag settings; with none running it holds for the next start.
@@ -334,6 +343,14 @@ export class Thread {
     this.query?.close();
     this.query = undefined;
     this.inbox = undefined;
+    this.endHeads();
+  }
+
+  /// What the CLI ran goes with it: its workflows stop, and its heads end with their watchers.
+  private endHeads(): void {
+    for (const taskId of this.workflows.keys()) this.tellWorkflow(taskId, "stopped");
+    this.workflows.clear();
+    this.heads.clear();
   }
 
   private start(params: SendParams, key: string): void {
@@ -534,9 +551,7 @@ export class Thread {
     // that resumes the session.
     this.query = undefined;
     this.inbox = undefined;
-    for (const taskId of this.workflows.keys()) this.tellWorkflow(taskId, "stopped");
-    this.workflows.clear();
-    this.heads.clear();
+    this.endHeads();
     this.dropWaiting();
     if (this.running) {
       this.running = false;
@@ -696,6 +711,7 @@ export class Thread {
         // Said for this turn. A Stop from here on is for the turn a waiting message starts, and
         // so is one still on its way, which the CLI may get once it has started that turn.
         this.interrupted = this.stopping;
+        this.onIdle?.();
         return;
       }
     }

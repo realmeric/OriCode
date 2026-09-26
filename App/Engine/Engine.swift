@@ -53,17 +53,31 @@ actor Engine {
     /// Keeps App Nap off while the engine runs. A napped app's children are throttled,
     /// network included, and a turn behind another window would stall with them.
     private var activity: NSObjectProtocol?
+    /// The start under way. Starting waits on the actor's own awaits, where a second start could
+    /// get in and leave two engines running; it waits for this one instead.
+    private var starting: Task<Void, Error>?
+    private let findNode: @Sendable (String?) async throws -> URL
 
     static let logger = Logger(subsystem: "com.realmeric.oricode", category: "engine")
     static let logFile = Build.logs.appending(path: "engine.log")
 
-    init() {
+    /// `findNode` is NodeLocator's; tests hand in one that starts nothing.
+    init(findNode: @escaping @Sendable (String?) async throws -> URL = NodeLocator.find(override:)) {
         (output, continuation) = AsyncStream.makeStream()
+        self.findNode = findNode
     }
 
     func start(nodeOverride: String?) async throws {
+        if let starting { return try await starting.value }
+        let start = Task { try await launch(nodeOverride: nodeOverride) }
+        starting = start
+        defer { starting = nil }
+        try await start.value
+    }
+
+    private func launch(nodeOverride: String?) async throws {
         stop()
-        let node = try await NodeLocator.find(override: nodeOverride)
+        let node = try await findNode(nodeOverride)
         guard let script = Bundle.main.url(forResource: "engine", withExtension: nil)?.appending(path: "main.ts") else {
             throw EngineError.remote("The engine is missing from the app bundle.")
         }
@@ -81,8 +95,13 @@ actor Engine {
             environment["ORICODE_TRACE"] = "1"
             environment["ORICODE_CLI_DEBUG"] = Self.logFile.deletingLastPathComponent().appending(path: "cli").path
         }
+        // Where the engine keeps what it learned from Claude Code between launches.
+        environment["ORICODE_CACHE"] = Build.support.appending(path: "Engine").path
         process.environment = environment
-        process.qualityOfService = .userInitiated
+        // Its CLIs inherit it, idle ones and probes too, and none of them is what the user waits
+        // on the way a click is. A turn's CPU work measured as fast at utility as at
+        // user-initiated on a Mac with cores to spare; its idle timers coalesce more.
+        process.qualityOfService = .utility
 
         let input = Pipe(), output = Pipe(), errors = Pipe()
         // The pipes stay out of the terminal's shells, which inherit whatever isn't marked: a job

@@ -8,6 +8,9 @@ struct WorkingDiff: Decodable, Sendable {
     /// HEAD's commit, nil before the first one.
     let head: String?
     let files: [FileDiff]
+    /// What the engine read it at, sent back with the next read, which answers `same` while
+    /// nothing has moved.
+    var mark: String?
 }
 
 struct FileDiff: Decodable, Hashable, Sendable {

@@ -157,6 +157,8 @@ export class Heads {
 
   /// The CLI that ran them has gone.
   clear(): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
     if (this.live.size === 0) return;
     for (const id of [...this.live.keys()]) this.drop(id);
     this.send();

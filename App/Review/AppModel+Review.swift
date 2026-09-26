@@ -103,6 +103,9 @@ final class ReviewState {
     @ObservationIgnored var wanted = false
     @ObservationIgnored var queue: Task<Void, Never>?
     @ObservationIgnored var colouring: Task<Void, Never>?
+    /// The thread the book was built for: a read that finds nothing moved builds it again only
+    /// for another.
+    @ObservationIgnored var builtFor: UUID?
 
     var root: String? { diff?.root }
 
@@ -251,6 +254,10 @@ extension AppModel {
             openInIsland(.review)
         }
         readReview(in: folder)
+        // The book read while the review was closed is placed and coloured now; a read that
+        // brings a new one does both again.
+        review.placeFiles()
+        colour(review.book.units)
     }
 
     func closeReview() {
@@ -286,10 +293,11 @@ extension AppModel {
         while review.wanted, let folder = review.folder {
             review.wanted = false
             do {
-                let reply = try await engine.request("git.diff", ["cwd": .string(folder)])
-                let diff = try reply.decode(WorkingDiff.self)
+                var params: [String: JSON] = ["cwd": .string(folder)]
+                if let mark = review.diff?.mark { params["since"] = .string(mark) }
+                let reply = try await engine.request("git.diff", .object(params))
                 guard review.folder == folder else { continue }
-                await build(diff, in: folder)
+                try await take(reply, in: folder)
             } catch {
                 guard review.folder == folder else { continue }
                 review.diff = nil
@@ -300,22 +308,36 @@ extension AppModel {
         }
     }
 
+    /// A read's reply: a diff, or `same` when nothing has moved since the diff the review holds,
+    /// whose book stands unless another thread is looking at it now.
+    func take(_ reply: JSON, in folder: String) async throws {
+        if reply["same"]?.bool == true, let diff = review.diff {
+            if review.builtFor != review.thread { await build(diff, in: folder) }
+            return
+        }
+        await build(try reply.decode(WorkingDiff.self), in: folder)
+    }
+
     /// The book for a diff. The chapters, words and moves are worked out off the main thread;
     /// the marks go on after, which is all a Space has to redo.
     private func build(_ diff: WorkingDiff, in folder: String) async {
         let items = chat.map { conversation(for: $0).items } ?? []
+        let thread = review.thread
         let base = await Task.detached(priority: .userInitiated) {
             ReviewBook(diff: diff, provenance: Provenance(items: items) { RepoPath.relative($0, cwd: folder, root: diff.root) })
         }.value
         guard review.folder == folder else { return }
         review.diff = diff
         review.base = base
+        review.builtFor = thread
         review.problem = nil
         review.marks.prune(in: diff.root, head: diff.head, keeping: Set(diff.files.map(\.path)))
         applyMarks()
         review.keepOpenFiles()
-        if reviewShown { review.placeFiles() }
-        colour(review.book.units)
+        if reviewShown {
+            review.placeFiles()
+            colour(review.book.units)
+        }
     }
 
     /// Lays the marks over the book. The keyboard stays on a hunk: one put back is selected

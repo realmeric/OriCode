@@ -56,6 +56,16 @@ export async function loggedIn(claude: string): Promise<boolean> {
   }
 }
 
+/// What `claude --version` prints, "2.1.282 (Claude Code)", or null when it can't say.
+export async function claudeVersion(claude: string): Promise<string | null> {
+  try {
+    const { stdout } = await run(claude, ["--version"], { timeout: 5000, env: cleanEnvironment() as NodeJS.ProcessEnv });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /// The environment for the CLI. When OriCode is opened from inside a Claude Code session,
 /// it inherits that session's CLAUDE* variables, and a child `claude` that sees them waits
 /// for a host that isn't there. CLAUDE_CONFIG_DIR is the user's own setting and stays.

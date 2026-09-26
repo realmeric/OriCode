@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { lstat, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +30,8 @@ export type FileDiff = {
   /// it's taken back and committed whole.
   lossy: boolean;
 };
+
+export type Diff = { root: string; head: string | null; mark: string; files: FileDiff[] };
 
 export type IndexEntry = { path: string; mode: string; sha: string };
 
@@ -93,18 +96,30 @@ function literal(path: string): string {
   return `:(literal)${path}`;
 }
 
+/// Each folder's repository top, asked of git once.
+const tops = new Map<string, string>();
+
 /// What the working tree changes against HEAD: tracked files as git diffs them, and untracked
-/// ones as new, all of their lines added.
-export async function workingDiff(cwd: string): Promise<{ root: string; head: string | null; files: FileDiff[] }> {
-  const root = await top(cwd);
+/// ones as new, all of their lines added. `mark` changes whenever the diff can have: git status
+/// names HEAD and every changed and untracked path, and each path's size and date say whether
+/// it moved again. Asked with the mark it last gave, when nothing has moved, it answers `same`
+/// after that one git process.
+export function workingDiff(cwd: string): Promise<Diff>;
+export function workingDiff(cwd: string, since?: string): Promise<Diff | { root: string; same: true }>;
+export async function workingDiff(cwd: string, since?: string): Promise<Diff | { root: string; same: true }> {
+  const root = tops.get(cwd) ?? (await top(cwd));
+  tops.set(cwd, root);
+  const status = await gitRun(root, ["--no-optional-locks", "-c", "core.quotePath=false", "status", "--porcelain=v2", "-z", "--branch", "--no-ahead-behind", "--untracked-files=all"]).catch((error) => {
+    tops.delete(cwd);
+    throw error;
+  });
+  const { commit, changed, untracked } = parseStatus(status);
+  const stamps = await Promise.all([...changed, ...untracked].map((path) => stamp(join(root, path))));
+  const mark = createHash("sha256").update(status).update(stamps.join("\0")).digest("hex");
+  if (mark === since) return { root, same: true };
   // With no commit yet, everything is measured against the empty tree.
-  const commit = await head(root);
   const base = commit ?? (await gitRun(root, ["hash-object", "-t", "tree", "/dev/null"])).trim();
-  const [named, counts, untracked] = await Promise.all([
-    gitRun(root, [...diffArgs, "--name-status", "-z", base]).then(parseNameStatus),
-    gitRun(root, [...diffArgs, "--numstat", "-z", base]).then(parseNumstat),
-    gitRun(root, ["ls-files", "--others", "--exclude-standard", "-z"]),
-  ]);
+  const { named, counts } = parseSummary(await gitRun(root, [...diffArgs, "--raw", "--numstat", "-z", base]));
   const huge = named.filter((file) => {
     const count = counts.get(file.path);
     return count && count.added + count.deleted > lineLimit;
@@ -133,14 +148,14 @@ export async function workingDiff(cwd: string): Promise<{ root: string; head: st
       lossy: chunk?.lossy ?? false,
     };
   });
-  const paths = untracked.split("\0").filter((path) => path && !path.endsWith("/"));
+  const paths = untracked.filter((path) => !path.endsWith("/"));
   for (const [index, path] of paths.entries()) {
     files.push(index < untrackedFiles ? await newFile(root, path) : { ...blank(path), cut: true });
   }
   for (const file of files) {
     if (file.binary || file.cut || file.hunks.length === 0) file.stamp = await stamp(join(root, file.path));
   }
-  return { root, head: commit, files };
+  return { root, head: commit, mark, files };
 }
 
 async function stamp(path: string): Promise<string> {
@@ -194,33 +209,30 @@ async function newFile(root: string, path: string): Promise<FileDiff> {
 }
 
 type Named = { status: string; path: string; oldPath: string | null };
+type Counts = Map<string, { added: number; deleted: number; binary: boolean }>;
 
-/// `--name-status -z`: "M\0path\0", and "R086\0old\0new\0" for a rename or a copy.
-export function parseNameStatus(out: string): Named[] {
+/// `--raw --numstat -z`, which git writes one after the other. Raw is ":modes shas M\0path\0",
+/// and ":modes shas R086\0old\0new\0" for a rename or a copy. Numstat is
+/// "added\tdeleted\tpath\0", and "added\tdeleted\t\0old\0new\0" for a rename; a binary file
+/// counts "-", and counts are keyed by the path after the change.
+export function parseSummary(out: string): { named: Named[]; counts: Counts } {
   const tokens = out.split("\0");
   const named: Named[] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const status = tokens[i];
-    if (!status) continue;
-    if (status[0] === "R" || status[0] === "C") {
-      named.push({ status: status[0] === "R" ? "R" : "A", oldPath: status[0] === "R" ? tokens[i + 1] : null, path: tokens[i + 2] });
-      i += 2;
-    } else {
-      named.push({ status: status[0], path: tokens[i + 1], oldPath: null });
-      i += 1;
-    }
-  }
-  return named;
-}
-
-/// `--numstat -z`: "added\tdeleted\tpath\0", and "added\tdeleted\t\0old\0new\0" for a rename.
-/// A binary file counts "-". Keyed by the path after the change.
-export function parseNumstat(out: string): Map<string, { added: number; deleted: number; binary: boolean }> {
-  const tokens = out.split("\0");
-  const counts = new Map<string, { added: number; deleted: number; binary: boolean }>();
+  const counts: Counts = new Map();
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (!token) continue;
+    if (token.startsWith(":")) {
+      const status = token.slice(token.lastIndexOf(" ") + 1);
+      if (status[0] === "R" || status[0] === "C") {
+        named.push({ status: status[0] === "R" ? "R" : "A", oldPath: status[0] === "R" ? tokens[i + 1] : null, path: tokens[i + 2] });
+        i += 2;
+      } else {
+        named.push({ status: status[0], path: tokens[i + 1], oldPath: null });
+        i += 1;
+      }
+      continue;
+    }
     const first = token.indexOf("\t");
     const second = token.indexOf("\t", first + 1);
     if (first < 0 || second < 0) continue;
@@ -233,7 +245,34 @@ export function parseNumstat(out: string): Map<string, { added: number; deleted:
     }
     counts.set(path, { added: Number(added) || 0, deleted: Number(deleted) || 0, binary: added === "-" });
   }
-  return counts;
+  return { named, counts };
+}
+
+/// HEAD's commit, null before the first, and the paths `status --porcelain=v2 -z --branch` names,
+/// from the repository's top: a changed entry's path follows 8 fields, a rename's 9, with the old
+/// path as the next token, an unmerged one's 10.
+export function parseStatus(out: string): { commit: string | null; changed: string[]; untracked: string[] } {
+  const tokens = out.split("\0");
+  let commit: string | null = null;
+  const changed: string[] = [];
+  const untracked: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.startsWith("# branch.oid ")) {
+      const oid = token.slice("# branch.oid ".length);
+      commit = oid === "(initial)" ? null : oid;
+      continue;
+    }
+    if (token.startsWith("? ")) {
+      untracked.push(token.slice(2));
+      continue;
+    }
+    const fields = token[0] === "1" ? 8 : token[0] === "2" ? 9 : token[0] === "u" ? 10 : 0;
+    if (!fields || token[1] !== " ") continue;
+    changed.push(token.split(" ").slice(fields).join(" "));
+    if (token[0] === "2") i += 1;
+  }
+  return { commit, changed, untracked };
 }
 
 type Chunk = { path: string; binary: boolean; executable: boolean; lossy: boolean; hunks: Hunk[] };

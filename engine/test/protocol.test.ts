@@ -47,6 +47,10 @@ test("interrupting an idle thread is fine", async () => {
   assert.deepEqual(await request(4, "interrupt", { threadId: "t" }), { id: 4, result: { ok: true } });
 });
 
+test("the window hidden, with no thread holding a CLI, lets nothing go", async () => {
+  assert.deepEqual(await request(6, "window", { threadId: "t", visible: false }), { id: 6, result: { ok: true } });
+});
+
 test("a send into a missing folder is refused", async () => {
   const reply = await request(5, "send", { threadId: "t", cwd: "/nowhere/at/all", text: "hi", permissionMode: "default" });
   assert.match(reply.error, /isn't where it was/);

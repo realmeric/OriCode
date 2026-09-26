@@ -9,12 +9,20 @@ import SwiftUI
 actor CodeHighlighter {
     static let shared = CodeHighlighter()
 
-    private let highlightr: Highlightr? = {
+    /// The app's one Highlightr, for the review's hunks and the transcript's code blocks alike:
+    /// each loads highlight.js into a JavaScriptCore context of its own, 7MB more for a second.
+    /// It's made on first use and taken by one thread at a time.
+    private nonisolated(unsafe) static let highlightr: Highlightr? = {
         let highlightr = Highlightr()
         _ = highlightr?.setTheme(to: "atom-one-dark")
         highlightr?.theme.setCodeFont(.monospacedSystemFont(ofSize: 12.5, weight: .regular))
         return highlightr
     }()
+    private static let lock = NSLock()
+
+    nonisolated static func render(_ code: String, as language: String?) -> NSAttributedString? {
+        lock.withLock { highlightr?.highlight(code, as: language, fastRender: true) }
+    }
 
     enum Kind {
         case keyword, string, number, comment, name, plain
@@ -49,9 +57,7 @@ actor CodeHighlighter {
             .foregroundColor: Self.color(.plain),
             .font: NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular),
         ]))
-        guard code.utf8.count < 400_000, let highlightr,
-              let rendered = highlightr.highlight(code, as: language, fastRender: true)
-        else { return plain }
+        guard code.utf8.count < 400_000, let rendered = Self.render(code, as: language) else { return plain }
         return Self.mute(rendered) ?? plain
     }
 
@@ -118,12 +124,6 @@ final class TranscriptCodeHighlighter: CodeSyntaxHighlighter, @unchecked Sendabl
 
     private let lock = NSLock()
     private var cache: [String: AttributedString] = [:]
-    private lazy var highlightr: Highlightr? = {
-        let highlightr = Highlightr()
-        _ = highlightr?.setTheme(to: "atom-one-dark")
-        highlightr?.theme.setCodeFont(.monospacedSystemFont(ofSize: 12.5, weight: .regular))
-        return highlightr
-    }()
 
     func highlightCode(_ code: String, language: String?) -> Text {
         lock.lock()
@@ -131,7 +131,7 @@ final class TranscriptCodeHighlighter: CodeSyntaxHighlighter, @unchecked Sendabl
         let key = (language ?? "") + "\u{0}" + code
         if let cached = cache[key] { return Text(cached) }
         let name = language.flatMap { CodeHighlighter.language(forExtension: $0.lowercased()) }
-        guard code.utf8.count < 100_000, let rendered = highlightr?.highlight(code, as: name, fastRender: true),
+        guard code.utf8.count < 100_000, let rendered = CodeHighlighter.render(code, as: name),
               let muted = CodeHighlighter.mute(rendered)
         else { return Text(code) }
         if cache.count > 300 { cache.removeAll() }

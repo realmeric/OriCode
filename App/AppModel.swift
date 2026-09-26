@@ -97,6 +97,16 @@ final class AppModel {
     /// Bumped whenever the app's defaults change, so what reads them there (a new thread's
     /// starting choices, which Settings can change) redraws.
     private(set) var defaultsRevision = 0
+    /// Every write to UserDefaults posts the same notification, the window's frame on each move
+    /// among them, so the revision moves only when one of the keys those choices read has.
+    private static let startingKeys = [
+        NewThreads.model, NewThreads.effort, NewThreads.fast, NewThreads.permissionMode, "lastModel", "lastEffort", "lastFast", "lastPermissionMode",
+    ]
+    @ObservationIgnored private var startingSeen: [String] = []
+    /// Whether the main window can be seen: not hidden, minimised, on another Space or covered.
+    @ObservationIgnored private var windowVisible = true {
+        didSet { if windowVisible != oldValue { tellWindow() } }
+    }
     /// What Claude Code last said about fast mode for each model, by the model's id: whether it
     /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
     /// thread that hasn't asked yet, or no thread at all, shows what's already known.
@@ -197,7 +207,7 @@ final class AppModel {
     var peekTask: Task<Void, Never>?
     /// The wait for the soonest session limit to reset, when a thread it stopped goes on.
     var resumeTask: Task<Void, Never>?
-    private var listening = false
+    private var booted = false
     private var noteTask: Task<Void, Never>?
 
     var selectedProjectID: UUID? {
@@ -215,6 +225,7 @@ final class AppModel {
             readReview()
             returnKeyboard()
             watchHeads()
+            tellWindow()
         }
     }
 
@@ -284,8 +295,14 @@ final class AppModel {
         loadSelectedConversation()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
+        startingSeen = startingValues
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.defaultsRevision += 1 }
+            MainActor.assumeIsolated { self?.startingDefaultsMoved() }
+        }
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) { [weak self] note in
+            guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
+            let visible = window.occlusionState.contains(.visible)
+            MainActor.assumeIsolated { self?.windowVisible = visible }
         }
         // Files change outside the app too: an editor, a terminal, another tool.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -328,17 +345,36 @@ final class AppModel {
         revision += 1
     }
 
+    private var startingValues: [String] {
+        Self.startingKeys.map { "\(UserDefaults.standard.object(forKey: $0) ?? "")" }
+    }
+
+    private func startingDefaultsMoved() {
+        let now = startingValues
+        guard now != startingSeen else { return }
+        startingSeen = now
+        defaultsRevision += 1
+    }
+
+    /// Tells the engine which thread is open and whether the window can be seen: while it can't,
+    /// the other threads' idle CLIs go at once.
+    func tellWindow() {
+        guard engineState == .ready else { return }
+        let params: JSON = ["threadId": selectedChatID.map { .string($0.uuidString) } ?? .null, "visible": .bool(windowVisible)]
+        Task { _ = try? await engine.request("window", params) }
+    }
+
     var nodeOverride: String? {
         UserDefaults.standard.string(forKey: "nodePath")
     }
 
+    /// Once a launch: opened with a folder, the window's task runs twice.
     func boot() async {
-        if !listening {
-            listening = true
-            installEscapeMonitor()
-            installPasteMonitor()
-            Task { await listen() }
-        }
+        guard !booted else { return }
+        booted = true
+        installEscapeMonitor()
+        installPasteMonitor()
+        Task { await listen() }
         await startEngine()
     }
 
@@ -353,7 +389,7 @@ final class AppModel {
             models = hello.models.map(\.assumingUltracode)
             engineState = hello.claude == nil ? .noClaude : hello.loggedIn ? .ready : .notLoggedIn
             refreshBranch(for: chat)
-            refreshUsage()
+            tellWindow()
             readReview()
             pickUpAfterQuit()
             scheduleResumes()

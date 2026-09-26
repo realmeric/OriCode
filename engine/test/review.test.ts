@@ -97,6 +97,28 @@ test("from a folder inside the repository, paths are still from its top", async 
   assert.deepEqual((await workingDiff(dir)).files.map((item) => item.path), ["server/y.txt"]);
 });
 
+test("asked with its last mark, a read says same until a file, the index or HEAD moves", async () => {
+  const dir = await repo({ "a.txt": "one\n", "b.txt": "one\n" });
+  await writeFile(join(dir, "a.txt"), "two\n");
+  const first = await workingDiff(dir);
+  assert.deepEqual(await workingDiff(dir, first.mark), { root: first.root, same: true });
+  const moves: [string, () => Promise<unknown>][] = [
+    ["the changed file again", () => writeFile(join(dir, "a.txt"), "three, longer\n")],
+    ["a clean file", () => writeFile(join(dir, "b.txt"), "two\n")],
+    ["a new file", () => writeFile(join(dir, "c.txt"), "new\n")],
+    ["the index", () => git(dir, ["add", "c.txt"])],
+    ["HEAD", () => git(dir, ["commit", "-q", "-m", "more"])],
+  ];
+  let mark = first.mark;
+  for (const [what, move] of moves) {
+    await move();
+    const read = await workingDiff(dir, mark);
+    assert.ok(!("same" in read), `${what} moved and the read said same`);
+    mark = read.mark;
+  }
+  assert.deepEqual(file(await workingDiff(dir), "b.txt").hunks[0].lines, ["-one", "+two"]);
+});
+
 test("a repository with no commits shows everything as new", async () => {
   const dir = await repo({});
   await writeFile(join(dir, "first.txt"), "hello\n");

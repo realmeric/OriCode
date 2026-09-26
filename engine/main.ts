@@ -1,8 +1,10 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
-import { query, type FastModeDisabledReason, type FastModeState, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
-import { readCatalog, readSettingsEffort } from "./catalog.ts";
-import { cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
+import { query, type FastModeDisabledReason, type FastModeState, type ModelInfo, type PermissionMode, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./cache.ts";
+import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
+import { claudeVersion, cleanEnvironment, cliDebugFile, findClaude, loggedIn } from "./claude.ts";
+import { releaseIdle, type Shown } from "./idle.ts";
 import { fallback, helloList, withDefaults, type Model } from "./models.ts";
 import { answer, describe, Thread, type Answer, type SendParams } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
@@ -17,6 +19,8 @@ const threads = new Map<string, Thread>();
 /// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
 const watched = new Set<string>();
 let models: Model[] | undefined;
+const cacheFolder = process.env.ORICODE_CACHE;
+let cache: Cache | undefined;
 
 async function requireClaude(): Promise<string> {
   const claude = await findClaude();
@@ -53,15 +57,62 @@ function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
 /// that list only while its copy is fresh: the rows and their ids change from one launch to the
 /// next. With the catalog off the probe lists the same rows every time, and the engine adds the
 /// catalog's names, older models and newer ones itself.
-async function supportedModels(claude: string): Promise<Model[]> {
+async function supportedModels(claude: string): Promise<ModelInfo[]> {
   const env = { ...cleanEnvironment(), CLAUDE_CODE_MODEL_CATALOG: "0" };
   const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env, stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    const [list, catalog, settingsEffort] = await Promise.all([Promise.race([probe.supportedModels(), timeout]), readCatalog(), readSettingsEffort()]);
-    return helloList(list, catalog, settingsEffort);
+    return await Promise.race([probe.supportedModels(), timeout]);
   } finally {
     probe.close();
+  }
+}
+
+async function listFrom(sdk: ModelInfo[]): Promise<Model[]> {
+  const [catalog, settingsEffort] = await Promise.all([readCatalog(), readSettingsEffort()]);
+  return helloList(sdk, catalog, settingsEffort);
+}
+
+/// Hello's list. The SDK's part comes from the cache while Claude Code is the version that gave
+/// it, and a probe reads it again a minute after a launch that finds it a day old; the catalog
+/// and the settings are read each time. The defaults follow as a `models` event, from the cache
+/// while the list and the user's settings are the ones they were read under.
+async function startingModels(claude: string, cli: string | null): Promise<Model[]> {
+  cache = await readCache(cacheFolder);
+  const cached = cachedModels(cache, cli);
+  if (cached) {
+    const list = await listFrom(cached.models);
+    if (cached.stale) setTimeout(() => void refresh(claude), 60_000).unref();
+    const known = cache?.defaults;
+    if (known?.key === defaultsKey(list, await readSettings())) {
+      // Sent once hello's reply is out: arriving first, it would be undone by the reply.
+      setImmediate(() => event("models", { models: known.models, settingsEffort: known.settingsEffort, ultraKnown: known.ultraKnown }));
+      return known.models;
+    }
+    void learnDefaults(claude, list);
+    return list;
+  }
+  const sdk = await supportedModels(claude);
+  if (cli) {
+    cache = { version: cli, at: Date.now(), models: sdk };
+    await writeCache(cacheFolder, cache).catch((error) => log(`models cache not written: ${describe(error)}`));
+  }
+  const list = await listFrom(sdk);
+  void learnDefaults(claude, list);
+  return list;
+}
+
+/// A day-old list read again. The defaults are read again with it, even for the same list, and
+/// the `models` event carries both to the app.
+async function refresh(claude: string): Promise<void> {
+  if (!cache) return;
+  try {
+    const sdk = await supportedModels(claude);
+    cache = { version: cache.version, at: Date.now(), models: sdk };
+    await writeCache(cacheFolder, cache);
+    await learnDefaults(claude, await listFrom(sdk));
+  } catch (error) {
+    log(`models list not read again: ${describe(error)}`);
   }
 }
 
@@ -72,6 +123,7 @@ async function supportedModels(claude: string): Promise<Model[]> {
 /// business with a probe. A reading the CLIs can't give leaves that model on its fallback, and
 /// the event goes out all the same.
 async function learnDefaults(claude: string, base: Model[]): Promise<void> {
+  const key = defaultsKey(base, await readSettings());
   const probe = query({
     prompt: idle,
     options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true }, env: cleanEnvironment() },
@@ -87,6 +139,12 @@ async function learnDefaults(claude: string, base: Model[]): Promise<void> {
     }
     models = learned.models;
     event("models", { models, settingsEffort: learned.settingsEffort, ultraKnown: learned.ultraKnown });
+    // A model a probe couldn't switch to keeps the default the catalog gives it until the daily
+    // reading; a probe that never answered at all is asked again next launch.
+    if (cache && !learned.missed.some((miss) => miss.id === "settings")) {
+      cache.defaults = { key, models, settingsEffort: learned.settingsEffort, ultraKnown: learned.ultraKnown };
+      await writeCache(cacheFolder, cache).catch((error) => log(`models cache not written: ${describe(error)}`));
+    }
   } catch (error) {
     log(`model defaults unavailable: ${describe(error)}`);
   } finally {
@@ -135,6 +193,8 @@ function thread(threadId: string, claude: string): Thread {
   if (!found) {
     found = new Thread(threadId, claude);
     found.watchHeads(watched.has(threadId));
+    // After the turn.done it's called from, and outside the CLI's message loop it would close.
+    found.onIdle = () => setImmediate(letGo);
     threads.set(threadId, found);
   }
   return found;
@@ -144,13 +204,12 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async hello() {
     const claude = await findClaude();
     if (!claude) return { version, models: fallback, claude: null, loggedIn: false };
-    const login = await loggedIn(claude);
+    const [login, cli] = await Promise.all([loggedIn(claude), claudeVersion(claude)]);
     if (login && !models) {
-      models = await supportedModels(claude).catch((error) => {
+      models = await startingModels(claude, cli).catch((error) => {
         log(`supported models unavailable, using the fallback list: ${describe(error)}`);
         return undefined;
       });
-      if (models) void learnDefaults(claude, models);
     }
     return { version, models: models ?? fallback, claude, loggedIn: login };
   },
@@ -214,8 +273,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { hash: await commitAll(cwd, paths, message) };
   },
 
-  async "git.diff"({ cwd }: { cwd: string }) {
-    return workingDiff(cwd);
+  async "git.diff"({ cwd, since }: { cwd: string; since?: string }) {
+    return workingDiff(cwd, since);
   },
 
   async "git.apply"({ cwd, patch, reverse, index }: { cwd: string; patch: string; reverse: boolean; index?: boolean }) {
@@ -304,6 +363,12 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     watched.delete(threadId);
     return { ok: true };
   },
+
+  async window({ threadId, visible }: { threadId?: string | null; visible: boolean }) {
+    shown = { threadId: threadId ?? null, visible };
+    letGo();
+    return { ok: true };
+  },
 };
 
 let inFlight = 0;
@@ -331,16 +396,20 @@ async function handle(line: string): Promise<void> {
   }
 }
 
-/// A thread's CLI stays up between turns, a few hundred MB each, so one left idle this long
-/// is let go. The app hears about it and drops the transcript it no longer needs in memory.
-const idleRelease = 5 * 60_000;
-setInterval(() => {
-  for (const [threadId, found] of threads) {
-    if (!found.releaseIfIdle(idleRelease)) continue;
+let shown: Shown = { threadId: null, visible: true };
+let sweep: NodeJS.Timeout | undefined;
+
+/// Lets idle CLIs go, then sleeps until the next one is due, so nothing wakes while none is up.
+/// The app hears about each and drops the transcript it no longer needs in memory.
+function letGo(): void {
+  clearTimeout(sweep);
+  const { released, next } = releaseIdle(threads, shown);
+  for (const threadId of released) {
     log(`released thread=${threadId}`);
     event("released", { threadId });
   }
-}, 60_000).unref();
+  sweep = next === undefined ? undefined : setTimeout(letGo, next).unref();
+}
 
 const input = createInterface({ input: process.stdin });
 input.on("line", (line) => {

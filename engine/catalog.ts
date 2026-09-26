@@ -55,11 +55,16 @@ export async function readCatalog(configDir = process.env.CLAUDE_CONFIG_DIR ?? j
 /// The effortLevel in the user's own Claude Code settings, which is where Default lands on a
 /// model that has that level; null when there's none, or no level the engine knows.
 export async function readSettingsEffort(configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")): Promise<string | null> {
-  const settings = await readFile(join(configDir, "settings.json"), "utf8")
+  const settings = await readSettings(configDir)
     .then((text) => JSON.parse(text) as { effortLevel?: unknown })
     .catch(() => undefined);
   const level = settings?.effortLevel;
   return typeof level === "string" && levels.includes(level) ? level : null;
+}
+
+/// The user's own Claude Code settings as written, empty when there are none.
+export async function readSettings(configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")): Promise<string> {
+  return readFile(join(configDir, "settings.json"), "utf8").catch(() => "");
 }
 
 function parse(row: Row): CatalogModel[] {

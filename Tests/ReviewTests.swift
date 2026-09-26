@@ -402,6 +402,48 @@ struct ReviewTests {
         #expect(review.openFiles.isEmpty && review.placed)
     }
 
+    /// git.diff's reply for one line of a.swift changed, read at `mark`.
+    private func read(_ line: String, mark: String) -> JSON {
+        let hunk: JSON = ["oldStart": 1, "oldLines": 1, "newStart": 1, "newLines": 1, "context": "", "lines": ["-let a = 0", .string("+" + line)]]
+        let file: JSON = [
+            "path": "a.swift", "oldPath": nil, "status": "M", "binary": false, "executable": false, "hunks": [hunk],
+            "added": 1, "deleted": 1, "cut": false, "stamp": nil, "lossy": false,
+        ]
+        return ["root": .string(Self.root), "head": "abc", "mark": .string(mark), "files": [file]]
+    }
+
+    @Test func aReadThatFoundNothingMovedBuildsNothingAndAClosedReviewColoursNothing() async throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let model = AppModel(container: container)
+        let review = model.review
+        review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-marks-\(UUID().uuidString).json"))
+        review.look(at: Self.root, for: nil)
+        try await model.take(read("let a = 1", mark: "one"), in: Self.root)
+        #expect(review.diff?.mark == "one")
+        #expect(review.book.units.count == 1)
+        // Closed, the review colours nothing, which would load JavaScriptCore for it.
+        #expect(review.colours.isEmpty && review.colouring == nil)
+
+        // Nothing moved: the book isn't built again, so one emptied here stays empty.
+        let same: JSON = ["root": .string(Self.root), "same": true]
+        review.base = ReviewBook()
+        review.book = ReviewBook()
+        try await model.take(same, in: Self.root)
+        #expect(review.book.units.isEmpty)
+
+        // Another thread in the folder gets a book of its own from the diff already read.
+        review.look(at: Self.root, for: UUID())
+        try await model.take(same, in: Self.root)
+        #expect(review.book.units.count == 1)
+        #expect(review.diff?.mark == "one")
+
+        // A diff that moved is built.
+        try await model.take(read("let a = 2", mark: "two"), in: Self.root)
+        #expect(review.diff?.mark == "two")
+        #expect(review.book.units.first?.lines.contains { $0.text == "let a = 2" } == true)
+    }
+
     @Test func aCircleMovesOnAndFoldsWhatItLeaves() throws {
         let container = try ModelContainer(
             for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
