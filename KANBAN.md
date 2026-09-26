@@ -21,6 +21,7 @@ Not an ADE, not an orchestrator, not a board of cards that run themselves. Not a
 3. **The app never touches an Anthropic credential.** No API-key field, no token, no login screen. The engine runs the Claude Agent SDK, which uses the `claude` the user already logged into in Terminal. If that login is missing, the app says "run `claude` in Terminal and log in" and nothing more. The previous version settled on this as the line that keeps a personal client inside Anthropic's terms; keep it.
 4. **One window, dark glass.** No light mode. The desktop's colour coming through the blur is the app's colour. Nothing in the interface has a border; surfaces come apart by tint and by space.
 5. **Every card leaves a working build.** A card that ends with the app not launching is not done.
+6. **Fast, light and small.** OriCode is meant to be the quickest, smoothest agent window there is. With nothing working it idles at no CPU: nothing polls, animates or wakes the Mac unless the user is looking at it or waiting on it. A frame is never dropped under the pointer, a keystroke never waits on the disk or the engine, and nothing is added to the app or the engine that it doesn't need. A card that touches a path the user feels, launch, typing, scrolling a transcript, a turn streaming, measures it before and after, and says so in its Notes.
 
 ## How to work this board
 
