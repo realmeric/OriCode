@@ -131,7 +131,7 @@ From Meriç's reference Settings, what OriCode doesn't have yet (token activity,
 
 ### Todo
 
-The 0.2.0 milestone on Linear comes next: REA-161 and REA-162.
+Every issue in the 0.2.0 milestone on Linear is built; 0.2.0 goes out on Meriç's word.
 
 K-150 to K-158 come from Meriç trying the cards since 0.1.0 and from a review of them on 2026-09-26 (its findings are in ~/Library/Developer/OriCode/scratch/try-and-review-2026-09-26.md). Other agents than Claude Code are coming (REA-147), so every fix here goes through what OriCode itself keeps, stored events, blocks and the file viewer, and none reads anything only Claude Code says.
 
