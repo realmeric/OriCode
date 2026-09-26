@@ -122,10 +122,17 @@ extension AppModel {
     func restartEngine() {
         guard !conversations.values.contains(where: { $0.running }) else { return }
         Task {
-            await engine.stop()
+            await stopEngine()
             await startEngine()
             say(engineState == .ready ? "The engine is back." : "The engine didn't start again.")
         }
+    }
+
+    /// A stop asked for isn't reported the way an engine dying is, so what its CLIs ran, tasks
+    /// and workflows, is ended here.
+    func stopEngine() async {
+        await engine.stop()
+        engineStopped()
     }
 
     /// Takes a project and its threads out of OriCode. Its folder stays, and so do any worktrees.

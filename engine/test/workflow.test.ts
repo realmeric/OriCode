@@ -1,6 +1,7 @@
 // A workflow's snapshot as the CLI sends it in task_progress, shaped for the app.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Thread } from "../thread.ts";
 import { workflowShape } from "../workflow.ts";
 
 test("phases and agents come in order, each agent in a state the app draws", () => {
@@ -33,4 +34,29 @@ test("phases and agents come in order, each agent in a state the app draws", () 
 
 test("an empty snapshot has no phases and no agents", () => {
   assert.deepEqual(workflowShape([]), { phases: [], agents: [] });
+});
+
+test("a CLI that exits by itself stops the workflows and tasks it had out", async () => {
+  const thread = new Thread("t", "/nowhere/claude") as any;
+  async function* cli() {
+    yield { type: "system", subtype: "task_started", task_id: "w", tool_use_id: "call", description: "Review", task_type: "local_workflow", workflow_name: "review", session_id: "s", uuid: "u" };
+  }
+  thread.query = cli();
+  const lines: string[] = [];
+  const write = process.stdout.write;
+  process.stdout.write = ((chunk: string) => (lines.push(chunk), true)) as typeof process.stdout.write;
+  try {
+    await thread.pump(thread.query);
+  } finally {
+    process.stdout.write = write;
+  }
+  const events = lines.map((line) => JSON.parse(line));
+  assert.deepEqual(events.map((event) => [event.event, event.state ?? event.running]), [
+    ["workflow", "running"],
+    ["tasks", 1],
+    ["workflow", "stopped"],
+    ["tasks", 0],
+  ]);
+  assert.equal(thread.workflows.size, 0);
+  assert.equal(thread.tasks.size, 0);
 });

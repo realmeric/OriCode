@@ -28,7 +28,9 @@ extension AppModel {
         let due = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.resumeAt != nil }))) ?? []
         for chat in due where chat.resumeAt.map({ $0.addingTimeInterval(20) <= now }) == true {
             let conversation = conversation(for: chat)
-            guard !conversation.running, chat.sessionId != nil else {
+            // A thread handed to Claude Code in a block goes on there.
+            let handedOver = handedOff[chat.id].flatMap { shellBlocks[$0] }?.running == true
+            guard !conversation.running, chat.sessionId != nil, !handedOver else {
                 conversation.cancelResume()
                 continue
             }

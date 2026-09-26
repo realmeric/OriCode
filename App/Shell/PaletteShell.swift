@@ -38,7 +38,8 @@ extension AppModel {
     }
 
     /// The thread's session in Claude Code's own terminal interface, in a block opened full. The
-    /// app's CLI for the thread lets go of it first, so two processes never write one session.
+    /// app's CLI for the thread lets go of it first, so two processes never write one session, and
+    /// a thread already handed over opens the block it's in.
     private var continueInClaudeCode: PaletteItem {
         let unavailable: String? = {
             guard let chat else { return "No thread is open" }
@@ -52,15 +53,26 @@ extension AppModel {
                        subtitle: "Turns taken there won't show here", keywords: ["claude", "cli", "resume", "session", "terminal"],
                        unavailable: unavailable) { [weak self] in
             guard let self, let chat, let session = chat.sessionId else { return }
-            let thread = chat.id
+            if let block = handedOff[chat.id].flatMap({ shellBlocks[$0] }), block.running {
+                open(block)
+                return
+            }
             Task {
-                _ = try? await self.engine.request("close", ["threadId": .string(thread.uuidString)])
-                if let block = self.runCommand("claude --resume \(session.shellQuoted)") {
-                    self.open(block)
-                    self.handedOff[thread] = block.id
+                _ = try? await self.engine.request("close", ["threadId": .string(chat.id.uuidString)])
+                if let block = self.runCommand("claude --resume \(session.shellQuoted)", forModel: false) {
+                    self.handOff(chat, to: block)
                 }
             }
         }
+    }
+
+    /// The session is the block's now: it's opened, the thread won't send while it runs, and a
+    /// wait for a limit to reset is called off, since going on by itself would be a second writer.
+    func handOff(_ chat: Chat, to block: ShellBlock) {
+        open(block)
+        handedOff[chat.id] = block.id
+        conversation(for: chat).cancelResume()
+        scheduleResumes()
     }
 }
 

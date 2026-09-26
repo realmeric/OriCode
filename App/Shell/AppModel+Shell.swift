@@ -6,8 +6,9 @@ import SwiftUI
 /// one, the way Claude Code's own `!` does.
 extension AppModel {
     /// Runs a line from the shell prompt in the open thread, starting one if there's none.
+    /// `forModel` false keeps its block out of what the model reads.
     @discardableResult
-    func runCommand(_ line: String) -> ShellBlock? {
+    func runCommand(_ line: String, forModel: Bool = true) -> ShellBlock? {
         let command = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty, let chat = chat ?? newChat() else { return nil }
         guard FileManager.default.fileExists(atPath: chat.cwd) else {
@@ -26,7 +27,9 @@ extension AppModel {
             if block.fullScreen { open(block) } else { close(block) }
         }
         shellBlocks[block.id] = block
-        withAnimation(Motion.fade) { conversation.shellStarted(ShellRun(command: command, folder: chat.cwd), id: block.id) }
+        var run = ShellRun(command: command, folder: chat.cwd)
+        run.forModel = forModel
+        withAnimation(Motion.fade) { conversation.shellStarted(run, id: block.id) }
         holdForShells()
         if !block.start() { say("The shell couldn't start.") }
         return block
@@ -115,7 +118,7 @@ extension AppModel {
         var parts: [String] = []
         var marks: [(id: UUID, mark: ShellBlock.Mark?)] = []
         for item in conversation.items {
-            guard case .shell(let id, let run) = item else { continue }
+            guard case .shell(let id, let run) = item, run.forModel else { continue }
             if let live = shellBlocks[id] {
                 guard let unread = live.unread() else { continue }
                 parts.append(ShellContext.block(command: run.command, output: unread.text, exitCode: live.exitCode, running: live.running))

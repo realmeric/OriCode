@@ -184,11 +184,14 @@ extension AppModel {
         Task { await engine.hold(busy) }
     }
 
+    /// What went with the engine, whether it died or was restarted: every thread's turn, tasks and
+    /// workflows.
     func engineStopped() {
         // A thread waiting on you from before a quit has no CLI to lose.
-        for conversation in conversations.values where conversation.running && !conversation.waitingAfterQuit {
+        for conversation in conversations.values where !conversation.waitingAfterQuit {
+            let midTurn = conversation.running
             conversation.stopped()
-            conversation.note("The engine stopped in the middle of this turn.")
+            if midTurn { conversation.note("The engine stopped in the middle of this turn.") }
         }
         for conversation in conversations.values { conversation.endWorkflows() }
         holdWhileWorking()

@@ -31,6 +31,9 @@ extension AppModel {
         guard let chat else { return }
         let cwd = chat.cwd
         let relative = ToolSummary.relative(path, to: cwd)
+        // The viewer is under what grows out of the capsule, so the finder, or the review it was
+        // opened from, makes way.
+        if reviewShown { closeReview() }
         withAnimation(Motion.move) {
             fileFinderShown = false
             openFile = OpenFile(path: relative, line: line)

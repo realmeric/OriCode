@@ -215,4 +215,79 @@ struct ShellTests {
         model.selectedChatID = chat.id
         return (model, chat, container)
     }
+
+    /// A model on an in-memory store with a thread that has a session, open in `folder`.
+    private func handOffThread(in folder: URL) throws -> (AppModel, Chat, ModelContainer) {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let project = Project(name: "alpha", path: folder.path)
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        let chat = Chat(project: project)
+        chat.sessionId = "s"
+        chat.started = true
+        container.mainContext.insert(chat)
+        try container.mainContext.save()
+        model.selectedProjectID = project.id
+        model.selectedChatID = chat.id
+        return (model, chat, container)
+    }
+
+    @Test func continuingInClaudeCodeAgainOpensTheBlockItRunsIn() throws {
+        let (model, chat, container) = try handOffThread(in: FileManager.default.temporaryDirectory)
+        // The model's context doesn't keep its store alive.
+        defer { withExtendedLifetime(container) {} }
+        let block = try #require(model.runCommand("sleep 5", forModel: false))
+        defer { block.stop() }
+        model.handOff(chat, to: block)
+        model.closeBlock()
+        let row = try #require(model.terminalCommands.first { $0.id == "terminal.claude" })
+        #expect(row.unavailable == nil)
+        guard case .run(let run) = row.action else {
+            Issue.record("not a command")
+            return
+        }
+        run()
+        #expect(model.openShell === block)
+        #expect(model.shellBlocks.count == 1)
+    }
+
+    @Test func aHandedOverThreadStopsWaitingForTheLimit() async throws {
+        let (model, chat, container) = try handOffThread(in: FileManager.default.temporaryDirectory)
+        defer { withExtendedLifetime(container) {} }
+        model.engineState = .ready
+        chat.resumeAt = .now.addingTimeInterval(3600)
+        let block = try #require(model.runCommand("sleep 5", forModel: false))
+        defer { block.stop() }
+        model.handOff(chat, to: block)
+        #expect(chat.resumeAt == nil)
+        // A reset that comes due while the block still runs is called off, not sent.
+        chat.resumeAt = .now.addingTimeInterval(-30)
+        model.scheduleResumes()
+        try await Task.sleep(for: .milliseconds(1600))
+        let sent = model.conversation(for: chat).items.contains { if case .user = $0 { true } else { false } }
+        #expect(!sent)
+        #expect(chat.resumeAt == nil)
+    }
+
+    @Test func aBlockNotForTheModelIsNeverSentAndStaysThatWay() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "shell-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (model, chat, container) = try handOffThread(in: folder)
+        model.runCommand("echo the session itself", forModel: false)
+        for _ in 0..<100 where model.shellBlocks.values.contains(where: \.running) { try await Task.sleep(for: .milliseconds(50)) }
+        let message = model.withShells("go on", in: chat)
+        #expect(message.text == "go on")
+        message.read()
+        guard case .shell(_, let run) = Conversation(chat: chat, context: container.mainContext).items.last else {
+            Issue.record("no block")
+            return
+        }
+        #expect(!run.forModel && run.exitCode == 0 && run.unread == -1)
+        // Nor after a relaunch, when the block is read back from the store.
+        model.shellBlocks = [:]
+        model.conversations[chat.id] = nil
+        #expect(model.withShells("go on", in: chat).text == "go on")
+    }
 }

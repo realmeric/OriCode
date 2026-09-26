@@ -53,6 +53,9 @@ struct ShellRun: Hashable {
     /// How many of its last lines Claude hasn't read, counted from the end because a relaunch
     /// rebuilds the terminal from the end of the output; -1 for all of them, as until it's read.
     var unread = -1
+    /// False for a block the model never reads: one running the thread's own session in Claude
+    /// Code, whose screen is the conversation itself.
+    var forModel = true
 
     var body: JSON {
         var body: [String: JSON] = [
@@ -62,6 +65,7 @@ struct ShellRun: Hashable {
         ]
         if let endedAt { body["endedAt"] = .number(endedAt.timeIntervalSince1970) }
         if let exitCode { body["exitCode"] = .number(Double(exitCode)) }
+        if !forModel { body["forModel"] = .bool(false) }
         return .object(body)
     }
 
@@ -81,6 +85,7 @@ struct ShellRun: Hashable {
         // A block stored by an earlier build counts how many characters Claude read, and one read
         // at all had nearly always been read after it ended.
         unread = body["unread"]?.int ?? ((body["sentUpTo"]?.int ?? -1) < 0 ? -1 : 0)
+        forModel = body["forModel"]?.bool ?? true
     }
 }
 

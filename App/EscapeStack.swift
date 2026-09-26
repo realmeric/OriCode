@@ -9,11 +9,6 @@ extension AppModel {
             modelPickerShown = false
             return true
         }
-        if openFile != nil {
-            closeFile()
-            returnKeyboard()
-            return true
-        }
         if fileFinderShown {
             toggleFileFinder()
             returnKeyboard()
@@ -33,6 +28,12 @@ extension AppModel {
             } else {
                 closeReview()
             }
+            return true
+        }
+        // Under ⌘K, ⌘P and the review, which open over it.
+        if openFile != nil {
+            closeFile()
+            returnKeyboard()
             return true
         }
         // The drawer's rename field sits over an open block.

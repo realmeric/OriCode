@@ -446,9 +446,16 @@ export class Thread {
       if (running === this.query) event("error", { threadId: this.id, message: describe(error) });
     }
     if (running !== this.query) return;
-    // The CLI went away under us. The next send starts a fresh one that resumes the session.
+    // The CLI went away under us, and what it ran went with it. The next send starts a fresh one
+    // that resumes the session.
     this.query = undefined;
     this.inbox = undefined;
+    for (const taskId of this.workflows.keys()) this.tellWorkflow(taskId, "stopped");
+    this.workflows.clear();
+    if (this.tasks.size > 0) {
+      this.tasks.clear();
+      event("tasks", { threadId: this.id, running: 0, tasks: [] });
+    }
     if (this.running) {
       this.running = false;
       event("turn.done", { threadId: this.id, sessionId: this.sessionId, stopReason: "engine_stopped", durationMs: 0, costUSD: 0, usage: emptyUsage });

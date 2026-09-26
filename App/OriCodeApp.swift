@@ -26,10 +26,13 @@ struct OriCodeApp: App {
                         model.addProject(at: url)
                     }
                     delegate.deliverEarlyFolders()
-                    delegate.runningInTerminal = { [model] in model.runningCommands }
-                    delegate.endTerminals = { [model] in model.endShells() }
+                    delegate.runningCommands = { [model] in model.runningCommands }
+                    delegate.endCommands = { [model] in model.endShells() }
                     delegate.markCutOffTurns = { [model] in model.markCutOffTurns() }
                     updates.say = { [model] line in model.say(line) }
+                    // The test host opens this build's own store, whose threads booting would pick up
+                    // and send; a test that needs the engine makes its own model.
+                    guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
                     await model.boot()
                 }
                 .frame(minWidth: 720, minHeight: 480)

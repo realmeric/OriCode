@@ -1,14 +1,14 @@
 import AppKit
 
 /// Folders dropped on the Dock icon, or `open -a OriCode <folder>`, become projects; images
-/// opened the same way go into the composer. Quitting asks first while a command runs in the
-/// terminal, and marks the threads still working so the next launch picks them up. A SIGTERM,
-/// which is how `make app` quits OriCode, is a quit like any other, without the question.
+/// opened the same way go into the composer. Quitting asks first while a command runs in a
+/// thread's block, and marks the threads still working so the next launch picks them up. A
+/// SIGTERM, which is how `make app` quits OriCode, is a quit like any other, without the question.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var openFolder: ((URL) -> Void)?
-    /// What's running in the terminal ("sleep in alpha"), and what ends every shell.
-    var runningInTerminal: (() -> [String])?
-    var endTerminals: (() -> Void)?
+    /// The commands running in blocks ("sleep in alpha"), and what ends them.
+    var runningCommands: (() -> [String])?
+    var endCommands: (() -> Void)?
     var markCutOffTurns: (() -> Void)?
     private var early: [URL] = []
     private var terminationSignal: DispatchSourceSignal?
@@ -28,10 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Nobody is there to answer for a signal.
         guard !quittingOnSignal else { return .terminateNow }
-        let running = runningInTerminal?() ?? []
+        let running = runningCommands?() ?? []
         guard !running.isEmpty else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "A command is still running in the terminal"
+        alert.messageText = running.count == 1 ? "A command is still running in a thread" : "Commands are still running in threads"
         let list = running.count == 1 ? running[0] : running.dropLast().joined(separator: ", ") + " and " + running[running.count - 1]
         alert.informativeText = "Quitting OriCode stops \(list)."
         alert.addButton(withTitle: "Quit")
@@ -39,10 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
-    // Every shell is hung up, the way closing its window would, and the jobs in it with it.
+    // Every block's command is hung up, the way closing a terminal window would, and the jobs it
+    // started with it.
     func applicationWillTerminate(_ notification: Notification) {
         markCutOffTurns?()
-        endTerminals?()
+        endCommands?()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

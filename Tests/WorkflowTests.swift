@@ -1,3 +1,4 @@
+import SwiftData
 import Testing
 @testable import OriCode
 
@@ -38,5 +39,37 @@ struct WorkflowTests {
         let groups = WorkflowRun.groups(run.agents, planned: ["Review", "Verify"], reported: run.phases)
         #expect(groups.map(\.phase) == ["Review", "Verify", "Fix", ""])
         #expect(groups.map(\.agents.count) == [2, 0, 1, 1])
+    }
+
+    @MainActor
+    @Test func restartingTheEngineStopsTheWorkflowsItRan() async throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let project = Project(name: "alpha", path: "/tmp/alpha")
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        let chat = Chat(project: project)
+        chat.started = true
+        container.mainContext.insert(chat)
+        let conversation = model.conversation(for: chat)
+        let thread = chat.id.uuidString
+        conversation.receive(EngineEvent(name: "tool.use", threadId: thread, body: [
+            "event": "tool.use", "toolUseId": "call", "name": "Workflow", "input": .object([:]),
+        ]))
+        conversation.receive(EngineEvent(name: "workflow", threadId: thread, body: [
+            "event": "workflow", "taskId": "w", "toolUseId": "call", "name": "review-changes", "state": "running",
+            "phases": ["Review"], "agents": [], "summary": .null,
+        ]))
+        conversation.receive(EngineEvent(name: "tasks", threadId: thread, body: ["event": "tasks", "running": 1, "tasks": ["Review"]]))
+        #expect(conversation.tasks == 1)
+
+        // Restart's first half; the second starts a real engine.
+        await model.stopEngine()
+        #expect(conversation.tasks == 0)
+        guard case .tool(_, let call) = conversation.items.last else {
+            Issue.record("no call")
+            return
+        }
+        #expect(call.workflow?.state == .stopped)
     }
 }

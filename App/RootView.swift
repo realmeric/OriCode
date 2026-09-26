@@ -107,12 +107,12 @@ struct RootView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { chat in
+            let stopping = model.shellsStopping(in: [chat])
             if let branch = chat.worktreeBranch, let loss = model.deletingLoss {
-                let stopping = model.shellsStopping(in: [chat])
                 Text([loss.isEmpty ? "Everything on \(branch) is on another branch or remote, so its worktree can go too." : loss.sentence, stopping]
                     .compactMap { $0 }.joined(separator: " "))
             } else {
-                Text("Its transcript goes with it.")
+                Text(["Its transcript goes with it.", stopping].compactMap { $0 }.joined(separator: " "))
             }
         }
         .confirmationDialog(
@@ -169,17 +169,6 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) {
-            // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
-            // open block, which ⌘K and ⌘P open over.
-            Island()
-                // Clear of the lights and the sidebar button on the left, and of the review's
-                // button and its counts on the right; beside a pinned drawer, the column's margin
-                // from it.
-                .padding(.horizontal, Island.side)
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 + Column.margin - Island.side : 0)
-                .ignoresSafeArea()
-        }
-        .overlay(alignment: .top) {
             if let file = model.openFile {
                 FileViewer(file: file)
                     .padding(.top, 20)
@@ -189,6 +178,17 @@ struct RootView: View {
                     .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .overlay(alignment: .top) {
+            // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
+            // open block or file, which ⌘K and ⌘P open over.
+            Island()
+                // Clear of the lights and the sidebar button on the left, and of the review's
+                // button and its counts on the right; beside a pinned drawer, the column's margin
+                // from it.
+                .padding(.horizontal, Island.side)
+                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 + Column.margin - Island.side : 0)
+                .ignoresSafeArea()
         }
         .overlay(alignment: .topLeading) {
             // Full height and under the title bar, so the traffic lights sit inside its first row.
