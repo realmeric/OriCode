@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The title capsule and what it opens into. ⌘K's command center, ⌘P's file finder and ⌘⇧D's
-/// review each stretch down out of the capsule, the way the Dynamic Island grows into what it's
+/// The title capsule and what it opens into. ⌘K's command center, ⌘I's heads, ⌘P's file finder
+/// and ⌘⇧D's review each stretch down out of the capsule, the way the Dynamic Island grows into what it's
 /// showing, and fold back up into it as they go: one at a time, in the capsule's lane, with its
 /// top where the capsule's is. The glass is one piece that follows whichever of them is up. With
 /// Reduce Motion each has glass of its own, and they fade in and out instead.
@@ -12,7 +12,7 @@ struct Island: View {
     @State private var capsuleHovered = false
 
     enum Piece: Hashable {
-        case capsule, command, files, review
+        case capsule, command, heads, files, review
     }
 
     /// Where the capsule's top sits in the toolbar's row, and every surface's with it.
@@ -66,6 +66,7 @@ struct Island: View {
 
     private var shown: Piece {
         if model.commandCenterShown { return .command }
+        if model.headsShown { return .heads }
         if model.fileFinderShown { return .files }
         if model.reviewShown { return .review }
         return .capsule
@@ -81,6 +82,11 @@ struct Island: View {
             CommandCenter()
                 .frame(width: min(CommandCenter.width, room.width))
                 .surface(.command, in: island, glass: reduceMotion)
+                .transition(arrival)
+        case .heads:
+            HeadsSurface(island: island)
+                .frame(width: min(HeadsSurface.width, room.width))
+                .surface(.heads, in: island, glass: reduceMotion)
                 .transition(arrival)
         case .files:
             FileFinder()
@@ -139,6 +145,7 @@ extension AppModel {
     /// the next comes out of it.
     func openInIsland(_ piece: Island.Piece) {
         commandCenterShown = piece == .command
+        headsShown = piece == .heads
         fileFinderShown = piece == .files
         if piece != .review { review.noting = nil }
         reviewShown = piece == .review

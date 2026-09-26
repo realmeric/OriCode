@@ -14,6 +14,10 @@ extension AppModel {
             returnKeyboard()
             return true
         }
+        if headsShown {
+            closeHeads()
+            return true
+        }
         if commandCenterShown {
             // Back one level, and at the top, away.
             if !palette.pop() {

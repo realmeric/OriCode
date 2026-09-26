@@ -16,6 +16,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
+import { Heads } from "./heads.ts";
 import { event, log } from "./wire.ts";
 import { workflowShape, type WorkflowShape } from "./workflow.ts";
 
@@ -131,7 +132,7 @@ export class Thread {
   private resuming: SendParams | undefined;
   private streamed = new Set<string>();
   /// Subagents and other tasks the CLI is running for this thread, in the foreground or not.
-  private tasks = new Map<string, { description: string; background: boolean }>();
+  private heads: Heads;
   /// Workflows the thread started, by task, with the call that started them and their last snapshot.
   private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape }>();
   private costSoFar = 0;
@@ -173,6 +174,7 @@ export class Thread {
     this.id = id;
     this.claude = claude;
     this.launch = launch;
+    this.heads = new Heads(id);
   }
 
   get isRunning(): boolean {
@@ -297,7 +299,7 @@ export class Thread {
   /// Ends the CLI of a thread idle this long, with no subagents out and nothing asked of the
   /// user. The next send starts one that resumes the session.
   releaseIfIdle(idleMs: number): boolean {
-    if (!this.query || this.running || this.waiting.size > 0 || this.tasks.size > 0 || this.idleSince === undefined) return false;
+    if (!this.query || this.running || this.waiting.size > 0 || this.heads.size > 0 || this.idleSince === undefined) return false;
     if (Date.now() - this.idleSince < idleMs) return false;
     if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
     this.close();
@@ -316,6 +318,16 @@ export class Thread {
     }
   }
 
+  /// What each head is doing goes out only while the app's Heads surface shows this thread.
+  watchHeads(on: boolean): void {
+    this.heads.watch(on);
+  }
+
+  async stopTask(taskId: string): Promise<void> {
+    if (!this.query || !this.heads.has(taskId)) throw new Error("That has already stopped.");
+    await this.query.stopTask(taskId);
+  }
+
   close(): void {
     this.dropWaiting();
     this.inbox?.close();
@@ -329,6 +341,7 @@ export class Thread {
     this.resuming = resume ? params : undefined;
     log(`start thread=${this.id} cwd=${params.cwd} resume=${resume ?? "none"}`);
     this.key = key;
+    this.heads.cwd = params.cwd;
     this.mode = params.permissionMode;
     this.fast = params.fast ?? false;
     this.costSoFar = resume ? (params.costSoFar ?? 0) : 0;
@@ -397,12 +410,10 @@ export class Thread {
     } catch {}
   }
 
-  /// Keeps `tasks` in step with the CLI's task messages and tells the app how many are out.
+  /// Keeps the heads and the workflows in step with the CLI's task messages.
   private trackTask(message: SDKMessage & { type: "system" }): boolean {
-    const before = this.tasks.size;
     switch (message.subtype) {
       case "task_started":
-        if (!message.ambient) this.tasks.set(message.task_id, { description: message.description, background: message.is_backgrounded ?? false });
         if (message.task_type === "local_workflow") {
           const name = message.workflow_name ?? message.description;
           this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] } });
@@ -416,37 +427,20 @@ export class Thread {
           workflow.shape = workflowShape(progress);
           this.tellWorkflow(message.task_id, "running");
         }
-        return true;
+        break;
       }
       case "task_notification":
-        if (this.resuming && !this.tasks.has(message.task_id)) this.orphaned = true;
-        this.tasks.delete(message.task_id);
+        if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
         this.tellWorkflow(message.task_id, message.status, message.summary);
         this.workflows.delete(message.task_id);
         break;
       case "task_updated":
         if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) {
-          this.tasks.delete(message.task_id);
           this.tellWorkflow(message.task_id, message.patch.status === "killed" ? "stopped" : message.patch.status);
         }
         break;
-      case "background_tasks_changed": {
-        // The CLI's own list of what's still running in the background: a backgrounded
-        // task it no longer lists is over.
-        const listed = new Set(message.tasks.filter((task) => !task.ambient).map((task) => task.task_id));
-        for (const [id, task] of this.tasks) if (task.background && !listed.has(id)) this.tasks.delete(id);
-        for (const task of message.tasks) {
-          if (!task.ambient) this.tasks.set(task.task_id, { description: task.description, background: true });
-        }
-        break;
-      }
-      default:
-        return false;
     }
-    if (this.tasks.size !== before || message.subtype === "task_started") {
-      event("tasks", { threadId: this.id, running: this.tasks.size, tasks: [...this.tasks.values()].map((task) => task.description) });
-    }
-    return true;
+    return this.heads.track(message);
   }
 
   /// Where a workflow the thread started has got, with its last snapshot, whole each time.
@@ -542,10 +536,7 @@ export class Thread {
     this.inbox = undefined;
     for (const taskId of this.workflows.keys()) this.tellWorkflow(taskId, "stopped");
     this.workflows.clear();
-    if (this.tasks.size > 0) {
-      this.tasks.clear();
-      event("tasks", { threadId: this.id, running: 0, tasks: [] });
-    }
+    this.heads.clear();
     this.dropWaiting();
     if (this.running) {
       this.running = false;
@@ -583,7 +574,10 @@ export class Thread {
         return;
       }
       case "assistant": {
-        if (message.parent_tool_use_id) return;
+        if (message.parent_tool_use_id) {
+          this.heads.frame(message.parent_tool_use_id, message.message.content);
+          return;
+        }
         const usage = message.message.usage;
         if (usage) {
           this.lastContext = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.output_tokens ?? 0);
@@ -609,9 +603,12 @@ export class Thread {
         return;
       }
       case "user": {
-        if (message.parent_tool_use_id) return;
         const blocks = message.message.content;
         if (typeof blocks === "string") return;
+        for (const block of blocks) {
+          if (block.type === "tool_result") this.heads.result(block.tool_use_id, resultText(block.content));
+        }
+        if (message.parent_tool_use_id) return;
         const patch = patchOf(message.tool_use_result);
         for (const block of blocks) {
           if (block.type !== "tool_result") continue;

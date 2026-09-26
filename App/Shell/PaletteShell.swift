@@ -46,7 +46,7 @@ extension AppModel {
             guard chat.sessionId != nil else { return "Send it a message first" }
             if conversation(for: chat).running { return "Wait for the turn to end" }
             // Closing the CLI would end its subagents and background commands with it.
-            if conversation(for: chat).tasks > 0 { return "Wait for its tasks to finish" }
+            if !conversation(for: chat).heads.isEmpty { return "Wait for its tasks to finish" }
             return nil
         }()
         return command("terminal.claude", "Continue in Claude Code", icon: "arrow.up.forward.app",

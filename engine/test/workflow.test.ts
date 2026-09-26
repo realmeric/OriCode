@@ -36,7 +36,7 @@ test("an empty snapshot has no phases and no agents", () => {
   assert.deepEqual(workflowShape([]), { phases: [], agents: [] });
 });
 
-test("a CLI that exits by itself stops the workflows and tasks it had out", async () => {
+test("a CLI that exits by itself stops the workflows and heads it had out", async () => {
   const thread = new Thread("t", "/nowhere/claude") as any;
   async function* cli() {
     yield { type: "system", subtype: "task_started", task_id: "w", tool_use_id: "call", description: "Review", task_type: "local_workflow", workflow_name: "review", session_id: "s", uuid: "u" };
@@ -51,12 +51,12 @@ test("a CLI that exits by itself stops the workflows and tasks it had out", asyn
     process.stdout.write = write;
   }
   const events = lines.map((line) => JSON.parse(line));
-  assert.deepEqual(events.map((event) => [event.event, event.state ?? event.running]), [
+  assert.deepEqual(events.map((event) => [event.event, event.state ?? event.heads.length]), [
     ["workflow", "running"],
-    ["tasks", 1],
+    ["heads", 1],
     ["workflow", "stopped"],
-    ["tasks", 0],
+    ["heads", 0],
   ]);
   assert.equal(thread.workflows.size, 0);
-  assert.equal(thread.tasks.size, 0);
+  assert.equal(thread.heads.size, 0);
 });

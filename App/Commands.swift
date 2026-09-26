@@ -34,6 +34,9 @@ struct OriCodeCommands: Commands {
             Button(model.shellPrompt ? "Leave Shell Prompt" : "Shell Prompt") { model.toggleShellPrompt() }
                 .keyboardShortcut("j")
                 .disabled(model.project == nil)
+            Button(model.headsShown ? "Hide Heads" : "Show Heads") { model.toggleHeads() }
+                .keyboardShortcut("i")
+                .disabled(model.chat == nil)
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut("p")
                 .disabled(model.chat == nil)

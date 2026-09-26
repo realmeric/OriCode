@@ -125,6 +125,12 @@ final class AppModel {
     var reviewShown = false
     let review = ReviewState()
     var commandCenterShown = false
+    /// ⌘I's heads, for the open thread.
+    var headsShown = false {
+        didSet { watchHeads() }
+    }
+    /// The thread the engine is telling what its heads are doing.
+    var headsWatched: UUID?
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
     /// Threads whose session Continue in Claude Code gave to a block's claude, and that block.
@@ -208,6 +214,7 @@ final class AppModel {
             refreshBranch(for: chat)
             readReview()
             returnKeyboard()
+            watchHeads()
         }
     }
 
@@ -350,6 +357,7 @@ final class AppModel {
             readReview()
             pickUpAfterQuit()
             scheduleResumes()
+            watchHeads()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

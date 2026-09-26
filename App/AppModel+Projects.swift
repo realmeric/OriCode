@@ -111,7 +111,7 @@ extension AppModel {
     /// here, which the store has and which is read again when the thread is opened.
     func release(_ chat: Chat) {
         guard let conversation = conversations[chat.id],
-              !conversation.running, conversation.tasks == 0, conversation.waitingAsk == nil, !conversation.holdsMessages
+              !conversation.working, conversation.waitingAsk == nil, !conversation.holdsMessages
         else { return }
         conversation.flush()
         conversations[chat.id] = nil

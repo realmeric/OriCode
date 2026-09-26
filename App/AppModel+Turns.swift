@@ -285,6 +285,8 @@ extension AppModel {
             if midTurn { conversation.note("The engine stopped in the middle of this turn.") }
         }
         for conversation in conversations.values { conversation.endWorkflows() }
+        // A new engine watches nothing until it's asked again.
+        headsWatched = nil
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]
         for conversation in conversations.values { withAnimation(Motion.fade) { conversation.handBackAll() } }

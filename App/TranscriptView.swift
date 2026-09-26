@@ -67,6 +67,8 @@ struct TranscriptView: View {
         // MarkdownUI makes `App/Foo.swift` a URL with no scheme, which the default action hands
         // to Launch Services, and nothing there opens it.
         .environment(\.openURL, OpenURLAction { model.openLink($0, cwd: cwd) })
+        // A workflow's card lights the rays its agents hold on the thread's mark.
+        .environment(conversation.heads)
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
         .onScrollGeometryChange(for: Bool.self) { geometry in

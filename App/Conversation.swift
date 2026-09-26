@@ -143,8 +143,8 @@ enum Item: Identifiable, Hashable {
 final class Conversation {
     private(set) var items: [Item] = []
     private(set) var running = false
-    /// Subagents and other tasks out for this thread, as the engine last counted them.
-    private(set) var tasks = 0
+    /// Subagents, commands and workflows out for this thread, as the engine last listed them.
+    let heads = Heads()
     /// "Can't reach Claude…" while the CLI retries; a live line, never stored.
     private(set) var retrying: String?
     /// Fast mode as the CLI last reported it: on, off or cooldown, and why it can't be on.
@@ -241,12 +241,6 @@ final class Conversation {
         Set(items.compactMap { item in
             if case .ask(_, let ask) = item, askedBeforeQuit.contains(ask.requestId) { ask.toolUseId } else { nil }
         })
-    }
-
-    /// Heads at work: the main loop while a turn runs, and each subagent it sent out
-    /// that hasn't come back. What the rays on the thread's mark light up for.
-    var heads: Int {
-        min((running ? 1 : 0) + tasks, RaysMark.rays)
     }
 
     /// The oldest ask still waiting, which is the one Return and Esc answer.
@@ -395,8 +389,8 @@ final class Conversation {
             appliedUltracode = event.body["ultracode"]?.bool ?? false
             askedUltracode = asked == Effort.ultracode
             if asked == nil { defaultReading = (chat.model, level) }
-        case "tasks":
-            tasks = event.body["running"]?.int ?? 0
+        case "heads":
+            heads.update(event.body)
         case "retrying":
             let attempt = event.body["attempt"]?.int ?? 0
             let max = event.body["max"]?.int ?? 0
@@ -442,6 +436,7 @@ final class Conversation {
             record(event.name, event.body)
         case "workflow":
             workflowChanged(event.body)
+            heads.workflow(event.body)
         case "message.taken":
             if let id = event.body["messageId"]?.string.flatMap(UUID.init(uuidString:)) {
                 taken(id, newTurn: event.body["newTurn"]?.bool ?? false)
@@ -524,7 +519,7 @@ final class Conversation {
     /// next launch, and what has streamed so far is written down. Working is what the mark shows,
     /// a turn running or a subagent or background command out, since the CLI that ran them goes too.
     func quitting() {
-        guard running || tasks > 0 else { return }
+        guard working else { return }
         chat.quitMidTurn = true
         unsaved = true
         flush()
@@ -567,7 +562,7 @@ final class Conversation {
     }
 
     func stopped() {
-        tasks = 0
+        heads.clear()
         handBackQueue()
         guard running else { return }
         running = false

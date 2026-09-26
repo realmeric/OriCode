@@ -60,12 +60,14 @@ struct WorkflowTests {
             "event": "workflow", "taskId": "w", "toolUseId": "call", "name": "review-changes", "state": "running",
             "phases": ["Review"], "agents": [], "summary": .null,
         ]))
-        conversation.receive(EngineEvent(name: "tasks", threadId: thread, body: ["event": "tasks", "running": 1, "tasks": ["Review"]]))
-        #expect(conversation.tasks == 1)
+        conversation.receive(EngineEvent(name: "heads", threadId: thread, body: [
+            "event": "heads", "heads": [["id": "w", "kind": "workflow", "toolUseId": "call", "label": "Review"]],
+        ]))
+        #expect(!conversation.heads.isEmpty)
 
         // Restart's first half; the second starts a real engine.
         await model.stopEngine()
-        #expect(conversation.tasks == 0)
+        #expect(conversation.heads.isEmpty)
         guard case .tool(_, let call) = conversation.items.last else {
             Issue.record("no call")
             return

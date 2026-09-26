@@ -27,7 +27,7 @@ struct RootView: View {
                         Spacer(minLength: 0)
                         EmptyStateView(
                             line: model.project == nil ? "Add a project to start." : "Where do we pick up?",
-                            heads: conversation?.heads ?? 0,
+                            lit: conversation?.heads.lit ?? [],
                             waiting: conversation?.waitingAsk != nil)
                             .padding(.bottom, 28)
                             .transition(.asymmetric(insertion: Self.settle, removal: Self.lift))
@@ -71,6 +71,7 @@ struct RootView: View {
                 .simultaneousGesture(TapGesture().onEnded {
                     if !model.drawerPinned { model.hideDrawer() }
                     if model.commandCenterShown { model.closeCommandCenter() }
+                    if model.headsShown { model.closeHeads() }
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.openFile != nil { model.closeFile() }
                     if model.reviewShown { model.closeReview() }
@@ -372,12 +373,12 @@ struct EmptyStateView: View {
     static let height: CGFloat = 44 + 14 + 18
 
     let line: String
-    var heads = 0
+    var lit: Set<Int> = []
     var waiting = false
 
     var body: some View {
         VStack(spacing: 14) {
-            RaysMark(lit: heads, turning: heads > 0, waiting: waiting)
+            RaysMark(slots: lit, turning: !lit.isEmpty, waiting: waiting)
                 .frame(width: 44, height: 44)
             Text(line)
                 .font(Type.body)

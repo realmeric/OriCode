@@ -14,6 +14,8 @@ import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
 const threads = new Map<string, Thread>();
+/// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
+const watched = new Set<string>();
 let models: Model[] | undefined;
 
 async function requireClaude(): Promise<string> {
@@ -132,6 +134,7 @@ function thread(threadId: string, claude: string): Thread {
   let found = threads.get(threadId);
   if (!found) {
     found = new Thread(threadId, claude);
+    found.watchHeads(watched.has(threadId));
     threads.set(threadId, found);
   }
   return found;
@@ -281,9 +284,24 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return readProjectFile(cwd, path);
   },
 
+  async "heads.watch"({ threadId, on }: { threadId: string; on: boolean }) {
+    if (on) watched.add(threadId);
+    else watched.delete(threadId);
+    threads.get(threadId)?.watchHeads(on);
+    return { ok: true };
+  },
+
+  async "task.stop"({ threadId, taskId }: { threadId: string; taskId: string }) {
+    const found = threads.get(threadId);
+    if (!found) throw new Error("That has already stopped.");
+    await found.stopTask(taskId);
+    return { ok: true };
+  },
+
   async close({ threadId }: { threadId: string }) {
     threads.get(threadId)?.close();
     threads.delete(threadId);
+    watched.delete(threadId);
     return { ok: true };
   },
 };

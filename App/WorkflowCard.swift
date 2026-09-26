@@ -5,26 +5,28 @@ import SwiftUI
 /// phases in order, each with a bead per agent. A click opens the agents themselves.
 struct WorkflowCard: View {
     let call: ToolCall
+    /// The thread's heads, whose rays this workflow's agents hold on the thread's mark too.
+    @Environment(Heads.self) private var heads: Heads?
     @State private var open = false
 
     var body: some View {
         let run = call.workflow
         let script = call.input["script"]?.string ?? ""
         let groups = WorkflowRun.groups(run?.agents ?? [], planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
-        let running = run?.state == .running ? run?.count(.running) ?? 0 : 0
+        let rays = run?.state == .running ? Set(heads?.list.first { $0.toolUseId == call.toolUseId && !$0.ending }?.rays ?? []) : []
         let name = run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         VStack(alignment: .leading, spacing: 12) {
             Button {
                 withAnimation(Motion.fade) { open.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    RaysMark(lit: running, turning: running > 0)
+                    RaysMark(slots: rays, turning: !rays.isEmpty)
                         .frame(width: 16, height: 16)
                     Text(name)
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
                         .lineLimit(1)
-                    Text(status(run, groups: groups))
+                    Text(Self.status(run, groups: groups))
                         .font(Type.secondary)
                         .foregroundStyle(Ink.secondary)
                         .lineLimit(1)
@@ -70,7 +72,7 @@ struct WorkflowCard: View {
     }
 
     /// How far it has got: the phase at work and the agents done, or how it ended.
-    private func status(_ run: WorkflowRun?, groups: [(phase: String, agents: [WorkflowRun.Agent])]) -> String {
+    static func status(_ run: WorkflowRun?, groups: [(phase: String, agents: [WorkflowRun.Agent])]) -> String {
         guard let run else { return "Starting…" }
         let total = run.agents.count
         let failed = run.count(.failed)
@@ -91,7 +93,7 @@ struct WorkflowCard: View {
 
 /// A bead for each agent in a phase, wrapping: faint while queued, lit while it runs, settled once
 /// done, and red if it failed.
-private struct Beads: View {
+struct Beads: View {
     let agents: [WorkflowRun.Agent]
 
     var body: some View {
@@ -104,7 +106,7 @@ private struct Beads: View {
     }
 }
 
-private struct Bead: View {
+struct Bead: View {
     let state: WorkflowRun.Agent.State
 
     var body: some View {
@@ -130,7 +132,7 @@ private struct Bead: View {
 
 /// One agent in the opened card: its bead and label, and the tool it's on, what it used, or why
 /// it failed.
-private struct AgentLine: View {
+struct AgentLine: View {
     let agent: WorkflowRun.Agent
 
     var body: some View {

@@ -22,12 +22,22 @@ enum ToolSummary {
         case "AskUserQuestion": return "Ask you"
         case "ExitPlanMode": return "Finish planning"
         case "Skill": return "Skill: \(input["skill"]?.string ?? input["command"]?.string ?? "")"
-        default:
-            if call.name.hasPrefix("mcp__") {
-                return call.name.split(separator: "__").dropFirst().joined(separator: " › ")
-            }
-            return call.name
+        default: return name(call.name)
         }
+    }
+
+    /// A tool's name as the thread shows it: an MCP server's tool as "server › tool".
+    static func name(_ tool: String) -> String {
+        tool.hasPrefix("mcp__") ? tool.split(separator: "__").dropFirst().joined(separator: " › ") : tool
+    }
+
+    /// What a call is on, without the tool: the file, the command's first line, the pattern, the
+    /// page or the question, in the shape the engine gives an agent's step.
+    static func target(for call: ToolCall, cwd: String) -> String? {
+        let input = call.input
+        if let path = input["file_path"]?.string ?? input["notebook_path"]?.string { return relative(path, to: cwd) }
+        if let command = input["command"]?.string { return firstLine(command) }
+        return ["pattern", "url", "query", "description", "skill", "path"].lazy.compactMap { input[$0]?.string }.first { !$0.isEmpty }
     }
 
     /// What a run of calls did, in Claude Code's words, each kind where it first came: "Read 2

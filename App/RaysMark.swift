@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Meriç's mark: a dot inside six arcs. The arcs are rays, and a lit ray is a head
-/// running in the thread, the main loop first and then each subagent, lit clockwise
-/// from twelve o'clock.
+/// Meriç's mark: a dot inside six arcs. The dot is the thread's main loop, and a lit ray is an
+/// agent at work in it, each on the ray it was given.
 struct RaysMark: View {
     static let rays = 6
     /// Seconds for one turn, and for one in fast mode.
@@ -12,8 +11,12 @@ struct RaysMark: View {
     nonisolated static let trailCopies = 9
     nonisolated static let trailDelay: CFTimeInterval = 1.0 / 480
 
-    /// How many rays are lit, clamped to the six there are.
+    /// How many rays are lit, clockwise from twelve, clamped to the six there are.
     var lit = 0
+    /// The rays lit by where they stand instead, for a thread's heads, each of which keeps its own.
+    var slots: Set<Int>?
+    /// A head under the pointer, whose rays or dot stand out while the other lit rays ease back.
+    var focus: Focus?
     /// Turns slowly while work is running, so a lit mark also reads as moving.
     var turning = false
     /// Pulses the dot: the thread is waiting on you.
@@ -34,19 +37,26 @@ struct RaysMark: View {
     /// further to rest.
     var fast = false
 
+    enum Focus: Hashable {
+        case dot
+        case rays(Set<Int>)
+    }
+
     var body: some View {
+        let lit = litRays
         Group {
             if turning || waiting || layered {
-                MovingRays(lit: min(lit, Self.rays), turning: turning, waiting: waiting,
-                           restingOpacity: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
+                MovingRays(lit: lit, opacities: (0..<Self.rays).map(opacity), dotOpacity: dot, turning: turning, waiting: waiting,
+                           restingOpacity: restingOpacity,
                            color: NSColor(color), stagger: stagger, settles: settles, fast: fast)
             } else {
                 GeometryReader { proxy in
                     let side = min(proxy.size.width, proxy.size.height)
                     ZStack {
                         rays(side: side)
-                        Circle().fill(color).opacity(dotOpacity)
+                        Circle().fill(color).opacity(dot)
                             .frame(width: side * 0.3, height: side * 0.3)
+                            .animation(.easeOut(duration: 0.18), value: focus)
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
                 }
@@ -54,7 +64,33 @@ struct RaysMark: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement()
-        .accessibilityLabel(lit == 0 ? "Idle" : "\(lit) running")
+        .accessibilityLabel(lit.isEmpty ? "Idle" : "\(lit.count) running")
+    }
+
+    private var litRays: Set<Int> {
+        slots?.filter { (0..<Self.rays).contains($0) } ?? Set(0..<max(0, min(lit, Self.rays)))
+    }
+
+    /// Between lit and resting: a lit ray while another head is under the pointer.
+    private var eased: Double {
+        (litOpacity + restingOpacity) / 2
+    }
+
+    private func opacity(_ index: Int) -> Double {
+        guard litRays.contains(index) else { return restingOpacity }
+        switch focus {
+        case nil: return litOpacity
+        case .rays(let rays) where rays.contains(index): return 1
+        default: return eased
+        }
+    }
+
+    private var dot: Double {
+        switch focus {
+        case nil: dotOpacity
+        case .dot: 1
+        case .rays: min(dotOpacity, eased)
+        }
     }
 
     private func rays(side: CGFloat) -> some View {
@@ -63,13 +99,13 @@ struct RaysMark: View {
             ForEach(0..<Self.rays, id: \.self) { index in
                 Ray(index: index, count: Self.rays)
                     .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
-                    .opacity(index < min(lit, Self.rays) ? litOpacity : restingOpacity)
+                    .opacity(opacity(index))
                     .padding(width / 2)
-                    .animation(.spring(response: 0.9, dampingFraction: 0.9), value: lit)
+                    .animation(.spring(response: 0.9, dampingFraction: 0.9), value: litRays)
+                    .animation(.easeOut(duration: 0.18), value: focus)
             }
         }
     }
-
 }
 
 /// One of the arcs, centred on its sixth of the circle with a gap either side.
@@ -97,12 +133,12 @@ struct Ray: Shape {
 /// Animation in the render server. Drawn from a TimelineView, every frame of the turn made
 /// SwiftUI lay the whole window out again.
 private struct MovingRays: NSViewRepresentable {
-    let lit: Int
+    let lit: Set<Int>
+    let opacities: [Double]
+    let dotOpacity: Double
     let turning: Bool
     let waiting: Bool
     let restingOpacity: Double
-    let litOpacity: Double
-    let dotOpacity: Double
     let color: NSColor
     let stagger: Bool
     let settles: Bool
@@ -112,7 +148,7 @@ private struct MovingRays: NSViewRepresentable {
 
     func updateNSView(_ view: RaysView, context: Context) {
         view.paint(color)
-        view.show(lit: lit, turning: turning, waiting: waiting, resting: restingOpacity, litOpacity: litOpacity, dotOpacity: dotOpacity,
+        view.show(lit: lit, opacities: opacities, dotOpacity: dotOpacity, turning: turning, waiting: waiting, resting: restingOpacity,
                   stagger: stagger, settles: settles, fast: fast)
     }
 
@@ -124,7 +160,7 @@ private struct MovingRays: NSViewRepresentable {
         private let spinner = CALayer()
         private var rays: [CAShapeLayer] = []
         private let dot = CAShapeLayer()
-        private var lit = -1
+        private var lit: Set<Int>?
         private var turnPeriod = RaysMark.turn
         /// Bumped by each turn, so a coast that ends after a newer turn began leaves its trail be.
         private var generation = 0
@@ -160,25 +196,27 @@ private struct MovingRays: NSViewRepresentable {
             CATransaction.commit()
         }
 
-        func show(lit: Int, turning: Bool, waiting: Bool, resting: Double, litOpacity: Double, dotOpacity: Double, stagger: Bool = false,
-                  settles: Bool = false, fast: Bool = false) {
-            let before = max(self.lit, 0)
+        func show(lit: Set<Int>, opacities: [Double], dotOpacity: Double, turning: Bool, waiting: Bool, resting: Double,
+                  stagger: Bool = false, settles: Bool = false, fast: Bool = false) {
+            let before = self.lit ?? []
             CATransaction.begin()
-            // A newly lit ray eases in, the way the still mark's spring brings it up.
-            CATransaction.setAnimationDuration(lit == self.lit || self.lit < 0 || stagger ? 0 : 0.6)
+            // A ray that lights or goes out eases there, the way the still mark's spring takes it;
+            // one that only stands out or eases back for the head under the pointer, quicker.
+            CATransaction.setAnimationDuration(self.lit == nil || stagger && lit != before ? 0 : lit == before ? 0.18 : 0.6)
             for (index, ray) in rays.enumerated() {
-                ray.opacity = Float(index < lit ? litOpacity : resting)
+                ray.opacity = Float(opacities[index])
             }
+            dot.opacity = Float(dotOpacity)
             CATransaction.commit()
-            if stagger, lit > before {
+            if stagger {
                 // Clockwise from twelve, each 0.16s and 0.04s after the one before.
                 let now = CACurrentMediaTime()
-                for index in before..<min(lit, rays.count) {
+                for (order, index) in lit.subtracting(before).sorted().enumerated() {
                     let light = CABasicAnimation(keyPath: "opacity")
                     light.fromValue = resting
-                    light.toValue = litOpacity
+                    light.toValue = opacities[index]
                     light.duration = 0.16
-                    light.beginTime = now + Double(index - before) * 0.04
+                    light.beginTime = now + Double(order) * 0.04
                     light.fillMode = .backwards
                     rays[index].add(light, forKey: "light")
                 }
@@ -215,7 +253,6 @@ private struct MovingRays: NSViewRepresentable {
                 spinner.removeAnimation(forKey: "turn")
                 CATransaction.commit()
             }
-            dot.opacity = Float(dotOpacity)
             if waiting, dot.animation(forKey: "pulse") == nil {
                 // Down to a third and back every 1.8 seconds: the thread is waiting on you.
                 let pulse = CABasicAnimation(keyPath: "opacity")
@@ -273,7 +310,11 @@ extension CALayer {
         turn.duration = period
         turn.repeatCount = .infinity
         turn.fillMode = .backwards
-        if period < 1 { turn.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120) }
+        // The slow turn moves 40° a second, which 20 frames draw smoothly at the mark's sizes, and
+        // the capsule's mark turns for as long as an agent works.
+        turn.preferredFrameRateRange = period < 1
+            ? CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+            : CAFrameRateRange(minimum: 10, maximum: 30, preferred: 20)
         add(turn, forKey: "turn")
     }
 

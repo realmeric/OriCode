@@ -174,12 +174,10 @@ struct Drawer: View {
             }
             Spacer(minLength: 4)
             // Only while the thread works or waits, so an idle row gives its title the room.
-            let heads = model.heads(of: chat)
-            let waiting = model.state(of: chat) == .waiting
-            if heads > 0 || waiting {
+            if let conversation = model.conversations[chat.id], conversation.working {
                 // Still while the drawer is away: hidden, it stays in the tree, and a turning
-                // mark would redraw thirty times a second for nobody.
-                RaysMark(lit: heads, turning: heads > 0 && model.drawerShown, waiting: waiting && model.drawerShown, restingOpacity: 0.28)
+                // mark would redraw for nobody.
+                ThreadMark(conversation: conversation, moving: model.drawerShown)
                     .frame(width: 14, height: 14)
             }
             if chat.pinned {

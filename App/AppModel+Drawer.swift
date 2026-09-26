@@ -116,18 +116,4 @@ extension AppModel {
         if let title, title != chat.title { rename(chat, to: title) }
         if !mouseInDrawer { scheduleHide(after: DrawerTiming.grace) }
     }
-
-    enum ThreadState {
-        case idle, running, waiting
-    }
-
-    func heads(of chat: Chat) -> Int {
-        conversations[chat.id]?.heads ?? 0
-    }
-
-    func state(of chat: Chat) -> ThreadState {
-        guard let conversation = conversations[chat.id] else { return .idle }
-        if conversation.waitingAsk != nil { return .waiting }
-        return conversation.running ? .running : .idle
-    }
 }

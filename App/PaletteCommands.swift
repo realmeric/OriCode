@@ -316,6 +316,8 @@ extension AppModel {
                                  unavailable: projects.count > 1 ? nil : "There's only one project",
                                  action: .list(PaletteList(title: "Project", placeholder: "Search projects") { [weak self] in self?.paletteProjects ?? [] })))
         items.append(command("project.add", "Add project…", icon: "folder.badge.plus", shortcut: "⌘O") { [weak self] in self?.addProject() })
+        items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: "⌘I", keywords: ["agents", "tasks", "running"],
+                             unavailable: noThread) { [weak self] in self?.toggleHeads() })
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: "⌘P", unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })
