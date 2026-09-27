@@ -20,6 +20,16 @@ import { emit, event, log, tap, untap } from "./wire.ts";
 // thread's `heads`, so its ray lights. Nothing here polls: a worker runs only once started, and
 // its session is let go when idle like a thread's.
 
+/// A model a head may send a worker out on, picked for the thread in the model menu.
+export type Ray = { agent: string; model: string };
+
+/// A ray as the app sends it, `agent/model`: only the first slash parts them, since an OpenRouter
+/// model's id has one of its own.
+export function rayOf(ref: string): Ray {
+  const slash = ref.indexOf("/");
+  return { agent: ref.slice(0, slash), model: ref.slice(slash + 1) };
+}
+
 /// What Rays needs of main.ts: the agents, their CLIs, and the sessions it keeps for idle release.
 export type Seam = {
   provider(id: string): Provider | undefined;
@@ -70,25 +80,23 @@ type Worker = {
 const longestWait = 300_000;
 /// Workers at work at once in a thread, one to a ray.
 const mostAtWork = 6;
-/// Models a list_agents names for each agent; OpenCode alone lists hundreds.
-const mostModels = 40;
 
 const tools = [
   {
     name: "list_agents",
-    description: "The coding agents this thread's workers may run on, with their models and each model's effort levels. Read it before start_worker when you don't know an agent's model ids.",
+    description: "This thread's rays: the agents and models its workers may run on, with each model's effort levels.",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true },
   },
   {
     name: "start_worker",
     description:
-      "Start a worker: another coding agent that takes one task and works on it on its own while you go on. It works in this thread's folder, or with isolated, in a git worktree of its own on a new branch, whose edits reach this folder only when you merge_worker. What it asks the user goes to the user in this thread. Start workers when the user asks you to hand work to other agents, or when a task splits into parts another agent can do beside you. Returns the worker's id.",
+      "Start a worker on one of this thread's rays: another coding agent that takes one task and works on it on its own while you go on. It works in this thread's folder, or with isolated, in a git worktree of its own on a new branch, whose edits reach this folder only when you merge_worker. What it asks the user goes to the user in this thread. Returns the worker's id.",
     inputSchema: {
       type: "object",
       properties: {
-        agent: { type: "string", description: "An agent's id from list_agents, such as codex or opencode." },
-        model: { type: "string", description: "One of that agent's model ids from list_agents. The agent's default when left out." },
+        agent: { type: "string", description: "A ray's agent, such as codex or opencode." },
+        model: { type: "string", description: "A ray's model on that agent. The agent's first ray when left out." },
         effort: { type: "string", description: "One of the model's effort levels from list_agents. The model's default when left out." },
         task: { type: "string", description: "What the worker should do, written for someone who hasn't seen this conversation." },
         isolated: { type: "boolean", description: "Work in a worktree of its own. Use it for a worker that edits files, so its edits can't run into yours or another worker's." },
@@ -127,8 +135,16 @@ const tools = [
   },
 ];
 
-const instructions =
-  "You are this thread's head. These tools send other coding agents out as your workers, each on a task of its own, and bring back what they did. Workers that edit files should work isolated, and you merge what you keep.";
+/// What a head is told of its rays, in the engine's words and not the user's: its tools' MCP
+/// instructions, which the ACP agents have no other way to hear, Claude Code's appended system
+/// prompt and Codex's developer instructions.
+export function brief(rays: Ray[]): string {
+  return (
+    `You are this thread's head. The user picked these rays for it, as start_worker's agent and model: ${rays.map((ray) => `${ray.agent} ${ray.model}`).join(", ")}. ` +
+    "Use them: give the parts of each task a ray can do to a worker on it with start_worker, rather than doing all of it yourself, and bring their work back with worker_result. " +
+    "Workers that edit files should work isolated, and you merge what you keep with merge_worker."
+  );
+}
 
 /// Heads with workers allowed, by thread and by the path of their tools.
 const heads = new Map<string, Rays>();
@@ -197,10 +213,10 @@ export class Rays {
   private watched: boolean;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private told = "";
-  /// The thread's folder, its mode and the agents its workers may use, as its latest send had them.
+  /// The thread's folder, its mode and its rays, as its latest send had them.
   private cwd = "";
   private mode = "default";
-  private allowed: string[] = [];
+  private rays: Ray[] = [];
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -217,12 +233,12 @@ export class Rays {
     });
   }
 
-  /// What the thread's latest send says: where it works, in which mode, and on which agents its
-  /// workers may run, none when it no longer allows them.
-  update(cwd: string, mode: string, allowed: string[]): void {
+  /// What the thread's latest send says: where it works, in which mode, and its rays, none when
+  /// it has none left.
+  update(cwd: string, mode: string, rays: Ray[]): void {
     this.cwd = cwd;
     this.mode = mode;
-    this.allowed = allowed;
+    this.rays = rays;
   }
 
   has(workerId: string): boolean {
@@ -232,7 +248,7 @@ export class Rays {
   async rpc(method: string, params: any): Promise<{ result: unknown } | { error: { code: number; message: string } }> {
     switch (method) {
       case "initialize":
-        return { result: { protocolVersion: params.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "oricode", title: "OriCode", version }, instructions } };
+        return { result: { protocolVersion: params.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "oricode", title: "OriCode", version }, instructions: brief(this.rays) } };
       case "ping":
         return { result: {} };
       case "tools/list":
@@ -270,20 +286,24 @@ export class Rays {
     }
   }
 
+  /// Each ray's agent with its rays' models, named and with their levels as the agent lists them.
   async agents(): Promise<{ agents: unknown[] }> {
     const listed = await Promise.all(
-      this.allowed.flatMap((id) => {
+      [...new Set(this.rays.map((ray) => ray.agent))].flatMap((id) => {
         const agent = this.seam.provider(id);
         if (!agent) return [];
+        const picked = this.rays.filter((ray) => ray.agent === id).map((ray) => ray.model);
         return [
           modelsOf(agent, this.seam).then(
             (models) => ({
               id,
               name: agent.name,
-              models: models.slice(0, mostModels).map((model) => ({ id: model.id, name: model.name, levels: model.efforts })),
-              ...(models.length > mostModels ? { more: models.length - mostModels } : {}),
+              models: picked.map((id) => {
+                const known = models.find((model) => model.id === id);
+                return known ? { id, name: known.name, levels: known.efforts } : { id };
+              }),
             }),
-            (error) => ({ id, name: agent.name, error: describe(error) }),
+            () => ({ id, name: agent.name, models: picked.map((id) => ({ id })) }),
           ),
         ];
       }),
@@ -295,8 +315,12 @@ export class Rays {
     const id = String(args.agent ?? "");
     const task = String(args.task ?? "").trim();
     if (!task) throw new Error("A worker needs a task.");
-    const agent = this.allowed.includes(id) ? this.seam.provider(id) : undefined;
-    if (!agent) throw new Error(`This thread's workers can't run on ${id || "that"}. list_agents says which they can.`);
+    const model = typeof args.model === "string" && args.model ? args.model : this.rays.find((ray) => ray.agent === id)?.model;
+    const agent = this.rays.some((ray) => ray.agent === id && ray.model === model) ? this.seam.provider(id) : undefined;
+    if (!agent || !model) {
+      const asked = [id, args.model].filter(Boolean).join(" ") || "That";
+      throw new Error(`${asked} isn't one of this thread's rays: ${this.rays.map((ray) => `${ray.agent} ${ray.model}`).join(", ")}. start_worker takes only those.`);
+    }
     if ([...this.workers.values()].filter((worker) => worker.state === "running").length >= mostAtWork) {
       throw new Error(`${mostAtWork} workers are at work already. Wait for one to finish, or stop one.`);
     }
@@ -321,7 +345,7 @@ export class Rays {
       id: workerId,
       threadId,
       agent,
-      model: typeof args.model === "string" && args.model ? args.model : null,
+      model,
       effort: typeof args.effort === "string" && args.effort ? args.effort : null,
       // The thread's mode, or the agent's first when it has no such mode.
       mode: agent.modes.includes(this.mode) ? this.mode : (agent.modes[0] ?? this.mode),

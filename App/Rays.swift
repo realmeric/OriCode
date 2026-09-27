@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// A thread's head and its workers: the head is the thread's own agent, and a worker is another
-/// agent the head starts on a task through OriCode's tools, lit as a ray while it works.
+/// A thread's head and its rays: the head is the thread's own model, and its rays are the models
+/// picked for it, on any agent, that it sends workers out on through OriCode's tools, each lit as
+/// a ray while it works.
 enum Rays {
     /// Settings › Agents' switch, on unless turned off.
     static let allowKey = "headsStartWorkers"
@@ -12,11 +13,6 @@ enum Rays {
 }
 
 extension AppModel {
-    /// The agents a head's workers can run on: every one hello found ready.
-    var workerAgents: [ProviderInfo] {
-        providers.filter { $0.state == .ready }
-    }
-
     /// Whether the thread's agent can be a head, with Settings letting heads start workers.
     func offersWorkers(_ chat: Chat?) -> Bool {
         Rays.allowed && agent(for: chat).capabilities.workers == true
@@ -27,64 +23,103 @@ extension AppModel {
         agent(for: chat).capabilities.heads || offersWorkers(chat)
     }
 
-    /// The agents a send lets the thread's workers use: the ones picked for its pair, or with none
-    /// picked every ready agent, and none at all where it can't be a head.
-    func workers(for chat: Chat) -> [String] {
-        guard offersWorkers(chat) else { return [] }
-        let ready = workerAgents.map(\.id)
-        return chat.workers.map { $0.filter(ready.contains) } ?? ready
+    /// The models a thread's rays can be, by agent: each ready agent's that the model menu shows,
+    /// and the ones already picked.
+    func rayChoices(for chat: Chat?) -> [(agent: ProviderInfo, models: [ModelOption])] {
+        let picked = chat?.rays ?? []
+        return providers.filter { $0.state == .ready }.compactMap { agent in
+            let listed = models(of: agent.id)
+            let picks = ModelsPage.picks(listed, on: agent.id)
+            let shown = listed.filter { option in
+                let ref = ModelRef(provider: agent.id, id: option.id)
+                return option.pickable && (picked.contains(ref.stored) || showsInMenu(ref, picks: picks))
+            }
+            return shown.isEmpty ? nil : (agent, shown)
+        }
     }
 
-    /// Makes the thread a pair with workers on these agents; nil goes back to every ready one.
-    func setWorkers(_ ids: [String]?, for chat: Chat) {
-        chat.workers = ids
+    /// The thread's rays as a send names them: the ones picked whose agent is ready, and none where
+    /// the thread's agent can't be a head. With none the head works alone.
+    func rays(for chat: Chat?) -> [ModelRef] {
+        guard let chat, offersWorkers(chat) else { return [] }
+        let ready = Set(providers.filter { $0.state == .ready }.map(\.id))
+        return (chat.rays ?? []).map(ModelRef.init(stored:)).filter { ready.contains($0.provider) }
+    }
+
+    /// Picks a model as one of the thread's rays, after the others, or lets it go.
+    func setRay(_ ref: ModelRef, _ on: Bool, for chat: Chat?) {
+        var rays = (chat?.rays ?? []).filter { $0 != ref.stored }
+        if on { rays.append(ref.stored) }
+        setRays(rays, for: chat)
+    }
+
+    func setRays(_ rays: [String], for chat: Chat?) {
+        guard let chat = chat ?? (rays.isEmpty ? nil : newChat()) else { return }
+        chat.rays = rays.isEmpty ? nil : rays
         try? chat.modelContext?.save()
     }
 }
 
-/// The model page's last line: which agents the thread's workers may use, a native menu of
-/// switches, "Workers may use: Codex, Cursor".
-struct WorkersMenu: View {
+/// The model page's last line: the thread's rays, each with its agent's mark in its colour, and a
+/// native menu of switches that picks them from every ready agent's models, "Rays: GPT-6-Luna".
+struct RaysMenu: View {
     @Environment(AppModel.self) private var model
-    let chat: Chat
+    let chat: Chat?
 
     static let height: CGFloat = 34
 
     var body: some View {
-        let ready = model.workerAgents
-        let picked = model.workers(for: chat)
+        let picked = model.rays(for: chat)
         Menu {
-            Button("Any ready agent") { model.setWorkers(nil, for: chat) }
-            Divider()
-            ForEach(ready) { agent in
-                Toggle(agent.name, isOn: Binding(
-                    get: { picked.contains(agent.id) },
-                    set: { on in
-                        let next = ready.map(\.id).filter { $0 == agent.id ? on : picked.contains($0) }
-                        model.setWorkers(next, for: chat)
-                    }))
+            ForEach(model.rayChoices(for: chat), id: \.agent.id) { entry in
+                Section(entry.agent.name) {
+                    ForEach(entry.models) { option in
+                        let ref = ModelRef(provider: entry.agent.id, id: option.id)
+                        Toggle(option.name, isOn: Binding(get: { picked.contains(ref) }, set: { model.setRay(ref, $0, for: chat) }))
+                    }
+                }
             }
             Divider()
-            Button("None") { model.setWorkers([], for: chat) }
+            Button("No Rays") { model.setRays([], for: chat) }
+                .disabled(picked.isEmpty)
         } label: {
-            Text(Self.line(picked: picked, chosen: chat.workers != nil, agents: ready))
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            HStack(spacing: 6) {
+                Text("Rays")
+                    .foregroundStyle(Ink.secondary)
+                ForEach(picked, id: \.self) { ray in
+                    AgentMark(agent: ray.provider)
+                        .frame(width: 12, height: 12)
+                }
+                Text(Self.line(picked.map(name)))
+                    .foregroundStyle(picked.isEmpty ? Ink.faint : Ink.primary.opacity(0.8))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Ink.faint)
+            }
+            .font(Type.secondary)
+            .padding(.horizontal, 10)
+            .frame(maxHeight: .infinity)
+            .contentShape(.rect)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.visible)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 18)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .leading)
-        .help("The agents this thread's head may send out as workers")
+        .help("The models this thread's head sends workers out on")
+        .accessibilityLabel("Rays")
+        .accessibilityValue(Self.line(picked.map(name)))
     }
 
-    /// "Workers may use: Codex, Cursor", "any ready agent" until some are picked, or "none".
-    static func line(picked: [String], chosen: Bool, agents: [ProviderInfo]) -> String {
-        if picked.isEmpty { return "Workers: none" }
-        if !chosen { return "Workers may use any ready agent" }
-        return "Workers may use: " + agents.filter { picked.contains($0.id) }.map(\.name).joined(separator: ", ")
+    private func name(_ ray: ModelRef) -> String {
+        model.option(ray).map { ModelMenu.shortName($0.name) } ?? ray.id
+    }
+
+    /// "GPT-6-Luna, Sonnet", or with none what that means.
+    static func line(_ names: [String]) -> String {
+        names.isEmpty ? "None · the head works alone" : names.joined(separator: ", ")
     }
 }

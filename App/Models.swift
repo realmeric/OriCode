@@ -58,9 +58,10 @@ final class Chat {
     var quitMidTurn: Bool = false
     /// A limit stopped its turn and the thread waits for it: when the limit resets it goes on.
     var resumeAt: Date?
-    /// The agents its workers may use, by id, picked in the model menu for a pair; nil follows
-    /// Settings, every ready agent while heads may start workers.
-    var workers: [String]?
+    /// Its rays, the models its head sends workers out on, by ModelRef's stored form, picked on the
+    /// model page; nil, and the head works alone. It took the place of K-193's `workers`, agents by
+    /// id, which name no model and were let go with it.
+    var rays: [String]?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

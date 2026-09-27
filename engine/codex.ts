@@ -35,6 +35,7 @@ export type CodexSendParams = {
   costSoFar?: number;
   id?: string;
   tools?: string;
+  instructions?: string;
 };
 
 /// OriCode's tools among the thread's MCP servers, as a config override beside the user's own
@@ -162,10 +163,12 @@ export class CodexSession implements Session {
   private cwd = "";
   /// Codex's thread, which is the session the app keeps.
   private threadId: string | undefined;
-  /// Whether this process has the thread open, under which mode, and with which of OriCode's tools.
+  /// Whether this process has the thread open, under which mode, with which of OriCode's tools,
+  /// and told of which rays.
   private live = false;
   private openedMode: string | undefined;
   private openedTools: string | undefined;
+  private openedInstructions: string | undefined;
   private mode: string | undefined;
   private running = false;
   private interrupted = false;
@@ -304,7 +307,7 @@ export class CodexSession implements Session {
     try {
       const mode = params.permissionMode ?? this.mode ?? "default";
       this.mode = mode;
-      if (this.server && (params.cwd !== this.cwd || mode !== this.openedMode || params.tools !== this.openedTools)) this.stop();
+      if (this.server && (params.cwd !== this.cwd || mode !== this.openedMode || params.tools !== this.openedTools || params.instructions !== this.openedInstructions)) this.stop();
       if (!this.server) await this.start(params.cwd);
       if (!this.live) await this.open(params, mode);
       if (this.interrupted) return this.finish(turn, "interrupted");
@@ -350,7 +353,13 @@ export class CodexSession implements Session {
   /// else new. One that's gone is said to be, and the turn goes on in a new one.
   private async open(params: CodexSendParams, mode: string): Promise<void> {
     const earlier = params.sessionId ?? this.threadId;
-    const setup = { cwd: params.cwd, model: params.model ?? null, ...policy(mode), ...(params.tools ? { config: toolsConfig(params.tools) } : {}) };
+    const setup = {
+      cwd: params.cwd,
+      model: params.model ?? null,
+      ...policy(mode),
+      ...(params.tools ? { config: toolsConfig(params.tools) } : {}),
+      ...(params.instructions ? { developerInstructions: params.instructions } : {}),
+    };
     let opened = false;
     if (earlier) {
       try {
@@ -372,6 +381,7 @@ export class CodexSession implements Session {
     this.live = true;
     this.openedMode = mode;
     this.openedTools = params.tools;
+    this.openedInstructions = params.instructions;
   }
 
   private began(turnId: string): void {

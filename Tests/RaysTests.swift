@@ -48,39 +48,72 @@ struct RaysTests {
         model.sendParams(in: chat, text: "Go", images: [])
     }
 
-    @Test func aThreadsWorkersMayUseEveryReadyAgentUntilItsPairIsPicked() {
-        // Every agent hello found ready, a signed-out one left out, the thread's own included.
-        #expect(model.workers(for: chat) == ["claude", "codex", "opencode", "pi"])
-        #expect(sent()["workers"] == ["claude", "codex", "opencode", "pi"])
-        #expect(WorkersMenu.line(picked: model.workers(for: chat), chosen: false, agents: model.workerAgents) == "Workers may use any ready agent")
+    private static func option(_ id: String, _ name: String) -> ModelOption {
+        ModelOption(id: id, name: name, description: "", efforts: [], fast: false, defaultEffort: nil, ultra: false, ultraBlocked: nil, more: nil, needs: nil)
+    }
 
-        model.setWorkers(["opencode", "codex", "cursor"], for: chat)
-        #expect(model.workers(for: chat) == ["opencode", "codex"])
-        #expect(sent()["workers"] == ["opencode", "codex"])
-        #expect(WorkersMenu.line(picked: model.workers(for: chat), chosen: true, agents: model.workerAgents) == "Workers may use: Codex, OpenCode")
+    @Test func aThreadsRaysAreTheModelsPickedForItAndWithoutThemItsHeadWorksAlone() {
+        #expect(model.rays(for: chat).isEmpty)
+        #expect(sent()["rays"] == nil)
+        #expect(RaysMenu.line([]) == "None · the head works alone")
 
-        model.setWorkers([], for: chat)
-        #expect(model.workers(for: chat).isEmpty)
-        #expect(sent()["workers"] == nil)
-        #expect(WorkersMenu.line(picked: [], chosen: true, agents: model.workerAgents) == "Workers: none")
+        let luna = ModelRef(provider: "codex", id: "gpt-6-luna")
+        let sonnet = ModelRef(provider: ProviderInfo.claudeID, id: "sonnet")
+        model.setRay(luna, true, for: chat)
+        model.setRay(sonnet, true, for: chat)
+        // Cursor is signed out, so its ray is kept and not sent.
+        model.setRay(ModelRef(provider: "cursor", id: "auto"), true, for: chat)
+        #expect(chat.rays == ["codex/gpt-6-luna", "sonnet", "cursor/auto"])
+        #expect(model.rays(for: chat) == [luna, sonnet])
+        // Each as agent/model, Claude's too.
+        #expect(sent()["rays"] == ["codex/gpt-6-luna", "claude/sonnet"])
+        #expect(RaysMenu.line(["GPT-6-Luna", "Sonnet"]) == "GPT-6-Luna, Sonnet")
 
-        model.setWorkers(nil, for: chat)
-        #expect(model.workers(for: chat).count == 4)
+        model.setRay(luna, false, for: chat)
+        #expect(sent()["rays"] == ["claude/sonnet"])
+        model.setRays([], for: chat)
+        #expect(chat.rays == nil)
+        #expect(sent()["rays"] == nil)
+    }
+
+    @Test func theRaysOnOfferAreEachReadyAgentsModelsTheMenuShowsAndThosePicked() {
+        model.models = [Self.option("opus", "Opus"), Self.option("sonnet", "Sonnet")]
+        model.modelsByAgent["codex"] = [Self.option("gpt-6-luna", "GPT-6-Luna"), Self.option("gpt-6", "GPT-6")]
+        model.modelsByAgent["opencode"] = (1...9).map { Self.option("vendor/m\($0)", "Model \($0)") }
+        model.modelsByAgent["cursor"] = [Self.option("auto", "Auto")]
+        model.showInMenu(ModelRef(provider: "codex", id: "gpt-6"), false)
+        defer { model.showInMenu(ModelRef(provider: "codex", id: "gpt-6"), true) }
+        model.setRay(ModelRef(provider: "opencode", id: "vendor/m5"), true, for: chat)
+        let offered = model.rayChoices(for: chat).map { [$0.agent.id] + $0.models.map(\.id) }
+        // OpenCode shows its first and the one picked; Codex's hidden model and signed-out Cursor aren't offered.
+        #expect(offered == [["claude", "opus", "sonnet"], ["codex", "gpt-6-luna"], ["opencode", "vendor/m1", "vendor/m5"]])
+    }
+
+    @Test func theMarkSaysThePairEitherWayRound() {
+        // A Codex head with a Claude worker: a white dot, and an orange ray.
+        chat.provider = "codex"
+        receive("heads", ["heads": [["id": "worker-1", "kind": "agent", "label": "review", "startedAt": .number(1), "worker": true, "agent": "claude", "model": "sonnet"]]])
+        let rays = MarkPalette.colors(model.conversation(for: chat).heads.rayAgents)
+        #expect(!rays.isEmpty && rays.values.allSatisfy { $0 == MarkPalette.color(for: ProviderInfo.claudeID) })
+        #expect(MarkPalette.color(for: chat.providerID) == MarkPalette.color(for: "codex"))
+        #expect(MarkPalette.color(for: "codex") != MarkPalette.color(for: ProviderInfo.claudeID))
     }
 
     @Test func noHeadWithoutSettingsOrAnAgentThatTakesTheTools() {
+        model.setRay(ModelRef(provider: "codex", id: "gpt-6-luna"), true, for: chat)
         UserDefaults.standard.set(false, forKey: Rays.allowKey)
         defer { UserDefaults.standard.removeObject(forKey: Rays.allowKey) }
         #expect(!model.offersWorkers(chat))
-        #expect(model.workers(for: chat).isEmpty)
-        #expect(sent()["workers"] == nil)
+        #expect(model.rays(for: chat).isEmpty)
+        #expect(sent()["rays"] == nil)
         UserDefaults.standard.removeObject(forKey: Rays.allowKey)
+        #expect(sent()["rays"] == ["codex/gpt-6-luna"])
         #expect(model.showsHeads(chat))
         // Pi takes no MCP, so a thread on it is no head.
         chat.provider = "pi"
         #expect(!model.offersWorkers(chat))
         #expect(!model.showsHeads(chat))
-        #expect(sent()["workers"] == nil)
+        #expect(sent()["rays"] == nil)
         // Codex reports no heads of its own, but its workers are heads, so ⌘I opens.
         chat.provider = "codex"
         #expect(model.showsHeads(chat))

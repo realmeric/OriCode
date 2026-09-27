@@ -13,7 +13,7 @@ import { grok } from "./grok.ts";
 import { opencode } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
-import { raysFor, raysOf, type Seam } from "./rays.ts";
+import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
 import { answer, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
@@ -83,13 +83,13 @@ const seam: Seam = {
   forget: (threadId) => sessions.delete(threadId),
 };
 
-/// The URL of a head's tools, when the thread allows workers and its agent takes them. A thread
-/// that no longer allows them keeps the workers it has, and can't start more.
-async function headTools(params: SendParams & { workers?: string[] }, agent: Provider): Promise<string | undefined> {
-  const allowed = agent.capabilities.workers ? (params.workers ?? []).filter((id) => providers.has(id)) : [];
-  const head = allowed.length ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
-  head?.update(params.cwd, params.permissionMode, allowed);
-  return allowed.length ? head?.url : undefined;
+/// The URL of a head's tools and what it's told of its rays, when the thread has rays and its
+/// agent takes the tools. A thread with none left keeps the workers it has, and can't start more.
+async function headTools(params: SendParams & { rays?: string[] }, agent: Provider): Promise<Pick<SendParams, "tools" | "instructions">> {
+  const rays = agent.capabilities.workers ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
+  const head = rays.length ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
+  head?.update(params.cwd, params.permissionMode, rays);
+  return rays.length && head ? { tools: head.url, instructions: brief(rays) } : {};
 }
 
 /// An agent's models, read once a check finds it signed in after hello didn't, as `models`
@@ -208,12 +208,13 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { models };
   },
 
-  /// `workers` are the agents the thread's workers may run on, which makes its session a head.
-  async send({ workers, ...params }: SendParams & { provider?: string; workers?: string[] }) {
+  /// `rays` are the models, as `agent/model`, the thread's workers may run on, which makes its
+  /// session a head.
+  async send({ rays, ...params }: SendParams & { provider?: string; rays?: string[] }) {
     const agent = provider(params.provider);
     const path = await cli(agent);
-    const tools = await headTools({ ...params, workers }, agent);
-    const waiting = await session(params.threadId, agent, path).send({ ...params, tools });
+    const head = await headTools({ ...params, rays }, agent);
+    const waiting = await session(params.threadId, agent, path).send({ ...params, ...head });
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },
 

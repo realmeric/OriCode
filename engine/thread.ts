@@ -184,7 +184,7 @@ export class Thread implements Session {
       return true;
     }
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
-    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, params.tools ?? null]);
+    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, params.tools ?? null, params.instructions ?? null]);
     if (!this.query || key !== this.key) {
       let env = cleanEnvironment();
       if (this.elsewhere) {
@@ -375,7 +375,9 @@ export class Thread implements Session {
         resume,
         includePartialMessages: true,
         settingSources: ["user", "project", "local"],
-        systemPrompt: { type: "preset", preset: "claude_code" },
+        // A head's rays, in its system prompt as well as its tools' MCP instructions: the CLI
+        // connects MCP servers without holding up the first request, which could go without them.
+        systemPrompt: { type: "preset", preset: "claude_code", ...(params.instructions ? { append: params.instructions } : {}) },
         pathToClaudeCodeExecutable: this.claude,
         env,
         stderr: (data) => process.stderr.write(data),

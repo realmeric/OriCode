@@ -29,8 +29,12 @@ export type SendParams = {
   /// The app's id for the message. The CLI reports on a message by it: when a message sent
   /// during a turn is taken up, or cancelled before it was.
   id?: string;
-  /// The URL of OriCode's own tools for a head, its MCP server, when the thread allows workers.
+  /// The URL of OriCode's own tools for a head, its MCP server, when the thread has rays.
   tools?: string;
+  /// What the head is told of its rays: Claude Code takes it appended to its system prompt and
+  /// Codex as developer instructions, and the ACP agents hear it only in the tools' MCP
+  /// instructions, which say it too. A session opens again when it changes.
+  instructions?: string;
 };
 
 export type Grant = { tool: string; input: Record<string, unknown> };

@@ -30,7 +30,7 @@ struct AgentsPane: View {
         SettingsCard {
             SettingsRow(
                 title: "Heads may start workers",
-                detail: "A thread's agent can send other agents out on tasks of their own, each a ray on the mark while it works. The model menu says which agents a thread's workers may use."
+                detail: "A thread's head can send workers out on its rays, the models picked for it under Rays on the model page, each a ray on the mark while it works."
             ) {
                 Toggle("Heads may start workers", isOn: $workers).labelsHidden().toggleStyle(.switch)
             }

@@ -64,12 +64,12 @@ async function head(t: { after: (fn: () => unknown) => void }, threadId: string)
   const engine = engineWith(env);
   t.after(engine.kill);
   await engine.request("hello", { agents: { codex: { path: join(bin, "codex") }, opencode: { path: join(bin, "opencode") } } });
-  const send = { threadId, cwd, text: "hello", permissionMode: "bypassPermissions", provider: "codex", workers: ["codex", "opencode"] };
+  const send = { threadId, cwd, text: "hello", permissionMode: "bypassPermissions", provider: "codex", rays: ["codex/gpt-small", "opencode/small", "codex/gpt-large"] };
   assert.deepEqual((await engine.request("send", send)).result, { ok: true });
   await engine.until((line) => line.event === "turn.done" && line.threadId === threadId);
   const started = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start");
   const url: string = started.params.config["mcp_servers.oricode"].url;
-  return { engine, cwd, logs, url };
+  return { engine, cwd, logs, url, started };
 }
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
@@ -80,6 +80,32 @@ test("a Codex head gets the tools as one more MCP server beside the user's own, 
   });
 });
 
+test("a head is told its rays in its own instructions, and lists and starts only those", async (t) => {
+  const { engine, url, logs, started } = await head(t, "k198");
+  const rays = "codex gpt-small, opencode small, codex gpt-large";
+  const init = await mcp(url, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "codex", version: "9" } });
+  assert.match(init.instructions, new RegExp(`^You are this thread's head\\. The user picked these rays for it, as start_worker's agent and model: ${rays}\\. Use them: `));
+  // Codex hears it as developer instructions too, and the user's prompt is left as it was.
+  assert.equal(started.params.developerInstructions, init.instructions);
+  const turn = (await logged(join(logs, "codex.log"))).find((message) => message.method === "turn/start");
+  assert.equal(JSON.stringify(turn.params.input).includes("rays"), false);
+  const listed = await call(url, "list_agents");
+  assert.deepEqual(
+    listed.agents.map((agent: any) => [agent.id, agent.models.map((model: { id: string; name: string }) => [model.id, model.name])]),
+    [
+      ["codex", [["gpt-small", "GPT Small"], ["gpt-large", "GPT Large"]]],
+      ["opencode", [["small", "Small"]]],
+    ],
+  );
+  assert.match((await call(url, "start_worker", { agent: "codex", model: "gpt-huge", task: "x" })).error, /^codex gpt-huge isn't one of this thread's rays: codex gpt-small, opencode small, codex gpt-large\. start_worker takes only those\.$/);
+  assert.match((await call(url, "start_worker", { agent: "cursor", task: "x" })).error, /^cursor isn't one of this thread's rays/);
+  // With no model, an agent's first ray.
+  const worker = await call(url, "start_worker", { agent: "opencode", task: "look" });
+  assert.equal(worker.model, "small");
+  await call(url, "worker_result", { worker: worker.worker, wait: true });
+  await engine.end();
+});
+
 test("a head starts workers on Codex and OpenCode, reads their status and results, messages one, and merges the isolated one's edits", async (t) => {
   const { engine, cwd, url } = await head(t, "k193");
   const init = await mcp(url, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "codex", version: "9" } });
@@ -88,14 +114,6 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
     ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker"],
-  );
-  const listed = await call(url, "list_agents");
-  assert.deepEqual(
-    listed.agents.map((agent: any) => [agent.id, agent.models.map((model: { id: string }) => model.id)]),
-    [
-      ["codex", ["gpt-large", "gpt-small"]],
-      ["opencode", ["small", "large"]],
-    ],
   );
 
   const from = engine.lines.length;
@@ -113,7 +131,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
     both.heads.map((entry: any) => [entry.id, entry.kind, entry.agent, entry.model, entry.label, entry.worker]),
     [
       ["worker-1", "agent", "codex", "gpt-small", "write greet.test.ts", true],
-      ["worker-2", "agent", "opencode", null, "review greet.test.ts", true],
+      ["worker-2", "agent", "opencode", "small", "review greet.test.ts", true],
     ],
   );
   // Not watched, so no detail.
@@ -159,8 +177,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
 
   // A worker that worked in the thread's folder has nothing to merge.
   assert.match((await call(url, "merge_worker", { worker: "worker-2" })).error, /own folder/);
-  // An agent the thread doesn't allow, and a worker it doesn't have.
-  assert.match((await call(url, "start_worker", { agent: "cursor", task: "x" })).error, /can't run on cursor/);
+  // A worker it doesn't have.
   assert.match((await call(url, "worker_status", { worker: "worker-9" })).error, /no worker called worker-9/);
   await engine.end();
 });
@@ -218,7 +235,7 @@ test("an OpenCode head names the tools in session/new, since it takes MCP over H
   const engine = engineWith(env);
   t.after(engine.kill);
   await engine.request("hello", { agents: { opencode: { path: join(bin, "opencode") }, codex: { path: join(bin, "codex") } } });
-  await engine.request("send", { threadId: "k193-acp", cwd, text: "hello", permissionMode: "default", provider: "opencode", workers: ["codex"] });
+  await engine.request("send", { threadId: "k193-acp", cwd, text: "hello", permissionMode: "default", provider: "opencode", rays: ["codex/gpt-large"] });
   await engine.until((line) => line.event === "turn.done");
   const opened = (await logged(join(logs, "acp.log"))).find((message) => message.method === "session/new");
   assert.equal(opened.params.mcpServers.length, 1);
@@ -242,13 +259,16 @@ test("a Claude head gets the tools as an HTTP server loaded with its prompt, all
   }) as never;
   const cwd = await mkdtemp(join(tmpdir(), "oricode-rays-claude-"));
   const thread = new Thread("k193-claude", "claude", launch);
-  await thread.send({ threadId: "k193-claude", cwd, text: "Go", permissionMode: "default", tools: "http://127.0.0.1:1/head" });
+  await thread.send({ threadId: "k193-claude", cwd, text: "Go", permissionMode: "default", tools: "http://127.0.0.1:1/head", instructions: "Your rays." });
   assert.deepEqual(launched[0].mcpServers, { oricode: { type: "http", url: "http://127.0.0.1:1/head", alwaysLoad: true, timeout: 600_000 } });
+  // Told its rays in its system prompt, after Claude Code's own.
+  assert.deepEqual(launched[0].systemPrompt, { type: "preset", preset: "claude_code", append: "Your rays." });
   const allowed = await launched[0].canUseTool("mcp__oricode__start_worker", { agent: "codex" }, { signal: new AbortController().signal, toolUseID: "c1" });
   assert.deepEqual(allowed, { behavior: "allow", updatedInput: { agent: "codex" } });
   thread.close();
   await thread.send({ threadId: "k193-claude", cwd, text: "Again", permissionMode: "default" });
   assert.equal(launched.length, 2);
   assert.equal(launched[1].mcpServers, undefined);
+  assert.deepEqual(launched[1].systemPrompt, { type: "preset", preset: "claude_code" });
   thread.close();
 });

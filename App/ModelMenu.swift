@@ -60,6 +60,17 @@ struct ModelMenu: View {
                     .foregroundStyle(Ink.primary)
                     .id(name)
                     .transition(.blurReplace)
+                // The head's rays beside it, each its agent's mark.
+                if !rays.isEmpty {
+                    HStack(spacing: 2) {
+                        ForEach(rays, id: \.self) { ray in
+                            AgentMark(agent: ray.provider)
+                                .frame(width: 10, height: 10)
+                        }
+                    }
+                    .help(raysLine)
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
+                }
                 if fast {
                     // On the way the user turned it on; the tooltip says so when Claude Code
                     // runs the thread at standard speed anyway.
@@ -84,7 +95,7 @@ struct ModelMenu: View {
             .font(Type.secondary)
             // The picker's choices arrive here as it makes them; the button grows leftwards,
             // since the composer's field gives way and the send button holds its right.
-            .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil])
+            .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil] + rays.map(\.stored))
             .padding(.horizontal, 8)
             .frame(height: 30)
             .background(hovering || model.modelPickerShown ? Surface.hover : .clear, in: .capsule)
@@ -96,12 +107,18 @@ struct ModelMenu: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.modelButtonFrame = $0 }
         .help("Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
-        .accessibilityValue(accessibilityEffort)
+        .accessibilityValue(rays.isEmpty ? accessibilityEffort : accessibilityEffort + ", " + raysLine)
         .task(id: "\(model.providerID(for: chat)) \(model.engineState == .ready)") { model.readModels(for: chat) }
     }
 
     private var fast: Bool {
         PickerState(model: model, chat: chat).fastAsked
+    }
+
+    private var rays: [ModelRef] { model.rays(for: chat) }
+
+    private var raysLine: String {
+        "Rays: " + rays.map { model.option($0).map { Self.shortName($0.name) } ?? $0.id }.joined(separator: ", ")
     }
 
     private var selectedModel: ModelOption? { model.option(for: chat) }

@@ -129,8 +129,9 @@ extension AppModel {
             // The thread's cost has its workers' in it, which its own session never spent.
             "costSoFar": .number(chat.costUSD - conversation(for: chat).workerCost),
         ]
-        let workers = workers(for: chat)
-        if !workers.isEmpty { params["workers"] = .array(workers.map(JSON.string)) }
+        // Each as agent/model, Claude's too, where the stored form leaves Claude's agent out.
+        let rays = rays(for: chat)
+        if !rays.isEmpty { params["rays"] = .array(rays.map { .string("\($0.provider)/\($0.id)") }) }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = modelSent(in: chat) { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it: an Ultracode left on after

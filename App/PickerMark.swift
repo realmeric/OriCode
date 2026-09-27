@@ -32,7 +32,7 @@ struct MarkPicker: View {
             }
         }
         .frame(width: 320, height: page == .effort ? Self.effortHeight
-            : ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen), footer: chat.map { model.offersWorkers($0) } == true ? WorkersMenu.height : 0))
+            : ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen), footer: model.offersWorkers(chat) ? RaysMenu.height : 0))
         .animation(Motion.glide, value: page)
         .onAppear {
             model.readAgentModels()

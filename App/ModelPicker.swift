@@ -255,7 +255,7 @@ struct ModelsPage: View {
     fileprivate static let section: CGFloat = 36
 
     /// The page's height: all of it up to the effort page's, and past that it scrolls. `footer` is
-    /// the line under the list, the workers' menu, which never scrolls.
+    /// the line under the list, the rays' menu, which never scrolls.
     static func height(for groups: [RowGroup], footer: CGFloat = 0) -> CGFloat {
         let rows = groups.reduce(0) { $0 + $1.rows.count }
         let headings = groups.reduce(0) { $0 + $1.headingHeight }
@@ -279,7 +279,7 @@ struct ModelsPage: View {
         let chosen = PickerState(model: model, chat: chat).option.map { ModelRef(provider: model.providerID(for: chat), id: $0.id).stored }
         VStack(spacing: 0) {
             list(chosen: chosen)
-            if let chat, model.offersWorkers(chat) { WorkersMenu(chat: chat) }
+            if model.offersWorkers(chat) { RaysMenu(chat: chat) }
         }
     }
 

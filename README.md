@@ -66,11 +66,13 @@ Some agents can sign in with an account whose maker keeps that login to its own 
 
 ## Rays
 
-A thread's head can send out workers on other agents. OriCode serves the head a few tools of its own over MCP: start a worker on an agent and model with a task, see how it's doing, read what it brought back, message it, stop it, and merge its work. A worker that edits can work in a worktree of its own, on an `oricode/ray-…` branch, and a merge brings its changes in staged, where the review says which worker changed what.
+A thread's model is its head, and its rays are the models it sends workers out on, any agent's. The model page picks the head, and its Rays line under the models picks the rays from every ready agent's models the model menu shows: Opus as the head with GPT-6-Luna as its ray, say. The model button shows each ray's mark beside the head's name. With rays picked, OriCode tells the head which it has, in its own instructions rather than your prompt, so it hands them the parts of a task that suit them without being asked. With none, the head works alone.
 
-Each worker is a ray on the thread's mark, in its agent's colour. ⌘I lists them with their agent, model, step, time and cost, their cost counts toward the thread's, and Stop on the head stops them too. At the foot of the model menu's model page, Workers may use picks the agents a thread's workers can run on; with none picked, a head may use any ready agent while Heads may start workers is on in Settings › Agents, as it is at first.
+OriCode serves the head a few tools of its own over MCP: start a worker on one of its rays with a task, see how it's doing, read what it brought back, message it, stop it, and merge its work. A worker that edits can work in a worktree of its own, on an `oricode/ray-…` branch, and a merge brings its changes in staged, where the review says which worker changed what.
 
-Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP over HTTP, such as OpenCode, Cursor and Copilot, can be heads. Pi, Command Code and Antigravity take no MCP tools, so they can only be workers. So far a Claude head with a Codex worker and an OpenCode worker has run for real.
+Each worker is a ray on the thread's mark, in its agent's colour, around a dot in the head's: a Claude head with Codex rays is an orange dot with white rays, and a Codex head with Claude rays the other way round. ⌘I lists them with their agent, model, step, time and cost, their cost counts toward the thread's, and Stop on the head stops them too. Heads may start workers, in Settings › Agents, turns it all off.
+
+Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP over HTTP, such as OpenCode, Cursor and Copilot, can be heads. Pi, Command Code and Antigravity take no MCP tools, so they can only be workers. So far a Claude head with a Codex worker and an OpenCode worker has run for real, and an Opus head that sent its GPT-6-Luna ray a task nobody had told it to hand out.
 
 ## The marks in the model menu
 

@@ -65,6 +65,7 @@ export type AcpSendParams = {
   costSoFar?: number;
   id?: string;
   tools?: string;
+  instructions?: string;
 };
 
 type ConfigValue = { value: string; name: string; description?: string | null };
@@ -223,6 +224,7 @@ export class AcpSession {
   /// Whether this process has the session open, and with which of OriCode's tools.
   private live = false;
   private openedTools: string | undefined;
+  private openedInstructions: string | undefined;
   /// While a load replays the conversation, which the app already has.
   private loading = false;
   private running = false;
@@ -357,8 +359,9 @@ export class AcpSession {
       const reach = this.reach(params.permissionMode ?? this.mode);
       if (this.child && (params.cwd !== this.cwd || launch(reach) !== this.startedWith)) this.stop();
       if (!this.child) await this.start(params.cwd, reach);
-      // A session's MCP servers are named as it opens, so tools turned on or off open it again.
-      if (!this.live || params.tools !== this.openedTools) await this.open(params);
+      // A session's MCP servers are named and asked for their instructions as it opens, so tools
+      // turned on or off, or other rays, open it again.
+      if (!this.live || params.tools !== this.openedTools || params.instructions !== this.openedInstructions) await this.open(params);
       if (this.interrupted) return this.finish(turn, "interrupted");
       if (reach.mode) await this.applyMode(reach.mode);
       if (params.model) await this.applyModel(params.model);
@@ -478,6 +481,7 @@ export class AcpSession {
     }
     this.live = true;
     this.openedTools = params.tools;
+    this.openedInstructions = params.instructions;
     this.cost = undefined;
     // Which of them a picked-up session is in isn't said, so the first mode applied is sent.
     const unlisted = this.agent.unlistedModes && { currentModeId: "", availableModes: this.agent.unlistedModes.map((id) => ({ id, name: id })) };
