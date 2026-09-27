@@ -138,6 +138,17 @@ async function prompt(sessionId: string, text: string): Promise<object> {
     }, 20);
     return { stopReason: "cancelled" };
   }
+  if (text === "refused") {
+    // As Copilot answers an account with no plan: the error as the reply's only text.
+    update(sessionId, { sessionUpdate: "usage_update", used: 11617, size: 128000 });
+    update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Error: Authorization error. Your credentials may be expired or invalid. (Request ID: 1)" } });
+    return { stopReason: "end_turn" };
+  }
+  if (text === "quote") {
+    update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Error: is what it printed" } });
+    update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: ", and then it stopped." } });
+    return { stopReason: "end_turn" };
+  }
   if (text === "wait") {
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Running it." } });
     const run = { toolCallId: "run-1", title: "make", kind: "execute", status: "pending", rawInput: { command: ["make", "test"] } };

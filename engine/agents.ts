@@ -119,6 +119,7 @@ export const agents: Agent[] = [
     login: "Run `copilot login` in Terminal.",
     key: null,
     forbidden: [],
+    availability: async (cli, env) => (await import("./copilot.ts")).availability(cli, env),
   },
   {
     id: "opencode",

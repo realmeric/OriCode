@@ -37,6 +37,9 @@ export type AcpAgent = {
   /// process group of its own, and the groups started in a folder end with the last of its
   /// sessions there.
   strays?: boolean;
+  /// It sends its errors as ordinary text, as Copilot does: a message starting "Error:" that's the
+  /// turn's only text is the turn's error.
+  textErrors?: boolean;
 };
 
 export type Reach = { mode?: string; env?: Record<string, string> };
@@ -203,6 +206,10 @@ export class AcpSession {
   private running = false;
   private interrupted = false;
   private errored = false;
+  /// Whether the turn has said anything yet, and an "Error:" it said first, held until the turn
+  /// shows whether it was the turn's only text.
+  private spoke = false;
+  private held: string | undefined;
   /// Counts turns, so what a finished one leaves behind can't reach the next.
   private turns = 0;
   private turnStart = 0;
@@ -242,6 +249,8 @@ export class AcpSession {
     this.running = true;
     this.interrupted = false;
     this.errored = false;
+    this.spoke = false;
+    this.held = undefined;
     this.turnStart = Date.now();
     this.calls.clear();
     const turn = ++this.turns;
@@ -333,6 +342,10 @@ export class AcpSession {
       if (params.effort) await this.applyLevel(params.effort);
       event("turn.started", { threadId: this.id, sessionId: this.sessionId });
       const reply: { stopReason?: string; usage?: Record<string, number | null> | null } = await this.request("session/prompt", { sessionId: this.sessionId, prompt: this.prompt(params) });
+      if (this.held !== undefined && turn === this.turns) {
+        this.fail(this.held.slice("Error:".length).trim());
+        return this.finish(turn, "error_during_execution");
+      }
       this.finish(turn, stopReason(reply.stopReason), reply.usage ?? undefined);
     } catch (error) {
       // The agent going says so itself; a close says nothing.
@@ -611,21 +624,43 @@ export class AcpSession {
     if (this.loading || !this.running) return;
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
-        // TODO(K-182): Copilot sends its errors as ordinary text, "Error: Authorization error…",
-        // which shows as the reply until that card tells them apart.
-        if (update.content?.type === "text") event("text", { threadId: this.id, delta: update.content.text });
+        if (update.content?.type === "text") this.say(update.content.text);
         return;
       case "agent_thought_chunk":
+        this.release();
         if (update.content?.type === "text") event("thinking", { threadId: this.id, delta: update.content.text });
         return;
       case "tool_call":
       case "tool_call_update":
+        this.release();
         this.track(update as unknown as ToolCallUpdate);
         return;
       case "plan":
+        this.release();
         this.plan(update.entries ?? []);
         return;
     }
+  }
+
+  /// Copilot's "Error: Authorization error…" comes as a text chunk like any other; one that opens
+  /// the turn's text waits to see whether anything follows it.
+  private say(text: string): void {
+    if (this.agent.textErrors && !this.spoke && this.held === undefined && text.startsWith("Error:")) {
+      this.held = text;
+      return;
+    }
+    this.release();
+    this.spoke = true;
+    event("text", { threadId: this.id, delta: text });
+  }
+
+  /// What was held turns out to be the reply's start, since the turn went on.
+  private release(): void {
+    if (this.held === undefined) return;
+    const text = this.held;
+    this.held = undefined;
+    this.spoke = true;
+    event("text", { threadId: this.id, delta: text });
   }
 
   /// A call builds up over several updates, Cursor's input coming only after the call. It's told

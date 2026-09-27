@@ -39,7 +39,7 @@ struct AgentInfo: Codable, Hashable, Sendable, Identifiable {
         case .unknown: return entry.version == nil ? "Found." : "Found. Whether it's signed in shows once a thread runs on it."
         // Its hint points here, where the field is right under it.
         case .signedOut where key && !binary: return "No key kept yet."
-        case .missing, .signedOut, .outdated, .off: return entry.hint ?? "Not found."
+        case .missing, .signedOut, .noPlan, .outdated, .off: return entry.hint ?? "Not found."
         }
     }
 }

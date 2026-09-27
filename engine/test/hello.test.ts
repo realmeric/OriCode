@@ -477,6 +477,30 @@ test("Cursor on the Free plan reads ready and lists only Auto, as Cursor names i
   assert.deepEqual([...new Set(asked)].sort(), ["cursor-agent --version", "cursor-agent about --format json", "cursor-agent acp", "cursor-agent status --format json"]);
 });
 
+test("Copilot signed in to a GitHub account with no Copilot plan reads as its own state, with GitHub's line", async () => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const server = new URL("./fixtures/copilot-headless.ts", import.meta.url).pathname;
+  await writeFile(join(bin, "copilot"), `#!/bin/sh\ncase "$1" in\n  --headless) COPILOT_ACCOUNT=noPlan exec "${process.execPath}" "${server}" ;;\nesac\n`);
+  await chmod(join(bin, "copilot"), 0o755);
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
+  const [hello, checked] = await replies(env, [
+    { method: "hello", params: { agents: { copilot: { path: join(bin, "copilot") } } } },
+    { method: "provider.check", params: { provider: "copilot" } },
+  ]);
+  const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: "copilot --resume {session}" };
+  const entry = { id: "copilot", name: "GitHub Copilot", agent: "Copilot", cli: join(bin, "copilot"), capabilities, levels: ["low", "medium", "high"], modes: ["default", "plan", "bypassPermissions"] };
+  assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown", hint: null, version: null });
+  assert.deepEqual(checked.result, {
+    ...entry,
+    state: "noPlan",
+    hint: "You don't currently have a Copilot subscription. Run `copilot` in Terminal to sign up for Copilot Free.",
+    version: "1.0.86",
+  });
+});
+
 test("models.list for Claude answers with hello's list", async () => {
   const claude = await standIn(true);
   const { folder, config, known } = await cachedDefaults();

@@ -19,6 +19,7 @@ export type AcpEntry = {
   permissions?: AcpAgent["permissions"];
   allowAlways?: string;
   strays?: boolean;
+  textErrors?: boolean;
   /// What its initialize says, which hello needs before any agent has started: whether a
   /// session can be picked up (sessionCapabilities.resume or loadSession), whether it sees
   /// images (promptCapabilities.image), and whether a new mode reaches a running session.
@@ -51,6 +52,7 @@ export function acpProvider(entry: AcpEntry): Provider {
     permissions: entry.permissions,
     allowAlways: entry.allowAlways,
     strays: entry.strays,
+    textErrors: entry.textErrors,
   });
   /// The models a session offers, from one opened for nothing else.
   async function offered(cli: string): Promise<Model[]> {

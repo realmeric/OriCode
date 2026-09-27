@@ -1,5 +1,5 @@
 // An ACP thread against a stand-in agent that scripts its replies, so nothing reaches a model.
-import { mkdtemp, readFile, realpath } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { AcpSession, answer, listModels, modes, type AcpAgent } from "../acp.ts";
 import { hunks, stopReason, toolKind, toolView } from "../acp-map.ts";
 import { acpProvider } from "../acp-provider.ts";
+import { availability, copilot, noPlan } from "../copilot.ts";
 import { auto, cursor, named as cursorNamed, onPlan, sessionFolder } from "../cursor.ts";
 import type { Model } from "../models.ts";
 import { reach } from "../opencode.ts";
@@ -441,6 +442,32 @@ test("ACP's kinds, arguments and stop reasons in the app's words", () => {
   assert.deepEqual(["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"].map(stopReason), ["end_turn", "max_tokens", "error_max_turns", "refusal", "interrupted"]);
 });
 
+test("Copilot's error as the turn's only text is the turn's error; text that goes on after one is the reply", async () => {
+  const { session, cwd } = await standIn("refused", {}, { textErrors: true });
+  sessions.push(session);
+  let from = events.length;
+  await session.send({ threadId: "refused", cwd, text: "refused" });
+  const done = await until(named("turn.done", "refused"), from);
+  const told = events.slice(from).filter((event) => event.threadId === "refused");
+  assert.deepEqual(told.map((event) => event.event), ["turn.started", "error", "turn.done"]);
+  assert.equal(told[1].message, "Authorization error. Your credentials may be expired or invalid. (Request ID: 1)");
+  assert.equal(done.stopReason, "error_during_execution");
+  assert.deepEqual(done.context, { used: 11617, window: 128000 });
+  from = events.length;
+  await session.send({ threadId: "refused", cwd, text: "quote" });
+  await until(named("turn.done", "refused"), from);
+  const quoted = events.slice(from).filter((event) => event.threadId === "refused");
+  assert.deepEqual(quoted.map((event) => event.event), ["turn.started", "text", "text", "turn.done"]);
+  assert.equal(quoted[1].delta + quoted[2].delta, "Error: is what it printed, and then it stopped.");
+  // An agent that doesn't send its errors that way has them shown as it sent them.
+  const plain = await standIn("plain");
+  sessions.push(plain.session);
+  from = events.length;
+  await plain.session.send({ threadId: "plain", cwd: plain.cwd, text: "refused" });
+  assert.equal((await until(named("turn.done", "plain"), from)).stopReason, "end_turn");
+  assert.ok(events.slice(from).some((event) => event.event === "text" && event.threadId === "plain" && event.delta.startsWith("Error:")));
+});
+
 test("Cursor's command shows what it printed, and an ask it sends after Stop is refused unseen", async () => {
   const { session, cwd, sent } = await standIn("late");
   sessions.push(session);
@@ -537,4 +564,23 @@ test("Cursor's models as Cursor names them, only Auto on the Free plan, and wher
   assert.equal(sessionFolder("9df7c551-c34e-427e-b2b3-5bbbb2837e10", "/Users/x"), "/Users/x/.cursor/acp-sessions/9df7c551-c34e-427e-b2b3-5bbbb2837e10");
   assert.throws(() => sessionFolder("../chats"), /isn't a session id/);
   assert.deepEqual([cursor.modes, cursor.levels, cursor.capabilities.modeLive, cursor.capabilities.resume], [["acceptEdits", "plan"], [], true, true]);
+  assert.deepEqual([copilot.modes, copilot.levels], [["default", "plan", "bypassPermissions"], ["low", "medium", "high"]]);
+});
+
+test("Copilot's headless server says whether it's signed in and whether the account has a plan, and a token login isn't asked", async () => {
+  const bin = await folder();
+  const cli = join(bin, "copilot");
+  const logFile = join(bin, "asked");
+  await writeFile(cli, `#!/bin/sh\nexec "${process.execPath}" "${new URL("./fixtures/copilot-headless.ts", import.meta.url).pathname}" "$@"\n`);
+  await chmod(cli, 0o755);
+  const reading = async (account: string) => {
+    await writeFile(logFile, "");
+    const found = await availability(cli, { COPILOT_ACCOUNT: account, COPILOT_LOG: logFile });
+    return [found, (await readFile(logFile, "utf8")).trim().split("\n")];
+  };
+  assert.deepEqual(await reading("noPlan"), [{ state: "noPlan", version: "1.0.86", hint: noPlan }, ["connect", "auth.getStatus", "account.getCurrentAuth"]]);
+  assert.deepEqual(await reading("signedOut"), [{ state: "signedOut", version: "1.0.86", hint: "Run `copilot login` in Terminal." }, ["connect", "auth.getStatus"]]);
+  assert.deepEqual(await reading("plan"), [{ state: "ready", version: "1.0.86", hint: null }, ["connect", "auth.getStatus", "account.getCurrentAuth"]]);
+  // A login from a token in the environment comes back with its token, so it's never asked for.
+  assert.deepEqual(await reading("token"), [{ state: "ready", version: "1.0.86", hint: null }, ["connect", "auth.getStatus"]]);
 });

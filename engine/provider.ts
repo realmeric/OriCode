@@ -86,7 +86,8 @@ export type Capabilities = {
 /// run, the one line that makes it. `unknown` is found and not asked, or with no way to ask short
 /// of a thread; `soon` is found and signed in, with no session in the engine yet.
 export type Availability = {
-  state: "ready" | "missing" | "signedOut" | "outdated" | "unknown" | "soon";
+  /// `noPlan` is signed in to an account with no plan for the agent, Copilot's with no Copilot.
+  state: "ready" | "missing" | "signedOut" | "noPlan" | "outdated" | "unknown" | "soon";
   cli: string | null;
   version: string | null;
   hint: string | null;
