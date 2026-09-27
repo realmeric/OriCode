@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
-import { diffOf, hunks, resultText, stopReason, todos, toolKind, toolView, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
+import { diffOf, hunks, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
 import { asks as registry } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
@@ -27,7 +27,13 @@ export type AcpAgent = {
   /// A sign-in the agent runs itself from the login its user made in Terminal, such as
   /// cursor_login. The engine never hands it a key.
   authMethod?: string;
+  /// How a thread's permission mode reaches the agent: the agent's own mode id, and what its
+  /// process is started with, such as OpenCode's OPENCODE_PERMISSION. Without it the thread's
+  /// mode is taken as the agent's own id.
+  permissions?: (mode: string) => Reach;
 };
+
+export type Reach = { mode?: string; env?: Record<string, string> };
 
 export type AcpSendParams = {
   threadId: string;
@@ -38,6 +44,8 @@ export type AcpSendParams = {
   model?: string;
   /// The agent's own mode id. A mode it doesn't have, one of Claude's, leaves its mode alone.
   permissionMode?: string;
+  /// A value of the agent's thought_level option, for an agent that has one.
+  effort?: string;
   attachments?: { mediaType: string; data: string }[];
   costSoFar?: number;
   id?: string;
@@ -131,8 +139,8 @@ export function agentEnvironment(extra: Record<string, string> = {}): NodeJS.Pro
   return { ...kept, ...extra };
 }
 
-/// The session a thread on an ACP agent talks to, one agent process per thread. It implements
-/// provider.ts's Session once K-172 lands.
+/// The session a thread on an ACP agent talks to, one agent process per thread: provider.ts's
+/// Session, which acp-provider.ts makes.
 export class AcpSession {
   readonly id: string;
   private agent: AcpAgent;
@@ -144,6 +152,9 @@ export class AcpSession {
   /// The last of what the agent wrote to stderr, which says why it went when it goes.
   private stderr = "";
   private cwd = "";
+  /// What the running process was started with for its mode, so a mode that needs another
+  /// process starts one.
+  private startedWith = "";
   private sessionId: string | undefined;
   /// Whether this process has the session open.
   private live = false;
@@ -208,11 +219,15 @@ export class AcpSession {
     this.cancelAsks();
   }
 
-  /// The agent's own mode id, applied now when a session is open, and held for the next one.
+  /// The thread's mode, applied now when a session is open, and held for the next one. A mode
+  /// the running process wasn't started for reaches the next turn, which starts another.
   async setMode(mode: string): Promise<boolean> {
     this.mode = mode;
     if (!this.live) return true;
-    return this.applyMode(mode).catch(() => false);
+    const reach = this.reach(mode);
+    if (JSON.stringify(reach.env ?? {}) !== this.startedWith) return !this.running;
+    if (!reach.mode) return true;
+    return this.applyMode(reach.mode).catch(() => false);
   }
 
   /// ACP has no fast mode.
@@ -268,13 +283,14 @@ export class AcpSession {
 
   private async turn(params: AcpSendParams, turn: number): Promise<void> {
     try {
-      if (this.child && params.cwd !== this.cwd) this.stop();
-      if (!this.child) await this.start(params);
+      const reach = this.reach(params.permissionMode ?? this.mode);
+      if (this.child && (params.cwd !== this.cwd || JSON.stringify(reach.env ?? {}) !== this.startedWith)) this.stop();
+      if (!this.child) await this.start(params.cwd, reach.env);
       if (!this.live) await this.open(params);
       if (this.interrupted) return this.finish(turn, "interrupted");
-      const mode = params.permissionMode ?? this.mode;
-      if (mode) await this.applyMode(mode);
+      if (reach.mode) await this.applyMode(reach.mode);
       if (params.model) await this.applyModel(params.model);
+      if (params.effort) await this.applyLevel(params.effort);
       event("turn.started", { threadId: this.id, sessionId: this.sessionId });
       const reply: { stopReason?: string; usage?: Record<string, number | null> | null } = await this.request("session/prompt", { sessionId: this.sessionId, prompt: this.prompt(params) });
       this.finish(turn, stopReason(reply.stopReason), reply.usage ?? undefined);
@@ -286,11 +302,29 @@ export class AcpSession {
     }
   }
 
-  private async start(params: AcpSendParams): Promise<void> {
-    log(`start thread=${this.id} ${this.agent.command} ${this.agent.args.join(" ")} cwd=${params.cwd}`);
-    const child = spawn(this.agent.command, this.agent.args, { cwd: params.cwd, env: agentEnvironment(this.agent.env), stdio: ["pipe", "pipe", "pipe"] });
+  /// Opens a session with no turn in it, only to read what it offers, and ends the process.
+  /// Returns the session's id, since some agents keep every session they open.
+  async peek(cwd: string): Promise<string | undefined> {
+    try {
+      await this.start(cwd);
+      await this.open({ threadId: this.id, cwd, text: "" });
+      return this.sessionId;
+    } finally {
+      this.stop();
+    }
+  }
+
+  private reach(mode: string | undefined): Reach {
+    if (mode === undefined) return {};
+    return this.agent.permissions?.(mode) ?? { mode };
+  }
+
+  private async start(cwd: string, env: Record<string, string> = {}): Promise<void> {
+    log(`start thread=${this.id} ${this.agent.command} ${this.agent.args.join(" ")} cwd=${cwd}`);
+    const child = spawn(this.agent.command, this.agent.args, { cwd, env: agentEnvironment({ ...this.agent.env, ...env }), stdio: ["pipe", "pipe", "pipe"] });
     this.child = child;
-    this.cwd = params.cwd;
+    this.cwd = cwd;
+    this.startedWith = JSON.stringify(env);
     this.stderr = "";
     // Written to after the agent has gone, its stdin fails with EPIPE, which unheard ends the engine.
     child.stdin.on("error", () => {});
@@ -379,6 +413,11 @@ export class AcpSession {
       await this.request("session/set_model", { sessionId: this.sessionId, modelId: model });
       this.sessionModels.currentModelId = model;
     }
+  }
+
+  private async applyLevel(level: string): Promise<void> {
+    const option = this.configOptions.find((option) => option.category === "thought_level");
+    if (option && option.currentValue !== level && values(option).some((value) => value.value === level)) await this.setConfig(option.id, level);
   }
 
   private async setConfig(configId: string, value: string): Promise<void> {
@@ -563,16 +602,20 @@ export class AcpSession {
       (call as Record<string, unknown>)[key] = value;
     }
     const input = call.rawInput && typeof call.rawInput === "object" && Object.keys(call.rawInput).length > 0;
-    if (!call.used && (input || call.locations?.length || diffOf(call.content) || (call.status ?? "pending") !== "pending")) this.use(call);
-    if (!call.done && (call.status === "completed" || call.status === "failed")) {
+    const finished = call.status === "completed" || call.status === "failed";
+    // OpenCode names a command's folder before the command, which would be all its line says.
+    const told = call.kind === "execute" ? Boolean(toolView(call.rawInput, null, null).command) : input || call.locations?.length || diffOf(call.content) || (call.status ?? "pending") !== "pending";
+    if (!call.used && (told || finished)) this.use(call);
+    if (!call.done && finished) {
       call.done = true;
       const diff = diffOf(call.content);
+      const unified = (call.rawOutput as { metadata?: { diff?: unknown } } | null | undefined)?.metadata?.diff;
       event("tool.result", {
         threadId: this.id,
         toolUseId: call.toolCallId,
         content: resultText(call.content, call.rawOutput),
         isError: call.status === "failed",
-        patch: diff && call.status === "completed" ? hunks(diff.oldText, diff.newText) : undefined,
+        patch: diff && call.status === "completed" ? (typeof unified === "string" ? unifiedHunks(unified) : hunks(diff.oldText, diff.newText)) : undefined,
       });
     }
     return call;
@@ -581,6 +624,12 @@ export class AcpSession {
   private use(call: Call): void {
     if (call.used) return;
     call.used = true;
+    const list = todosIn(call.rawInput);
+    if (list) {
+      this.lastPlan = JSON.stringify(list);
+      event("tool.use", { threadId: this.id, toolUseId: call.toolCallId, name: "TodoWrite", input: { todos: list }, kind: "plan", view: { todos: list } });
+      return;
+    }
     event("tool.use", {
       threadId: this.id,
       toolUseId: call.toolCallId,

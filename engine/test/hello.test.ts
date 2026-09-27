@@ -371,6 +371,68 @@ test("with no Claude Code, Z.ai says it needs it", async () => {
   assert.deepEqual(hello.result.providers[1], compatibleEntry("zai", "Z.ai", "missing", null, "Z.ai runs in Claude Code, which isn't installed. Install Claude Code to use it.", []));
 });
 
+test("OpenCode turned on is found at hello, reads ready once checked, and lists its models through ACP, deleting the session that read them", async () => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const ran = join(home, "ran");
+  const agent = new URL("./fixtures/acp-agent.ts", import.meta.url).pathname;
+  await writeFile(
+    join(bin, "opencode"),
+    `#!/bin/sh\necho "opencode $*" >> "${ran}"\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${agent}" ;;\nesac\n`,
+  );
+  await chmod(join(bin, "opencode"), 0o755);
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
+  const [hello, checked, listed] = await replies(env, [
+    { method: "hello", params: { agents: { opencode: { path: join(bin, "opencode") } } } },
+    { method: "provider.check", params: { provider: "opencode" } },
+    { method: "models.list", params: { provider: "opencode" } },
+  ]);
+  const entry = {
+    id: "opencode",
+    name: "OpenCode",
+    agent: "OpenCode",
+    state: "ready",
+    hint: null,
+    cli: join(bin, "opencode"),
+    version: null,
+    capabilities: {
+      steer: false,
+      resume: true,
+      modeLive: false,
+      attachments: true,
+      heads: false,
+      stopTask: false,
+      limits: false,
+      usage: false,
+      commands: true,
+      compact: false,
+      commitMessage: false,
+      handoff: "opencode --session {session}",
+    },
+    levels: [],
+    modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
+  };
+  assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown" });
+  assert.deepEqual(
+    listed.result.models.map((model: { id: string; name: string }) => [model.id, model.name]),
+    [
+      ["small", "Small"],
+      ["large", "Large"],
+    ],
+  );
+  assert.deepEqual(checked.result, { ...entry, version: "1.18.32" });
+  // The check found it ready and read its models, as models.list did; each session opened to read
+  // them is gone from OpenCode's history once they're read.
+  let asked: string[] = [];
+  for (let tries = 0; tries < 40 && asked.filter((line) => line === "opencode session delete s-1").length < 2; tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    asked = (await readFile(ran, "utf8")).trim().split("\n");
+  }
+  assert.deepEqual(asked.sort(), ["opencode --version", "opencode acp", "opencode acp", "opencode session delete s-1", "opencode session delete s-1"]);
+});
+
 test("models.list for Claude answers with hello's list", async () => {
   const claude = await standIn(true);
   const { folder, config, known } = await cachedDefaults();

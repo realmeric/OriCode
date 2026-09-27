@@ -240,11 +240,25 @@ struct ModelsPage: View {
         return min(CGFloat(rows) * row + CGFloat(headings) * heading + 16, MarkPicker.effortHeight)
     }
 
+    /// Whether a row ends past what the page shows before it scrolls.
+    static func below(_ id: String?, in groups: [RowGroup]) -> Bool {
+        var top: CGFloat = 8
+        for group in groups {
+            if group.title != nil { top += heading }
+            for candidate in group.rows {
+                if candidate.id == id { return top + row > height(for: groups) }
+                top += row
+            }
+        }
+        return false
+    }
+
     var body: some View {
         let chosen = PickerState(model: model, chat: chat).option.map { ModelRef(provider: model.providerID(for: chat), id: $0.id).stored }
         ScrollViewReader { reader in
             ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
+                // Lazy, since an agent can list hundreds: OpenCode's 392 took 0.9s to draw at once.
+                LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(model.modelGroups(for: chat)) { group in
                         if let title = group.title {
                             heading(title, agent: group.agent)
@@ -269,7 +283,9 @@ struct ModelsPage: View {
             .onAppear {
                 keyed = chosen
                 focused = true
-                reader.scrollTo(scrollTarget(chosen))
+                // Only when it has to: a lazy stack scrolled while the page glides in comes to rest
+                // a fraction of a point to the side.
+                if Self.below(chosen, in: model.modelGroups(for: chat)) { reader.scrollTo(scrollTarget(chosen)) }
             }
             .onChange(of: keyed) { _, row in
                 withAnimation(Motion.move) { reader.scrollTo(scrollTarget(row)) }

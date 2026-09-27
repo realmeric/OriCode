@@ -68,6 +68,27 @@ export function resultText(content: readonly ToolContent[] | null | undefined, r
   return text(output?.output) ?? text(output?.content) ?? text(output?.error) ?? "";
 }
 
+/// A plan an agent writes with a tool of its own rather than ACP's plan, as OpenCode's todowrite
+/// does: its input's todos, in TodoWrite's shape.
+export function todosIn(rawInput: unknown): Todo[] | undefined {
+  const entries = (rawInput as { todos?: unknown } | null | undefined)?.todos;
+  if (!Array.isArray(entries) || !entries.every((entry) => typeof entry?.content === "string")) return undefined;
+  return todos(entries);
+}
+
+/// The hunks of a unified diff. OpenCode's edit sends only the strings it swapped as its diff's
+/// old and new text, which would all read as line 1; the unified diff in its raw output has the
+/// file's own line numbers.
+export function unifiedHunks(diff: string): Hunk[] {
+  const result: Hunk[] = [];
+  for (const line of diff.split("\n")) {
+    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (header) result.push({ oldStart: Number(header[1]), newStart: Number(header[2]), lines: [] });
+    else if (/^[ +-]/.test(line)) result.at(-1)?.lines.push(line);
+  }
+  return result;
+}
+
 export function todos(entries: readonly PlanEntry[]): Todo[] {
   return entries.map((entry) => ({
     content: entry.content,

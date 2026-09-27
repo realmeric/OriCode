@@ -6,6 +6,8 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { AcpSession, answer, listModels, modes, type AcpAgent } from "../acp.ts";
 import { hunks, stopReason, toolKind, toolView } from "../acp-map.ts";
+import { acpProvider } from "../acp-provider.ts";
+import { reach } from "../opencode.ts";
 import { answer as answerThroughRegistry, asks } from "../provider.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
@@ -286,6 +288,116 @@ test("a send from another folder starts the agent there, and its turn still ends
   await session.send({ threadId: "moved", cwd: elsewhere, text: "hello" });
   assert.equal((await until(named("turn.done", "moved"), from)).stopReason, "end_turn");
   assert.deepEqual((await sent()).filter((message) => message.env).map((message) => message.cwd), [cwd, elsewhere]);
+});
+
+test("OpenCode's calls: a command told once it has one, its todo list as the plan, an edit at its own lines", async () => {
+  const { session, cwd } = await standIn("oc");
+  sessions.push(session);
+  const from = events.length;
+  await session.send({ threadId: "oc", cwd, text: "opencode" });
+  await until(named("turn.done", "oc"), from);
+  const told = events.slice(from).filter((event) => event.event.startsWith("tool."));
+  assert.deepEqual(
+    told.map((event) => [event.event, event.toolUseId]),
+    [
+      ["tool.use", "oc-run"],
+      ["tool.result", "oc-run"],
+      ["tool.use", "oc-todo"],
+      ["tool.result", "oc-todo"],
+      ["tool.use", "oc-edit"],
+      ["tool.result", "oc-edit"],
+    ],
+  );
+  const [run, , plan, , , edited] = told;
+  assert.deepEqual([run.kind, run.view.command], ["run", "echo hi"]);
+  assert.deepEqual([plan.name, plan.kind], ["TodoWrite", "plan"]);
+  assert.deepEqual(plan.view.todos, [
+    { content: "Draft the README", activeForm: "Draft the README", status: "in_progress" },
+    { content: "Check it", activeForm: "Check it", status: "pending" },
+  ]);
+  assert.deepEqual(edited.patch, [{ oldStart: 1, newStart: 1, lines: [" one", "-two", "+2", " three"] }]);
+});
+
+test("a mode the process wasn't started for starts another, which picks the session up; a level goes to thought_level", async () => {
+  const { session, cwd, sent } = await standIn("reach");
+  sessions.push(session);
+  (session as any).agent.permissions = (mode: string) => (mode === "auto" ? { mode: "agent" } : { mode: mode === "plan" ? "plan" : "agent", env: { ACP_EXTRA: "asks" } });
+  let from = events.length;
+  await session.send({ threadId: "reach", cwd, text: "hello", permissionMode: "default", effort: "high" });
+  await until(named("turn.done", "reach"), from);
+  // Plan is started with what Ask is, so it's taken now; Auto is started without it, so the
+  // next turn starts another process.
+  assert.equal(await session.setMode("plan"), true);
+  assert.equal(await session.setMode("auto"), true);
+  from = events.length;
+  await session.send({ threadId: "reach", cwd, text: "hello", permissionMode: "auto" });
+  assert.equal((await until(named("turn.done", "reach"), from)).sessionId, "s-1");
+  const log = await sent();
+  assert.deepEqual(log.filter((message) => message.env).map((message) => message.extra), ["asks", "passed"]);
+  assert.deepEqual(log.filter((message) => message.method === "session/load").map((message) => message.params.sessionId), ["s-1"]);
+  assert.deepEqual(log.find((message) => message.method === "session/set_config_option").params, { sessionId: "s-1", configId: "effort", value: "high" });
+  assert.deepEqual(log.filter((message) => message.method === "session/set_mode").map((message) => message.params.modeId), ["plan"]);
+});
+
+test("a provider from an agent's entry offers what the entry says, and lists its models from a session it then forgets", async () => {
+  const cwd = await folder();
+  const logFile = join(cwd, "agent.log");
+  const forgotten: string[] = [];
+  const provider = acpProvider({
+    id: "cursor",
+    args: [new URL("./fixtures/acp-agent.ts", import.meta.url).pathname],
+    env: { ACP_LOG: logFile, ACP_MODEL: "large" },
+    resume: true,
+    images: false,
+    modeLive: true,
+    handoff: "cursor-agent --resume {session}",
+    levels: ["low", "medium", "high"],
+    modes: ["default", "plan"],
+    forget: async (_cli, sessionId) => forgotten.push(sessionId),
+  });
+  assert.deepEqual([provider.id, provider.name, provider.agent], ["cursor", "Cursor", "Cursor"]);
+  assert.deepEqual(provider.capabilities, {
+    steer: false,
+    resume: true,
+    modeLive: true,
+    attachments: false,
+    heads: false,
+    stopTask: false,
+    limits: false,
+    usage: false,
+    commands: true,
+    compact: false,
+    commitMessage: false,
+    handoff: "cursor-agent --resume {session}",
+  });
+  assert.deepEqual(provider.levels, ["low", "medium", "high"]);
+  assert.deepEqual(await provider.models({ state: "ready", cli: null, version: null, hint: null }, () => {}), []);
+  // Off in Settings, it isn't looked for.
+  await assert.rejects(provider.availability(), /Cursor is off in Settings › Agents/);
+  const models = await provider.listModels!(process.execPath);
+  // The agent's own current model comes first.
+  assert.deepEqual(
+    models.map((model) => [model.id, model.name, model.efforts]),
+    [
+      ["large", "Large", ["low", "medium", "high"]],
+      ["small", "Small", ["low", "medium", "high"]],
+    ],
+  );
+  assert.deepEqual(forgotten, ["s-1"]);
+  const methods = (await readFile(logFile, "utf8")).trim().split("\n").flatMap((line) => JSON.parse(line).method ?? []);
+  assert.deepEqual(methods, ["initialize", "session/new"]);
+});
+
+test("OpenCode's permissions for each of a thread's modes", () => {
+  const permission = (mode: string) => {
+    const { mode: agent, env } = reach(mode);
+    return [agent, env && JSON.parse(env.OPENCODE_PERMISSION)];
+  };
+  assert.deepEqual(permission("default"), ["build", { read: "ask", edit: "ask", bash: "ask", webfetch: "ask" }]);
+  assert.deepEqual(permission("acceptEdits"), ["build", { edit: "allow", bash: "ask" }]);
+  assert.deepEqual(permission("auto"), ["build", undefined]);
+  assert.deepEqual(permission("plan"), ["plan", undefined]);
+  assert.deepEqual(permission("bypassPermissions"), ["build", { "*": "allow" }]);
 });
 
 test("a diff becomes git's hunks, three lines of context around each change", () => {

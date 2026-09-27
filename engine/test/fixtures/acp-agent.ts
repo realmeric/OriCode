@@ -22,7 +22,8 @@ function ask(method: string, params: object): Promise<any> {
 
 let cancelled: (() => void) | undefined;
 let mode = "agent";
-let model = "small";
+let model = process.env.ACP_MODEL ?? "small";
+let level = "medium";
 
 const modes = () => ({
   currentModeId: mode,
@@ -33,6 +34,7 @@ const modes = () => ({
 });
 const configOptions = () => [
   { id: "model", name: "Model", category: "model", type: "select", currentValue: model, options: [{ value: "small", name: "Small" }, { value: "large", name: "Large" }] },
+  { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: level, options: ["low", "medium", "high"].map((value) => ({ value, name: value })) },
 ];
 
 const history = [
@@ -80,6 +82,33 @@ async function prompt(sessionId: string, text: string): Promise<object> {
     update(sessionId, { sessionUpdate: "usage_update", used: 1200, size: 200000, cost: { amount: 0.25, currency: "USD" } });
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done." } });
     return { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 1200, cachedReadTokens: 1185 } };
+  }
+  if (text === "opencode") {
+    // As OpenCode 1.18 sends them: a command's folder before the command, a todo list as a tool
+    // call of its own, and an edit whose diff is only the strings it swapped.
+    const run = { toolCallId: "oc-run", title: "bash", kind: "execute", locations: [{ path: "/w" }] };
+    update(sessionId, { sessionUpdate: "tool_call", ...run, status: "pending", rawInput: { cwd: "/w" } });
+    update(sessionId, { sessionUpdate: "tool_call_update", ...run, title: "echo hi", status: "in_progress", rawInput: { command: "echo hi", cwd: "/w" } });
+    update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "oc-run", status: "completed", content: [{ type: "content", content: { type: "text", text: "hi\n" } }] });
+    const todo = { toolCallId: "oc-todo", title: "todowrite", kind: "other" };
+    update(sessionId, { sessionUpdate: "tool_call", ...todo, status: "pending", locations: [], rawInput: {} });
+    const todos = [
+      { content: "Draft the README", status: "in_progress", priority: "high" },
+      { content: "Check it", status: "pending", priority: "medium" },
+    ];
+    update(sessionId, { sessionUpdate: "tool_call_update", ...todo, status: "in_progress", rawInput: { todos } });
+    update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "oc-todo", status: "completed", title: "2 todos", content: [{ type: "content", content: { type: "text", text: JSON.stringify(todos) } }] });
+    const edit = { toolCallId: "oc-edit", title: "edit", kind: "edit" };
+    update(sessionId, { sessionUpdate: "tool_call", ...edit, status: "pending", locations: [], rawInput: {} });
+    update(sessionId, { sessionUpdate: "tool_call_update", ...edit, status: "in_progress", locations: [{ path: "/w/a.txt" }], rawInput: { filePath: "/w/a.txt", oldString: "two", newString: "2" } });
+    update(sessionId, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "oc-edit",
+      status: "completed",
+      content: [{ type: "content", content: { type: "text", text: "Edit applied successfully." } }, { type: "diff", path: "/w/a.txt", oldText: "two", newText: "2" }],
+      rawOutput: { output: "Edit applied successfully.", metadata: { diff: "Index: /w/a.txt\n===\n--- /w/a.txt\n+++ /w/a.txt\n@@ -1,3 +1,3 @@\n one\n-two\n+2\n three\n" } },
+    });
+    return { stopReason: "end_turn" };
   }
   if (text === "wait") {
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Running it." } });
@@ -130,6 +159,7 @@ async function handle(message: any): Promise<void> {
       return send({ id, result: { modes: modes(), configOptions: configOptions() } });
     case "session/set_config_option":
       if (params.configId === "model") model = params.value;
+      if (params.configId === "effort") level = params.value;
       return send({ id, result: { configOptions: configOptions() } });
     case "session/set_mode":
       mode = params.modeId;

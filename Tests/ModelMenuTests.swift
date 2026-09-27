@@ -90,6 +90,25 @@ struct ModelMenuTests {
         #expect(ModelsPage.groups(claude + [(Self.codex, [])], favorites: ["haiku"]).map(\.id) == starred.map(\.id))
     }
 
+    @Test func thePageScrollsOnlyToARowPastWhatItShows() {
+        let many = (1...392).map {
+            ModelOption(id: "opencode/m\($0)", name: "Model \($0)", description: "", efforts: [], fast: false, defaultEffort: nil,
+                        ultra: false, ultraBlocked: nil, more: nil, needs: nil)
+        }
+        let opencode = ProviderInfo(id: "opencode", name: "OpenCode", agent: "OpenCode", state: .ready, hint: nil, cli: "/opt/homebrew/bin/opencode",
+                                    version: "1.18.32", capabilities: .none, levels: [], modes: ["default"])
+        let groups = ModelsPage.groups([(.claude, Self.claudeModels), (opencode, many)], favorites: [])
+        #expect(ModelsPage.height(for: groups) == MarkPicker.effortHeight)
+        #expect(!ModelsPage.below("haiku", in: groups))
+        #expect(!ModelsPage.below("opencode/opencode/m1", in: groups))
+        #expect(ModelsPage.below("opencode/opencode/m5", in: groups))
+        #expect(ModelsPage.below("opencode/opencode/m392", in: groups))
+        #expect(!ModelsPage.below(nil, in: groups))
+        // Claude Code alone fits, whichever row is chosen.
+        let claude = ModelsPage.groups([(.claude, Self.claudeModels)], favorites: ["haiku"])
+        #expect(!claude.flatMap(\.rows).contains { ModelsPage.below($0.id, in: claude) })
+    }
+
     @Test func severalAgentsListUnderTheirNamesWithFavoritesFromAllFirst() throws {
         let restore = Self.keepingDefaults()
         defer { restore() }
