@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { AcpSession, answer, listModels, modes, type AcpAgent } from "../acp.ts";
 import { hunks, stopReason, toolKind, toolView } from "../acp-map.ts";
 import { acpProvider } from "../acp-provider.ts";
+import { auto, cursor, named as cursorNamed, onPlan, sessionFolder } from "../cursor.ts";
+import type { Model } from "../models.ts";
 import { reach } from "../opencode.ts";
 import { answer as answerThroughRegistry, asks } from "../provider.ts";
 
@@ -45,7 +47,7 @@ async function folder(): Promise<string> {
 }
 
 /// A session on the stand-in, and the file it logs what it's sent to.
-async function standIn(threadId: string, env: Record<string, string> = {}) {
+async function standIn(threadId: string, env: Record<string, string> = {}, quirks: Partial<AcpAgent> = {}) {
   const cwd = await folder();
   const logFile = join(cwd, "agent.log");
   const agent: AcpAgent = {
@@ -53,6 +55,7 @@ async function standIn(threadId: string, env: Record<string, string> = {}) {
     command: process.execPath,
     args: [new URL("./fixtures/acp-agent.ts", import.meta.url).pathname],
     env: { ACP_LOG: logFile, ACP_EXTRA: "passed", ...env },
+    ...quirks,
   };
   const session = new AcpSession(threadId, agent);
   const sent = async () => (await readFile(logFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
@@ -436,4 +439,102 @@ test("ACP's kinds, arguments and stop reasons in the app's words", () => {
   });
   assert.deepEqual(toolView({}, null, [{ type: "diff", path: "/w/c.ts", newText: "" }]), { path: "/w/c.ts" });
   assert.deepEqual(["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"].map(stopReason), ["end_turn", "max_tokens", "error_max_turns", "refusal", "interrupted"]);
+});
+
+test("Cursor's command shows what it printed, and an ask it sends after Stop is refused unseen", async () => {
+  const { session, cwd, sent } = await standIn("late");
+  sessions.push(session);
+  const from = events.length;
+  await session.send({ threadId: "late", cwd, text: "cursor" });
+  const printed = await until((event) => event.event === "tool.result" && event.toolUseId === "cu-run", from);
+  assert.equal(printed.content, "hi\n");
+  await until((event) => event.event === "tool.use" && event.toolUseId === "cu-sleep", from);
+  await session.interrupt();
+  assert.equal((await until(named("turn.done", "late"), from)).stopReason, "interrupted");
+  let late: any;
+  for (let tries = 0; tries < 40 && !late; tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    late = (await sent()).find((message) => message.late)?.late;
+  }
+  assert.deepEqual(late, { outcome: { outcome: "cancelled" } });
+  assert.equal(events.slice(from).some((event) => event.event === "ask" && event.threadId === "late"), false);
+});
+
+test("an ask's allow always says what the agent does with it", async () => {
+  const { session, cwd } = await standIn("always", {}, { allowAlways: "Into the agent's own allowlist." });
+  sessions.push(session);
+  const from = events.length;
+  await session.send({ threadId: "always", cwd, text: "work" });
+  const ask = await until(named("ask", "always"), from);
+  assert.deepEqual(ask.choices, [
+    { id: "once", name: "Allow once", kind: "allow_once" },
+    { id: "always", name: "Always allow", kind: "allow_always", help: "Into the agent's own allowlist." },
+    { id: "reject", name: "Reject", kind: "reject_once" },
+  ]);
+  answer({ requestId: ask.requestId, allow: false });
+  await until(named("turn.done", "always"), from);
+});
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+async function ended(pid: number): Promise<boolean> {
+  for (let tries = 0; tries < 40 && alive(pid); tries += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+  return !alive(pid);
+}
+
+test("what an agent leaves behind in a folder ends with the last of its sessions there, and no sooner", async () => {
+  const cwd = await folder();
+  const agent = (name: string): AcpAgent => ({
+    name: "Stand-in",
+    command: process.execPath,
+    args: [new URL("./fixtures/acp-agent.ts", import.meta.url).pathname],
+    env: { ACP_STRAY: join(cwd, `${name}.pid`) },
+    strays: true,
+  });
+  const first = new AcpSession("stray-1", agent("first"));
+  const second = new AcpSession("stray-2", agent("second"));
+  sessions.push(first, second);
+  for (const [session, threadId] of [
+    [first, "stray-1"],
+    [second, "stray-2"],
+  ] as const) {
+    const from = events.length;
+    await session.send({ threadId, cwd, text: "hello" });
+    await until(named("turn.done", threadId), from);
+  }
+  const workers = await Promise.all(["first", "second"].map(async (name) => Number(await readFile(join(cwd, `${name}.pid`), "utf8"))));
+  assert.ok(workers.every(alive));
+  first.close();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  // The second session in the folder may be using what the first left.
+  assert.ok(workers.every(alive));
+  second.close();
+  assert.ok(await ended(workers[0]));
+  assert.ok(await ended(workers[1]));
+});
+
+test("Cursor's models as Cursor names them, only Auto on the Free plan, and where it keeps a session", () => {
+  const model = (id: string, name: string): Model => ({ id, name, description: "", efforts: [], fast: false, defaultEffort: null, ultra: false, ultraBlocked: null });
+  const listed = [model(auto, "Auto"), model("gpt-5.5[context=272k,reasoning=medium,fast=false]", "gpt-5.5"), model("gemini-3.1-pro[]", "gemini-3.1-pro")];
+  assert.deepEqual(
+    onPlan("Pro")(listed).map((model) => [model.id, model.name, model.description, model.efforts]),
+    [
+      [auto, "Auto", "", []],
+      ["gpt-5.5[context=272k,reasoning=medium,fast=false]", "gpt-5.5", "context=272k, reasoning=medium, fast=false", []],
+      ["gemini-3.1-pro[]", "gemini-3.1-pro", "", []],
+    ],
+  );
+  assert.deepEqual(onPlan("Free")(listed).map((model) => model.name), ["Auto"]);
+  assert.equal(onPlan(null)(listed).length, 3);
+  assert.equal(cursorNamed(model("composer-2.5[fast=true]", "composer-2.5")).description, "fast=true");
+  assert.equal(sessionFolder("9df7c551-c34e-427e-b2b3-5bbbb2837e10", "/Users/x"), "/Users/x/.cursor/acp-sessions/9df7c551-c34e-427e-b2b3-5bbbb2837e10");
+  assert.throws(() => sessionFolder("../chats"), /isn't a session id/);
+  assert.deepEqual([cursor.modes, cursor.levels, cursor.capabilities.modeLive, cursor.capabilities.resume], [["acceptEdits", "plan"], [], true, true]);
 });

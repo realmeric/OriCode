@@ -64,8 +64,10 @@ export function resultText(content: readonly ToolContent[] | null | undefined, r
   const said = (content ?? []).flatMap((item) => (item.type === "content" && item.content.type === "text" && item.content.text ? [item.content.text] : []));
   if (said.length) return said.join("\n");
   if (typeof rawOutput === "string") return rawOutput;
-  const output = rawOutput as { output?: unknown; content?: unknown; error?: unknown } | null | undefined;
-  return text(output?.output) ?? text(output?.content) ?? text(output?.error) ?? "";
+  const output = rawOutput as { output?: unknown; content?: unknown; error?: unknown; stdout?: unknown; stderr?: unknown } | null | undefined;
+  // Cursor's command sends what it printed as `stdout` and `stderr`, beside its exitCode.
+  const printed = [text(output?.stdout), text(output?.stderr)].filter(Boolean).join("");
+  return text(output?.output) ?? text(output?.content) ?? text(output?.error) ?? printed;
 }
 
 /// A plan an agent writes with a tool of its own rather than ACP's plan, as OpenCode's todowrite

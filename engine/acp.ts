@@ -31,6 +31,12 @@ export type AcpAgent = {
   /// process is started with, such as OpenCode's OPENCODE_PERMISSION. Without it the thread's
   /// mode is taken as the agent's own id.
   permissions?: (mode: string) => Reach;
+  /// What the agent's own allow always does, which the ask's help for it says.
+  allowAlways?: string;
+  /// It leaves processes behind that outlive it, as Cursor's worker-server does: it's started in a
+  /// process group of its own, and the groups started in a folder end with the last of its
+  /// sessions there.
+  strays?: boolean;
 };
 
 export type Reach = { mode?: string; env?: Record<string, string> };
@@ -108,6 +114,40 @@ class AgentError extends Error {
 const authenticationRequired = -32000;
 
 const asks = new Map<string, Ask>();
+
+/// The process groups an agent that leaves strays was started in, by folder, and its sessions
+/// running there. A later session in a folder takes up the worker an earlier one left, so the
+/// groups go only once none is left there.
+const strays = new Map<string, { groups: Set<number>; running: Set<AcpSession> }>();
+
+function strayFrom(cwd: string, session: AcpSession, group: number): void {
+  const folder = strays.get(cwd) ?? { groups: new Set(), running: new Set() };
+  folder.groups.add(group);
+  folder.running.add(session);
+  strays.set(cwd, folder);
+}
+
+function leftBy(cwd: string, session: AcpSession): void {
+  const folder = strays.get(cwd);
+  if (!folder?.running.delete(session) || folder.running.size > 0) return;
+  strays.delete(cwd);
+  for (const group of folder.groups) {
+    signal(group, "SIGTERM");
+    setTimeout(() => signal(group, "SIGKILL"), 2000).unref();
+  }
+}
+
+// A session opened only to list models isn't a thread's, so the engine going doesn't close it.
+process.on("exit", () => {
+  for (const folder of strays.values()) for (const group of folder.groups) signal(group, "SIGTERM");
+});
+
+/// A group whose processes have all gone is no longer there to signal.
+function signal(group: number, name: NodeJS.Signals): void {
+  try {
+    process.kill(-group, name);
+  } catch {}
+}
 
 /// The user's choice for an agent's permission ask: the option they picked, or the agent's own
 /// allow once or reject once for a plain yes or no. False when no ACP agent is waiting on it.
@@ -321,8 +361,9 @@ export class AcpSession {
 
   private async start(cwd: string, env: Record<string, string> = {}): Promise<void> {
     log(`start thread=${this.id} ${this.agent.command} ${this.agent.args.join(" ")} cwd=${cwd}`);
-    const child = spawn(this.agent.command, this.agent.args, { cwd, env: agentEnvironment({ ...this.agent.env, ...env }), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(this.agent.command, this.agent.args, { cwd, env: agentEnvironment({ ...this.agent.env, ...env }), stdio: ["pipe", "pipe", "pipe"], detached: this.agent.strays });
     this.child = child;
+    if (this.agent.strays && child.pid) strayFrom(cwd, this, child.pid);
     this.cwd = cwd;
     this.startedWith = JSON.stringify(env);
     this.stderr = "";
@@ -494,6 +535,7 @@ export class AcpSession {
   /// Everything asked of this process fails, and the next send starts another.
   private gone(error: Error): void {
     this.child = undefined;
+    if (this.agent.strays) leftBy(this.cwd, this);
     this.live = false;
     this.availableCommands = undefined;
     const pending = [...this.pending.values()];
@@ -654,6 +696,8 @@ export class AcpSession {
 
   /// The agent's own options become the ask's choices, and the one picked goes back by its id.
   private permission(params: { toolCall: ToolCallUpdate; options: PermissionOption[] }): Promise<Outcome> {
+    // Cursor can ask about a call after it has answered Stop, with no turn left to show it in.
+    if (!this.running) return Promise.resolve({ outcome: { outcome: "cancelled" } });
     const call = this.track(params.toolCall);
     this.use(call);
     const requestId = randomUUID();
@@ -670,7 +714,12 @@ export class AcpSession {
         toolUseId: call.toolCallId,
         input: call.rawInput ?? {},
         view: toolView(call.rawInput, call.locations, call.content),
-        choices: params.options.map((option) => ({ id: option.optionId, name: option.name, kind: option.kind })),
+        choices: params.options.map((option) => ({
+          id: option.optionId,
+          name: option.name,
+          kind: option.kind,
+          ...(option.kind === "allow_always" && this.agent.allowAlways ? { help: this.agent.allowAlways } : {}),
+        })),
       });
     });
   }

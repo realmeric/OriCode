@@ -1,7 +1,10 @@
 // A stand-in ACP agent for the engine's tests: NDJSON JSON-RPC on stdin and stdout, a scripted
 // turn for each prompt, and no model anywhere. Every message it's sent goes to ACP_LOG, one per
-// line, so a test can read what the engine said. ACP_AUTH=required makes it signed out.
-import { appendFileSync } from "node:fs";
+// line, so a test can read what the engine said. ACP_AUTH=required makes it signed out;
+// ACP_MODELS=cursor lists models as Cursor does; ACP_STRAY names a file it writes the pid of a
+// process it leaves behind to, as Cursor's worker-server is left.
+import { spawn } from "node:child_process";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const logFile = process.env.ACP_LOG;
@@ -32,8 +35,18 @@ const modes = () => ({
     { id: "plan", name: "Plan", description: "Read-only" },
   ],
 });
+const models =
+  process.env.ACP_MODELS === "cursor"
+    ? [
+        { value: "gpt-5.5[context=272k,reasoning=medium,fast=false]", name: "gpt-5.5" },
+        { value: "default[]", name: "Auto" },
+      ]
+    : [
+        { value: "small", name: "Small" },
+        { value: "large", name: "Large" },
+      ];
 const configOptions = () => [
-  { id: "model", name: "Model", category: "model", type: "select", currentValue: model, options: [{ value: "small", name: "Small" }, { value: "large", name: "Large" }] },
+  { id: "model", name: "Model", category: "model", type: "select", currentValue: model, options: models },
   { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: level, options: ["low", "medium", "high"].map((value) => ({ value, name: value })) },
 ];
 
@@ -110,6 +123,21 @@ async function prompt(sessionId: string, text: string): Promise<object> {
     });
     return { stopReason: "end_turn" };
   }
+  if (text === "cursor") {
+    // As Cursor 2026.09.02 sends a command: what it printed in its raw output, and after a Stop
+    // an ask about the next one, once the turn is over.
+    const run = { toolCallId: "cu-run", title: "`echo hi`", kind: "execute" };
+    update(sessionId, { sessionUpdate: "tool_call", ...run, status: "pending", rawInput: { command: "echo hi" } });
+    update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "cu-run", status: "completed", rawOutput: { exitCode: 0, stdout: "hi\n", stderr: "" } });
+    const sleep = { toolCallId: "cu-sleep", title: "`sleep 30`", kind: "execute", status: "pending", rawInput: { command: "sleep 30" } };
+    update(sessionId, { sessionUpdate: "tool_call", ...sleep });
+    await new Promise<void>((resolve) => (cancelled = resolve));
+    setTimeout(async () => {
+      const options = [{ optionId: "allow-once", kind: "allow_once", name: "Allow once" }];
+      record({ late: await ask("session/request_permission", { sessionId, toolCall: sleep, options }) });
+    }, 20);
+    return { stopReason: "cancelled" };
+  }
   if (text === "wait") {
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Running it." } });
     const run = { toolCallId: "run-1", title: "make", kind: "execute", status: "pending", rawInput: { command: ["make", "test"] } };
@@ -135,6 +163,12 @@ async function handle(message: any): Promise<void> {
   const { id, method, params } = message;
   switch (method) {
     case "initialize":
+      if (process.env.ACP_STRAY) {
+        // In this process's group, and outliving it.
+        const worker = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+        worker.unref();
+        writeFileSync(process.env.ACP_STRAY, String(worker.pid));
+      }
       return send({
         id,
         result: {

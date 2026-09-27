@@ -6,6 +6,7 @@ import { claude } from "./claude.ts";
 import { deepseek, meta, openrouter, zai } from "./claude-compatible.ts";
 import { codex } from "./codex-provider.ts";
 import { commandcode } from "./commandcode-provider.ts";
+import { cursor } from "./cursor.ts";
 import { opencode } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
@@ -29,6 +30,7 @@ const providers = new Map<string, Provider>([
   [pi.id, pi],
   [commandcode.id, commandcode],
   [antigravity.id, antigravity],
+  [cursor.id, cursor],
 ]);
 const sessions = new Map<string, Session>();
 /// Agents whose models were read while they could run; hello's list for one signed out is a fallback.

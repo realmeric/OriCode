@@ -1,6 +1,7 @@
 // Hello and provider.check through the real engine, with a stand-in `claude` that answers only its
 // version and its login, so nothing starts a real CLI or reaches Claude.
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -255,6 +256,12 @@ function unwiredEntry(id: string, name: string, agent: string, state: string, cl
   return { id, name, agent, state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: [] };
 }
 
+/// Cursor as hello lists it, in the state it found it.
+function cursorEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
+  const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: null };
+  return { id: "cursor", name: "Cursor", agent: "Cursor", state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: ["acceptEdits", "plan"] };
+}
+
 /// A model API that runs in Claude Code, as hello lists it: Claude's thread without its plan.
 function compatibleEntry(id: string, name: string, state: string, cliPath: string | null, hint: string | null, levels: string[]) {
   const capabilities = { steer: true, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: true, commitMessage: true, handoff: null };
@@ -288,13 +295,13 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
   assert.deepEqual(hello.result.providers, [
     claudeEntry("signedOut", claude.path, cli, "Run `claude` in Terminal and log in."),
     codexEntry("unknown", join(bin, "codex"), null, null),
-    unwiredEntry("cursor", "Cursor", "Cursor", "unknown", join(bin, "cursor-agent"), null, null),
+    cursorEntry("unknown", join(bin, "cursor-agent"), null, null),
     unwiredEntry("grok", "Grok Build", "Grok", "missing", null, null, "Grok Build isn't installed. Install it with `curl -fsSL https://x.ai/cli/install.sh | bash`, then run `grok login`."),
     compatibleEntry("zai", "Z.ai", "ready", claude.path, null, []),
     compatibleEntry("deepseek", "DeepSeek", "signedOut", null, "Add your DeepSeek key in Settings › Agents.", ["low", "high", "max"]),
   ]);
   assert.deepEqual(codex.result, codexEntry("ready", join(bin, "codex"), "codex-cli 9.9.9", null));
-  assert.deepEqual(cursor.result, unwiredEntry("cursor", "Cursor", "Cursor", "signedOut", join(bin, "cursor-agent"), "2026.09.02", "Run `cursor-agent login` in Terminal."));
+  assert.deepEqual(cursor.result, cursorEntry("signedOut", join(bin, "cursor-agent"), "2026.09.02", "Run `cursor-agent login` in Terminal."));
   assert.deepEqual(off.result, { provider: null });
   assert.equal(checkedOff.error, "Codex is off in Settings › Agents.");
   assert.equal(devin.result.provider.state, "missing");
@@ -433,6 +440,43 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
   assert.deepEqual(asked.sort(), ["opencode --version", "opencode acp", "opencode acp", "opencode session delete s-1", "opencode session delete s-1"]);
 });
 
+test("Cursor on the Free plan reads ready and lists only Auto, as Cursor names it, deleting the session that listed it", async () => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const ran = join(home, "ran");
+  const kept = join(home, ".cursor", "acp-sessions");
+  await mkdir(join(kept, "s-1"), { recursive: true });
+  await mkdir(join(kept, "the-users-own"));
+  const agent = new URL("./fixtures/acp-agent.ts", import.meta.url).pathname;
+  await writeFile(
+    join(bin, "cursor-agent"),
+    `#!/bin/sh\necho "cursor-agent $*" >> "${ran}"\ncase "$*" in\n  --version) echo "2026.09.02-c22c1a3" ;;\n` +
+      `  "status --format json") echo '{"status": "authenticated", "isAuthenticated": true}' ;;\n` +
+      `  "about --format json") echo '{"cliVersion": "2026.09.02-c22c1a3", "model": "Auto", "subscriptionTier": "Free"}' ;;\n` +
+      `  acp) ACP_MODELS=cursor ACP_MODEL='default[]' exec "${process.execPath}" "${agent}" ;;\nesac\n`,
+  );
+  await chmod(join(bin, "cursor-agent"), 0o755);
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
+  const [, checked, listed] = await replies(env, [
+    { method: "hello", params: { agents: { cursor: { path: join(bin, "cursor-agent") } } } },
+    { method: "provider.check", params: { provider: "cursor" } },
+    { method: "models.list", params: { provider: "cursor" } },
+  ]);
+  assert.deepEqual(checked.result, cursorEntry("ready", join(bin, "cursor-agent"), "2026.09.02-c22c1a3", null));
+  assert.deepEqual(
+    listed.result.models.map((model: any) => [model.id, model.name, model.description, model.efforts, model.fast]),
+    [["default[]", "Auto", "", [], false]],
+  );
+  // Only the session opened to list the models is gone.
+  for (let tries = 0; tries < 40 && existsSync(join(kept, "s-1")); tries += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(existsSync(join(kept, "s-1")), false);
+  assert.equal(existsSync(join(kept, "the-users-own")), true);
+  const asked = (await readFile(ran, "utf8")).trim().split("\n");
+  assert.deepEqual([...new Set(asked)].sort(), ["cursor-agent --version", "cursor-agent about --format json", "cursor-agent acp", "cursor-agent status --format json"]);
+});
+
 test("models.list for Claude answers with hello's list", async () => {
   const claude = await standIn(true);
   const { folder, config, known } = await cachedDefaults();
@@ -443,8 +487,8 @@ test("models.list for Claude answers with hello's list", async () => {
 
 test("models.list for an agent with no session in the engine says so", async () => {
   const claude = await standIn(false);
-  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "cursor" } }]);
-  assert.equal(unknown.error, "Cursor can't list its models yet.");
+  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "grok" } }]);
+  assert.equal(unknown.error, "Grok Build can't list its models yet.");
 });
 
 test("a Codex thread through the engine: checked ready, its models listed, a turn whose asks the shared registry answers, its usage", async () => {

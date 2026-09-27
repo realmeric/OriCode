@@ -17,6 +17,8 @@ export type AcpEntry = {
   env?: Record<string, string>;
   authMethod?: string;
   permissions?: AcpAgent["permissions"];
+  allowAlways?: string;
+  strays?: boolean;
   /// What its initialize says, which hello needs before any agent has started: whether a
   /// session can be picked up (sessionCapabilities.resume or loadSession), whether it sees
   /// images (promptCapabilities.image), and whether a new mode reaches a running session.
@@ -33,6 +35,9 @@ export type AcpEntry = {
   /// Deletes a session the engine opened only to read the models, for an agent that keeps every
   /// session it opens.
   forget?: (cli: string, sessionId: string) => Promise<unknown>;
+  /// Which of the models listed the user's plan runs, and how the agent names them, for an agent
+  /// whose list shows more than the plan allows. Asked while the session that lists them opens.
+  runs?: (cli: string) => Promise<(models: Model[]) => Model[]>;
 };
 
 export function acpProvider(entry: AcpEntry): Provider {
@@ -44,16 +49,19 @@ export function acpProvider(entry: AcpEntry): Provider {
     env: entry.env,
     authMethod: entry.authMethod,
     permissions: entry.permissions,
+    allowAlways: entry.allowAlways,
+    strays: entry.strays,
   });
   /// The models a session offers, from one opened for nothing else.
   async function offered(cli: string): Promise<Model[]> {
+    const plan = entry.runs?.(cli);
     const session = new AcpSession(`${entry.id}-models`, started(cli));
     const sessionId = await session.peek(tmpdir());
     if (sessionId && entry.forget) void entry.forget(cli, sessionId).catch((error) => log(`${known.name} kept session ${sessionId}: ${describe(error)}`));
     const { current, models } = listModels(session);
     // The agent's own default first, which a thread on it with no model runs.
     const ordered = [...models.filter((model) => model.id === current), ...models.filter((model) => model.id !== current)];
-    return ordered.map(
+    const listed = ordered.map(
       (model): Model => ({
         id: model.id,
         name: model.name,
@@ -65,6 +73,7 @@ export function acpProvider(entry: AcpEntry): Provider {
         ultraBlocked: null,
       }),
     );
+    return plan ? (await plan)(listed) : listed;
   }
   return {
     id: entry.id,

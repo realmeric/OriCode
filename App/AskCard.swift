@@ -72,10 +72,12 @@ private struct PermissionForm: View {
                     ForEach(ask.choices.filter { $0 != main }, id: \.id) { choice in
                         Button(choice.name) { model.answer(ask, allow: choice.allows, choice: choice) }
                             .buttonStyle(.action)
+                            .help(choice.help ?? "")
                     }
                     if let main {
                         Button(main.name) { model.answer(ask, allow: true, choice: main) }
                             .buttonStyle(.action(prominent: listens))
+                            .help(main.help ?? "")
                             .keyboardShortcut(listens ? .defaultAction : nil)
                     }
                 }

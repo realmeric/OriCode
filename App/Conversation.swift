@@ -72,6 +72,8 @@ struct PendingAsk: Hashable {
         let name: String
         /// ACP's `allow_once`, `allow_always`, `reject_once` or `reject_always`.
         let kind: String
+        /// What the agent does with it beyond this call, such as Cursor's allowlist.
+        var help: String? = nil
 
         var allows: Bool { kind.hasPrefix("allow") }
     }
@@ -827,7 +829,9 @@ final class Conversation {
                 declared: ToolKind(body["toolKind"], tool: tool),
                 view: body["view"] ?? .null,
                 choices: (body["choices"]?.array ?? []).map { choice in
-                    PendingAsk.Choice(id: choice["id"]?.string ?? "", name: choice["name"]?.string ?? "", kind: choice["kind"]?.string ?? "")
+                    PendingAsk.Choice(
+                        id: choice["id"]?.string ?? "", name: choice["name"]?.string ?? "", kind: choice["kind"]?.string ?? "",
+                        help: choice["help"]?.string)
                 })
             items.append(.ask(id: id, ask: ask))
         case "answer", "ask.cancelled":
