@@ -29,8 +29,8 @@ test("every agent is in the registry once, the model APIs by a key, and the logi
     ["commandcode", "COMMAND_CODE_API_KEY", ["cmd"]],
     ["zai", "ANTHROPIC_AUTH_TOKEN", []],
     ["deepseek", "ANTHROPIC_AUTH_TOKEN", []],
-    ["openrouter", "OPENROUTER_API_KEY", []],
-    ["meta", "META_API_KEY", []],
+    ["openrouter", "ANTHROPIC_AUTH_TOKEN", []],
+    ["meta", "ANTHROPIC_AUTH_TOKEN", []],
   ]);
   assert.deepEqual(agents.find((entry) => entry.id === "cursor")!.binaries, ["cursor-agent", "agent"]);
   assert.deepEqual(

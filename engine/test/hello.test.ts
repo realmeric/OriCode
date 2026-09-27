@@ -2,6 +2,8 @@
 // version and its login, so nothing starts a real CLI or reaches Claude.
 import { spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -302,21 +304,34 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
   assert.deepEqual((await readFile(ran, "utf8")).trim().split("\n").sort(), ["codex --version", "codex login status", "cursor-agent --version", "cursor-agent status --format json"]);
 });
 
-test("Z.ai and DeepSeek run in Claude Code: ready once a key is kept, signed out or not, and their models listed without starting it", async () => {
+test("Z.ai, DeepSeek, OpenRouter and Meta run in Claude Code: ready once a key is kept, signed out or not, and their models listed without starting it", async () => {
   const claude = await standIn(false);
-  const env = { ORICODE_CLAUDE: claude.path };
-  const [hello, zai, deepseek, kept, checked, openrouter] = await replies(env, [
-    { method: "hello", params: { agents: { zai: { key: true }, deepseek: {}, openrouter: { key: true } } } },
+  // OpenRouter's public list, asked with no key.
+  const asked: (string | undefined)[] = [];
+  const catalog = createServer((req, res) => {
+    asked.push(req.headers.authorization);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ data: [{ id: "z-ai/glm-5.3", name: "Z.ai: GLM 5.3", context_length: 1_310_720, supported_parameters: ["tools"], reasoning: { supported_efforts: ["max", "high", "low"], default_effort: "max" } }] }));
+  });
+  await new Promise<void>((listening) => catalog.listen(0, "127.0.0.1", listening));
+  const env = { ORICODE_CLAUDE: claude.path, ORICODE_OPENROUTER_MODELS: `http://127.0.0.1:${(catalog.address() as AddressInfo).port}/api/v1/models` };
+  const [hello, zai, deepseek, kept, checked, openrouter, openrouterModels, meta, metaModels] = await replies(env, [
+    { method: "hello", params: { agents: { zai: { key: true }, deepseek: {}, openrouter: { key: true }, meta: {} } } },
     { method: "models.list", params: { provider: "zai" } },
     { method: "models.list", params: { provider: "deepseek" } },
     { method: "agent.set", params: { provider: "deepseek", on: true, key: true } },
     { method: "provider.check", params: { provider: "zai" } },
     { method: "provider.check", params: { provider: "openrouter" } },
+    { method: "models.list", params: { provider: "openrouter" } },
+    { method: "agent.set", params: { provider: "meta", on: true, key: true } },
+    { method: "models.list", params: { provider: "meta" } },
   ]);
+  catalog.close();
   assert.deepEqual(hello.result.providers.slice(1), [
     compatibleEntry("zai", "Z.ai", "ready", claude.path, null, []),
     compatibleEntry("deepseek", "DeepSeek", "signedOut", null, "Add your DeepSeek key in Settings › Agents.", ["low", "high", "max"]),
-    unwiredEntry("openrouter", "OpenRouter", "OpenRouter", "soon", null, null, null),
+    compatibleEntry("openrouter", "OpenRouter", "ready", claude.path, null, ["low", "medium", "high", "xhigh", "max"]),
+    compatibleEntry("meta", "Meta", "signedOut", null, "Add your Meta Model API key in Settings › Agents.", ["low", "medium", "high", "xhigh"]),
   ]);
   assert.deepEqual(
     zai.result.models.map((model: any) => [model.id, model.name, model.efforts, model.fast, model.ultra]),
@@ -334,7 +349,18 @@ test("Z.ai and DeepSeek run in Claude Code: ready once a key is kept, signed out
   );
   assert.deepEqual(kept.result.provider, compatibleEntry("deepseek", "DeepSeek", "ready", claude.path, null, ["low", "high", "max"]));
   assert.equal(checked.result.state, "ready");
-  assert.equal(openrouter.result.state, "soon");
+  assert.equal(openrouter.result.state, "ready");
+  assert.deepEqual(
+    openrouterModels.result.models.map((model: any) => [model.id, model.name, model.description, model.efforts, model.defaultEffort]),
+    [["z-ai/glm-5.3[1m]", "GLM 5.3", "Z.ai · 1M context", ["low", "high", "max"], "max"]],
+  );
+  // Read once, for the check and the list both, with no key.
+  assert.deepEqual(asked, [undefined]);
+  assert.deepEqual(meta.result.provider, compatibleEntry("meta", "Meta", "ready", claude.path, null, ["low", "medium", "high", "xhigh"]));
+  assert.deepEqual(
+    metaModels.result.models.map((model: any) => [model.id, model.name, model.efforts]),
+    [["muse-spark-1.3[1m]", "Muse Spark 1.3", ["low", "medium", "high", "xhigh"]]],
+  );
   // Claude Code was asked what hello always asks, and nothing on their behalf.
   assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
 });

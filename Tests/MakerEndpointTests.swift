@@ -77,4 +77,47 @@ struct MakerEndpointTests {
         #expect(model.agent(for: chat).capabilities.usage)
         #expect(model.paletteSearchable().contains { $0.id == "fast.toggle" })
     }
+
+    /// OpenRouter and Meta run in Claude Code the same way. Their levels are each model's own,
+    /// with no Ultracode even where a model has xhigh, since that's Claude Code's workflows on
+    /// Claude's plan.
+    @Test func openRouterAndMetaThreadsHideWhatTheyCantDo() throws {
+        model.engineState = .ready
+        let cases: [(id: String, name: String, model: String, efforts: [String])] = [
+            ("openrouter", "OpenRouter", "openai/gpt-5.6-sol[1m]", ["low", "medium", "high", "xhigh", "max"]),
+            ("meta", "Meta", "muse-spark-1.3[1m]", ["low", "medium", "high", "xhigh"]),
+        ]
+        for maker in cases {
+            var entry = Self.zaiEntry
+            if case .object(var fields) = entry {
+                fields["id"] = .string(maker.id)
+                fields["name"] = .string(maker.name)
+                fields["agent"] = .string(maker.name)
+                fields["levels"] = .array(maker.efforts.map(JSON.string))
+                entry = .object(fields)
+            }
+            let listed: JSON = [
+                ["id": .string(maker.model), "name": "A model", "description": "1M context", "efforts": .array(maker.efforts.map(JSON.string)),
+                 "fast": false, "defaultEffort": "medium", "ultra": false, "ultraBlocked": .null],
+            ]
+            model.modelsByAgent[maker.id] = try listed.decode([ModelOption].self)
+            model.providers = [.claude, try entry.decode(ProviderInfo.self)]
+            chat.provider = maker.id
+            chat.model = maker.model
+            chat.fastMode = true
+
+            let agent = model.agent(for: chat)
+            #expect(agent.name == maker.name)
+            #expect(!agent.capabilities.usage && !agent.capabilities.limits && agent.capabilities.handoff == nil)
+            model.refreshUsage()
+            #expect(model.usage == nil)
+            let state = PickerState(model: model, chat: chat)
+            #expect(state.option?.id == maker.model)
+            #expect(state.option?.stops == maker.efforts)
+            #expect(!model.fastMode(of: chat))
+            let rows = Set(model.paletteSearchable().map(\.id))
+            #expect(!rows.contains("fast.toggle") && !rows.contains("terminal.claude"))
+            #expect(rows.contains("effort.list"))
+        }
+    }
 }

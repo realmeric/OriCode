@@ -2,6 +2,7 @@ import type { query } from "@anthropic-ai/claude-agent-sdk";
 import { agent, check, isOn, keyFor } from "./agents.ts";
 import { claude, cleanEnvironment, oneShot } from "./claude.ts";
 import type { Model } from "./models.ts";
+import { openRouterModels } from "./openrouter.ts";
 import type { Provider } from "./provider.ts";
 import { Thread } from "./thread.ts";
 
@@ -16,9 +17,12 @@ export type Maker = {
   /// The endpoint the maker's Claude Code page gives.
   url: string;
   /// The variables that page sets beside the endpoint and the key: the models Claude Code's
-  /// aliases stand for, and the maker's own tuning.
-  env: Record<string, string>;
+  /// aliases stand for, and the maker's own tuning. A maker with many models sets them from the
+  /// thread's.
+  env: Record<string, string> | ((model: string) => Record<string, string>);
   models: Model[];
+  /// Where the models come from when they aren't known ahead.
+  list?: () => Promise<Model[]>;
   levels: string[];
 };
 
@@ -65,15 +69,56 @@ export const deepseekMaker: Maker = {
   levels: ["low", "high", "max"],
 };
 
+/// openrouter.ai/docs/cookbook/coding-agents/claude-code-integration: its "Anthropic Skin" with
+/// ANTHROPIC_API_KEY empty. Every alias and subagent runs on the thread's model, so a background
+/// task never bills a Claude model the thread didn't pick.
+export const openRouterMaker: Maker = {
+  id: "openrouter",
+  url: "https://openrouter.ai/api",
+  env: (model) => ({
+    ANTHROPIC_API_KEY: "",
+    ANTHROPIC_DEFAULT_FABLE_MODEL: model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+    CLAUDE_CODE_SUBAGENT_MODEL: model,
+  }),
+  models: [],
+  list: openRouterModels,
+  levels: ["low", "medium", "high", "xhigh", "max"],
+};
+
+/// dev.meta.ai/docs/coding-agents, through Meta Model API's Messages API. Muse Spark always
+/// reasons, and the Messages API passes low to xhigh through (dev.meta.ai/docs/protocols/messages).
+export const metaMaker: Maker = {
+  id: "meta",
+  url: "https://api.meta.ai",
+  env: {
+    ANTHROPIC_DEFAULT_OPUS_MODEL: "muse-spark-1.3[1m]",
+    ANTHROPIC_DEFAULT_SONNET_MODEL: "muse-spark-1.3[1m]",
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: "muse-spark-1.3[1m]",
+    CLAUDE_CODE_SUBAGENT_MODEL: "muse-spark-1.3",
+    ENABLE_TOOL_SEARCH: "true",
+  },
+  models: [model("muse-spark-1.3[1m]", "Muse Spark 1.3", "1M context", ["low", "medium", "high", "xhigh"])],
+  levels: ["low", "medium", "high", "xhigh"],
+};
+
+function models(maker: Maker): Promise<Model[]> {
+  return maker.list ? maker.list() : Promise.resolve(maker.models);
+}
+
 /// Claude Code's environment with every Anthropic credential and endpoint taken out, and the
 /// maker's put in. Without a key it refuses: the endpoint alone would carry the claude.ai login.
-async function environment(maker: Maker, name: string, security?: string): Promise<Record<string, string | undefined>> {
+async function environment(maker: Maker, name: string, security?: string, model?: string): Promise<Record<string, string | undefined>> {
   const key = (await keyFor(maker.id, security)).ANTHROPIC_AUTH_TOKEN;
   if (!key) throw new Error(`No ${name} key was found in your Keychain. Add it again in Settings › Agents.`);
   const env = cleanEnvironment();
   for (const variable of Object.keys(env)) if (variable.startsWith("ANTHROPIC_")) delete env[variable];
   // A thread that names no model gets the maker's first rather than the one the user's settings name.
-  return { ...env, ANTHROPIC_MODEL: maker.models[0].id, ...maker.env, ANTHROPIC_BASE_URL: maker.url, ANTHROPIC_AUTH_TOKEN: key };
+  const chosen = model ?? (await models(maker))[0].id;
+  const own = typeof maker.env === "function" ? maker.env(chosen) : maker.env;
+  return { ...env, ANTHROPIC_MODEL: chosen, ...own, ANTHROPIC_BASE_URL: maker.url, ANTHROPIC_AUTH_TOKEN: key };
 }
 
 /// Tests stand in for /usr/bin/security and for the SDK's query.
@@ -106,9 +151,9 @@ export function claudeCompatible(maker: Maker, { security, launch }: { security?
       if (!isOn(entry.id)) throw new Error(`${entry.name} is off in Settings › Agents.`);
       return check(entry);
     },
-    models: async (ready) => (ready.state === "ready" ? maker.models : []),
-    listModels: async () => maker.models,
-    session: (threadId, cli) => new Thread(threadId, cli, launch, { agent: entry.agent, environment: () => environment(maker, entry.name, security) }),
+    models: async (ready) => (ready.state === "ready" ? models(maker) : []),
+    listModels: () => models(maker),
+    session: (threadId, cli) => new Thread(threadId, cli, launch, { agent: entry.agent, environment: (model) => environment(maker, entry.name, security, model) }),
     folderCommands: claude.folderCommands,
     oneShot: async (cli, cwd, prompt) => oneShot(cli, cwd, prompt, await environment(maker, entry.name, security)),
   };
@@ -116,3 +161,5 @@ export function claudeCompatible(maker: Maker, { security, launch }: { security?
 
 export const zai = claudeCompatible(zaiMaker);
 export const deepseek = claudeCompatible(deepseekMaker);
+export const openrouter = claudeCompatible(openRouterMaker);
+export const meta = claudeCompatible(metaMaker);

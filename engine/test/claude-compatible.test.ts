@@ -1,9 +1,9 @@
-// Z.ai and DeepSeek in Claude Code: the key from a stand-in `security`, the maker's endpoint a
-// local stand-in that speaks just enough of the Messages API to stream one reply and writes down
-// every request's headers. Nothing reaches a model, a maker or the real Keychain. The one test
-// that runs the user's own claude does so with the claude.ai login it keeps, which is the point:
-// the key has to outrank it on the wire.
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+// Z.ai, DeepSeek, OpenRouter and Meta in Claude Code: the key from a stand-in `security`, the
+// maker's endpoint a local stand-in that speaks just enough of the Messages API to stream one
+// reply, serves OpenRouter's model list, and writes down every request's headers. Nothing reaches
+// a model, a maker or the real Keychain. The tests that run the user's own claude do so with the
+// claude.ai login it keeps, which is the point: the key has to outrank it on the wire.
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,10 +12,27 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { binary, turnOn } from "../agents.ts";
-import { claudeCompatible, deepseekMaker, zaiMaker } from "../claude-compatible.ts";
+import { claudeCompatible, deepseekMaker, metaMaker, openRouterMaker, zaiMaker, type Maker } from "../claude-compatible.ts";
+import { openRouterModels } from "../openrouter.ts";
 import { errorText, Thread } from "../thread.ts";
 
 const key = "zai-stand-in-key-188";
+const keys: Record<string, string> = { zai: key, openrouter: "sk-or-stand-in-key-189", meta: "meta-stand-in-key-189" };
+
+/// OpenRouter's public list as its programming category gives it, cut to three shapes: a 1M
+/// model with levels, a 262K one without, and one that calls no tools.
+const catalog = [
+  {
+    id: "openai/gpt-5.6-sol",
+    name: "OpenAI: GPT-5.6 Sol",
+    context_length: 1_050_000,
+    supported_parameters: ["include_reasoning", "reasoning", "reasoning_effort", "tool_choice", "tools"],
+    reasoning: { mandatory: false, default_enabled: true, supported_efforts: ["max", "xhigh", "high", "medium", "low", "none"], default_effort: "medium" },
+  },
+  { id: "tencent/hy3", name: "Tencent: Hy3", context_length: 262_144, supported_parameters: ["tools"], reasoning: { mandatory: false } },
+  { id: "someone/no-tools", name: "Someone: No Tools", context_length: 8192, supported_parameters: ["temperature"] },
+];
+let catalogUp = true;
 
 type Request = { method: string; url: string; headers: IncomingHttpHeaders; body: any };
 const requests: Request[] = [];
@@ -28,7 +45,13 @@ const server = createServer((req, res) => {
   req.on("end", () => {
     const parsed = body ? JSON.parse(body) : undefined;
     requests.push({ method: req.method!, url: req.url!, headers: req.headers, body: parsed });
-    if (req.method !== "POST" || !req.url!.startsWith("/v1/messages") || req.url!.includes("count_tokens")) {
+    if (req.url === "/api/v1/models" && catalogUp) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: catalog }));
+      return;
+    }
+    // OpenRouter's endpoint is under /api.
+    if (req.method !== "POST" || !req.url!.replace(/^\/api/, "").startsWith("/v1/messages") || req.url!.includes("count_tokens")) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ type: "error", error: { type: "not_found_error", message: "Not here." } }));
       return;
@@ -60,10 +83,13 @@ before(async () => {
   security = join(folder, "security");
   await writeFile(
     security,
-    `#!/bin/sh\ncase "$*" in\n  "find-generic-password -s OriCode.zai -a zai -w") echo "${key}" ;;\n  *) echo "security: The specified item could not be found in the keychain." >&2; exit 44 ;;\nesac\n`,
+    `#!/bin/sh\ncase "$*" in\n${Object.entries(keys)
+      .map(([id, value]) => `  "find-generic-password -s OriCode.${id} -a ${id} -w") echo "${value}" ;;\n`)
+      .join("")}  *) echo "security: The specified item could not be found in the keychain." >&2; exit 44 ;;\nesac\n`,
   );
   await chmod(security, 0o755);
-  turnOn({ zai: { key: true }, deepseek: { key: true } });
+  process.env.ORICODE_OPENROUTER_MODELS = `${endpoint}/api/v1/models`;
+  turnOn({ zai: { key: true }, deepseek: { key: true }, openrouter: { key: true }, meta: { key: true } });
 });
 after(() => server.close());
 
@@ -198,39 +224,138 @@ test("a second send while the key is read joins the CLI the first starts", async
   assert.equal(await second, true);
 });
 
-// The user's own claude, with the claude.ai login it keeps on this Mac, pointed at the stand-in.
-test("a turn on the user's own Claude Code streams from the maker's endpoint, and only the key goes with it", async (t) => {
-  const claude = await binary("claude");
-  if (!claude) return t.skip("Claude Code isn't installed here");
+test("an OpenRouter thread's CLI gets its endpoint with ANTHROPIC_API_KEY empty and every alias on the thread's model; a Meta thread gets Meta's endpoint and Muse Spark", async () => {
+  const cli = capturing();
+  const openrouter = claudeCompatible(openRouterMaker, { security, launch: cli.launch });
+  const meta = claudeCompatible(metaMaker, { security, launch: cli.launch });
+  await withPlanted(async () => {
+    await openrouter.session("o", "claude").send(params("o", "tencent/hy3"));
+    // A thread that names no model runs OpenRouter's first coder.
+    await openrouter.session("o2", "claude").send(params("o2"));
+    await meta.session("m", "claude").send(params("m", "muse-spark-1.3[1m]"));
+  });
+  const anthropic = (env: Record<string, string | undefined>) => Object.fromEntries(Object.entries(env).filter(([name]) => name.startsWith("ANTHROPIC_")));
+  const [onOpenRouter, onDefault, onMeta] = cli.launched;
+  assert.deepEqual(anthropic(onOpenRouter.env), {
+    ANTHROPIC_MODEL: "tencent/hy3",
+    ANTHROPIC_API_KEY: "",
+    ANTHROPIC_DEFAULT_FABLE_MODEL: "tencent/hy3",
+    ANTHROPIC_DEFAULT_OPUS_MODEL: "tencent/hy3",
+    ANTHROPIC_DEFAULT_SONNET_MODEL: "tencent/hy3",
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: "tencent/hy3",
+    ANTHROPIC_BASE_URL: "https://openrouter.ai/api",
+    ANTHROPIC_AUTH_TOKEN: keys.openrouter,
+  });
+  assert.equal(onOpenRouter.env.CLAUDE_CODE_SUBAGENT_MODEL, "tencent/hy3");
+  assert.equal(onOpenRouter.env.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+  assert.equal(onDefault.env.ANTHROPIC_MODEL, "openai/gpt-5.6-sol[1m]");
+  assert.equal(onDefault.env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "openai/gpt-5.6-sol[1m]");
+  assert.deepEqual(anthropic(onMeta.env), {
+    ANTHROPIC_MODEL: "muse-spark-1.3[1m]",
+    ANTHROPIC_DEFAULT_OPUS_MODEL: "muse-spark-1.3[1m]",
+    ANTHROPIC_DEFAULT_SONNET_MODEL: "muse-spark-1.3[1m]",
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: "muse-spark-1.3[1m]",
+    ANTHROPIC_BASE_URL: "https://api.meta.ai",
+    ANTHROPIC_AUTH_TOKEN: keys.meta,
+  });
+  assert.equal(onMeta.env.CLAUDE_CODE_SUBAGENT_MODEL, "muse-spark-1.3");
+  assert.equal(onMeta.env.ENABLE_TOOL_SEARCH, "true");
+  assert.ok(!JSON.stringify(process.env).includes(keys.openrouter) && !JSON.stringify(process.env).includes(keys.meta));
+});
+
+test("OpenRouter's models are its coding list, only those that call tools, read with no key once a day and kept when OpenRouter can't be reached", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "oricode-openrouter-"));
+  const day = 24 * 60 * 60_000;
+  // Past whatever the last test kept in memory.
+  const now = Date.now() + 10 * day;
+  requests.length = 0;
+  const listed = await openRouterModels(folder, now);
+  assert.deepEqual(
+    listed.map((model) => [model.id, model.name, model.description, model.efforts, model.defaultEffort, model.fast, model.ultra]),
+    [
+      ["openai/gpt-5.6-sol[1m]", "GPT-5.6 Sol", "OpenAI · 1M context", ["low", "medium", "high", "xhigh", "max"], "medium", false, false],
+      ["tencent/hy3", "Hy3", "Tencent · 262K context", [], null, false, false],
+    ],
+  );
+  assert.deepEqual(JSON.parse(await readFile(join(folder, "openrouter-models.json"), "utf8")).models, listed);
+  assert.deepEqual(await openRouterModels(folder, now + 60 * 60_000), listed);
+  catalogUp = false;
+  try {
+    assert.deepEqual(await openRouterModels(folder, now + 2 * day), listed);
+  } finally {
+    catalogUp = true;
+  }
+  const asked = requests.filter((request) => request.url === "/api/v1/models");
+  assert.equal(asked.length, 2);
+  for (const request of asked) {
+    assert.equal(request.headers.authorization, undefined);
+    assert.equal(request.headers["x-api-key"], undefined);
+  }
+});
+
+/// A turn on the user's own claude, with the claude.ai login it keeps on this Mac, pointed at the
+/// stand-in as the maker, and every request the stand-in saw.
+async function turnAt(claude: string, maker: Maker, path: string, model: string, effort?: string) {
   const cwd = await mkdtemp(join(tmpdir(), "oricode-compatible-cwd-"));
-  const zai = claudeCompatible({ ...zaiMaker, url: endpoint }, { security });
-  const session = zai.session("real", claude);
+  const provider = claudeCompatible({ ...maker, url: `${endpoint}${path}` }, { security });
+  const threadId = `real-${maker.id}`;
+  const session = provider.session(threadId, claude);
   events.length = 0;
   requests.length = 0;
   const done = new Promise<void>((resolve) => {
     session.onIdle = resolve;
   });
-  await withPlanted(() => session.send({ threadId: "real", cwd, text: "Say hi", permissionMode: "default", model: "glm-5.3[1m]" }));
+  await withPlanted(() => session.send({ threadId, cwd, text: "Say hi", permissionMode: "default", model, effort: effort as never }));
   await done;
   session.close();
-
-  const text = events.filter((line) => line.event === "text" && line.threadId === "real").map((line) => line.text ?? line.delta).join("");
+  const text = events.filter((line) => line.event === "text" && line.threadId === threadId).map((line) => line.text ?? line.delta).join("");
   assert.match(text, /Hello from the stand-in\./);
-  assert.ok(events.some((line) => line.event === "turn.done" && line.threadId === "real"));
-
-  const messages = requests.filter((request) => request.method === "POST" && request.url.startsWith("/v1/messages"));
+  assert.ok(events.some((line) => line.event === "turn.done" && line.threadId === threadId));
+  const messages = requests.filter((request) => request.method === "POST" && request.url.startsWith(`${path}/v1/messages`));
   assert.ok(messages.length > 0);
-  const turn = messages.find((request) => request.body.stream);
-  assert.equal(turn?.body.model, "glm-5.3");
+  return { messages, turn: messages.find((request) => request.body.stream)! };
+}
+
+/// Only the maker's key goes, as a bearer token: no x-api-key, cookie, OAuth token or planted
+/// Anthropic credential in any header or body, and no Anthropic account named.
+function onlyTheKey(value: string, turn: Request) {
+  assert.ok(requests.length > 0);
   for (const request of requests) {
     const headers = JSON.stringify(request.headers);
-    if (request.headers.authorization !== undefined) assert.equal(request.headers.authorization, `Bearer ${key}`, request.url);
+    if (request.headers.authorization !== undefined) assert.equal(request.headers.authorization, `Bearer ${value}`, request.url);
     assert.equal(request.headers["x-api-key"], undefined, request.url);
     assert.equal(request.headers.cookie, undefined, request.url);
     assert.doesNotMatch(headers, /sk-ant-|planted|oauth/i, request.url);
     if (request.body) assert.doesNotMatch(JSON.stringify(request.body), /sk-ant-|planted/, request.url);
   }
-  for (const request of messages) assert.equal(request.headers.authorization, `Bearer ${key}`);
-  // Claude Code names no Anthropic account to the maker.
-  assert.equal(JSON.parse(turn!.body.metadata.user_id).account_uuid, "");
+  for (const request of requests.filter((request) => request.method === "POST")) assert.equal(request.headers.authorization, `Bearer ${value}`);
+  assert.equal(JSON.parse(turn.body.metadata.user_id).account_uuid, "");
+}
+
+test("a turn on the user's own Claude Code streams from the maker's endpoint, and only the key goes with it", async (t) => {
+  const claude = await binary("claude");
+  if (!claude) return t.skip("Claude Code isn't installed here");
+  const { turn } = await turnAt(claude, zaiMaker, "", "glm-5.3[1m]");
+  assert.equal(turn.body.model, "glm-5.3");
+  onlyTheKey(key, turn);
+});
+
+test("on OpenRouter the user's own Claude Code sends another maker's model and the thread's level, with only the OpenRouter key", async (t) => {
+  const claude = await binary("claude");
+  if (!claude) return t.skip("Claude Code isn't installed here");
+  const { turn } = await turnAt(claude, openRouterMaker, "/api", "openai/gpt-5.6-sol[1m]", "high");
+  assert.equal(turn.body.model, "openai/gpt-5.6-sol");
+  assert.equal(turn.body.output_config?.effort, "high");
+  onlyTheKey(keys.openrouter, turn);
+});
+
+test("on Meta the user's own Claude Code sends Muse Spark and the thread's level, with only the Meta key", async (t) => {
+  const claude = await binary("claude");
+  if (!claude) return t.skip("Claude Code isn't installed here");
+  const { turn } = await turnAt(claude, metaMaker, "", "muse-spark-1.3[1m]", "xhigh");
+  assert.equal(turn.body.model, "muse-spark-1.3");
+  assert.equal(turn.body.output_config?.effort, "xhigh");
+  // Meta answers thinking that's disabled with a 400.
+  assert.equal(turn.body.thinking?.type, "adaptive");
+  onlyTheKey(keys.meta, turn);
 });

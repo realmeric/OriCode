@@ -70,8 +70,9 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
 export type Elsewhere = {
   /// The maker, as the thread's error lines name it.
   agent: string;
-  /// The CLI's environment, read as each CLI starts since it holds the key from the Keychain.
-  environment: () => Promise<Record<string, string | undefined>>;
+  /// The CLI's environment for the thread's model, read as each CLI starts since it holds the key
+  /// from the Keychain.
+  environment: (model?: string) => Promise<Record<string, string | undefined>>;
 };
 
 export class Thread implements Session {
@@ -187,7 +188,7 @@ export class Thread implements Session {
     if (!this.query || key !== this.key) {
       let env = cleanEnvironment();
       if (this.elsewhere) {
-        const reading = this.elsewhere.environment();
+        const reading = this.elsewhere.environment(params.model);
         this.starting = reading.then(
           () => undefined,
           () => undefined,
