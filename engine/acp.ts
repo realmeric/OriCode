@@ -119,11 +119,13 @@ export function answer(params: { requestId: string; allow: boolean; optionId?: s
 
 /// The engine's environment without what a Claude Code session leaves in it. This shell exports
 /// CLAUDE_CODE_MESSAGING_TOKEN, and no other agent has any business with Claude's variables; nor
-/// with AI_AGENT, or a PWD that isn't the folder it runs in.
+/// with Anthropic's, since pi takes an ANTHROPIC_OAUTH_TOKEN it finds as a key, and a claude.ai
+/// token would reach it unmarked; nor with AI_AGENT, or a PWD that isn't the folder it runs in.
+/// A key provider's own variables come in `extra`, after the scrub.
 export function agentEnvironment(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const kept: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith("CLAUDE") || key === "AI_AGENT" || key === "PWD" || key === "OLDPWD") continue;
+    if (key.startsWith("CLAUDE") || key.startsWith("ANTHROPIC") || key === "AI_AGENT" || key === "PWD" || key === "OLDPWD") continue;
     kept[key] = value;
   }
   return { ...kept, ...extra };

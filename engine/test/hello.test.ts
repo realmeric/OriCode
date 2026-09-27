@@ -1,7 +1,7 @@
 // Hello and provider.check through the real engine, with a stand-in `claude` that answers only its
 // version and its login, so nothing starts a real CLI or reaches Claude.
 import { spawn } from "node:child_process";
-import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -181,4 +181,73 @@ test("a check of a Claude that was ready at hello doesn't send its models again"
   const { folder, config } = await cachedDefaults();
   const lines = await helloThenCheck({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, async () => {}, 3);
   assert.deepEqual(lines.slice(2), [{ id: 2, result: claudeEntry("ready", claude.path, cli, null) }]);
+});
+
+/// Each request in turn, the next sent once the last has its reply, and every reply by its id.
+async function replies(env: Record<string, string | undefined>, requests: { method: string; params?: object }[]): Promise<any[]> {
+  const engine = startEngine(env);
+  const answered = new Map<number, any>();
+  let arrived = () => {};
+  createInterface({ input: engine.stdout }).on("line", (line) => {
+    const message = JSON.parse(line);
+    if (message.id !== undefined) answered.set(message.id, message);
+    arrived();
+  });
+  for (const [index, request] of requests.entries()) {
+    const id = index + 1;
+    const replied = new Promise<void>((done) => (arrived = () => void (answered.has(id) && done())));
+    engine.stdin.write(JSON.stringify({ id, ...request }) + "\n");
+    await replied;
+  }
+  engine.stdin.end();
+  await new Promise((done) => engine.on("close", done));
+  return requests.map((_, index) => answered.get(index + 1));
+}
+
+/// An agent with no session in the engine yet, as hello lists it.
+function unwiredEntry(id: string, name: string, agent: string, state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
+  const capabilities = { steer: false, resume: false, modeLive: false, attachments: false, heads: false, stopTask: false, limits: false, usage: false, commands: false, compact: false, commitMessage: false, handoff: null };
+  return { id, name, agent, state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: [] };
+}
+
+test("hello lists the agents turned on without asking their CLIs anything, a check asks one, and one turned off is forgotten", async () => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const ran = join(home, "ran");
+  const standInAgent = async (name: string, cases: string) => {
+    await writeFile(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${ran}"\ncase "$*" in\n${cases}\nesac\n`);
+    await chmod(join(bin, name), 0o755);
+  };
+  await standInAgent("codex", `  --version) echo "codex-cli 9.9.9" ;;\n  "login status") exit 0 ;;`);
+  await standInAgent("cursor-agent", `  --version) echo "2026.09.02" ;;\n  "status --format json") echo '{"isAuthenticated": false}' ;;`);
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
+  const agents = { codex: {}, cursor: {}, grok: {}, zai: { key: true }, deepseek: {} };
+  const [hello, codex, cursor, off, checkedOff, devin, listed] = await replies(env, [
+    { method: "hello", params: { agents } },
+    { method: "provider.check", params: { provider: "codex" } },
+    { method: "provider.check", params: { provider: "cursor" } },
+    { method: "agent.set", params: { provider: "codex", on: false } },
+    { method: "provider.check", params: { provider: "codex" } },
+    { method: "agent.set", params: { provider: "devin", on: true } },
+    { method: "agents" },
+  ]);
+  assert.deepEqual(hello.result.providers, [
+    claudeEntry("signedOut", claude.path, cli, "Run `claude` in Terminal and log in."),
+    unwiredEntry("codex", "Codex", "Codex", "unknown", join(bin, "codex"), null, null),
+    unwiredEntry("cursor", "Cursor", "Cursor", "unknown", join(bin, "cursor-agent"), null, null),
+    unwiredEntry("grok", "Grok Build", "Grok", "missing", null, null, "Grok Build isn't installed. Install it with `curl -fsSL https://x.ai/cli/install.sh | bash`, then run `grok login`."),
+    unwiredEntry("zai", "Z.ai", "Z.ai", "soon", null, null, null),
+    unwiredEntry("deepseek", "DeepSeek", "DeepSeek", "signedOut", null, null, "Add your DeepSeek key in Settings › Agents."),
+  ]);
+  assert.deepEqual(codex.result, unwiredEntry("codex", "Codex", "Codex", "soon", join(bin, "codex"), "codex-cli 9.9.9", null));
+  assert.deepEqual(cursor.result, unwiredEntry("cursor", "Cursor", "Cursor", "signedOut", join(bin, "cursor-agent"), "2026.09.02", "Run `cursor-agent login` in Terminal."));
+  assert.deepEqual(off.result, { provider: null });
+  assert.equal(checkedOff.error, "Codex is off in Settings › Agents.");
+  assert.equal(devin.result.provider.state, "missing");
+  assert.equal(listed.result.agents.length, 14);
+  // Hello asked Claude only; each check asked its own agent.
+  assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
+  assert.deepEqual((await readFile(ran, "utf8")).trim().split("\n").sort(), ["codex --version", "codex login status", "cursor-agent --version", "cursor-agent status --format json"]);
 });

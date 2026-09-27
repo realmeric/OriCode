@@ -105,9 +105,13 @@ export class PiSession {
   private idleSince: number | undefined;
   onIdle: (() => void) | undefined;
 
-  constructor(id: string, binary: PiBinary = { command: "pi" }) {
+  /// Whether the user turned on, in Settings › Agents, the maker's login pi reaches a model through.
+  private allows: (maker: Maker) => boolean;
+
+  constructor(id: string, binary: PiBinary = { command: "pi" }, allows: (maker: Maker) => boolean = () => false) {
     this.id = id;
     this.binary = binary;
+    this.allows = allows;
   }
 
   get isRunning(): boolean {
@@ -115,7 +119,8 @@ export class PiSession {
   }
 
   /// A send during a turn joins it, and the reply says it's waiting. Otherwise it starts a turn,
-  /// and what happens comes as events.
+  /// and what happens comes as events. A turn always names its model: pi's own default may be one
+  /// it reaches through a login its maker forbids.
   async send(params: PiSendParams): Promise<boolean> {
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
     if (this.running) {
@@ -123,6 +128,7 @@ export class PiSession {
       else this.held.push(params);
       return true;
     }
+    if (!params.model) throw new Error("Pick one of Pi's models for this thread first.");
     this.begin(params);
     return false;
   }
@@ -213,6 +219,7 @@ export class PiSession {
       if (!this.rpc) await this.start(params);
       if (this.interrupted) return this.finish(turn, "interrupted");
       if (params.model && params.model !== this.model) {
+        await this.permit(params.model);
         const model: { contextWindow?: number } = await this.request("set_model", modelRef(params.model));
         this.model = params.model;
         this.window = model.contextWindow ?? this.window;
@@ -235,6 +242,15 @@ export class PiSession {
       this.fail(describe(error));
       this.finish(turn, "error_during_execution");
     }
+  }
+
+  /// Refuses a model pi reaches through a login its maker keeps to its own apps, until that login
+  /// is turned on in Settings › Agents. The same maker's models by an API key run.
+  private async permit(model: string): Promise<void> {
+    const { provider } = modelRef(model);
+    const maker = forbiddenLogins[provider];
+    if (!maker || this.allows(maker) || (await authType(this.binary, provider)) !== "oauth") return;
+    throw new Error(`Pi reaches ${makers[maker]} through a login ${makers[maker]} keeps to its own apps. It stays off until you turn it on in Settings › Agents.`);
   }
 
   /// Starts Pi on the thread's session: a file it wrote before, or an id it knows. A file that's
@@ -496,6 +512,8 @@ export type Maker = "anthropic" | "xai" | "meta";
 
 const forbiddenLogins: Record<string, Maker> = { anthropic: "anthropic", xai: "xai", meta: "meta" };
 
+const makers: Record<Maker, string> = { anthropic: "Anthropic", xai: "xAI", meta: "Meta" };
+
 export type PiModel = {
   /// Pi's provider and its model id, as a send names it.
   id: string;
@@ -505,6 +523,7 @@ export type PiModel = {
   /// subscription for Anthropic, OpenAI Codex, Copilot, xAI, Meta and Kimi and mints a key for
   /// OpenRouter.
   auth: "key" | "login";
+  /// The maker whose forbidden login reaches it, while that login is off: not to be picked.
   forbidden?: Maker;
   efforts: string[];
   images: boolean;
@@ -517,8 +536,8 @@ type RawModel = { id: string; name: string; provider: string; reasoning: boolean
 /// The models the user's pi can reach, grouped by pi's provider. Pi lists only providers it holds
 /// a key or a login for, and says which each is when asked with `pi auth check`, which prints no
 /// credential; OriCode reads nothing of pi's auth.json. It asks a short-lived pi, offline and
-/// without a session, which reaches no model.
-export async function listModels(binary: PiBinary = { command: "pi" }): Promise<{ provider: string; models: PiModel[] }[]> {
+/// without a session, which reaches no model. `allows` says which forbidden logins the user turned on.
+export async function listModels(binary: PiBinary = { command: "pi" }, allows: (maker: Maker) => boolean = () => false): Promise<{ provider: string; models: PiModel[] }[]> {
   const { models, current } = await withRpc(binary, async (rpc) => {
     const listed: { models: RawModel[] } = await rpc.request("get_available_models", {});
     const state: { model?: RawModel } = await rpc.request("get_state", {});
@@ -532,7 +551,8 @@ export async function listModels(binary: PiBinary = { command: "pi" }): Promise<
       .filter((model) => model.provider === provider)
       .map((model) => {
         const auth = logins.get(provider) === "oauth" ? "login" : "key";
-        const forbidden = auth === "login" ? forbiddenLogins[provider] : undefined;
+        const maker = auth === "login" ? forbiddenLogins[provider] : undefined;
+        const forbidden = maker && !allows(maker) ? maker : undefined;
         return {
           id: `${model.provider}/${model.id}`,
           name: model.name,

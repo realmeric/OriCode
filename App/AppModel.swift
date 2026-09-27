@@ -94,6 +94,14 @@ final class AppModel {
     var engineState: EngineState = .starting
     /// The agents hello lists, Claude Code alone until it answers.
     var providers: [ProviderInfo] = [.claude]
+    /// Every agent the engine knows, turned on or not, for Settings › Agents.
+    var agents: [AgentInfo] = []
+    /// The model APIs with a key in the Keychain, as last asked.
+    var keysKept: Set<String> = []
+    /// Agents the engine is asking about after Settings › Agents changed them or showed them.
+    var checkingAgents: Set<String> = []
+    var agentSettings = AgentSettings()
+    @ObservationIgnored var keychain = Keychain(prefix: "OriCode")
     var models: [ModelOption] = []
     /// The effortLevel in the user's Claude Code settings, which is where Default lands when set.
     var settingsEffort: String?
@@ -404,13 +412,14 @@ final class AppModel {
         engineState = .starting
         do {
             try await engine.start(nodeOverride: nodeOverride)
-            let reply = try await engine.request("hello")
+            let reply = try await engine.request("hello", ["agents": agentsForHello])
             Engine.logger.notice("hello \(String(decoding: (try? reply.data()) ?? Data(), as: UTF8.self), privacy: .public)")
             let hello = try reply.decode(Hello.self)
             // Which models run Ultracode comes a moment later, in the models event.
             models = hello.models.map(\.assumingUltracode)
             providers = hello.providers
             engineState = .ready
+            Task { await loadAgents() }
             refreshBranch(for: chat)
             tellWindow()
             readReview()

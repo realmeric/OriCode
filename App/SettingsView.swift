@@ -39,6 +39,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     switch pane ?? .general {
                     case .general: GeneralPane()
+                    case .agents: AgentsPane()
                     case .conversation: ConversationPane()
                     case .notifications: NotificationsPane()
                     case .actions: ActionsPane()
@@ -69,7 +70,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, conversation, notifications, actions, shortcuts, about
+    case general, agents, conversation, notifications, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -78,6 +79,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: "General"
+        case .agents: "Agents"
         case .conversation: "Conversation"
         case .notifications: "Notifications"
         case .actions: "Actions"
@@ -89,6 +91,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: "gearshape"
+        case .agents: "terminal"
         case .conversation: "text.bubble"
         case .notifications: "bell"
         case .actions: "bolt"
@@ -101,6 +104,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     private var words: [String] {
         switch self {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
+        case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]

@@ -59,6 +59,9 @@ after(() => sessions.forEach((session) => session.close()));
 
 const commands = (log: Record<string, any>[]) => log.flatMap((message) => (message.type ? [message.type] : []));
 
+/// A model by a key, which every turn names.
+const model = "openai/gpt-5.5";
+
 test("a turn: thinking, text, a read, an edit with its diff, a write, a failed command, the usage, cost and context", async () => {
   process.env.CLAUDE_CODE_MESSAGING_TOKEN = "not for other agents";
   const { session: pi, cwd, sent } = await session("work");
@@ -119,7 +122,7 @@ test("a send during a run steers it, and one queued goes as a follow-up", async 
   for (const [threadId, followUp, how] of [["steer", false, "steer"], ["follow", true, "followUp"]] as const) {
     const { session: pi, cwd, sent } = await session(threadId);
     const from = events.length;
-    await pi.send({ threadId, cwd, text: "slow", id: "m1" });
+    await pi.send({ threadId, cwd, text: "slow", model, id: "m1" });
     await until(named("text", threadId), from);
     assert.equal(await pi.send({ threadId, cwd, text: "and the tests", id: "m2", followUp }), true);
     const done = await until(named("turn.done", threadId), from);
@@ -134,7 +137,7 @@ test("a send during a run steers it, and one queued goes as a follow-up", async 
 test("Stop takes what's waiting off Pi's queue, then aborts, and the turn ends interrupted", async () => {
   const { session: pi, cwd, sent } = await session("stop");
   const from = events.length;
-  await pi.send({ threadId: "stop", cwd, text: "wait", id: "m1" });
+  await pi.send({ threadId: "stop", cwd, text: "wait", model, id: "m1" });
   await until(named("text", "stop"), from);
   assert.equal(await pi.send({ threadId: "stop", cwd, text: "later", id: "m2" }), true);
   await pi.interrupt();
@@ -152,7 +155,7 @@ test("an idle Pi is let go, and the next send resumes its session file; a file t
   let idle = 0;
   pi.onIdle = () => (idle += 1);
   let from = events.length;
-  await pi.send({ threadId: "resume", cwd, text: "hello" });
+  await pi.send({ threadId: "resume", cwd, text: "hello", model });
   const first = await until(named("turn.done", "resume"), from);
   // U+2028 is a line separator to readline, and only a character to Pi's framing.
   assert.equal((await until(named("text", "resume"), from)).delta, "Hi. There");
@@ -163,7 +166,7 @@ test("an idle Pi is let go, and the next send resumes its session file; a file t
   assert.equal(pi.releaseIfIdle(0, now), true);
   assert.equal(pi.idleLeft(0, now), undefined);
   from = events.length;
-  await pi.send({ threadId: "resume", cwd, text: "hello" });
+  await pi.send({ threadId: "resume", cwd, text: "hello", model });
   assert.equal((await until(named("turn.started", "resume"), from)).sessionId, first.sessionId);
   await until(named("turn.done", "resume"), from);
   const starts = (await sent()).filter((message) => message.args);
@@ -171,7 +174,7 @@ test("an idle Pi is let go, and the next send resumes its session file; a file t
 
   const lost = await session("lost");
   from = events.length;
-  await lost.session.send({ threadId: "lost", cwd: lost.cwd, text: "hello", sessionId: "/nowhere/gone.jsonl" });
+  await lost.session.send({ threadId: "lost", cwd: lost.cwd, text: "hello", model, sessionId: "/nowhere/gone.jsonl" });
   const done = await until(named("turn.done", "lost"), from);
   assert.deepEqual(told("lost", from).map((event) => event.event), ["session.lost", "turn.started", "text", "turn.done"]);
   assert.notEqual(done.sessionId, "/nowhere/gone.jsonl");
@@ -179,7 +182,7 @@ test("an idle Pi is let go, and the next send resumes its session file; a file t
 
   const byId = await session("id");
   from = events.length;
-  await byId.session.send({ threadId: "id", cwd: byId.cwd, text: "hello", sessionId: "abc-1" });
+  await byId.session.send({ threadId: "id", cwd: byId.cwd, text: "hello", model, sessionId: "abc-1" });
   assert.equal((await until(named("turn.done", "id"), from)).sessionId, join(byId.cwd, "sessions", "abc-1.jsonl"));
   assert.deepEqual((await byId.sent())[0].args, ["--mode", "rpc", "--session-id", "abc-1"]);
 });
@@ -237,7 +240,7 @@ test("Pi is ready with its version when it holds a model, signed out when it hol
 test("a Pi that dies mid-run ends the turn as the engine stopping, and what was sent to it with it", async () => {
   const { session: pi, cwd } = await session("die");
   const from = events.length;
-  await pi.send({ threadId: "die", cwd, text: "die" });
+  await pi.send({ threadId: "die", cwd, text: "die", model });
   await until(named("text", "die"), from);
   await pi.send({ threadId: "die", cwd, text: "too late", id: "m2" });
   const done = await until(named("turn.done", "die"), from);
@@ -251,19 +254,19 @@ test("a Pi that dies mid-run ends the turn as the engine stopping, and what was 
 test("a model's error, a prompt Pi refuses and an extension command each end the turn", async () => {
   const { session: pi, cwd } = await session("errors");
   let from = events.length;
-  await pi.send({ threadId: "errors", cwd, text: "fail" });
+  await pi.send({ threadId: "errors", cwd, text: "fail", model });
   let done = await until(named("turn.done", "errors"), from);
   assert.equal((await until(named("error", "errors"), from)).message, "401 invalid x-api-key");
   assert.equal(done.stopReason, "error_during_execution");
 
   from = events.length;
-  await pi.send({ threadId: "errors", cwd, text: "nokey" });
+  await pi.send({ threadId: "errors", cwd, text: "nokey", model });
   done = await until(named("turn.done", "errors"), from);
   assert.match((await until(named("error", "errors"), from)).message, /^No API key found for anthropic/);
   assert.equal(done.stopReason, "error_during_execution");
 
   from = events.length;
-  await pi.send({ threadId: "errors", cwd, text: "/llama" });
+  await pi.send({ threadId: "errors", cwd, text: "/llama", model });
   done = await until(named("turn.done", "errors"), from);
   assert.deepEqual(told("errors", from).map((event) => event.event), ["turn.started", "turn.done"]);
   assert.equal(done.stopReason, "end_turn");
@@ -272,7 +275,7 @@ test("a model's error, a prompt Pi refuses and an extension command each end the
     { name: "fix-tests", description: "Fix failing tests", argumentHint: "" },
     { name: "llama", description: "", argumentHint: "" },
   ]);
-  await assert.rejects(pi.send({ threadId: "errors", cwd: join(cwd, "gone"), text: "hello" }), /isn't where it was/);
+  await assert.rejects(pi.send({ threadId: "errors", cwd: join(cwd, "gone"), text: "hello", model }), /isn't where it was/);
 });
 
 test("model ids, levels and tools in the app's words", () => {
@@ -294,4 +297,39 @@ test("model ids, levels and tools in the app's words", () => {
   assert.deepEqual(toolCall("grep", { pattern: "TODO", path: "src" }).view, { path: "src", pattern: "TODO" });
   assert.equal(capabilities.unsupervised, true);
   assert.equal(capabilities.steer, true);
+});
+
+test("a turn names its model, and one pi reaches through a login its maker forbids runs only once that login is on", async () => {
+  const auth = { PI_AUTH: JSON.stringify({ anthropic: "oauth", openai: "api_key", xai: "oauth" }) };
+  const { session: pi, cwd, sent } = await session("forbidden", auth);
+  await assert.rejects(pi.send({ threadId: "forbidden", cwd, text: "hello" }), /Pick one of Pi's models/);
+
+  let from = events.length;
+  await pi.send({ threadId: "forbidden", cwd, text: "hello", model: "anthropic/claude-opus" });
+  const refused = await until(named("turn.done", "forbidden"), from);
+  assert.equal(refused.stopReason, "error_during_execution");
+  assert.equal((await until(named("error", "forbidden"), from)).message, "Pi reaches Anthropic through a login Anthropic keeps to its own apps. It stays off until you turn it on in Settings › Agents.");
+  assert.deepEqual(commands(await sent()), ["get_state"]);
+
+  // The same thread on a model by a key runs.
+  from = events.length;
+  await pi.send({ threadId: "forbidden", cwd, text: "hello", model });
+  assert.equal((await until(named("turn.done", "forbidden"), from)).stopReason, "end_turn");
+
+  const { binary, cwd: allowedCwd, sent: allowedSent } = await standIn(auth);
+  const allowed = new PiSession("allowed", binary, (maker) => maker === "anthropic");
+  sessions.push(allowed);
+  from = events.length;
+  await allowed.send({ threadId: "allowed", cwd: allowedCwd, text: "hello", model: "anthropic/claude-opus" });
+  assert.equal((await until(named("turn.done", "allowed"), from)).stopReason, "end_turn");
+  assert.deepEqual((await allowedSent()).find((message) => message.type === "set_model"), { id: "1", type: "set_model", provider: "anthropic", modelId: "claude-opus" });
+
+  const marked = (await listModels(binary, (maker) => maker === "anthropic")).flatMap((group) => group.models);
+  assert.deepEqual(
+    marked.filter((found) => /^(anthropic|xai)\//.test(found.id)).map((found) => [found.id, found.forbidden ?? null]),
+    [
+      ["anthropic/claude-opus", null],
+      ["xai/grok-5", "xai"],
+    ],
+  );
 });

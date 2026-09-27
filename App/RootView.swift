@@ -339,8 +339,9 @@ struct EngineNote: View {
                 EmptyView()
             case .ready:
                 if let agent = model.agentDown, let hint = agent.hint {
-                    // A CLI that isn't there won't be found by asking again; a login can be.
-                    if agent.state == .missing {
+                    // A CLI that isn't there won't be found by asking again, nor one turned off;
+                    // a login can be.
+                    if agent.state == .missing || agent.state == .off {
                         Text(LocalizedStringKey(hint))
                     } else {
                         HStack(spacing: 6) {

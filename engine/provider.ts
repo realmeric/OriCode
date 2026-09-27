@@ -83,9 +83,10 @@ export type Capabilities = {
 };
 
 /// Whether the agent can run: its CLI, what that CLI says its version is, and, when it can't
-/// run, the one line that makes it.
+/// run, the one line that makes it. `unknown` is found and not asked, or with no way to ask short
+/// of a thread; `soon` is found and signed in, with no session in the engine yet.
 export type Availability = {
-  state: "ready" | "missing" | "signedOut" | "outdated";
+  state: "ready" | "missing" | "signedOut" | "outdated" | "unknown" | "soon";
   cli: string | null;
   version: string | null;
   hint: string | null;

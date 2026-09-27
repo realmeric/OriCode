@@ -1,9 +1,8 @@
 import { execFile } from "node:child_process";
-import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { promisify } from "node:util";
 import { query, type FastModeDisabledReason, type FastModeState, type ModelInfo, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import { agent, binary } from "./agents.ts";
 import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./cache.ts";
 import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
 import { fallback, helloList, withDefaults, type Model } from "./models.ts";
@@ -15,38 +14,11 @@ import { log } from "./wire.ts";
 
 const run = promisify(execFile);
 
-async function executable(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-let found: Promise<string | null> | undefined;
-
-/// The `claude` the user installed and logged into. The SDK's own bundled CLI is left
-/// out of the app on purpose, so this is the only one the engine will run.
+/// The `claude` the user installed and logged into, found with every other agent turned on in the
+/// one login shell agents.ts runs. The SDK's own bundled CLI is left out of the app on purpose,
+/// so this is the only one the engine will run.
 export function findClaude(): Promise<string | null> {
-  found ??= (async () => {
-    const override = process.env.ORICODE_CLAUDE;
-    if (override && (await executable(override))) return override;
-    try {
-      const { stdout } = await run("/bin/zsh", ["-lc", "command -v claude"], { timeout: 5000 });
-      const path = stdout.trim().split("\n").pop();
-      if (path && path.startsWith("/") && (await executable(path))) return path;
-    } catch {}
-    const candidates = [
-      join(homedir(), ".local/bin/claude"),
-      join(homedir(), ".claude/local/claude"),
-      "/opt/homebrew/bin/claude",
-      "/usr/local/bin/claude",
-    ];
-    for (const path of candidates) if (await executable(path)) return path;
-    return null;
-  })();
-  return found;
+  return binary("claude");
 }
 
 /// Asks the CLI whether it has a login. The engine never sees the credential itself.
@@ -98,16 +70,18 @@ export function cliDebugFile(name: string): string | undefined {
 
 const missing = "claude isn't installed. Install Claude Code, run `claude` in Terminal and log in.";
 
-let cliVersion: Promise<string | null> | undefined;
+const versions = new Map<string, Promise<string | null>>();
 
 /// Whether Claude Code can run, asked of the CLI the way hello always has. The version is read
-/// once, like the path, so a check after a login in Terminal asks the CLI only for the login.
+/// once for each CLI, like its path, so a check after a login in Terminal asks only for the login.
 async function availability(): Promise<Availability> {
   const claude = await findClaude();
-  if (!claude) return { state: "missing", cli: null, version: null, hint: "Install Claude Code, then run `claude` in Terminal and log in." };
-  cliVersion ??= claudeVersion(claude);
-  const [login, cli] = await Promise.all([loggedIn(claude), cliVersion]);
-  return { state: login ? "ready" : "signedOut", cli: claude, version: cli, hint: login ? null : "Run `claude` in Terminal and log in." };
+  const entry = agent("claude")!;
+  if (!claude) return { state: "missing", cli: null, version: null, hint: entry.install };
+  let version = versions.get(claude);
+  if (!version) versions.set(claude, (version = claudeVersion(claude)));
+  const [login, cli] = await Promise.all([loggedIn(claude), version]);
+  return { state: login ? "ready" : "signedOut", cli: claude, version: cli, hint: login ? null : entry.login };
 }
 
 let models: Model[] | undefined;

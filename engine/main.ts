@@ -1,8 +1,9 @@
 import { createInterface } from "node:readline";
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+import { agent, change, check, isOn, lookUp, registry, turnedOn, turnOn, unasked, type Setting } from "./agents.ts";
 import { claude } from "./claude.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
-import { answer, type Answer, type Availability, type Provider, type SendParams, type Session } from "./provider.ts";
+import { answer, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
@@ -57,45 +58,96 @@ async function listAfterLogin(agent: Provider, found: Availability): Promise<voi
   listedFirst.resolve();
 }
 
+/// What an agent with no session in the engine yet can do: nothing, so the app offers nothing.
+const unwired: Capabilities = {
+  steer: false,
+  resume: false,
+  modeLive: false,
+  attachments: false,
+  heads: false,
+  stopTask: false,
+  limits: false,
+  usage: false,
+  commands: false,
+  compact: false,
+  commitMessage: false,
+  handoff: null,
+};
+
 /// An agent as hello gives it to the app: whether it can run here, and what a thread on it can do.
-function described(agent: Provider, found: Availability) {
+function described(id: string, found: Availability) {
+  const wired = providers.get(id);
+  const entry = agent(id)!;
   return {
-    id: agent.id,
-    name: agent.name,
-    agent: agent.agent,
+    id,
+    name: wired?.name ?? entry.name,
+    agent: wired?.agent ?? entry.agent,
     state: found.state,
     hint: found.hint,
     cli: found.cli,
     version: found.version,
-    capabilities: agent.capabilities,
-    levels: agent.levels,
-    modes: agent.modes,
+    capabilities: wired?.capabilities ?? unwired,
+    levels: wired?.levels ?? [],
+    modes: wired?.modes ?? [],
   };
 }
 
+/// One agent turned on, asked again. One with a session asks its provider, which reads its models
+/// after the reply if it has just become ready; the rest are asked what the registry can ask them.
+async function checked(id: string) {
+  const wired = providers.get(id);
+  if (!wired) {
+    const entry = agent(id);
+    if (!entry) throw new Error(`Unknown provider ${id}`);
+    if (!isOn(id)) throw new Error(`${entry.name} is off in Settings › Agents.`);
+    return described(id, await check(entry));
+  }
+  const found = await wired.availability();
+  if (found.state === "ready" && !listed.has(id)) {
+    listed.add(id);
+    // After the reply, as hello's are.
+    setImmediate(() => void listAfterLogin(wired, found).catch((error) => log(`models not read after a login: ${describe(error)}`)));
+  }
+  return described(id, found);
+}
+
 const methods: Record<string, (params: any) => Promise<unknown>> = {
-  async hello() {
-    const found = await claude.availability();
+  /// `agents` are the ones turned on in Settings › Agents beside Claude Code, all looked for in
+  /// one login shell; none of their CLIs is asked anything until a check.
+  async hello({ agents: on }: { agents?: Record<string, Setting> }) {
+    turnOn(on);
+    const others = turnedOn().filter((entry) => entry.id !== claude.id);
+    lookUp([claude.id, ...others.map((entry) => entry.id)]);
+    const [found, ...theirs] = await Promise.all([claude.availability(), ...others.map(unasked)]);
     if (found.state === "ready") listed.add(claude.id);
     const replied = Promise.withResolvers<void>();
     const models = await claude.models(found, (fields) => void replied.promise.then(() => event("models", fields)));
     // Nothing awaits after this, so it runs once the reply is written: a `models` event
     // arriving first would be undone by the reply.
     setImmediate(replied.resolve);
-    return { version, models, claude: found.cli, loggedIn: found.state === "ready", providers: [described(claude, found)] };
+    const providers = [described(claude.id, found), ...others.map((entry, index) => described(entry.id, theirs[index]))];
+    return { version, models, claude: found.cli, loggedIn: found.state === "ready", providers };
   },
 
   /// One agent asked again, after a login in Terminal, without a restart that would end every
   /// thread's CLI.
   async "provider.check"({ provider: id }: { provider?: string }) {
-    const agent = provider(id);
-    const found = await agent.availability();
-    if (found.state === "ready" && !listed.has(agent.id)) {
-      listed.add(agent.id);
-      // After the reply, as hello's are.
-      setImmediate(() => void listAfterLogin(agent, found).catch((error) => log(`models not read after a login: ${describe(error)}`)));
-    }
-    return described(agent, found);
+    return checked(id ?? claude.id);
+  },
+
+  /// Settings › Agents turned an agent on or off, chose its CLI, kept or removed its key, or
+  /// turned a forbidden login on or off. On, it's looked for if it needs to be, and checked.
+  async "agent.set"({ provider: id, on, ...setting }: { provider: string; on: boolean } & Setting) {
+    if (!agent(id)) throw new Error(`Unknown provider ${id}`);
+    change(id, on, setting);
+    if (!isOn(id)) return { provider: null };
+    lookUp([id]);
+    return { provider: await checked(id) };
+  },
+
+  /// Every agent OriCode knows, for Settings › Agents.
+  async agents() {
+    return { agents: registry() };
   },
 
   async send(params: SendParams & { provider?: string }) {

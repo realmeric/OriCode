@@ -2,8 +2,11 @@ import Foundation
 
 /// An agent as hello gives it: whether it can run here, and what a thread on it can do.
 struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
+    /// `unknown` is found and not yet asked whether it's signed in, or with no way to ask short of
+    /// a thread; `soon` is found and signed in, with no session in the engine yet; `off` is the
+    /// app's own, for a thread's agent turned off in Settings › Agents.
     enum State: String, Codable, Sendable {
-        case ready, missing, signedOut, outdated
+        case ready, missing, signedOut, outdated, unknown, soon, off
     }
 
     struct Capabilities: Codable, Hashable, Sendable {
@@ -140,10 +143,11 @@ extension AppModel {
         chat?.providerID ?? startingProvider
     }
 
-    /// What hello said of that agent; nil for one it didn't list.
+    /// What hello said of that agent, or for one turned off in Settings › Agents, that it's off;
+    /// nil for one the engine doesn't know.
     func provider(for chat: Chat?) -> ProviderInfo? {
         let id = providerID(for: chat)
-        return providers.first { $0.id == id }
+        return providers.first { $0.id == id } ?? agents.first { $0.id == id }.map(ProviderInfo.off)
     }
 
     /// Whether a turn can start on the thread's agent without the user: hello listed it and found
