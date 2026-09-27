@@ -1,7 +1,7 @@
 // Hello and provider.check through the real engine, with a stand-in `claude` that answers only its
 // version and its login, so nothing starts a real CLI or reaches Claude.
 import { spawn } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -518,4 +518,138 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
   assert.deepEqual(sent.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write" });
   const decisions = sent.filter((message) => message.method === undefined && message.result?.decision).map((message) => message.result.decision);
   assert.deepEqual(decisions, [{ acceptWithExecpolicyAmendment: { execpolicy_amendment: ["make", "test"] } }, "decline"]);
+});
+
+/// A stand-in on the PATH under the agent's own name, running a fixture under node with `env`.
+async function fixtureStandIn(bin: string, name: string, fixture: string, env: Record<string, string>): Promise<string> {
+  const path = join(bin, name);
+  const exports = Object.entries(env).map(([key, value]) => `export ${key}='${value}'\n`).join("");
+  await writeFile(path, `#!/bin/sh\n${exports}exec "${process.execPath}" "${new URL(`./fixtures/${fixture}`, import.meta.url).pathname}" "$@"\n`);
+  await chmod(path, 0o755);
+  return path;
+}
+
+/// The engine, requests sent to it one at a time, and every line it writes, split on LF alone,
+/// since pi's stand-in says U+2028, which readline would split on.
+function engineWith(env: Record<string, string | undefined>) {
+  const engine = startEngine(env);
+  const lines: any[] = [];
+  let arrived = () => {};
+  let partial = "";
+  engine.stdout.setEncoding("utf8");
+  engine.stdout.on("data", (chunk: string) => {
+    const complete = (partial + chunk).split("\n");
+    partial = complete.pop() ?? "";
+    lines.push(...complete.map((line) => JSON.parse(line)));
+    arrived();
+  });
+  const until = async (matches: (line: any) => boolean, from = 0) => {
+    while (!lines.slice(from).some(matches)) await new Promise<void>((done) => (arrived = done));
+    return lines.slice(from).find(matches);
+  };
+  let next = 0;
+  const request = (method: string, params: object = {}) => {
+    const id = ++next;
+    engine.stdin.write(JSON.stringify({ id, method, params }) + "\n");
+    return until((line) => line.id === id);
+  };
+  const end = async () => {
+    engine.stdin.end();
+    await new Promise((done) => engine.on("close", done));
+  };
+  /// For a test that failed before it ended the engine, which would otherwise hold the run open.
+  const kill = () => engine.exitCode === null && engine.kill();
+  return { lines, until, request, end, kill };
+}
+
+/// Pi as hello lists it, in the state it found it.
+function piEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
+  return {
+    id: "pi",
+    name: "Pi",
+    agent: "Pi",
+    state,
+    hint,
+    cli: cliPath,
+    version: cliVersion,
+    capabilities: {
+      steer: true,
+      resume: true,
+      modeLive: false,
+      attachments: true,
+      heads: false,
+      stopTask: false,
+      limits: false,
+      usage: false,
+      commands: true,
+      compact: false,
+      commitMessage: false,
+      handoff: "pi --session {session}",
+      unsupervised: true,
+    },
+    levels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+    modes: [],
+  };
+}
+
+test("a Pi thread through the engine: checked ready, its models with the forbidden logins marked, a turn, and claude.ai refused until its login is on", async (t) => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "oricode-pi-")));
+  const log = join(cwd, "pi.log");
+  const pi = await fixtureStandIn(bin, "pi", "pi-rpc.ts", { PI_LOG: log, PI_AUTH: JSON.stringify({ anthropic: "oauth", openai: "api_key", xai: "oauth" }) });
+  const engine = engineWith({ ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` });
+  t.after(engine.kill);
+
+  const hello = await engine.request("hello", { agents: { pi: {} } });
+  assert.deepEqual(hello.result.providers[1], piEntry("unknown", pi, null, null));
+  const checked = await engine.request("provider.check", { provider: "pi" });
+  assert.deepEqual(checked.result, piEntry("ready", pi, "0.87.1", null));
+  const told = await engine.until((line) => line.event === "models");
+  assert.equal(told.provider, "pi");
+  const listed = (await engine.request("models.list", { provider: "pi" })).result.models;
+  // Pi's default first, and the two it reaches through a forbidden login last.
+  assert.deepEqual(
+    listed.map((model: any) => [model.id, model.description, model.efforts.length, model.forbidden ?? null]),
+    [
+      ["openai/gpt-5.5", "openai · key", 5, null],
+      ["openai/gpt-4", "openai · key", 0, null],
+      ["meta/muse-1", "meta · key", 0, null],
+      ["openrouter/anthropic/claude-haiku", "openrouter · key", 0, null],
+      ["anthropic/claude-opus", "anthropic · login", 7, "anthropic"],
+      ["xai/grok-5", "xai · login", 5, "xai"],
+    ],
+  );
+
+  let from = engine.lines.length;
+  const send = { threadId: "k186", cwd, text: "hello", model: "openai/gpt-5.5", effort: "high", permissionMode: "default", provider: "pi" };
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  const done = await engine.until((line) => line.event === "turn.done", from);
+  assert.equal(done.stopReason, "end_turn");
+  assert.ok(done.sessionId.startsWith(join(cwd, "sessions")));
+
+  from = engine.lines.length;
+  await engine.request("send", { ...send, model: "anthropic/claude-opus" });
+  assert.equal(
+    (await engine.until((line) => line.event === "error", from)).message,
+    "Pi reaches Anthropic through a login Anthropic keeps to its own apps. It stays off until you turn it on in Settings › Agents.",
+  );
+  assert.equal((await engine.until((line) => line.event === "turn.done", from)).stopReason, "error_during_execution");
+
+  // Turned on in Settings › Agents, that login's models can be picked, and run.
+  assert.equal((await engine.request("agent.set", { provider: "pi", on: true, allow: ["anthropic"] })).result.provider.state, "ready");
+  const allowed = (await engine.request("models.list", { provider: "pi" })).result.models;
+  assert.deepEqual(allowed.filter((model: any) => model.forbidden).map((model: any) => model.id), ["xai/grok-5"]);
+  from = engine.lines.length;
+  await engine.request("send", { ...send, model: "anthropic/claude-opus" });
+  assert.equal((await engine.until((line) => line.event === "turn.done", from)).stopReason, "end_turn");
+  await engine.end();
+
+  const sent = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(sent.filter((message) => message.type === "set_model").map((message) => `${message.provider}/${message.modelId}`), ["openai/gpt-5.5", "anthropic/claude-opus"]);
+  assert.equal(sent.find((message) => message.type === "set_thinking_level").level, "high");
+  // No pi it started, for a thread or a list, got a variable of Claude's.
+  assert.ok(sent.filter((message) => message.args).every((start) => start.env.length === 0));
 });

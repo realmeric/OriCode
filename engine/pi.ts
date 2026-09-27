@@ -67,7 +67,7 @@ type ToolOutcome = { content?: { type: string; text?: string }[]; details?: { pa
 type Waiting = { id?: string; text: string };
 
 /// The session a thread on Pi talks to, one `pi --mode rpc` per thread. It implements
-/// provider.ts's Session once it's wired.
+/// provider.ts's Session.
 export class PiSession {
   readonly id: string;
   private binary: PiBinary;

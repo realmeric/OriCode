@@ -6,6 +6,7 @@ import { deepseek, meta, openrouter, zai } from "./claude-compatible.ts";
 import { codex } from "./codex-provider.ts";
 import { opencode } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
+import { pi } from "./pi-provider.ts";
 import { answer, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
@@ -23,6 +24,7 @@ const providers = new Map<string, Provider>([
   [openrouter.id, openrouter],
   [meta.id, meta],
   [opencode.id, opencode],
+  [pi.id, pi],
 ]);
 const sessions = new Map<string, Session>();
 /// Agents whose models were read while they could run; hello's list for one signed out is a fallback.

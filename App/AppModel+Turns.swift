@@ -138,7 +138,7 @@ extension AppModel {
             "costSoFar": .number(chat.costUSD),
         ]
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
-        if let model = chat.model { params["model"] = .string(model) }
+        if let model = modelSent(in: chat) { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it: an Ultracode left on after
         // workflows were turned off would still start the CLI at xhigh.
         if let effort = chat.effort, option(for: chat)?.levels.contains(effort) ?? true { params["effort"] = .string(effort) }
@@ -149,6 +149,13 @@ extension AppModel {
             })
         }
         return params.naming(chat.providerID)
+    }
+
+    /// The model a send names: the thread's own, or on another agent the one its composer shows,
+    /// since what pi picks for itself could be a model it reaches through a login its maker
+    /// forbids. A Claude thread with none leaves it to Claude Code, as it always has.
+    func modelSent(in chat: Chat) -> String? {
+        chat.model ?? (chat.providerID == ProviderInfo.claudeID ? nil : option(for: chat)?.id)
     }
 
     /// `choice` is one of the agent's own answers, which it gets back by its id.
