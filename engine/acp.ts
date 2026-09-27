@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
-import { diffOf, hunks, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
+import { diffHunks, diffOf, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
 import { asks as registry } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
@@ -27,6 +27,8 @@ export type AcpAgent = {
   /// A sign-in the agent runs itself from the login its user made in Terminal, such as
   /// cursor_login. The engine never hands it a key.
   authMethod?: string;
+  /// The Terminal line that signs it in, said when it wants a sign-in and gives no words of its own.
+  login?: string | null;
   /// How a thread's permission mode reaches the agent: the agent's own mode id, and what its
   /// process is started with, such as OpenCode's OPENCODE_PERMISSION. Without it the thread's
   /// mode is taken as the agent's own id.
@@ -40,9 +42,13 @@ export type AcpAgent = {
   /// It sends its errors as ordinary text, as Copilot does: a message starting "Error:" that's the
   /// turn's only text is the turn's error.
   textErrors?: boolean;
+  /// The modes session/set_mode takes from an agent that doesn't list them, as Grok's doesn't.
+  unlistedModes?: string[];
 };
 
-export type Reach = { mode?: string; env?: Record<string, string> };
+/// A mode as the agent takes it: its own mode id, and what its process is started with, variables
+/// or arguments put before its own, such as Grok's `--permission-mode`.
+export type Reach = { mode?: string; env?: Record<string, string>; args?: string[] };
 
 export type AcpSendParams = {
   threadId: string;
@@ -73,8 +79,17 @@ type ConfigOption = {
 
 type SessionModes = { currentModeId: string; availableModes: { id: string; name: string; description?: string | null }[] };
 
-/// Models as Cursor and Copilot send them beside the config options, a field ACP hasn't settled.
-type SessionModels = { currentModelId: string; availableModels: { modelId: string; name: string; description?: string | null }[] };
+/// Models as Cursor, Copilot and Grok send them beside the config options, a field ACP hasn't
+/// settled, and as Grok's `_x.ai/models/update` does.
+type SessionModels = {
+  currentModelId: string;
+  availableModels: {
+    modelId: string;
+    name: string;
+    description?: string | null;
+    _meta?: { supportsReasoningEffort?: boolean; reasoningEfforts?: { value: string }[] } | null;
+  }[];
+};
 
 type Capabilities = { loadSession?: boolean; promptCapabilities?: { image?: boolean }; sessionCapabilities?: { resume?: object | null } };
 
@@ -274,7 +289,7 @@ export class AcpSession {
     this.mode = mode;
     if (!this.live) return true;
     const reach = this.reach(mode);
-    if (JSON.stringify(reach.env ?? {}) !== this.startedWith) return !this.running;
+    if (launch(reach) !== this.startedWith) return !this.running;
     if (!reach.mode) return true;
     return this.applyMode(reach.mode).catch(() => false);
   }
@@ -333,8 +348,8 @@ export class AcpSession {
   private async turn(params: AcpSendParams, turn: number): Promise<void> {
     try {
       const reach = this.reach(params.permissionMode ?? this.mode);
-      if (this.child && (params.cwd !== this.cwd || JSON.stringify(reach.env ?? {}) !== this.startedWith)) this.stop();
-      if (!this.child) await this.start(params.cwd, reach.env);
+      if (this.child && (params.cwd !== this.cwd || launch(reach) !== this.startedWith)) this.stop();
+      if (!this.child) await this.start(params.cwd, reach);
       if (!this.live) await this.open(params);
       if (this.interrupted) return this.finish(turn, "interrupted");
       if (reach.mode) await this.applyMode(reach.mode);
@@ -367,18 +382,30 @@ export class AcpSession {
     }
   }
 
+  /// Starts the agent only to read the sign-ins its initialize offers, and ends it. Grok offers
+  /// cached_token only once `grok login` has made one, which is how its own docs tell.
+  async signIns(cwd: string): Promise<string[]> {
+    try {
+      await this.start(cwd);
+      return this.authMethods.map((method) => method.id);
+    } finally {
+      this.stop();
+    }
+  }
+
   private reach(mode: string | undefined): Reach {
     if (mode === undefined) return {};
     return this.agent.permissions?.(mode) ?? { mode };
   }
 
-  private async start(cwd: string, env: Record<string, string> = {}): Promise<void> {
-    log(`start thread=${this.id} ${this.agent.command} ${this.agent.args.join(" ")} cwd=${cwd}`);
-    const child = spawn(this.agent.command, this.agent.args, { cwd, env: agentEnvironment({ ...this.agent.env, ...env }), stdio: ["pipe", "pipe", "pipe"], detached: this.agent.strays });
+  private async start(cwd: string, reach: Reach = {}): Promise<void> {
+    const args = [...(reach.args ?? []), ...this.agent.args];
+    log(`start thread=${this.id} ${this.agent.command} ${args.join(" ")} cwd=${cwd}`);
+    const child = spawn(this.agent.command, args, { cwd, env: agentEnvironment({ ...this.agent.env, ...reach.env }), stdio: ["pipe", "pipe", "pipe"], detached: this.agent.strays });
     this.child = child;
     if (this.agent.strays && child.pid) strayFrom(cwd, this, child.pid);
     this.cwd = cwd;
-    this.startedWith = JSON.stringify(env);
+    this.startedWith = launch(reach);
     this.stderr = "";
     // Written to after the agent has gone, its stdin fails with EPIPE, which unheard ends the engine.
     child.stdin.on("error", () => {});
@@ -439,7 +466,9 @@ export class AcpSession {
     }
     this.live = true;
     this.cost = undefined;
-    this.sessionModes = reply.modes ?? undefined;
+    // Which of them a picked-up session is in isn't said, so the first mode applied is sent.
+    const unlisted = this.agent.unlistedModes && { currentModeId: "", availableModes: this.agent.unlistedModes.map((id) => ({ id, name: id })) };
+    this.sessionModes = reply.modes ?? unlisted;
     this.configOptions = reply.configOptions ?? [];
     this.sessionModels = reply.models ?? undefined;
   }
@@ -485,10 +514,13 @@ export class AcpSession {
     return [...images.map((image) => ({ type: "image", mimeType: image.mediaType, data: image.data })), { type: "text", text: params.text }];
   }
 
-  /// What a -32000 says to do: the agent's own words, or the Terminal line its sign-in names.
+  /// What a -32000 says to do: the agent's own words, else the Terminal line that signs it in, else
+  /// what its sign-in says of itself. Grok's data is a bare string for developers, "no auth method
+  /// id provided".
   private signInHint(error: AgentError): string {
     const said = (error.data as { message?: unknown } | undefined)?.message;
     if (typeof said === "string" && said) return said;
+    if (this.agent.login) return this.agent.login;
     const how = this.authMethods.find((method) => method.description)?.description;
     return how ? `${this.agent.name} isn't signed in. ${how}.` : `${this.agent.name}: ${error.message}.`;
   }
@@ -591,6 +623,7 @@ export class AcpSession {
     }
     if (message.id === undefined) {
       if (message.method === "session/update") this.update(message.params.update);
+      else if (message.method === "_x.ai/models/update") this.catalog(message.params);
       return;
     }
     const id = message.id;
@@ -601,6 +634,14 @@ export class AcpSession {
       (result) => this.write({ jsonrpc: "2.0", id, result }),
       (error: AgentError) => this.write({ jsonrpc: "2.0", id, error: { code: error.code ?? -32603, message: error.message } }),
     );
+  }
+
+  /// Grok's catalog changed, told once for the whole process rather than as a session/update, and
+  /// its model option isn't sent again, so both the models field and that option take it.
+  private catalog(models: SessionModels): void {
+    this.sessionModels = models;
+    const option = this.configOptions.find((option) => option.category === "model");
+    if (option) option.options = models.availableModels.map((model) => ({ value: model.modelId, name: model.name, description: model.description }));
   }
 
   private update(update: { sessionUpdate: string; [field: string]: any }): void {
@@ -692,7 +733,7 @@ export class AcpSession {
         toolUseId: call.toolCallId,
         content: resultText(call.content, call.rawOutput),
         isError: call.status === "failed",
-        patch: diff && call.status === "completed" ? (typeof unified === "string" ? unifiedHunks(unified) : hunks(diff.oldText, diff.newText)) : undefined,
+        patch: diff && call.status === "completed" ? (typeof unified === "string" ? unifiedHunks(unified) : diffHunks(diff)) : undefined,
       });
     }
     return call;
@@ -761,15 +802,29 @@ export class AcpSession {
 }
 
 /// The models a session offers and the one it's on: from its config option of category model,
-/// or from the models field Cursor and Copilot send beside it.
-export function listModels(session: AcpSession): { current: string | null; models: { id: string; name: string; description: string | null }[] } {
+/// or from the models field Cursor, Copilot and Grok send beside it. Grok's field says each
+/// model's levels, which come with it whichever gave the list.
+export function listModels(session: AcpSession): { current: string | null; models: { id: string; name: string; description: string | null; levels?: string[] }[] } {
+  const levels = new Map((session.sessionModels?.availableModels ?? []).map((model) => [model.modelId, levelsOf(model)]));
+  const listed = (id: string, name: string, description: string | null | undefined) => {
+    const known = levels.get(id);
+    return { id, name, description: description ?? null, ...(known && { levels: known }) };
+  };
   const option = session.configOptions.find((option) => option.category === "model");
-  if (option) return { current: String(option.currentValue), models: values(option).map((value) => ({ id: value.value, name: value.name, description: value.description ?? null })) };
+  if (option) return { current: String(option.currentValue), models: values(option).map((value) => listed(value.value, value.name, value.description)) };
   const models = session.sessionModels;
   return {
     current: models?.currentModelId ?? null,
-    models: (models?.availableModels ?? []).map((model) => ({ id: model.modelId, name: model.name, description: model.description ?? null })),
+    models: (models?.availableModels ?? []).map((model) => listed(model.modelId, model.name, model.description)),
   };
+}
+
+/// A model's levels as Grok gives them: none for one without reasoning effort, and unknown from an
+/// agent that doesn't say.
+function levelsOf(model: SessionModels["availableModels"][number]): string[] | undefined {
+  const meta = model._meta;
+  if (typeof meta?.supportsReasoningEffort !== "boolean") return undefined;
+  return meta.supportsReasoningEffort ? (meta.reasoningEfforts ?? []).map((effort) => effort.value) : [];
 }
 
 /// The modes a session offers and the one it's in, from its config option of category mode or
@@ -787,6 +842,11 @@ export function modes(session: AcpSession): { current: string | null; modes: { i
 /// A select option's values, its groups flattened.
 function values(option: ConfigOption): ConfigValue[] {
   return (option.options ?? []).flatMap((entry) => ("group" in entry ? entry.options : [entry]));
+}
+
+/// What a mode starts the agent's process with, which tells whether another mode needs another process.
+function launch(reach: Reach): string {
+  return JSON.stringify([reach.env ?? {}, reach.args ?? []]);
 }
 
 function describe(error: unknown): string {

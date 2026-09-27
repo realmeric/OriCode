@@ -296,7 +296,25 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
     claudeEntry("signedOut", claude.path, cli, "Run `claude` in Terminal and log in."),
     codexEntry("unknown", join(bin, "codex"), null, null),
     cursorEntry("unknown", join(bin, "cursor-agent"), null, null),
-    unwiredEntry("grok", "Grok Build", "Grok", "missing", null, null, "Grok Build isn't installed. Install it with `curl -fsSL https://x.ai/cli/install.sh | bash`, then run `grok login`."),
+    {
+      ...unwiredEntry("grok", "Grok Build", "Grok", "missing", null, null, "Grok Build isn't installed. Install it with `curl -fsSL https://x.ai/cli/install.sh | bash`, then run `grok login`."),
+      capabilities: {
+        steer: false,
+        resume: true,
+        modeLive: false,
+        attachments: false,
+        heads: false,
+        stopTask: false,
+        limits: false,
+        usage: false,
+        commands: true,
+        compact: false,
+        commitMessage: false,
+        handoff: "grok --resume {session}",
+      },
+      levels: ["low", "medium", "high", "xhigh"],
+      modes: ["default", "plan", "bypassPermissions"],
+    },
     compatibleEntry("zai", "Z.ai", "ready", claude.path, null, []),
     compatibleEntry("deepseek", "DeepSeek", "signedOut", null, "Add your DeepSeek key in Settings › Agents.", ["low", "high", "max"]),
   ]);
@@ -511,8 +529,8 @@ test("models.list for Claude answers with hello's list", async () => {
 
 test("models.list for an agent with no session in the engine says so", async () => {
   const claude = await standIn(false);
-  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "grok" } }]);
-  assert.equal(unknown.error, "Grok Build can't list its models yet.");
+  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "devin" } }]);
+  assert.equal(unknown.error, "Devin can't list its models yet.");
 });
 
 test("a Codex thread through the engine: checked ready, its models listed, a turn whose asks the shared registry answers, its usage", async () => {

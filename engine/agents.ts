@@ -144,6 +144,8 @@ export const agents: Agent[] = [
     login: "Run `grok login` in Terminal.",
     key: null,
     forbidden: [],
+    // grok.ts builds its provider from this registry, so it's imported when asked.
+    signedIn: async (cli) => (await import("./grok.ts")).signedIn(cli),
   },
   {
     id: "devin",

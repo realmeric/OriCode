@@ -13,10 +13,14 @@ export type Location = { path: string; line?: number | null };
 
 export type ToolContent =
   | { type: "content"; content: { type: string; text?: string } }
-  | { type: "diff"; path: string; oldText?: string | null; newText: string }
+  | { type: "diff"; path: string; oldText?: string | null; newText: string; _meta?: { details?: EditPlace[] } | null }
   | { type: "terminal"; terminalId: string };
 
 export type PlanEntry = { content: string; priority?: string; status: string };
+
+/// Where Grok's search and replace matched: the lines, counted from 1, the swapped strings start
+/// on, and what came before the match on its first line.
+type EditPlace = { old_line?: number; new_line?: number; line_prefix?: string };
 
 /// ACP's kinds as K-175 names them. A mode switch is what Claude Code's ExitPlanMode is.
 export function toolKind(kind: unknown): string {
@@ -89,6 +93,18 @@ export function unifiedHunks(diff: string): Hunk[] {
     else if (/^[ +-]/.test(line)) result.at(-1)?.lines.push(line);
   }
   return result;
+}
+
+/// A diff's hunks. Grok's search and replace, like OpenCode's edit, sends only the strings it
+/// swapped, and says in the diff's _meta where they were; one that swapped in several places is
+/// shown from line 1.
+export function diffHunks(diff: Extract<ToolContent, { type: "diff" }>): Hunk[] {
+  const places = diff._meta?.details ?? [];
+  const place = places[0];
+  if (places.length !== 1 || typeof place.old_line !== "number" || typeof place.new_line !== "number") return hunks(diff.oldText, diff.newText);
+  const prefix = place.line_prefix ?? "";
+  const { old_line: oldLine, new_line: newLine } = place;
+  return hunks(prefix + (diff.oldText ?? ""), prefix + diff.newText).map((hunk) => ({ ...hunk, oldStart: hunk.oldStart + oldLine - 1, newStart: hunk.newStart + newLine - 1 }));
 }
 
 export function todos(entries: readonly PlanEntry[]): Todo[] {

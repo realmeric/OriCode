@@ -33,6 +33,7 @@ export type AcpEntry = {
   /// The permission modes a thread on it picks from, the SDK's ids, which `permissions` turns
   /// into its own.
   modes: string[];
+  unlistedModes?: string[];
   /// Deletes a session the engine opened only to read the models, for an agent that keeps every
   /// session it opens.
   forget?: (cli: string, sessionId: string) => Promise<unknown>;
@@ -49,10 +50,12 @@ export function acpProvider(entry: AcpEntry): Provider {
     args: entry.args,
     env: entry.env,
     authMethod: entry.authMethod,
+    login: known.login,
     permissions: entry.permissions,
     allowAlways: entry.allowAlways,
     strays: entry.strays,
     textErrors: entry.textErrors,
+    unlistedModes: entry.unlistedModes,
   });
   /// The models a session offers, from one opened for nothing else.
   async function offered(cli: string): Promise<Model[]> {
@@ -68,7 +71,8 @@ export function acpProvider(entry: AcpEntry): Provider {
         id: model.id,
         name: model.name,
         description: model.description ?? "",
-        efforts: entry.levels ?? [],
+        // Only the levels the model has, where the agent says.
+        efforts: (entry.levels ?? []).filter((level) => !model.levels || model.levels.includes(level)),
         fast: false,
         defaultEffort: null,
         ultra: false,
