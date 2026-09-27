@@ -253,6 +253,13 @@ function unwiredEntry(id: string, name: string, agent: string, state: string, cl
   return { id, name, agent, state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: [] };
 }
 
+/// A model API that runs in Claude Code, as hello lists it: Claude's thread without its plan.
+function compatibleEntry(id: string, name: string, state: string, cliPath: string | null, hint: string | null, levels: string[]) {
+  const capabilities = { steer: true, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: true, commitMessage: true, handoff: null };
+  const modes = ["default", "acceptEdits", "plan", "auto", "bypassPermissions"];
+  return { id, name, agent: name, state, hint, cli: cliPath, version: null, capabilities, levels, modes };
+}
+
 test("hello lists the agents turned on without asking their CLIs anything, a check asks one, and one turned off is forgotten", async () => {
   const claude = await standIn(false);
   const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
@@ -281,8 +288,8 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
     codexEntry("unknown", join(bin, "codex"), null, null),
     unwiredEntry("cursor", "Cursor", "Cursor", "unknown", join(bin, "cursor-agent"), null, null),
     unwiredEntry("grok", "Grok Build", "Grok", "missing", null, null, "Grok Build isn't installed. Install it with `curl -fsSL https://x.ai/cli/install.sh | bash`, then run `grok login`."),
-    unwiredEntry("zai", "Z.ai", "Z.ai", "soon", null, null, null),
-    unwiredEntry("deepseek", "DeepSeek", "DeepSeek", "signedOut", null, null, "Add your DeepSeek key in Settings › Agents."),
+    compatibleEntry("zai", "Z.ai", "ready", claude.path, null, []),
+    compatibleEntry("deepseek", "DeepSeek", "signedOut", null, "Add your DeepSeek key in Settings › Agents.", ["low", "high", "max"]),
   ]);
   assert.deepEqual(codex.result, codexEntry("ready", join(bin, "codex"), "codex-cli 9.9.9", null));
   assert.deepEqual(cursor.result, unwiredEntry("cursor", "Cursor", "Cursor", "signedOut", join(bin, "cursor-agent"), "2026.09.02", "Run `cursor-agent login` in Terminal."));
@@ -293,6 +300,49 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
   // Hello asked Claude only; each check asked its own agent.
   assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
   assert.deepEqual((await readFile(ran, "utf8")).trim().split("\n").sort(), ["codex --version", "codex login status", "cursor-agent --version", "cursor-agent status --format json"]);
+});
+
+test("Z.ai and DeepSeek run in Claude Code: ready once a key is kept, signed out or not, and their models listed without starting it", async () => {
+  const claude = await standIn(false);
+  const env = { ORICODE_CLAUDE: claude.path };
+  const [hello, zai, deepseek, kept, checked, openrouter] = await replies(env, [
+    { method: "hello", params: { agents: { zai: { key: true }, deepseek: {}, openrouter: { key: true } } } },
+    { method: "models.list", params: { provider: "zai" } },
+    { method: "models.list", params: { provider: "deepseek" } },
+    { method: "agent.set", params: { provider: "deepseek", on: true, key: true } },
+    { method: "provider.check", params: { provider: "zai" } },
+    { method: "provider.check", params: { provider: "openrouter" } },
+  ]);
+  assert.deepEqual(hello.result.providers.slice(1), [
+    compatibleEntry("zai", "Z.ai", "ready", claude.path, null, []),
+    compatibleEntry("deepseek", "DeepSeek", "signedOut", null, "Add your DeepSeek key in Settings › Agents.", ["low", "high", "max"]),
+    unwiredEntry("openrouter", "OpenRouter", "OpenRouter", "soon", null, null, null),
+  ]);
+  assert.deepEqual(
+    zai.result.models.map((model: any) => [model.id, model.name, model.efforts, model.fast, model.ultra]),
+    [
+      ["glm-5.3[1m]", "GLM-5.3", [], false, false],
+      ["glm-5.3-flash[1m]", "GLM-5.3-Flash", [], false, false],
+    ],
+  );
+  assert.deepEqual(
+    deepseek.result.models.map((model: any) => [model.id, model.efforts]),
+    [
+      ["deepseek-v4-pro[1m]", ["low", "high", "max"]],
+      ["deepseek-flash[1m]", ["low", "high", "max"]],
+    ],
+  );
+  assert.deepEqual(kept.result.provider, compatibleEntry("deepseek", "DeepSeek", "ready", claude.path, null, ["low", "high", "max"]));
+  assert.equal(checked.result.state, "ready");
+  assert.equal(openrouter.result.state, "soon");
+  // Claude Code was asked what hello always asks, and nothing on their behalf.
+  assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
+});
+
+test("with no Claude Code, Z.ai says it needs it", async () => {
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const [hello] = await replies({ HOME: home, ZDOTDIR: undefined, PATH: "/usr/bin:/bin" }, [{ method: "hello", params: { agents: { zai: { key: true } } } }]);
+  assert.deepEqual(hello.result.providers[1], compatibleEntry("zai", "Z.ai", "missing", null, "Z.ai runs in Claude Code, which isn't installed. Install Claude Code to use it.", []));
 });
 
 test("models.list for Claude answers with hello's list", async () => {

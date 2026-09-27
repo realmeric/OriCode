@@ -44,6 +44,9 @@ export type Agent = {
   login: string | null;
   /// The variable its process takes a key in from the Keychain, for an agent that needs one.
   key: string | null;
+  /// The agent whose CLI a model API runs in, once its route is wired: its threads are that
+  /// agent's, pointed at the maker's endpoint with the key.
+  through?: string;
   forbidden: ForbiddenLogin[];
   /// Whether the CLI says it's signed in, asked without reaching a model; null when it has no way
   /// to say short of a thread.
@@ -228,6 +231,7 @@ export const agents: Agent[] = [
     install: null,
     login: "Add your Z.ai key in Settings › Agents.",
     key: "ANTHROPIC_AUTH_TOKEN",
+    through: "claude",
     forbidden: [],
   },
   {
@@ -239,6 +243,7 @@ export const agents: Agent[] = [
     install: null,
     login: "Add your DeepSeek key in Settings › Agents.",
     key: "ANTHROPIC_AUTH_TOKEN",
+    through: "claude",
     forbidden: [],
   },
   {
@@ -407,8 +412,15 @@ export async function check(entry: Agent): Promise<Availability> {
   return signedIn ? { state: "soon", cli, version, hint: null } : { state: "signedOut", cli, version, hint: entry.login };
 }
 
-function byKey(entry: Agent): Availability {
-  return keyKept(entry.id) ? { state: "soon", cli: null, version: null, hint: null } : { state: "signedOut", cli: null, version: null, hint: entry.login };
+/// A model API by whether a key is kept, and, for one that runs in another agent's CLI, whether
+/// that CLI is found. Its login isn't asked: the key replaces it.
+async function byKey(entry: Agent): Promise<Availability> {
+  if (!keyKept(entry.id)) return { state: "signedOut", cli: null, version: null, hint: entry.login };
+  if (!entry.through) return { state: "soon", cli: null, version: null, hint: null };
+  const cli = await binary(entry.through);
+  const host = agent(entry.through)!;
+  if (!cli) return { state: "missing", cli: null, version: null, hint: `${entry.name} runs in ${host.name}, which isn't installed. Install ${host.name} to use it.` };
+  return { state: "ready", cli, version: null, hint: null };
 }
 
 export async function versionOf(cli: string): Promise<string | null> {

@@ -66,6 +66,14 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
   }
 }
 
+/// A thread's Claude Code pointed at another maker's Anthropic-compatible endpoint.
+export type Elsewhere = {
+  /// The maker, as the thread's error lines name it.
+  agent: string;
+  /// The CLI's environment, read as each CLI starts since it holds the key from the Keychain.
+  environment: () => Promise<Record<string, string | undefined>>;
+};
+
 export class Thread implements Session {
   readonly id: string;
   private claude: string;
@@ -121,14 +129,22 @@ export class Thread implements Session {
   /// An interrupt on its way to the CLI, which may land on the turn after the one it was for.
   private stopping = false;
   private launch: typeof query;
+  /// Another maker's endpoint the CLI is pointed at, or none for Claude's own.
+  private elsewhere: Elsewhere | undefined;
+  /// Settled once that endpoint's environment is read, so a send that arrives meanwhile joins the
+  /// CLI it starts.
+  private starting: Promise<void> | undefined;
+  /// The running CLI's environment, for a fresh session started in its place; gone with the CLI.
+  private env: Record<string, string | undefined> = {};
   /// Called once a turn has ended and the CLI sits idle.
   onIdle: (() => void) | undefined;
 
   /// `launch` is the SDK's query; tests hand in one that starts no CLI.
-  constructor(id: string, claude: string, launch: typeof query = query) {
+  constructor(id: string, claude: string, launch: typeof query = query, elsewhere?: Elsewhere) {
     this.id = id;
     this.claude = claude;
     this.launch = launch;
+    this.elsewhere = elsewhere;
     this.heads = new Heads(id);
   }
 
@@ -146,6 +162,7 @@ export class Thread implements Session {
   /// it as a turn of its own right after when the turn has no step left. The model, level, mode
   /// and speed sent with it hold from the next send, as they would between turns.
   async send(params: SendParams): Promise<boolean> {
+    if (this.starting) await this.starting;
     if ((this.running || this.waiting.size > 0) && this.query) {
       if (!params.id) throw new Error("A turn is already running in this thread.");
       if (this.reports === undefined) {
@@ -168,8 +185,21 @@ export class Thread implements Session {
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
     const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null]);
     if (!this.query || key !== this.key) {
+      let env = cleanEnvironment();
+      if (this.elsewhere) {
+        const reading = this.elsewhere.environment();
+        this.starting = reading.then(
+          () => undefined,
+          () => undefined,
+        );
+        try {
+          env = await reading;
+        } finally {
+          this.starting = undefined;
+        }
+      }
       this.close();
-      this.start(params, key);
+      this.start(params, key, env);
     } else {
       if (params.permissionMode !== this.mode) {
         await this.query.setPermissionMode(params.permissionMode);
@@ -296,6 +326,7 @@ export class Thread implements Session {
     this.query?.close();
     this.query = undefined;
     this.inbox = undefined;
+    this.env = {};
     this.endHeads();
   }
 
@@ -306,11 +337,12 @@ export class Thread implements Session {
     this.heads.clear();
   }
 
-  private start(params: SendParams, key: string): void {
+  private start(params: SendParams, key: string, env: Record<string, string | undefined>): void {
     const resume = params.sessionId ?? this.sessionId;
     this.resuming = resume ? params : undefined;
     log(`start thread=${this.id} cwd=${params.cwd} resume=${resume ?? "none"}`);
     this.key = key;
+    this.env = env;
     this.heads.cwd = params.cwd;
     this.mode = params.permissionMode;
     this.fast = params.fast ?? false;
@@ -344,7 +376,7 @@ export class Thread implements Session {
         settingSources: ["user", "project", "local"],
         systemPrompt: { type: "preset", preset: "claude_code" },
         pathToClaudeCodeExecutable: this.claude,
-        env: cleanEnvironment(),
+        env,
         stderr: (data) => process.stderr.write(data),
         debugFile: cliDebugFile(this.id),
         canUseTool: (tool, input, { signal, toolUseID }) => this.ask(tool, input, toolUseID, signal),
@@ -455,9 +487,10 @@ export class Thread implements Session {
     this.sessionId = undefined;
     const fresh = { ...params, sessionId: undefined };
     const key = this.key;
+    const env = this.env;
     this.close();
     event("session.lost", { threadId: this.id });
-    this.start(fresh, key);
+    this.start(fresh, key, env);
     this.started = false;
     this.push(fresh);
   }
@@ -561,7 +594,7 @@ export class Thread implements Session {
         }
         if (message.error) {
           // An API failure arrives as a synthetic message; its text is the raw error, so say it once, plainly.
-          this.fail(errorText(message.error));
+          this.fail(errorText(message.error, this.elsewhere?.agent));
           return;
         }
         const streamed = this.streamed.has(message.message.id);
@@ -595,6 +628,8 @@ export class Thread implements Session {
         return;
       }
       case "rate_limit_event": {
+        // Claude's plan's limits, which another maker's endpoint has nothing to do with.
+        if (this.elsewhere) return;
         this.limit = message.rate_limit_info;
         const limits = limitsOf(message.rate_limit_info);
         const told = limitsKey(limits);
@@ -646,7 +681,7 @@ export class Thread implements Session {
           const limited = limitReached(this.limit);
           if (limited) event("limited", { threadId: this.id, ...limited });
           else if (this.limit?.status === "rejected") this.fail("Stopped at one of Claude's usage limits.");
-          else this.fail(errorText("rate_limit"));
+          else this.fail(errorText("rate_limit", this.elsewhere?.agent));
         }
         this.idleSince = Date.now();
         this.streamed.clear();
@@ -804,21 +839,23 @@ function resultText(content: unknown): string {
     .join("\n");
 }
 
-function errorText(error: string): string {
+/// `maker` is the endpoint's, when the thread's Claude Code is pointed at another maker's.
+export function errorText(error: string, maker?: string): string {
+  const agent = maker ?? "Claude";
   switch (error) {
     case "authentication_failed":
-      return "Claude isn't logged in. Run `claude` in Terminal and log in.";
+      return maker ? `${maker} didn't take the key. Check it in Settings › Agents.` : "Claude isn't logged in. Run `claude` in Terminal and log in.";
     case "rate_limit":
-      return "Claude is limiting requests for a moment. Try again shortly.";
+      return `${agent} is limiting requests for a moment. Try again shortly.`;
     case "server_error":
     case "unknown":
-      return "Couldn't reach Claude. Check the network, then send again.";
+      return `Couldn't reach ${agent}. Check the network, then send again.`;
     case "overloaded":
-      return "Claude is overloaded right now.";
+      return `${agent} is overloaded right now.`;
     case "billing_error":
-      return "There's a billing problem with this Claude account.";
+      return `There's a billing problem with this ${agent} account.`;
     default:
-      return `Claude returned an error (${error}).`;
+      return `${agent} returned an error (${error}).`;
   }
 }
 

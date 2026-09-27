@@ -238,11 +238,12 @@ async function fastCheck(claude: string, model: string | undefined): Promise<{ s
   }
 }
 
-/// One small Haiku call, no tools and no settings, so hooks and MCP servers stay out of it.
-async function oneShot(claude: string, cwd: string, prompt: string): Promise<string> {
+/// One small Haiku call, no tools and no settings, so hooks and MCP servers stay out of it. On
+/// another maker's endpoint `env` points Haiku at that maker's small model.
+export async function oneShot(claude: string, cwd: string, prompt: string, env = cleanEnvironment()): Promise<string> {
   const call = query({
     prompt,
-    options: { cwd, model: "haiku", tools: [], maxTurns: 1, settingSources: [], pathToClaudeCodeExecutable: claude, env: cleanEnvironment() },
+    options: { cwd, model: "haiku", tools: [], maxTurns: 1, settingSources: [], pathToClaudeCodeExecutable: claude, env },
   });
   let text = "";
   for await (const message of call) {
