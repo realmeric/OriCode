@@ -371,6 +371,54 @@ struct ShellTests {
         #expect(chat.resumeAt == nil)
     }
 
+    /// Every agent that has a line of its own gets Claude Code's guards: picked again it opens the
+    /// same block, a wait for a limit is called off, and the thread won't send until the block ends.
+    @Test(arguments: [
+        ("codex", "Codex", "codex resume --no-daemon {session}"),
+        ("opencode", "OpenCode", "opencode --session {session}"),
+        ("copilot", "Copilot", "copilot --resume {session}"),
+        ("grok", "Grok Build", "grok --resume {session}"),
+        ("devin", "Devin", "devin --resume {session}"),
+        ("pi", "Pi", "pi --session {session}"),
+        ("commandcode", "Command Code", "cmd --resume {session}"),
+        ("antigravity", "Antigravity", "agy --conversation {session}"),
+    ])
+    func everyAgentsContinueInKeepsTheGuards(id: String, name: String, handoff: String) async throws {
+        let (model, chat, container) = try handOffThread(in: FileManager.default.temporaryDirectory)
+        defer { withExtendedLifetime(container) {} }
+        model.providers = [.claude, ProviderInfo(
+            id: id, name: name, agent: name, state: .ready, hint: nil, cli: nil, version: nil,
+            capabilities: ProviderInfo.Capabilities(
+                steer: false, resume: true, modeLive: false, attachments: false, heads: false, stopTask: false, limits: true,
+                usage: false, commands: false, compact: false, commitMessage: false, handoff: handoff),
+            levels: [], modes: [])]
+        model.engineState = .ready
+        chat.provider = id
+        chat.sessionId = "it's-\(id)"
+        #expect(model.handoffLine(for: chat) == handoff.replacingOccurrences(of: "{session}", with: #"'it'\''s-"# + id + "'"))
+        let row = try #require(model.terminalCommands.first { $0.id == "terminal.claude" })
+        #expect(row.title == "Continue in \(name)")
+        chat.resumeAt = .now.addingTimeInterval(3600)
+        let block = try #require(model.runCommand("sleep 5", forModel: false))
+        defer { block.stop() }
+        model.handOff(chat, to: block)
+        #expect(chat.resumeAt == nil)
+        model.closeBlock()
+        guard case .run(let run) = row.action else {
+            Issue.record("not a command")
+            return
+        }
+        run()
+        #expect(model.openShell === block)
+        #expect(model.shellBlocks.count == 1)
+        #expect(!model.send("go on", images: [], in: chat))
+        #expect(model.note == "This thread is open in \(name) in one of its blocks. Quit it there to go on here.")
+        block.stop()
+        for _ in 0..<100 where block.running { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(!model.heldInBlock(chat))
+        #expect(model.handedOff[chat.id] == nil)
+    }
+
     @Test func aBlockNotForTheModelIsNeverSentAndStaysThatWay() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "shell-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

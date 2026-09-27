@@ -54,6 +54,7 @@ extension AppModel {
     /// The CLI that asked went with the quit, so the answer reaches the session as a message of its
     /// own. A permission given covers the call Claude makes again, so it isn't asked twice.
     func answerAfterQuit(_ ask: PendingAsk, in chat: Chat, allow: Bool, answers: [String: String]?, message: String?) {
+        guard !heldInBlock(chat) else { return }
         let conversation = conversation(for: chat)
         withAnimation(Motion.move) { conversation.answeredAfterQuit(ask.requestId, allow: allow) }
         let text = Self.afterQuit(ask, allow: allow, answers: answers, message: message, cwd: chat.cwd)

@@ -172,7 +172,7 @@ final class AppModel {
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
     let shortcuts = Shortcuts()
-    /// Threads whose session Continue in Claude Code gave to a block's claude, and that block.
+    /// Threads whose session Continue in gave to their agent's CLI in a block, and that block.
     var handedOff: [UUID: UUID] = [:]
     /// The block drawn full over each thread's conversation, by thread: another thread keeps its
     /// own keyboard and asks, and coming back finds its block where it was.

@@ -1,7 +1,7 @@
 import Foundation
 
 /// ⌘K's way to the shell prompt: toggle it, run a line as a block, and carry the thread's session
-/// over to a `claude` in a block of its own.
+/// over to its agent's own CLI in a block of its own.
 extension AppModel {
     private static let terminalRecentsKey = "terminalRecents"
 
@@ -42,7 +42,7 @@ extension AppModel {
     /// over opens the block it's in.
     private var continueInAgent: PaletteItem? {
         let agent = self.agent(for: chat)
-        guard let handoff = agent.capabilities.handoff else { return nil }
+        guard agent.capabilities.handoff != nil else { return nil }
         let unavailable: String? = {
             guard let chat else { return "No thread is open" }
             guard chat.sessionId != nil else { return "Send it a message first" }
@@ -54,18 +54,24 @@ extension AppModel {
         return command("terminal.claude", "Continue in \(agent.name)", icon: "arrow.up.forward.app",
                        subtitle: "Turns taken there won't show here", keywords: [agent.agent.lowercased(), "cli", "resume", "session", "terminal"],
                        unavailable: unavailable) { [weak self] in
-            guard let self, let chat, let session = chat.sessionId else { return }
+            guard let self, let chat, let line = handoffLine(for: chat) else { return }
             if let block = handedOff[chat.id].flatMap({ shellBlocks[$0] }), block.running {
                 open(block)
                 return
             }
             Task {
                 _ = try? await self.engine.request("close", ["threadId": .string(chat.id.uuidString)])
-                if let block = self.runCommand(handoff.replacingOccurrences(of: "{session}", with: session.shellQuoted), forModel: false) {
+                if let block = self.runCommand(line, forModel: false) {
                     self.handOff(chat, to: block)
                 }
             }
         }
+    }
+
+    /// The line that opens a thread's session in its agent's own CLI, the session quoted.
+    func handoffLine(for chat: Chat) -> String? {
+        guard let session = chat.sessionId, let handoff = agent(for: chat).capabilities.handoff else { return nil }
+        return handoff.replacingOccurrences(of: "{session}", with: session.shellQuoted)
     }
 
     /// The session is the block's now: it's opened, the thread won't send while it runs, and a
@@ -75,6 +81,18 @@ extension AppModel {
         handedOff[chat.id] = block.id
         conversation(for: chat).cancelResume()
         scheduleResumes()
+    }
+
+    /// Whether Continue in gave the thread's session to a block that still runs, which it then
+    /// says: a turn from here too would make two writers and fork the session.
+    func heldInBlock(_ chat: Chat) -> Bool {
+        guard let block = handedOff[chat.id] else { return false }
+        guard shellBlocks[block]?.running != true else {
+            say("This thread is open in \(agent(for: chat).name) in one of its blocks. Quit it there to go on here.")
+            return true
+        }
+        handedOff[chat.id] = nil
+        return false
     }
 }
 

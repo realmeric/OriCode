@@ -60,16 +60,7 @@ extension AppModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         let conversation = conversation(for: chat)
-        guard !conversation.running else { return false }
-        // Continue in Claude Code gave the session to a block's claude; a turn from here too would
-        // make two writers and fork it.
-        if let block = handedOff[chat.id] {
-            guard shellBlocks[block]?.running != true else {
-                say("This thread is open in \(agent(for: chat).name) in one of its blocks. Quit it there to go on here.")
-                return false
-            }
-            handedOff[chat.id] = nil
-        }
+        guard !conversation.running, !heldInBlock(chat) else { return false }
         let text = Self.asked(trimmed, images)
         conversation.userSent(text, previews: images.compactMap(\.preview))
         startTurn(in: chat, text: text, images: images)

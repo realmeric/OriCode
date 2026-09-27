@@ -216,6 +216,7 @@ async function handle(message: any): Promise<void> {
       return send({ id, result: { thread: { id: threadId }, model: params.model ?? "gpt-small", cwd: params.cwd, approvalPolicy: params.approvalPolicy } });
     case "thread/resume":
       if (params.threadId === "gone") return send({ id, error: { code: -32600, message: "no rollout found for thread id gone" } });
+      if (params.threadId === "held") return send({ id, error: { code: -32600, message: "thread held already has an active writer" } });
       threadId = params.threadId;
       return send({ id, result: { thread: { id: threadId, turns: [] } } });
     case "turn/start":

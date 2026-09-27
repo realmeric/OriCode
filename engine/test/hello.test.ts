@@ -229,7 +229,7 @@ function codexEntry(state: string, cliPath: string | null, cliVersion: string | 
       commands: false,
       compact: false,
       commitMessage: false,
-      handoff: "codex resume {session}",
+      handoff: "codex resume --no-daemon {session}",
     },
     levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],

@@ -21,7 +21,7 @@ struct CodexTests {
         id: "codex", name: "Codex", agent: "Codex", state: .unknown, hint: nil, cli: "/usr/local/bin/codex", version: nil,
         capabilities: ProviderInfo.Capabilities(
             steer: true, resume: true, modeLive: false, attachments: true, heads: false, stopTask: false, limits: true,
-            usage: true, commands: false, compact: false, commitMessage: false, handoff: "codex resume {session}"),
+            usage: true, commands: false, compact: false, commitMessage: false, handoff: "codex resume --no-daemon {session}"),
         levels: ["low", "medium", "high", "xhigh", "max", Effort.ultracode],
         modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"])
 
@@ -39,6 +39,45 @@ struct CodexTests {
         // Claude's reports carry no label, and a window it doesn't name is still left out.
         model.takeLimits(["windows": [["id": "odd", "used": .number(0.5)]]], for: "claude")
         #expect(model.usages["claude"]?.windows.isEmpty == true)
+    }
+
+    /// Codex refuses a turn with usageLimitExceeded, which the engine sends as a limit on its 30-day
+    /// window: the card names that window, waits only when told to, and goes on at the reset.
+    @Test func aCodexLimitNamesItsWindowAndGoesOnWhenAsked() async throws {
+        let model = AppModel(container: container)
+        let codex = Self.codex
+        model.providers = [.claude, ProviderInfo(
+            id: codex.id, name: codex.name, agent: codex.agent, state: .ready, hint: nil, cli: codex.cli, version: "0.157.1",
+            capabilities: codex.capabilities, levels: codex.levels, modes: codex.modes)]
+        model.engineState = .ready
+        let chat = Chat(project: project)
+        chat.provider = "codex"
+        chat.sessionId = "codex-thread"
+        chat.started = true
+        container.mainContext.insert(chat)
+        try container.mainContext.save()
+        model.selectedProjectID = project.id
+        model.selectedChatID = chat.id
+        let reset = Date(timeIntervalSince1970: (Date.now.timeIntervalSince1970 + 20 * 86_400).rounded())
+        model.conversation(for: chat).receive(EngineEvent(name: "limited", threadId: chat.id.uuidString, body: [
+            "event": "limited", "resetsAt": .number(reset.timeIntervalSince1970 * 1000), "window": "30_day",
+        ]))
+        #expect(Limit.name(of: "30_day") == "30-day limit")
+        #expect(Limit.span(of: "30_day") == "the 30-day window")
+        #expect(Limit.time(reset) == reset.formatted(.dateTime.day().month(.abbreviated)) + " " + reset.formatted(date: .omitted, time: .shortened))
+        #expect(chat.resumeAt == nil)
+        model.goOn(true, at: reset)
+        #expect(chat.resumeAt == reset)
+        #expect(AppModel.limitLine(model.conversation(for: chat).lastLimitWindow) == "The 30-day limit has reset. Please continue from where you left off.")
+        chat.resumeAt = .now.addingTimeInterval(-30)
+        model.scheduleResumes()
+        try await Task.sleep(for: .milliseconds(1600))
+        let conversation = model.conversation(for: chat)
+        let sent = conversation.items.contains { if case .user(_, let text, _, _) = $0 { text.hasPrefix("The 30-day limit") } else { false } }
+        #expect(sent)
+        #expect(chat.resumeAt == nil)
+        // No engine runs here, so the send fails; its note lands before the store goes.
+        for _ in 0..<60 where conversation.running { try await Task.sleep(for: .milliseconds(50)) }
     }
 
     @Test func aCodexThreadShownAfterALaunchAsksCodexAndAClaudeThreadAsksNothing() {

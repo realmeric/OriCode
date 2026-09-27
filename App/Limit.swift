@@ -22,7 +22,7 @@ enum Limit {
         case "seven_day": "weekly limit"
         case "seven_day_opus": "weekly Opus limit"
         case "seven_day_sonnet": "weekly Sonnet limit"
-        default: "usage limit"
+        default: length(of: window).map { "\($0) limit" } ?? "usage limit"
         }
     }
 
@@ -33,19 +33,29 @@ enum Limit {
         case "seven_day": "the week"
         case "seven_day_opus": "the Opus week"
         case "seven_day_sonnet": "the Sonnet week"
-        default: "the limit"
+        default: length(of: window).map { "the \($0) window" } ?? "the limit"
         }
+    }
+
+    /// A window another agent names by its length, as Codex's "30_day": "30-day".
+    private static func length(of window: String?) -> String? {
+        guard let parts = window?.split(separator: "_"), parts.count == 2, let count = Int(parts[0]),
+              ["day", "hour", "minute"].contains(parts[1])
+        else { return nil }
+        return "\(count)-\(parts[1])"
     }
 
     static func weekly(_ window: String?) -> Bool {
         window?.hasPrefix("seven_day") == true
     }
 
-    /// "23:30" today, "Fri 23:30" later, in the Mac's own clock.
+    /// "23:30" today, "Fri 23:30" within a week, "26 Oct 23:30" further off, in the Mac's own
+    /// clock.
     static func time(_ date: Date) -> String {
-        Calendar.current.isDateInToday(date)
-            ? date.formatted(date: .omitted, time: .shortened)
-            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        if Calendar.current.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
+        if abs(date.timeIntervalSinceNow) < 7 * 86_400 { return date.formatted(.dateTime.weekday(.abbreviated).hour().minute()) }
+        // Apart, or the formatter's own "Oct 26 at 23:30" reads "Resets at Oct 26 at 23:30".
+        return date.formatted(.dateTime.day().month(.abbreviated)) + " " + date.formatted(date: .omitted, time: .shortened)
     }
 }
 

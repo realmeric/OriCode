@@ -75,6 +75,10 @@ const decisions: Decision[] = ["accept", "acceptForSession", "decline", "cancel"
 
 const signIn = "Codex isn't signed in. Run `codex login` in Terminal, then try again.";
 
+/// Codex's TUI hands a thread to its shared background server, which keeps it after the TUI quits.
+const heldElsewhere =
+  "Codex still has this thread open, in another window or its background server. Quit it there, or run `codex app-server daemon restart` in Terminal, to go on here.";
+
 const asks = new Map<string, Ask>();
 
 /// The user's choice for a Codex ask: the decision they picked, or Codex's plain yes or no, or
@@ -347,6 +351,8 @@ export class CodexSession implements Session {
       } catch (error) {
         if (!this.server) throw error;
         log(`thread ${earlier} not resumed for thread=${this.id}: ${describe(error)}`);
+        // Another Codex still writes it, which a new thread here would only leave behind.
+        if (describe(error).includes("already has an active writer")) throw new Error(heldElsewhere);
         event("session.lost", { threadId: this.id });
       }
     }

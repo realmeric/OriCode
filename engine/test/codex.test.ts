@@ -264,6 +264,18 @@ test("a thread Codex no longer has is said to be lost, and the turn goes on in a
   assert.equal(done.sessionId, "t-1");
 });
 
+test("a thread another Codex still writes isn't left for a new one, and says where it is", async () => {
+  const { session: codex, cwd, sent } = await session("held");
+  const from = events.length;
+  await codex.send({ threadId: "held", cwd, text: "hello", sessionId: "held" });
+  const done = await until(named("turn.done", "held"), from);
+  const said = told("held", from);
+  assert.deepEqual(said.map((event) => event.event), ["error", "turn.done"]);
+  assert.match(said[0].message, /^Codex still has this thread open.*codex app-server daemon restart/);
+  assert.equal(done.stopReason, "error_during_execution");
+  assert.ok(!(await sent()).some((message) => message.method === "thread/start"));
+});
+
 test("a signed-out Codex says the Terminal line once and starts no thread", async () => {
   const { binary, cwd, sent } = await standIn({ CODEX_SIGNED_OUT: "1" });
   assert.deepEqual(await availability(binary), { state: "signedOut", plan: null, hint: "Run `codex login` in Terminal and log in." });
