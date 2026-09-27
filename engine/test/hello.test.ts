@@ -748,3 +748,90 @@ test("a Command Code thread through the engine: signed in by its own login, its 
   // No key was kept, so none was read, and cmd ran on its own login.
   assert.deepEqual(turns.map((run) => run.key), [null, null]);
 });
+
+/// Antigravity as hello lists it, in the state it found it.
+function antigravityEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
+  return {
+    id: "antigravity",
+    name: "Antigravity",
+    agent: "Antigravity",
+    state,
+    hint,
+    cli: cliPath,
+    version: cliVersion,
+    capabilities: {
+      steer: false,
+      resume: true,
+      modeLive: false,
+      attachments: false,
+      heads: false,
+      stopTask: false,
+      limits: false,
+      usage: false,
+      commands: false,
+      compact: false,
+      commitMessage: false,
+      handoff: "agy --conversation {session}",
+      unsupervised: true,
+    },
+    levels: [],
+    modes: ["default", "acceptEdits", "plan"],
+  };
+}
+
+test("an Antigravity thread through the engine: its Google account refused while off, no key, then ready on the Gemini API with a turn", async (t) => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  const settings = join(home, ".gemini/antigravity-cli/settings.json");
+  await mkdir(bin);
+  await mkdir(join(home, ".gemini/antigravity-cli"), { recursive: true });
+  await writeFile(settings, '{"colorScheme": "dark"}');
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "oricode-agy-")));
+  const log = join(cwd, "agy.log");
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin`, GEMINI_API_KEY: undefined };
+  const agy = await fixtureStandIn(bin, "agy", "antigravity-cli.ts", { AGY_LOG: log });
+
+  const off = engineWith(env);
+  t.after(off.kill);
+  const hello = await off.request("hello", { agents: { antigravity: {} } });
+  assert.deepEqual(hello.result.providers[1], antigravityEntry("unknown", agy, null, null));
+  const google =
+    'Antigravity signs in with a Google account, which Google keeps to its own apps. Set "modelProvider": "gemini" in ~/.gemini/antigravity-cli/settings.json and add a Gemini API key here, or turn on “Antigravity with a Google account”.';
+  assert.deepEqual((await off.request("provider.check", { provider: "antigravity" })).result, antigravityEntry("signedOut", agy, null, google));
+  const refused = await off.request("send", { threadId: "k187", cwd, text: "hello", permissionMode: "default", provider: "antigravity" });
+  assert.equal(refused.error, google);
+  await writeFile(settings, '{"colorScheme": "dark", "modelProvider": "gemini"}');
+  const keyless = (await off.request("provider.check", { provider: "antigravity" })).result;
+  assert.deepEqual(keyless, antigravityEntry("signedOut", agy, null, "Add your Gemini API key in Settings › Agents."));
+  await off.end();
+  // Neither route ran agy.
+  assert.equal(await readFile(log, "utf8").catch(() => ""), "");
+
+  const engine = engineWith({ ...env, GEMINI_API_KEY: "env-key-187" });
+  t.after(engine.kill);
+  await engine.request("hello", { agents: { antigravity: {} } });
+  assert.deepEqual((await engine.request("provider.check", { provider: "antigravity" })).result, antigravityEntry("ready", agy, "1.2.11", null));
+  const told = await engine.until((line) => line.event === "models");
+  assert.equal(told.provider, "antigravity");
+  assert.deepEqual(
+    (await engine.request("models.list", { provider: "antigravity" })).result.models.map((model: any) => model.id),
+    ["gemini-3.8-flash-high", "gemini-3.1-pro-high"],
+  );
+  const from = engine.lines.length;
+  const send = { threadId: "k187", cwd, text: "hello", model: "gemini-3.1-pro-high", permissionMode: "plan", provider: "antigravity" };
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  const done = await engine.until((line) => line.event === "turn.done", from);
+  assert.equal(done.stopReason, "end_turn");
+  assert.equal(done.sessionId, "c-1");
+  await engine.end();
+
+  const runs = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(
+    runs.filter((run) => run.args).map((run) => [run.args, run.route, run.key]),
+    [
+      [["models"], "gemini", "env-key-187"],
+      [["--input-format", "stream-json", "--output-format", "stream-json", "--mode", "plan", "--model", "gemini-3.1-pro-high"], "gemini", "env-key-187"],
+    ],
+  );
+});

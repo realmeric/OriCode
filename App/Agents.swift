@@ -22,6 +22,8 @@ struct AgentInfo: Codable, Hashable, Sendable, Identifiable {
     let binary: Bool
     /// It takes a model API's key, kept in the Keychain.
     let key: Bool
+    /// What the key is called where it isn't the agent's own, as Antigravity takes a Gemini API key.
+    var keyName: String? = nil
     let forbidden: [ForbiddenLogin]
 
     /// What its row in Settings › Agents says of it: off, being asked, or its state as the engine

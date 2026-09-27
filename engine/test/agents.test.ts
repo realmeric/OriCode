@@ -26,6 +26,7 @@ test("every agent is in the registry once, the model APIs by a key, and the logi
   );
   const keyed = agents.filter((entry) => entry.key).map((entry) => [entry.id, entry.key, entry.binaries]);
   assert.deepEqual(keyed, [
+    ["antigravity", "GEMINI_API_KEY", ["agy"]],
     ["commandcode", "COMMAND_CODE_API_KEY", ["cmd"]],
     ["zai", "ANTHROPIC_AUTH_TOKEN", []],
     ["deepseek", "ANTHROPIC_AUTH_TOKEN", []],
@@ -44,7 +45,6 @@ test("every agent is in the registry once, the model APIs by a key, and the logi
       "Run `grok login` in Terminal.",
       "Run `devin auth login` in Terminal.",
       "Run `pi` in Terminal, then /login.",
-      "Run `agy` in Terminal and sign in.",
     ],
   );
   const forbidden = agents.flatMap((entry) => entry.forbidden.map((login) => [entry.id, login.id, login.maker, login.url]));

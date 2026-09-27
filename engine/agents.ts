@@ -44,6 +44,8 @@ export type Agent = {
   login: string | null;
   /// The variable its process takes a key in from the Keychain, for an agent that needs one.
   key: string | null;
+  /// What the key is called where it isn't the agent's own, as Antigravity takes a Gemini API key.
+  keyName?: string;
   /// The agent whose CLI a model API runs in, once its route is wired: its threads are that
   /// agent's, pointed at the maker's endpoint with the key.
   through?: string;
@@ -197,8 +199,9 @@ export const agents: Agent[] = [
     route: "its stream-json mode",
     binaries: ["agy"],
     install: "Antigravity isn't installed. Install it with `curl -fsSL https://antigravity.google/cli/install.sh | bash`.",
-    login: "Run `agy` in Terminal and sign in.",
-    key: null,
+    login: "Add your Gemini API key in Settings › Agents.",
+    key: "GEMINI_API_KEY",
+    keyName: "Gemini API key",
     forbidden: [
       {
         id: "google",
@@ -278,7 +281,7 @@ export function agent(id: string): Agent | undefined {
 
 /// The registry as the app lists it in Settings › Agents.
 export function registry() {
-  return agents.map(({ id, name, agent, route, binaries, key, forbidden }) => ({ id, name, agent, route, binary: binaries.length > 0, key: key !== null, forbidden }));
+  return agents.map(({ id, name, agent, route, binaries, key, keyName, forbidden }) => ({ id, name, agent, route, binary: binaries.length > 0, key: key !== null, ...(keyName ? { keyName } : {}), forbidden }));
 }
 
 /// What the app says of an agent turned on: a CLI chosen in Settings, whether a key is kept for

@@ -111,7 +111,7 @@ private struct AgentCard: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    SecureField("API key", text: $key, prompt: Text("Paste your \(agent.name) key"))
+                    SecureField("API key", text: $key, prompt: Text("Paste your \(agent.keyName ?? "\(agent.name) key")"))
                         .textFieldStyle(.plain)
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)

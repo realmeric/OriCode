@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline";
 import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { agent, change, check, isOn, lookUp, registry, turnedOn, turnOn, unasked, type Setting } from "./agents.ts";
+import { antigravity } from "./antigravity-provider.ts";
 import { claude } from "./claude.ts";
 import { deepseek, meta, openrouter, zai } from "./claude-compatible.ts";
 import { codex } from "./codex-provider.ts";
@@ -27,6 +28,7 @@ const providers = new Map<string, Provider>([
   [opencode.id, opencode],
   [pi.id, pi],
   [commandcode.id, commandcode],
+  [antigravity.id, antigravity],
 ]);
 const sessions = new Map<string, Session>();
 /// Agents whose models were read while they could run; hello's list for one signed out is a fallback.
