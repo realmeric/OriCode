@@ -13,7 +13,7 @@ extension AppModel {
     func loadCommands(for chat: Chat) {
         let cwd = chat.cwd
         let agent = chat.providerID
-        guard slashCommands[agent]?[cwd] == nil else { return }
+        guard self.agent(for: chat).capabilities.commands, slashCommands[agent]?[cwd] == nil else { return }
         slashCommands[agent, default: [:]][cwd] = []
         Task {
             let params: [String: JSON] = ["threadId": .string(chat.id.uuidString), "cwd": .string(cwd)]

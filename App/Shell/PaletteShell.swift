@@ -24,8 +24,7 @@ extension AppModel {
                         }, typed: { [weak self] line in
                             self?.runRow(line, title: "Run “\(line)”", id: "terminal.typed")
                         }, typedFirst: true))),
-            continueInClaudeCode,
-        ]
+        ] + [continueInAgent].compactMap { $0 }
     }
 
     private func runRow(_ line: String, title: String? = nil, id: String) -> PaletteItem {
@@ -37,10 +36,13 @@ extension AppModel {
         })
     }
 
-    /// The thread's session in Claude Code's own terminal interface, in a block opened full. The
-    /// app's CLI for the thread lets go of it first, so two processes never write one session, and
-    /// a thread already handed over opens the block it's in.
-    private var continueInClaudeCode: PaletteItem {
+    /// The thread's session in its agent's own terminal interface, Claude Code's for a Claude
+    /// thread, in a block opened full; nil for an agent with none. The app's CLI for the thread
+    /// lets go of it first, so two processes never write one session, and a thread already handed
+    /// over opens the block it's in.
+    private var continueInAgent: PaletteItem? {
+        let agent = self.agent(for: chat)
+        guard let handoff = agent.capabilities.handoff else { return nil }
         let unavailable: String? = {
             guard let chat else { return "No thread is open" }
             guard chat.sessionId != nil else { return "Send it a message first" }
@@ -49,8 +51,8 @@ extension AppModel {
             if !conversation(for: chat).heads.isEmpty { return "Wait for its tasks to finish" }
             return nil
         }()
-        return command("terminal.claude", "Continue in Claude Code", icon: "arrow.up.forward.app",
-                       subtitle: "Turns taken there won't show here", keywords: ["claude", "cli", "resume", "session", "terminal"],
+        return command("terminal.claude", "Continue in \(agent.name)", icon: "arrow.up.forward.app",
+                       subtitle: "Turns taken there won't show here", keywords: [agent.agent.lowercased(), "cli", "resume", "session", "terminal"],
                        unavailable: unavailable) { [weak self] in
             guard let self, let chat, let session = chat.sessionId else { return }
             if let block = handedOff[chat.id].flatMap({ shellBlocks[$0] }), block.running {
@@ -59,7 +61,7 @@ extension AppModel {
             }
             Task {
                 _ = try? await self.engine.request("close", ["threadId": .string(chat.id.uuidString)])
-                if let block = self.runCommand("claude --resume \(session.shellQuoted)", forModel: false) {
+                if let block = self.runCommand(handoff.replacingOccurrences(of: "{session}", with: session.shellQuoted), forModel: false) {
                     self.handOff(chat, to: block)
                 }
             }

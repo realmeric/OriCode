@@ -317,17 +317,19 @@ private struct GeneralPane: View {
                 }
                 .menuRow()
             }
-            SettingsRow(title: "Effort", detail: effortDetail) {
-                Picker("Effort", selection: $newEffort) {
-                    Text(lastPicked(lastEffort.nonEmpty.map(ModelMenu.effortName) ?? "Default")).tag("")
-                    Divider()
-                    Text(startingOption?.defaultEffort.map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default").tag(NewThreads.claudeDefault)
-                    ForEach(levels, id: \.self) { level in
-                        Text(ModelMenu.effortName(level)).tag(level)
+            if !agent.levels.isEmpty {
+                SettingsRow(title: "Effort", detail: effortDetail) {
+                    Picker("Effort", selection: $newEffort) {
+                        Text(lastPicked(lastEffort.nonEmpty.map(ModelMenu.effortName) ?? "Default")).tag("")
+                        Divider()
+                        Text(startingOption?.defaultEffort.map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default").tag(NewThreads.claudeDefault)
+                        ForEach(levels, id: \.self) { level in
+                            Text(ModelMenu.effortName(level)).tag(level)
+                        }
                     }
+                    .menuRow()
+                    .disabled(startingOption?.efforts.isEmpty == true)
                 }
-                .menuRow()
-                .disabled(startingOption?.efforts.isEmpty == true)
             }
             SettingsRow(title: "Fast mode", detail: "Only on models that have it.") {
                 Picker("Fast mode", selection: $newFast) {
@@ -338,15 +340,17 @@ private struct GeneralPane: View {
                 }
                 .menuRow()
             }
-            SettingsRow(title: "Permissions", detail: startingMode.summary) {
-                Picker("Permissions", selection: $newMode) {
-                    Text(lastPicked(PermissionModeOption(rawValue: lastMode)?.title)).tag("")
-                    Divider()
-                    ForEach(PermissionModeOption.allCases) { option in
-                        Label(option.title, systemImage: option.icon).tag(option.rawValue)
+            if !agent.permissionModes.isEmpty {
+                SettingsRow(title: "Permissions", detail: startingMode.summary) {
+                    Picker("Permissions", selection: $newMode) {
+                        Text(lastPicked(PermissionModeOption(rawValue: lastMode)?.title)).tag("")
+                        Divider()
+                        ForEach(agent.permissionModes) { option in
+                            Label(option.title, systemImage: option.icon).tag(option.rawValue)
+                        }
                     }
+                    .menuRow()
                 }
-                .menuRow()
             }
         }
         SectionHeading("Engine")
@@ -371,17 +375,20 @@ private struct GeneralPane: View {
         current.map { "Last picked (\($0))" } ?? "Last picked"
     }
 
+    /// The agent new threads start on.
+    private var agent: ProviderInfo { model.agent(for: nil) }
+
     /// The fixed model's levels, or every level some model has while the model follows the last
-    /// pick. Never Ultracode, which a new thread doesn't start in.
+    /// pick, as far as the agent takes them. Never Ultracode, which a new thread doesn't start in.
     private var levels: [String] {
-        let options = model.models.filter { newModel.isEmpty || $0.id == newModel }
+        let options = model.models.filter { newModel.isEmpty || $0.id == newModel }.map(agent.narrowing)
         let order = ["low", "medium", "high", "xhigh", "max"]
         return order.filter { level in options.contains { $0.levels.contains(level) } }
     }
 
     /// The model a new thread starts on.
     private var startingOption: ModelOption? {
-        model.models.first { $0.id == (newModel.nonEmpty ?? lastModel) }
+        model.models.first { $0.id == (newModel.nonEmpty ?? lastModel) }.map(agent.narrowing)
     }
 
     /// Where the CLI's default lands for the model a new thread starts on.
@@ -416,6 +423,7 @@ private struct GeneralPane: View {
 private struct ConversationPane: View {
     @AppStorage(TranscriptSettings.showTime) private var showTime = false
     @AppStorage(TranscriptSettings.showCost) private var showCost = false
+    @Environment(AppModel.self) private var model
     @AppStorage(Limit.goOnKey) private var goOn = true
 
     var body: some View {
@@ -429,13 +437,17 @@ private struct ConversationPane: View {
                 Toggle("What it cost", isOn: $showCost).labelsHidden().toggleStyle(.switch)
             }
         }
-        SectionHeading("At a usage limit")
-        SettingsCard {
-            SettingsRow(
-                title: "Go on when a limit resets",
-                detail: "A thread stopped at Claude's session limit carries on by itself once the limit resets. For a weekly limit, turn it on in the limit's card."
-            ) {
-                Toggle("Go on when a limit resets", isOn: $goOn).labelsHidden().toggleStyle(.switch)
+        // Only agents whose limits reach the app, and that can pick a thread back up, wait them out.
+        let waiting = model.providers.filter { $0.capabilities.limits && $0.capabilities.resume }
+        if !waiting.isEmpty {
+            SectionHeading("At a usage limit")
+            SettingsCard {
+                SettingsRow(
+                    title: "Go on when a limit resets",
+                    detail: "A thread stopped at \(waiting.map { "\($0.agent)'s" }.formatted(.list(type: .or))) session limit carries on by itself once the limit resets. For a weekly limit, turn it on in the limit's card."
+                ) {
+                    Toggle("Go on when a limit resets", isOn: $goOn).labelsHidden().toggleStyle(.switch)
+                }
             }
         }
     }

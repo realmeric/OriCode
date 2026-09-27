@@ -87,7 +87,7 @@ private struct UsageCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 ClaudeMark().frame(width: 14, height: 14)
-                Text("Claude").font(Type.body.weight(.semibold)).foregroundStyle(Ink.primary)
+                Text(model.agent(for: chat).agent).font(Type.body.weight(.semibold)).foregroundStyle(Ink.primary)
                 if let plan = model.usage?.plan {
                     Text(plan.capitalized).font(Type.secondary).foregroundStyle(Ink.secondary)
                 }

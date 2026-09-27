@@ -34,9 +34,11 @@ struct OriCodeCommands: Commands {
             Button(model.shellPrompt ? "Leave Shell Prompt" : "Shell Prompt") { model.toggleShellPrompt() }
                 .keyboardShortcut(shortcuts.key(.shellPrompt))
                 .disabled(model.project == nil)
-            Button(model.headsShown ? "Hide Heads" : "Show Heads") { model.toggleHeads() }
-                .keyboardShortcut(shortcuts.key(.heads))
-                .disabled(model.chat == nil)
+            if agent.capabilities.heads {
+                Button(model.headsShown ? "Hide Heads" : "Show Heads") { model.toggleHeads() }
+                    .keyboardShortcut(shortcuts.key(.heads))
+                    .disabled(model.chat == nil)
+            }
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut(shortcuts.key(.findFile))
                 .disabled(model.chat == nil)
@@ -49,8 +51,10 @@ struct OriCodeCommands: Commands {
             Button("Stop") { model.stop() }
                 .keyboardShortcut(shortcuts.key(.stop))
                 .disabled(!(model.currentConversation?.running ?? false))
-            Button("Compact") { model.send("/compact") }
-                .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))
+            if agent.capabilities.compact {
+                Button("Compact") { model.send("/compact") }
+                    .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))
+            }
             Divider()
             Button("Switch Branch…") { model.openBranchSwitcher() }
                 .keyboardShortcut(shortcuts.key(.switchBranch))
@@ -82,7 +86,7 @@ struct OriCodeCommands: Commands {
                     }
                 }
             }
-            if let option = model.models.first(where: { $0.id == modelBinding.wrappedValue }), !option.levels.isEmpty {
+            if let option = model.option(for: model.chat), !option.levels.isEmpty {
                 Picker("Effort", selection: effortBinding) {
                     Text(model.defaultLevel(for: model.chat).map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default").tag("")
                     ForEach(option.levels, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
@@ -94,9 +98,11 @@ struct OriCodeCommands: Commands {
             Button("Back to Defaults") { model.resetToDefaults(for: model.chat) }
                 .disabled(model.project == nil || model.atDefaults(model.chat))
             Toggle("Fast Mode", isOn: fastBinding)
-                .disabled(!(model.models.first { $0.id == modelBinding.wrappedValue }?.fast ?? false))
-            Picker("Permission Mode", selection: modeBinding) {
-                ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
+                .disabled(!(model.option(for: model.chat)?.fast ?? false))
+            if !agent.permissionModes.isEmpty {
+                Picker("Permission Mode", selection: modeBinding) {
+                    ForEach(agent.permissionModes) { Text($0.title).tag($0.rawValue) }
+                }
             }
             Divider()
             Button(model.chat?.pinned == true ? "Unpin Thread" : "Pin Thread") {
@@ -119,6 +125,9 @@ struct OriCodeCommands: Commands {
     }
 
     private var shortcuts: Shortcuts { model.shortcuts }
+
+    /// What the open thread's agent offers, or the next thread's.
+    private var agent: ProviderInfo { model.agent(for: model.chat) }
 
     private var modelBinding: Binding<String> {
         Binding {

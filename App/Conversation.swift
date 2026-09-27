@@ -233,7 +233,8 @@ final class Conversation {
     private(set) var running = false
     /// Subagents, commands and workflows out for this thread, as the engine last listed them.
     let heads = Heads()
-    /// "Can't reach Claude…" while the CLI retries; a live line, never stored.
+    /// "Trying again, 1 of 10…" while the CLI retries, which the transcript puts after "Can't
+    /// reach" and the agent; a live line, never stored.
     private(set) var retrying: String?
     /// Fast mode as the CLI last reported it: on, off or cooldown, and why it can't be on.
     /// What the thread's own CLI says it runs at, once it has started: the level (nil when the
@@ -527,7 +528,7 @@ final class Conversation {
         case "retrying":
             let attempt = event.body["attempt"]?.int ?? 0
             let max = event.body["max"]?.int ?? 0
-            retrying = "Can't reach Claude. Trying again, \(attempt) of \(max)…"
+            retrying = "Trying again, \(attempt) of \(max)…"
         case "turn.started":
             running = true
             // A turn nobody sent, a background agent reporting back, doesn't carry the last one's error.

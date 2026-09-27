@@ -788,10 +788,12 @@ private struct ReviewFooter: View {
                             commit(reviewedOnly)
                             return .handled
                         }
-                    Button(review.writing ? "Writing…" : "Write Message") { model.writeReviewMessage(reviewedOnly: reviewedOnly) }
-                        .disabled(review.writing)
-                        .help("Haiku writes a message from the diff")
-                        .buttonStyle(.action)
+                    if model.agent(for: model.chat).capabilities.commitMessage {
+                        Button(review.writing ? "Writing…" : "Write Message") { model.writeReviewMessage(reviewedOnly: reviewedOnly) }
+                            .disabled(review.writing)
+                            .help("Haiku writes a message from the diff")
+                            .buttonStyle(.action)
+                    }
                     Button(reviewedOnly ? "Commit Reviewed" : "Commit") { commit(reviewedOnly) }
                         .buttonStyle(.action(prominent: true))
                         .disabled(!canCommit)

@@ -37,7 +37,7 @@ extension AppModel {
             let conversation = conversation(for: chat)
             // A thread handed to Claude Code in a block goes on there.
             let handedOver = handedOff[chat.id].flatMap { shellBlocks[$0] }?.running == true
-            guard !conversation.running, chat.sessionId != nil, !handedOver else {
+            guard !conversation.running, chat.sessionId != nil, !handedOver, agent(for: chat).capabilities.resume else {
                 conversation.cancelResume()
                 continue
             }

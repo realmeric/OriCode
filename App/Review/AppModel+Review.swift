@@ -647,11 +647,13 @@ extension AppModel {
     func writeReviewMessage(reviewedOnly: Bool) {
         guard let folder = review.folder, !review.writing else { return }
         let text = commitPlan(reviewedOnly: reviewedOnly).text
+        let params: [String: JSON] = ["cwd": .string(folder), "diff": .string(text)]
+        let agent = providerID(for: chat)
         review.writing = true
         review.problem = nil
         Task {
             do {
-                let reply = try await engine.request("git.message", ["cwd": .string(folder), "diff": .string(text)])
+                let reply = try await engine.request("git.message", .object(params.naming(agent)))
                 review.message = reply["message"]?.string ?? ""
             } catch {
                 review.problem = error.localizedDescription

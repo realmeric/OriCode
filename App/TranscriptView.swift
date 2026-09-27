@@ -54,7 +54,7 @@ struct TranscriptView: View {
                         .transition(Self.arrival(of: entry.first))
                 }
                 if let retrying = conversation.retrying {
-                    Text(retrying)
+                    Text("Can't reach \(model.agent(for: conversation.chat).agent). \(retrying)")
                         .font(Type.secondary)
                         .foregroundStyle(Ink.secondary)
                         .padding(.top, 14)

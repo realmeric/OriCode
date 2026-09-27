@@ -27,6 +27,12 @@ extension AppModel {
         // Waiting on you from before a quit, the thread has no CLI to send into.
         guard !conversation.waitingAfterQuit else { return false }
         if conversation.running || !conversation.waiting.isEmpty {
+            // An agent that can't take a message mid-turn gets it after the turn, as ⌥Return would.
+            guard agent(for: chat).capabilities.steer else {
+                conversation.enqueue(trimmed, images: images)
+                draftAttachments = []
+                return true
+            }
             sendIntoTurn(conversation.sentIntoTurn(Self.asked(trimmed, images), typed: trimmed, images: images), in: chat)
         } else {
             guard send(trimmed, images: images, in: chat) else { return false }
@@ -59,7 +65,7 @@ extension AppModel {
         // make two writers and fork it.
         if let block = handedOff[chat.id] {
             guard shellBlocks[block]?.running != true else {
-                say("This thread is open in Claude Code in one of its blocks. Quit it there to go on here.")
+                say("This thread is open in \(agent(for: chat).name) in one of its blocks. Quit it there to go on here.")
                 return false
             }
             handedOff[chat.id] = nil
@@ -266,7 +272,7 @@ extension AppModel {
             notifier.post(title: chat.title, body: summary, chatID: chat.id)
         } else if let limit = conversation(for: chat).turnLimit {
             let when = chat.resumeAt.map { "It goes on at \(Limit.time($0))." } ?? "Resets at \(Limit.time(limit.resetsAt))."
-            notifier.post(title: chat.title, body: "Stopped at Claude's \(Limit.name(of: limit.window)). " + when, chatID: chat.id)
+            notifier.post(title: chat.title, body: "Stopped at \(agent(for: chat).agent)'s \(Limit.name(of: limit.window)). " + when, chatID: chat.id)
         } else if event.body["stopReason"]?.string != "interrupted",
                   // A thread still working, on the messages its turn left waiting or its queue's
                   // next, isn't finished: Finished comes when the last one ends.
@@ -388,7 +394,7 @@ extension AppModel {
         let running = conversation(for: chat).running
         Task {
             let reply = try? await engine.request("setMode", ["threadId": .string(chat.id.uuidString), "permissionMode": .string(mode)])
-            if running, reply?["applied"]?.bool == false {
+            if running, !agent(for: chat).capabilities.modeLive || reply?["applied"]?.bool == false {
                 modeNote = "from the next reply"
                 try? await Task.sleep(for: .seconds(2))
                 modeNote = nil

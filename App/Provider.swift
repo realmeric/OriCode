@@ -25,6 +25,14 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
         /// The Terminal line that opens a thread's session in the agent's own CLI, `{session}`
         /// standing for its id.
         let handoff: String?
+        /// It asks before nothing, so a thread on it has no permission modes. Only an agent that
+        /// runs that way sends it.
+        var unsupervised: Bool? = nil
+
+        /// What an agent hello doesn't list can do: nothing.
+        static let none = Capabilities(
+            steer: false, resume: false, modeLive: false, attachments: false, heads: false, stopTask: false, limits: false,
+            usage: false, commands: false, compact: false, commitMessage: false, handoff: nil)
     }
 
     let id: String
@@ -52,6 +60,33 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
             usage: true, commands: true, compact: true, commitMessage: true, handoff: "claude --resume {session}"),
         levels: ["low", "medium", "high", "xhigh", "max", Effort.ultracode],
         modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"])
+}
+
+extension ProviderInfo {
+    /// A thread's agent that hello doesn't list, one turned off or gone: it offers nothing.
+    static func unlisted(_ id: String) -> ProviderInfo {
+        ProviderInfo(id: id, name: id, agent: id, state: .missing, hint: nil, cli: nil, version: nil,
+                     capabilities: .none, levels: [], modes: [])
+    }
+
+    var unsupervised: Bool { capabilities.unsupervised == true }
+
+    /// The modes a thread on it picks from, in the tiles' order; none when it asks before nothing.
+    var permissionModes: [PermissionModeOption] {
+        unsupervised ? [] : PermissionModeOption.allCases.filter { modes.contains($0.rawValue) }
+    }
+
+    /// A model as a thread on this agent runs it: only the levels the agent takes, and Ultracode
+    /// only when it's one of them. Claude Code's come back as they are.
+    func narrowing(_ option: ModelOption) -> ModelOption {
+        let efforts = option.efforts.filter(levels.contains)
+        let ultracode = levels.contains(Effort.ultracode)
+        guard efforts != option.efforts || !ultracode && (option.ultra || option.ultraBlocked != nil) else { return option }
+        return ModelOption(
+            id: option.id, name: option.name, description: option.description, efforts: efforts, fast: option.fast,
+            defaultEffort: option.defaultEffort.flatMap { efforts.contains($0) ? $0 : nil },
+            ultra: option.ultra && ultracode, ultraBlocked: ultracode ? option.ultraBlocked : nil, more: option.more, needs: option.needs)
+    }
 }
 
 /// A model as the defaults name it. Claude Code's keep the bare id they had before there were
@@ -143,6 +178,11 @@ extension AppModel {
         guard was != .ready, found.state == .ready else { return }
         pickUpAfterQuit()
         scheduleResumes()
+    }
+
+    /// What a thread's agent offers, or with no thread the next one's.
+    func agent(for chat: Chat?) -> ProviderInfo {
+        provider(for: chat) ?? .unlisted(providerID(for: chat))
     }
 
     /// The agent a new thread starts on: the one Settings fixes, or the last one picked, as long

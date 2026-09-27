@@ -94,9 +94,18 @@ private struct MarkPage: View {
                     .padding(.top, 10)
             }
             Spacer(minLength: 0)
-            ModeTiles(mode: Binding(get: { state.mode.rawValue }, set: { model.setPermissionMode($0, for: chat) }),
-                      preview: previewingReset ? PermissionModeOption(rawValue: model.threadDefaults.permissionMode) : nil,
-                      compact: false)
+            if !state.modes.isEmpty {
+                ModeTiles(modes: state.modes, mode: Binding(get: { state.mode.rawValue }, set: { model.setPermissionMode($0, for: chat) }),
+                          preview: previewingReset ? PermissionModeOption(rawValue: model.threadDefaults.permissionMode) : nil,
+                          compact: false)
+            } else if state.unsupervised {
+                // Where the tiles' line would be, since it says the same kind of thing.
+                Text("\(state.agent.agent) runs unsupervised · nothing waits for you")
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.secondary)
+                    .lineLimit(1)
+                    .frame(height: 16)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -174,7 +183,7 @@ private struct MarkPage: View {
         let previewed = held == nil ? hovered : nil
         let words: (String, String?)
         if blockedNote || (previewed == Effort.ultracode && blocked(state)) {
-            words = ("Needs dynamic workflows, see /config in Claude Code", nil)
+            words = ("Needs dynamic workflows, see /config in \(state.agent.name)", nil)
         } else if let problem = state.fastProblem, previewed == nil, held == nil {
             words = (problem, nil)
         } else if let missing = state.ultracodeMissing, previewed == nil, held == nil {

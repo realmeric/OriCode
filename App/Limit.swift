@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Claude's plan limits as a thread meets them: a turn one of them refused says which, and when
+/// An agent's plan limits as a thread meets them: a turn one of them refused says which, and when
 /// it resets. The session limit resets within five hours, and a thread it stopped goes on by
 /// itself then, the way the Claude Code app's does, unless Settings says not to; a weekly one
 /// only says when, unless its card is told to wait for it.
@@ -52,11 +52,12 @@ enum Limit {
 /// A turn stopped at one of the plan's limits, before the thread's latest: what stopped it and
 /// when that reset.
 struct LimitLine: View {
+    @Environment(AppModel.self) private var model
     let resetsAt: Date
     let window: String?
 
     var body: some View {
-        Text("Stopped at Claude's \(Limit.name(of: window)), which \(resetsAt > .now ? "resets" : "reset") at \(Limit.time(resetsAt)).")
+        Text("Stopped at \(model.agent(for: model.chat).agent)'s \(Limit.name(of: window)), which \(resetsAt > .now ? "resets" : "reset") at \(Limit.time(resetsAt)).")
             .font(Type.secondary)
             .foregroundStyle(Ink.secondary)
     }
@@ -75,6 +76,7 @@ struct LimitCard: View {
         // Drawn again once, at the reset. The countdown in between is the system's to draw.
         TimelineView(.explicit([resetsAt])) { _ in
             let passed = resetsAt <= .now
+            let agent = model.agent(for: model.chat)
             let when = Limit.weekly(window) ? resetsAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()) : Limit.time(resetsAt)
             HStack(spacing: 14) {
                 GlassLevel(level: 1, side: 34)
@@ -94,7 +96,8 @@ struct LimitCard: View {
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 Spacer(minLength: 12)
-                if !passed {
+                // Going on at the reset needs the agent to pick its session back up.
+                if !passed, agent.capabilities.resume {
                     Toggle("Go on when it resets", isOn: Binding(get: { resumes }, set: { model.goOn($0, at: resetsAt) }))
                         .toggleStyle(.switch)
                         .controlSize(.small)
@@ -105,7 +108,7 @@ struct LimitCard: View {
             .padding(14)
             .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("Stopped at Claude's \(Limit.name(of: window))")
+            .accessibilityLabel("Stopped at \(agent.agent)'s \(Limit.name(of: window))")
         }
     }
 }

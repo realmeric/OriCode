@@ -24,7 +24,17 @@ extension AppModel {
         let cutOff = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.quitMidTurn }))) ?? []
         for chat in cutOff where agentReady(for: chat) {
             let conversation = conversation(for: chat)
-            guard !conversation.waitingAfterQuit, !conversation.running else { continue }
+            guard !conversation.running else { continue }
+            // An agent that can't pick its session back up would start over with no idea what
+            // "continue" means, so the thread only says what happened.
+            let agent = self.agent(for: chat)
+            guard agent.capabilities.resume else {
+                conversation.stopAfterQuit()
+                chat.quitMidTurn = false
+                conversation.note("OriCode quit in the middle of this turn, and \(agent.agent) can't pick it back up.")
+                continue
+            }
+            guard !conversation.waitingAfterQuit else { continue }
             // A quit before the session had begun leaves nothing to go back to.
             guard chat.sessionId != nil else {
                 chat.quitMidTurn = false

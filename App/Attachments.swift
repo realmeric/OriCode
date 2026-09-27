@@ -62,14 +62,20 @@ struct ImageAttachment: Identifiable, Hashable {
 }
 
 extension AppModel {
+    /// Whether the open thread's agent, or the next thread's, takes images.
+    var takesImages: Bool {
+        agent(for: chat).capabilities.attachments
+    }
+
     func attach(_ images: [NSImage]) {
+        guard takesImages else { return }
         let added = images.compactMap(ImageAttachment.init(image:))
         guard !added.isEmpty else { return }
         draftAttachments.append(contentsOf: added)
     }
 
     func attach(fileAt url: URL) -> Bool {
-        guard let attachment = ImageAttachment(url: url) else { return false }
+        guard takesImages, let attachment = ImageAttachment(url: url) else { return false }
         draftAttachments.append(attachment)
         return true
     }
@@ -78,7 +84,7 @@ extension AppModel {
     func installPasteMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                  event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, project != nil,
+                  event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, project != nil, takesImages,
                   // A paste in an open block is its program's.
                   !(event.window?.firstResponder is BlockTerminalView)
             else { return event }

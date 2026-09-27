@@ -78,6 +78,8 @@ export type Capabilities = {
   /// The Terminal line that opens a thread's session in the agent's own CLI, `{session}`
   /// standing for its id, or null when there's none.
   handoff: string | null;
+  /// It asks before nothing, Pi and Command Code, so a thread on it has no permission modes.
+  unsupervised?: boolean;
 };
 
 /// Whether the agent can run: its CLI, what that CLI says its version is, and, when it can't

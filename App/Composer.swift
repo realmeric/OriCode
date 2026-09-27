@@ -117,7 +117,7 @@ struct Composer: View {
             // Tab at the prompt wants the shell's commands; asked once, as the prompt opens.
             if prompt { model.loadShellCommands() }
         }
-        .onDrop(of: [.image, .fileURL], isTargeted: $dropTarget) { providers in
+        .onDrop(of: offers.attachments ? [.image, .fileURL] : [], isTargeted: $dropTarget) { providers in
             accept(providers)
         }
         // The finger is on the trackpad for the whole drag, so this says "let go here".
@@ -359,9 +359,9 @@ struct Composer: View {
             .padding(.vertical, 9)
             .padding(.leading, model.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
-                attachButton
+                if offers.attachments { attachButton }
                 ModelMenu(chat: model.chat)
-                UsageGlass(chat: model.chat)
+                if offers.usage { UsageGlass(chat: model.chat) }
             }
             .frame(height: 36)
             Isolated { sendButton }
@@ -447,7 +447,13 @@ struct Composer: View {
         let send = shortcuts.label(.send)
         if model.shellPrompt { return "Run (\(send))" }
         if stops { return "Stop (\(shortcuts.label(.stop)))" }
-        return working ? "Send now (\(send)), or after this turn (\(shortcuts.label(.queue)))" : "Send (\(send))"
+        guard working else { return "Send (\(send))" }
+        return offers.steer ? "Send now (\(send)), or after this turn (\(shortcuts.label(.queue)))" : "Send after this turn (\(send))"
+    }
+
+    /// What the thread's agent can do, or the next thread's.
+    private var offers: ProviderInfo.Capabilities {
+        model.agent(for: model.chat).capabilities
     }
 
     private func placeholder(shell: Bool) -> String {

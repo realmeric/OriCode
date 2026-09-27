@@ -31,6 +31,13 @@ struct PickerState {
         PermissionModeOption(rawValue: chat?.permissionMode ?? model.startingPermissionMode) ?? .ask
     }
 
+    var agent: ProviderInfo { model.agent(for: chat) }
+
+    /// The tiles: none for an agent with no modes, or one that asks before nothing.
+    var modes: [PermissionModeOption] { agent.permissionModes }
+
+    var unsupervised: Bool { agent.unsupervised }
+
     /// Why fast mode, turned on, isn't running fast right now, in the app's words.
     var fastProblem: String? {
         guard fastAsked else { return nil }
@@ -377,9 +384,10 @@ struct ModelRow: View {
     }
 }
 
-/// The permission modes as five tiles, the highlight moving to the chosen one, with its name
-/// and line under them; a hovered tile previews its line.
+/// The permission modes the agent has as tiles, five for Claude Code, the highlight moving to the
+/// chosen one, with its name and line under them; a hovered tile previews its line.
 struct ModeTiles: View {
+    let modes: [PermissionModeOption]
     @Binding var mode: String
     /// The mode Back to Defaults would pick, lit as if hovered.
     let preview: PermissionModeOption?
@@ -392,7 +400,7 @@ struct ModeTiles: View {
         let shown = hovered ?? current
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                ForEach(PermissionModeOption.allCases) { option in
+                ForEach(modes) { option in
                     let chosen = option == current
                     Button {
                         withAnimation(Motion.move) { mode = option.rawValue }
@@ -423,7 +431,7 @@ struct ModeTiles: View {
             }
             .accessibilityRepresentation {
                 Picker("Permission mode", selection: $mode) {
-                    ForEach(PermissionModeOption.allCases) { Text($0.title).tag($0.rawValue) }
+                    ForEach(modes) { Text($0.title).tag($0.rawValue) }
                 }
                 .pickerStyle(.segmented)
             }

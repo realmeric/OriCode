@@ -294,10 +294,10 @@ final class AppModel {
     }
 
     /// The model a thread runs on: its own, or with no thread the one the next starts on, or
-    /// the first the SDK lists, which is Claude Code's default.
+    /// the first the SDK lists, which is Claude Code's default; with only the levels its agent takes.
     func option(for chat: Chat?) -> ModelOption? {
         let id = chat == nil ? startingModel : chat?.model
-        return models.first { $0.id == id } ?? models.first
+        return (models.first { $0.id == id } ?? models.first).map(agent(for: chat).narrowing)
     }
 
     init(container: ModelContainer) {

@@ -141,7 +141,7 @@ extension AppModel {
         if conversation.running {
             now.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop)) { [weak self] in self?.stop() })
         } else {
-            if chat.sessionId != nil, chat.contextWindow > 0, Double(chat.contextUsed) / Double(chat.contextWindow) > 0.7 {
+            if chat.sessionId != nil, agent(for: chat).capabilities.compact, chat.contextWindow > 0, Double(chat.contextUsed) / Double(chat.contextWindow) > 0.7 {
                 now.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left",
                                    subtitle: "\(Int(Double(chat.contextUsed) / Double(chat.contextWindow) * 100))% of the context used") { [weak self] in
                     self?.send("/compact")
@@ -215,6 +215,7 @@ extension AppModel {
         let chat = chat
         let running = currentConversation?.running == true
         let option = option(for: chat)
+        let agent = self.agent(for: chat)
         let noThread: String? = chat == nil ? "No thread is open" : nil
         let noProject: String? = project == nil ? "Add a project first" : nil
         let unsent: String? = chat?.started == true ? nil : noThread ?? "Send it a message first"
@@ -229,8 +230,10 @@ extension AppModel {
                              keywords: ["worktree"], unavailable: noProject) { [weak self] in self?.newWorktreeChat() })
         items.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
                              unavailable: running ? nil : "Nothing is running") { [weak self] in self?.stop() })
-        items.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left", keywords: ["context", "summarize"],
-                             unavailable: chat?.sessionId == nil ? "Nothing to compact yet" : busy) { [weak self] in self?.send("/compact") })
+        if agent.capabilities.compact {
+            items.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left", keywords: ["context", "summarize"],
+                                 unavailable: chat?.sessionId == nil ? "Nothing to compact yet" : busy) { [weak self] in self?.send("/compact") })
+        }
         items.append(command("thread.again", "Send the last message again", icon: "arrow.clockwise", keywords: ["retry", "resend"],
                              unavailable: lastUserText == nil ? "Nothing sent yet" : busy) { [weak self] in
             if let text = self?.lastUserText { self?.send(text) }
@@ -243,10 +246,13 @@ extension AppModel {
                              unavailable: unsent) { [weak self] in
             self?.copy(self?.threadMarkdown, saying: "Copied the thread.")
         })
-        items.append(command("thread.copySession", "Copy session ID", icon: "number", keywords: ["claude", "resume", "clipboard"],
-                             unavailable: chat?.sessionId == nil ? "No session yet" : nil) { [weak self] in
-            self?.copy(chat?.sessionId, saying: "Copied the session ID.")
-        })
+        // A session the agent can't pick up is no use to anyone.
+        if agent.capabilities.resume {
+            items.append(command("thread.copySession", "Copy session ID", icon: "number", keywords: [agent.agent.lowercased(), "resume", "clipboard"],
+                                 unavailable: chat?.sessionId == nil ? "No session yet" : nil) { [weak self] in
+                self?.copy(chat?.sessionId, saying: "Copied the session ID.")
+            })
+        }
         items.append(command("thread.pin", chat?.pinned == true ? "Unpin thread" : "Pin thread", icon: chat?.pinned == true ? "pin.slash" : "pin",
                              unavailable: unsent) { [weak self] in
             if let chat { withAnimation(Motion.move) { self?.togglePin(chat) } }
@@ -281,10 +287,12 @@ extension AppModel {
                                      keywords: ["thinking", "level", "ultracode"], icon: "gauge.with.dots.needle.67percent", unavailable: noProject,
                                      action: .list(PaletteList(title: "Effort", placeholder: "Search levels") { [weak self] in self?.effortChoices(named: false) ?? [] })))
         }
-        let mode = PermissionModeOption(rawValue: chat?.permissionMode ?? startingPermissionMode) ?? .ask
-        items.append(PaletteItem(id: "mode.list", kind: .command, title: "Permissions…", subtitle: mode.title,
-                                 keywords: ["mode", "ask", "plan", "auto", "accept edits"], icon: mode.icon, unavailable: noProject,
-                                 action: .list(PaletteList(title: "Permissions", placeholder: "Search modes") { [weak self] in self?.modeChoices(named: false) ?? [] })))
+        if !agent.permissionModes.isEmpty {
+            let mode = PermissionModeOption(rawValue: chat?.permissionMode ?? startingPermissionMode) ?? .ask
+            items.append(PaletteItem(id: "mode.list", kind: .command, title: "Permissions…", subtitle: mode.title,
+                                     keywords: ["mode", "ask", "plan", "auto", "accept edits"], icon: mode.icon, unavailable: noProject,
+                                     action: .list(PaletteList(title: "Permissions", placeholder: "Search modes") { [weak self] in self?.modeChoices(named: false) ?? [] })))
+        }
         if let option, option.fast {
             let on = chat.map(fastMode(of:)) ?? startingFast
             items.append(command("fast.toggle", on ? "Fast mode off" : "Fast mode on", icon: on ? "bolt.slash" : "bolt",
@@ -316,8 +324,10 @@ extension AppModel {
                                  unavailable: projects.count > 1 ? nil : "There's only one project",
                                  action: .list(PaletteList(title: "Project", placeholder: "Search projects") { [weak self] in self?.paletteProjects ?? [] })))
         items.append(command("project.add", "Add project…", icon: "folder.badge.plus", shortcut: shortcuts.label(.addProject)) { [weak self] in self?.addProject() })
-        items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: shortcuts.label(.heads), keywords: ["agents", "tasks", "running"],
-                             unavailable: noThread) { [weak self] in self?.toggleHeads() })
+        if agent.capabilities.heads {
+            items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: shortcuts.label(.heads), keywords: ["agents", "tasks", "running"],
+                                 unavailable: noThread) { [weak self] in self?.toggleHeads() })
+        }
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: shortcuts.label(.findFile), unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })
@@ -378,7 +388,7 @@ extension AppModel {
         items += levels.map { level in
             PaletteItem(id: "effort." + level, kind: .choice, title: prefix + ModelMenu.effortName(level),
                         subtitle: EffortScale.line(level).0, icon: "gauge.with.dots.needle.67percent", checked: current == level,
-                        unavailable: level == Effort.ultracode && !option.ultra ? "Needs dynamic workflows, see /config in Claude Code" : nil,
+                        unavailable: level == Effort.ultracode && !option.ultra ? "Needs dynamic workflows, see /config in \(agent(for: chat).name)" : nil,
                         action: .run { [weak self] in
                             guard let self else { return }
                             withAnimation(Motion.move) { self.setEffort(level, for: self.chat) }
@@ -390,7 +400,7 @@ extension AppModel {
     private func modeChoices(named: Bool) -> [PaletteItem] {
         guard project != nil else { return [] }
         let current = chat?.permissionMode ?? startingPermissionMode
-        return PermissionModeOption.allCases.map { mode in
+        return agent(for: chat).permissionModes.map { mode in
             PaletteItem(id: "mode." + mode.rawValue, kind: .choice, title: (named ? "Permissions: " : "") + mode.title, subtitle: mode.summary,
                         icon: mode.icon, checked: mode.rawValue == current,
                         action: .run { [weak self] in
@@ -420,13 +430,14 @@ extension AppModel {
         return texts.isEmpty ? nil : texts.joined(separator: "\n\n")
     }
 
-    /// The thread's messages and Claude's text, as Markdown.
+    /// The thread's messages and its agent's text, as Markdown.
     var threadMarkdown: String? {
         guard let items = currentConversation?.items else { return nil }
+        let speaker = "**\(agent(for: chat).agent)**\n\n"
         let parts = items.compactMap { item -> String? in
             switch item {
             case .user(_, let text, _, _): "**You**\n\n" + text
-            case .text(_, let text): "**Claude**\n\n" + text
+            case .text(_, let text): speaker + text
             default: nil
             }
         }

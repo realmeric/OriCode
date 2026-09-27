@@ -138,7 +138,8 @@ private struct HeadRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HeadLine(id: head.id, hovered: $hovered, stop: head.ending ? nil : { model.stop(head, in: chat) }) {
+            HeadLine(id: head.id, hovered: $hovered,
+                     stop: head.ending || !model.agent(for: chat).capabilities.stopTask ? nil : { model.stop(head, in: chat) }) {
                 icon
             } title: {
                 HStack(spacing: 6) {
@@ -308,7 +309,11 @@ private extension View {
 extension AppModel {
     func toggleHeads() {
         withAnimation(Motion.move) {
-            if headsShown { headsShown = false } else if chat != nil { openInIsland(.heads) }
+            if headsShown {
+                headsShown = false
+            } else if let chat, agent(for: chat).capabilities.heads {
+                openInIsland(.heads)
+            }
         }
     }
 
