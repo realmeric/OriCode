@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// An agent's colour and the two it pales toward as it heats: ember, at the rail's hot end and on
-/// its lamps, and white-hot, what a spark is born as. A thread on the agent draws its logo, its
-/// mark's dot and rays, the effort rail and the picker's head in these. As sRGB components, so
-/// SwiftUI and Core Animation draw the same colour.
+/// What a thread on an agent heats through: its base, then ember, at the rail's hot end and on its
+/// lamps, and white-hot, what a spark is born as. The effort rail, its sparks and the picker's head
+/// draw in these. As sRGB components, so SwiftUI and Core Animation draw the same colour.
 struct AgentInk: Equatable {
     let base: SIMD3<Double>
     let ember: SIMD3<Double>
@@ -11,7 +10,9 @@ struct AgentInk: Equatable {
 
     /// Claude's orange, #D97757, and the ember and white-hot the rail was first drawn in.
     static let claude = AgentInk(base: [0xD9 / 255, 0x77 / 255, 0x57 / 255], ember: [1, 0.86, 0.78], whiteHot: [1, 0.97, 0.92])
-    static let white = AgentInk(base: [1, 1, 1], ember: [1, 1, 1], whiteHot: [1, 1, 1])
+    /// An agent whose maker draws its mark in white. White can't pale any further, so its heat runs
+    /// from a cool silver, #8CA1B7, through ice, #EBF3FC, to white.
+    static let silver = AgentInk(base: [0x8C / 255, 0xA1 / 255, 0xB7 / 255], ember: [0xEB / 255, 0xF3 / 255, 0xFC / 255], whiteHot: [1, 1, 1])
 
     var color: Color { Color(base) }
     var emberColor: Color { Color(ember) }
@@ -30,37 +31,46 @@ extension CGColor {
     }
 }
 
-/// Each agent's colour, one apart from every other on the glass. Claude keeps its orange; each
-/// other agent starts from its maker's brand and takes the nearest free place on OKLCH's hue
-/// circle, 14 places about 26° apart, at a lightness between 0.68 and 0.86 where its hue reads
-/// best; a maker whose mark is black or white gets a place no other maker here owns. Ember and
-/// white-hot are the agent's hue at the lightness and chroma of Claude's.
+/// Each agent in its maker's colour, the one the maker draws its mark in on a dark background.
+/// Two agents may share a colour, as their makers do; the mark tells them apart.
 enum MarkPalette {
-    /// Base, ember and white-hot, as sRGB hex. An agent missing here is white.
-    private static let table: [String: (base: UInt32, ember: UInt32, whiteHot: UInt32)] = [
-        "grok": (0xEE6478, 0xFED9DB, 0xFFF6F6),
-        "cursor": (0xFEA845, 0xFADEC2, 0xFFF7EF),
-        "antigravity": (0xF1C530, 0xEFE3C0, 0xFDF8EB),
-        "openrouter": (0xC3D842, 0xE1E8C4, 0xF7FAED),
-        "opencode": (0x6ED26A, 0xD1ECCF, 0xF1FCF0),
-        "devin": (0x01C89B, 0xC5EEDE, 0xEDFCF6),
-        "zai": (0x4AEBEA, 0xBFEEED, 0xEBFCFC),
-        "codex": (0x00BAE1, 0xC1ECFA, 0xEEFBFF),
-        "meta": (0x299FF4, 0xCDE7FF, 0xF3F9FF),
-        "deepseek": (0x738EFF, 0xD9E3FF, 0xF6F8FE),
-        "copilot": (0xAC82FF, 0xE6DEFF, 0xF9F7FF),
-        "commandcode": (0xD67CE1, 0xF4D9F6, 0xFEF5FF),
-        "pi": (0xEF80BA, 0xFDD7E9, 0xFFF5F9),
+    /// Each maker's colour, from its brand page or its own site's logo. A maker whose mark is black
+    /// or white draws in white, as its own app does in dark mode. An agent missing here is white.
+    static let makers: [String: UInt32] = [
+        ProviderInfo.claudeID: 0xD97757,
+        "codex": 0xFFFFFF, "cursor": 0xFFFFFF, "opencode": 0xFFFFFF, "grok": 0xFFFFFF, "devin": 0xFFFFFF, "zai": 0xFFFFFF,
+        "commandcode": 0xFFFFFF,
+        "copilot": 0x8534F3,
+        // Pi's mark is three blocks, coral, blue and yellow; coral is its top.
+        "pi": 0xF09082,
+        "antigravity": 0x3186FF,
+        "deepseek": 0x4D6BFE,
+        // Volt, the glyph OpenRouter offers for dark backgrounds, as it is: its brand page asks
+        // that its marks not be recoloured.
+        "openrouter": 0xC8FF00,
+        "meta": 0x0064E0,
+    ]
+
+    /// Ember and white-hot for each maker with a colour: its hue at the lightness and chroma of
+    /// Claude's. Volt is lighter than Claude's ember already, so its own are paler still.
+    private static let heat: [String: (ember: UInt32, whiteHot: UInt32)] = [
+        "copilot": (0xE5DEFE, 0xF8F7FF),
+        "pi": (0xFFDAD3, 0xFFF6F4),
+        "antigravity": (0xD3E5FF, 0xF4F8FE),
+        "deepseek": (0xD9E3FF, 0xF6F8FE),
+        "openrouter": (0xE8FDC2, 0xF9FEF0),
+        "meta": (0xD4E5FF, 0xF4F8FE),
     ]
 
     static func ink(for agent: String) -> AgentInk {
         if agent == ProviderInfo.claudeID { return .claude }
-        guard let entry = table[agent] else { return .white }
-        return AgentInk(base: rgb(entry.base), ember: rgb(entry.ember), whiteHot: rgb(entry.whiteHot))
+        guard let mark = makers[agent], let heat = heat[agent] else { return .silver }
+        return AgentInk(base: rgb(mark), ember: rgb(heat.ember), whiteHot: rgb(heat.whiteHot))
     }
 
+    /// The agent's logo, its dot while it works and a worker's ray.
     static func color(for agent: String) -> Color {
-        ink(for: agent).color
+        Color(rgb(makers[agent] ?? 0xFFFFFF))
     }
 
     /// The colour of each lit ray, from the agent that holds it.

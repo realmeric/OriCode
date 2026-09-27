@@ -74,7 +74,7 @@ Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP o
 
 ## The marks in the model menu
 
-The model menu lists each agent's models under its name and its maker's logo, drawn in a colour of the agent's own, which the effort rail and the thread's mark take too. Claude's logo is Anthropic's. The logos of OpenAI (Codex), Anysphere (Cursor), GitHub (Copilot), OpenCode, xAI (Grok Build), Cognition (Devin), Pi, Google (Antigravity), Z.ai, DeepSeek, OpenRouter, Meta and Command Code belong to their makers, as each agent's name does. OriCode shows them only to mark each agent's models, none of those makers made or endorsed it, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where each came from.
+The model menu lists each agent's models under its name and its maker's logo, drawn in the colour its maker draws it in on a dark background, white where the maker's mark is black or white, which the effort rail and the thread's mark take too. Claude's logo is Anthropic's. The logos of OpenAI (Codex), Anysphere (Cursor), GitHub (Copilot), OpenCode, xAI (Grok Build), Cognition (Devin), Pi, Google (Antigravity), Z.ai, DeepSeek, OpenRouter, Meta and Command Code belong to their makers, as each agent's name does. OriCode shows them only to mark each agent's models, none of those makers made or endorsed it, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where each came from.
 
 ## Building
 

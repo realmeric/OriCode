@@ -19,7 +19,7 @@ OriCode's own code is under the MIT license in LICENSE. It builds on the followi
 
 - The Claude logo in `App/Assets.xcassets/claude.imageset` comes from [Simple Icons](https://simpleicons.org), whose icon files are CC0. Claude and its logo are trademarks of Anthropic PBC. OriCode shows the logo only to mark Claude's models and isn't made or endorsed by Anthropic.
 
-Every other agent's logo sits in `App/Assets.xcassets/<agent>.imageset` as a one-colour SVG, the mark alone without its wordmark, and belongs to its maker. OriCode tints each in a colour of its own to mark that agent's models, and isn't made or endorsed by any of them. Taken on 2026-09-27 from:
+Every other agent's logo sits in `App/Assets.xcassets/<agent>.imageset` as a one-colour SVG, the mark alone without its wordmark, and belongs to its maker. OriCode draws each in its maker's own colour, or in white where the maker's mark is black or white, to mark that agent's models, and isn't made or endorsed by any of them. Taken on 2026-09-27 from:
 
 - Codex: the OpenAI Blossom as [developers.openai.com/codex](https://developers.openai.com/codex) draws it. OpenAI's trademark; its terms are at [openai.com/brand](https://openai.com/brand/).
 - Cursor: the cube from the logo files on [cursor.com/brand](https://cursor.com/brand). Anysphere's trademark.
@@ -32,5 +32,5 @@ Every other agent's logo sits in `App/Assets.xcassets/<agent>.imageset` as a one
 - Command Code: the ring and ⌘ of its [symbol](https://commandcode.ai/brand), without the tile behind them.
 - Z.ai: Simple Icons' `zdotai`, CC0, drawn from Z.ai's own logo. Z.ai's trademark.
 - DeepSeek: the whale from [deepseek.com](https://www.deepseek.com/)'s header. DeepSeek's trademark.
-- OpenRouter: the glyph from [openrouter.ai/brand](https://openrouter.ai/brand). OpenRouter's trademark.
+- OpenRouter: the glyph from [openrouter.ai/brand](https://openrouter.ai/brand), in Volt, as that page offers it for dark backgrounds. OpenRouter's trademark.
 - Meta: Simple Icons' `meta`, CC0. Meta's trademark; see [Meta's brand resources](https://www.meta.com/brand/resources/meta/company-brand/).

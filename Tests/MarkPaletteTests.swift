@@ -4,7 +4,7 @@ import SwiftUI
 import Testing
 @testable import OriCode
 
-/// Each agent's colour and logo: apart from every other agent's, on a thread's mark, the dot while
+/// Each agent's colour and logo: its maker's own, on a thread's mark, the dot while
 /// the head works on it and a ray for each worker, as drawn, still and turning, and on the effort
 /// rail of a thread on that agent.
 @MainActor
@@ -70,32 +70,45 @@ struct MarkPaletteTests {
         #expect(components(MarkPalette.color(for: "someone-new")) == [1, 1, 1])
     }
 
-    /// Fourteen colours round the hue circle: no two within 24° of each other, and none closer
-    /// than 0.07 in OKLab, about what tells two 14pt marks apart on the glass.
-    @Test func everyAgentHasAColourOfItsOwn() {
-        let all = [ProviderInfo.claudeID] + Self.agents
-        let points = all.map { oklab(MarkPalette.color(for: $0)) }
-        for (agent, point) in zip(all, points) {
-            #expect(hypot(point.a, point.b) > 0.1, "\(agent) is nearly grey")
-        }
-        for i in all.indices {
-            for j in all.indices where j > i {
-                let (p, q) = (points[i], points[j])
-                let distance = sqrt(pow(p.l - q.l, 2) + pow(p.a - q.a, 2) + pow(p.b - q.b, 2))
-                #expect(distance >= 0.07, "\(all[i]) and \(all[j]) are \(distance) apart")
-                #expect(hueApart(p, q) >= 24, "\(all[i]) and \(all[j]) are \(hueApart(p, q))° apart")
-            }
+    /// Each maker's colour as its brand page or its own site's logo draws it, white where the mark
+    /// is black or white.
+    private static let makers: [String: UInt32] = [
+        "claude": 0xD97757, "codex": 0xFFFFFF, "cursor": 0xFFFFFF, "copilot": 0x8534F3, "opencode": 0xFFFFFF, "grok": 0xFFFFFF,
+        "devin": 0xFFFFFF, "pi": 0xF09082, "antigravity": 0x3186FF, "zai": 0xFFFFFF, "deepseek": 0x4D6BFE, "openrouter": 0xC8FF00,
+        "meta": 0x0064E0, "commandcode": 0xFFFFFF,
+    ]
+
+    private static var coloured: [String] {
+        agents.filter { makers[$0] != 0xFFFFFF }
+    }
+
+    @Test func eachAgentIsInItsMakersColour() {
+        for agent in [ProviderInfo.claudeID] + Self.agents {
+            let hex = Self.makers[agent, default: 0]
+            #expect(components(MarkPalette.color(for: agent)).map { ($0 * 255).rounded() } == [16, 8, 0].map { Double(hex >> $0 & 0xFF) },
+                    "\(agent)")
         }
     }
 
     /// An agent's ember and white-hot are its own hue, paler, as Claude's are its orange.
     @Test func eachAgentsHeatPalesTowardItsOwnHue() {
-        for agent in Self.agents {
+        for agent in Self.coloured {
             let ink = MarkPalette.ink(for: agent)
             let (base, ember, hot) = (oklab(ink.color), oklab(ink.emberColor), oklab(ink.whiteHotColor))
             #expect(ember.l > base.l && hot.l > ember.l, "\(agent)")
             #expect(hueApart(base, ember) < 6, "\(agent)'s ember turns \(hueApart(base, ember))°")
         }
+    }
+
+    /// A white agent's heat can't pale toward white, so it climbs from silver, not a flat white bar.
+    @Test func aWhiteAgentsHeatRunsFromSilverToWhite() {
+        for agent in Self.agents where !Self.coloured.contains(agent) {
+            let ink = MarkPalette.ink(for: agent)
+            #expect(ink == .silver, "\(agent)")
+        }
+        let (base, ember, hot) = (oklab(AgentInk.silver.color), oklab(AgentInk.silver.emberColor), oklab(AgentInk.silver.whiteHotColor))
+        #expect(base.l < 0.75 && ember.l > base.l + 0.15 && hot.l > ember.l)
+        #expect(AgentInk.silver.whiteHot == [1, 1, 1])
     }
 
     /// Each agent's maker's logo is in the asset catalog under the agent's id, as a template the
@@ -173,37 +186,38 @@ struct MarkPaletteTests {
         return zip(pixel(rep, at: point), pixel(reference, at: CGPoint(x: middle, y: middle))).allSatisfy { abs($0 - $1) < 0.02 }
     }
 
-    /// REA-149's thread: a Claude head at work with two workers on Codex and one on Cursor.
+    /// REA-149's thread, with workers on agents whose makers have a colour: a Claude head at work
+    /// with two workers on DeepSeek and one on Copilot.
     @Test func theDotIsTheHeadsAgentAndEachRayItsWorkers() async throws {
         let conversation = thread(on: nil)
         receive("turn.started", ["sessionId": "s"], in: conversation)
-        receive("heads", ["heads": [head("a", agent: "codex"), head("b", agent: "codex"), head("c", agent: "cursor")]], in: conversation)
+        receive("heads", ["heads": [head("a", agent: "deepseek"), head("b", agent: "deepseek"), head("c", agent: "copilot")]], in: conversation)
         let rep = try await render(ThreadMark(conversation: conversation))
-        let codex = MarkPalette.color(for: "codex")
+        let deepseek = MarkPalette.color(for: "deepseek")
         #expect(try await drawn(rep, ray: nil, in: MarkPalette.color(for: ProviderInfo.claudeID)))
-        #expect(try await drawn(rep, ray: 0, in: codex))
-        #expect(try await drawn(rep, ray: 1, in: codex))
-        #expect(try await drawn(rep, ray: 2, in: MarkPalette.color(for: "cursor")))
+        #expect(try await drawn(rep, ray: 0, in: deepseek))
+        #expect(try await drawn(rep, ray: 1, in: deepseek))
+        #expect(try await drawn(rep, ray: 2, in: MarkPalette.color(for: "copilot")))
         // At rest, white.
         #expect(try await drawn(rep, ray: 4, in: .white))
     }
 
-    @Test func aCodexThreadIsCodexsColourAndWhiteOnceItsTurnEnds() async throws {
-        let conversation = thread(on: "codex")
+    @Test func aDeepSeekThreadIsDeepSeeksColourAndWhiteOnceItsTurnEnds() async throws {
+        let conversation = thread(on: "deepseek")
         receive("turn.started", ["sessionId": "s"], in: conversation)
         // The dot alone, which the still mark draws.
-        let codex = MarkPalette.color(for: "codex")
+        let deepseek = MarkPalette.color(for: "deepseek")
         var rep = try await render(ThreadMark(conversation: conversation))
-        #expect(try await drawn(rep, ray: nil, in: codex))
+        #expect(try await drawn(rep, ray: nil, in: deepseek))
 
         receive("heads", ["heads": [head("a")]], in: conversation)
         rep = try await render(ThreadMark(conversation: conversation))
-        #expect(try await drawn(rep, ray: 0, in: codex))
+        #expect(try await drawn(rep, ray: 0, in: deepseek))
 
         receive("turn.done", [:], in: conversation)
         rep = try await render(ThreadMark(conversation: conversation))
         #expect(try await drawn(rep, ray: nil, in: .white))
-        #expect(try await drawn(rep, ray: 0, in: codex))
+        #expect(try await drawn(rep, ray: 0, in: deepseek))
     }
 
     /// Every mark that isn't a thread's, the effort thumb's, the About pane's, a workflow's with no
@@ -217,9 +231,9 @@ struct MarkPaletteTests {
         }
     }
 
-    /// The picker's rail burns in the thread's agent's colour: Codex's in a Codex thread, and
-    /// Claude's orange in a Claude one.
-    @Test func theRailIsInTheThreadsAgentsColour() async throws {
+    /// The picker's rail burns in the thread's agent's ink: silver in a Codex thread, whose maker
+    /// draws in white, and Claude's orange in a Claude one.
+    @Test func theRailIsInTheThreadsAgentsInk() async throws {
         let container = try ModelContainer(
             for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let project = Project(name: "alpha", path: "/tmp/alpha")
@@ -241,7 +255,7 @@ struct MarkPaletteTests {
             chat.effort = "high"
             container.mainContext.insert(chat)
             let rep = try await render(MarkPicker(chat: chat).environment(model), size: size, steps: 50)
-            let reference = try await render(Rectangle().fill(MarkPalette.color(for: agent)))
+            let reference = try await render(Rectangle().fill(MarkPalette.ink(for: agent).color))
             // The fill's start, left of the thumb, halfway down the rail.
             let fill = pixel(rep, at: CGPoint(x: 26, y: 208), side: size.width)
             let expected = pixel(reference, at: CGPoint(x: 20, y: 20))
