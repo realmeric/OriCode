@@ -526,7 +526,7 @@ final class Conversation {
             askedUltracode = asked == Effort.ultracode
             if asked == nil { defaultReading = (chat.model, level) }
         case "heads":
-            heads.update(event.body)
+            heads.update(event.body, agent: chat.providerID)
         case "retrying":
             let attempt = event.body["attempt"]?.int ?? 0
             let max = event.body["max"]?.int ?? 0

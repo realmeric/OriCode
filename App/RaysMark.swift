@@ -26,6 +26,10 @@ struct RaysMark: View {
     var dotOpacity = 0.92
     /// White on the glass; the effort thumb draws it dark on its white disc.
     var color = Color.white
+    /// A lit ray's own colour, by ray, where it isn't `color`: the agent of the head that holds it.
+    var colors: [Int: Color] = [:]
+    /// The dot's, where it isn't `color`: the main loop's agent while it works.
+    var dotColor: Color?
     /// Rays that light come up one after another, clockwise, instead of together.
     var stagger = false
     /// Drawn as layers even while still, so a turn that stops stops where it is.
@@ -48,13 +52,14 @@ struct RaysMark: View {
             if turning || waiting || layered {
                 MovingRays(lit: lit, opacities: (0..<Self.rays).map(opacity), dotOpacity: dot, turning: turning, waiting: waiting,
                            restingOpacity: restingOpacity,
-                           color: NSColor(color), stagger: stagger, settles: settles, fast: fast)
+                           color: NSColor(color), rayColors: (0..<Self.rays).map { NSColor(rayColor($0)) },
+                           dotColor: NSColor(dotColor ?? color), stagger: stagger, settles: settles, fast: fast)
             } else {
                 GeometryReader { proxy in
                     let side = min(proxy.size.width, proxy.size.height)
                     ZStack {
                         rays(side: side)
-                        Circle().fill(color).opacity(dot)
+                        Circle().fill(dotColor ?? color).opacity(dot)
                             .frame(width: side * 0.3, height: side * 0.3)
                             .animation(.easeOut(duration: 0.18), value: focus)
                     }
@@ -74,6 +79,11 @@ struct RaysMark: View {
     /// Between lit and resting: a lit ray while another head is under the pointer.
     private var eased: Double {
         (litOpacity + restingOpacity) / 2
+    }
+
+    /// A lit ray in its head's colour, and one at rest in `color`.
+    private func rayColor(_ index: Int) -> Color {
+        litRays.contains(index) ? colors[index] ?? color : color
     }
 
     private func opacity(_ index: Int) -> Double {
@@ -98,7 +108,7 @@ struct RaysMark: View {
         return ZStack {
             ForEach(0..<Self.rays, id: \.self) { index in
                 Ray(index: index, count: Self.rays)
-                    .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    .stroke(rayColor(index), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     .opacity(opacity(index))
                     .padding(width / 2)
                     .animation(.spring(response: 0.9, dampingFraction: 0.9), value: litRays)
@@ -140,6 +150,8 @@ private struct MovingRays: NSViewRepresentable {
     let waiting: Bool
     let restingOpacity: Double
     let color: NSColor
+    let rayColors: [NSColor]
+    let dotColor: NSColor
     let stagger: Bool
     let settles: Bool
     let fast: Bool
@@ -148,8 +160,8 @@ private struct MovingRays: NSViewRepresentable {
 
     func updateNSView(_ view: RaysView, context: Context) {
         view.paint(color)
-        view.show(lit: lit, opacities: opacities, dotOpacity: dotOpacity, turning: turning, waiting: waiting, resting: restingOpacity,
-                  stagger: stagger, settles: settles, fast: fast)
+        view.show(lit: lit, opacities: opacities, colors: rayColors.map(\.cgColor), dotOpacity: dotOpacity, dotColor: dotColor.cgColor,
+                  turning: turning, waiting: waiting, resting: restingOpacity, stagger: stagger, settles: settles, fast: fast)
     }
 
     final class RaysView: NSView {
@@ -161,6 +173,7 @@ private struct MovingRays: NSViewRepresentable {
         private var rays: [CAShapeLayer] = []
         private let dot = CAShapeLayer()
         private var lit: Set<Int>?
+        private var painted: NSColor?
         private var turnPeriod = RaysMark.turn
         /// Bumped by each turn, so a coast that ends after a newer turn began leaves its trail be.
         private var generation = 0
@@ -188,7 +201,11 @@ private struct MovingRays: NSViewRepresentable {
 
         required init?(coder: NSCoder) { nil }
 
+        /// Every ray and the dot in one colour at once, only when it changes, since a ray in its
+        /// head's colour eases there with its light in `show`.
         func paint(_ color: NSColor) {
+            guard color != painted else { return }
+            painted = color
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             for ray in rays { ray.strokeColor = color.cgColor }
@@ -196,17 +213,20 @@ private struct MovingRays: NSViewRepresentable {
             CATransaction.commit()
         }
 
-        func show(lit: Set<Int>, opacities: [Double], dotOpacity: Double, turning: Bool, waiting: Bool, resting: Double,
-                  stagger: Bool = false, settles: Bool = false, fast: Bool = false) {
+        func show(lit: Set<Int>, opacities: [Double], colors: [CGColor], dotOpacity: Double, dotColor: CGColor, turning: Bool,
+                  waiting: Bool, resting: Double, stagger: Bool = false, settles: Bool = false, fast: Bool = false) {
             let before = self.lit ?? []
             CATransaction.begin()
             // A ray that lights or goes out eases there, the way the still mark's spring takes it;
             // one that only stands out or eases back for the head under the pointer, quicker.
             CATransaction.setAnimationDuration(self.lit == nil || stagger && lit != before ? 0 : lit == before ? 0.18 : 0.6)
+            // A ray's colour goes with its light, into its head's as it lights and back as it goes out.
             for (index, ray) in rays.enumerated() {
                 ray.opacity = Float(opacities[index])
+                if ray.strokeColor != colors[index] { ray.strokeColor = colors[index] }
             }
             dot.opacity = Float(dotOpacity)
+            if dot.fillColor != dotColor { dot.fillColor = dotColor }
             CATransaction.commit()
             if stagger {
                 // Clockwise from twelve, each 0.16s and 0.04s after the one before.

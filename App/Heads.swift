@@ -19,6 +19,8 @@ final class Head: Identifiable {
 
     let id: String
     let kind: Kind
+    /// The agent it runs on: the engine's word for it, or else the thread's own.
+    let agent: String
     /// The call that started it, which a workflow's card and its events name too.
     let toolUseId: String?
     let startedAt: Date
@@ -39,9 +41,10 @@ final class Head: Identifiable {
     /// Gone from the engine's list: its ray has gone out, and its row goes next.
     fileprivate(set) var ending = false
 
-    fileprivate init(_ body: JSON) {
+    fileprivate init(_ body: JSON, agent: String) {
         id = body["id"]?.string ?? ""
         kind = Kind(rawValue: body["kind"]?.string ?? "") ?? .other
+        self.agent = body["agent"]?.string ?? agent
         toolUseId = body["toolUseId"]?.string
         startedAt = body["startedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) } ?? .now
         label = ""
@@ -91,6 +94,8 @@ final class Heads {
     private(set) var list: [Head] = []
     /// The rays lit on the thread's mark.
     private(set) var lit: Set<Int> = []
+    /// The agent on each lit ray, whose colour the mark draws it in.
+    private(set) var rayAgents: [Int: String] = [:]
     /// Workflows' runs by task, which can come before their head does.
     @ObservationIgnored private var runs: [String: WorkflowRun] = [:]
     /// Tokens and tool calls change on screen at most once a second: the counts held back, and
@@ -112,8 +117,8 @@ final class Heads {
     }
 
     /// The engine's whole list. A head it no longer lists ends: its ray goes out now, and its row
-    /// a moment later.
-    func update(_ body: JSON) {
+    /// a moment later. A head the engine names no agent for is on `agent`, the thread's own.
+    func update(_ body: JSON, agent: String) {
         let listed = body["heads"]?.array ?? []
         let ids = Set(listed.compactMap { $0["id"]?.string })
         var arrived: [Head] = []
@@ -124,7 +129,7 @@ final class Heads {
                 if head.ending { head.ending = false }
                 hold(head, entry)
             } else {
-                let head = Head(entry)
+                let head = Head(entry, agent: agent)
                 head.run = runs[id]
                 head.count(tokens: entry["tokens"]?.int, tools: entry["tools"]?.int)
                 arrived.append(head)
@@ -218,8 +223,13 @@ final class Heads {
                 taken.insert(free)
             }
         }
-        let lit = Set(list.filter { !$0.ending }.flatMap(\.rays))
+        var rayAgents: [Int: String] = [:]
+        for head in list where !head.ending {
+            for ray in head.rays { rayAgents[ray] = head.agent }
+        }
+        let lit = Set(rayAgents.keys)
         if lit != self.lit { self.lit = lit }
+        if rayAgents != self.rayAgents { self.rayAgents = rayAgents }
     }
 
     private func wants(_ head: Head) -> Int {

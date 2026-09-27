@@ -32,7 +32,7 @@ struct RootView: View {
                         Spacer(minLength: 0)
                         EmptyStateView(
                             line: model.project == nil ? "Add a project to start." : "Where do we pick up?",
-                            lit: conversation?.heads.lit ?? [],
+                            rays: conversation?.heads.rayAgents ?? [:],
                             waiting: conversation?.waitingAsk != nil)
                             .padding(.bottom, 28)
                             .transition(.asymmetric(insertion: Self.settle, removal: Self.lift))
@@ -398,13 +398,15 @@ struct EmptyStateView: View {
     /// The mark, the gap and the line, for centring what's under it.
     static let height: CGFloat = 44 + 14 + 18
 
+    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     let line: String
-    var lit: Set<Int> = []
+    /// The agent on each lit ray.
+    var rays: [Int: String] = [:]
     var waiting = false
 
     var body: some View {
         VStack(spacing: 14) {
-            RaysMark(slots: lit, turning: !lit.isEmpty, waiting: waiting)
+            RaysMark(slots: Set(rays.keys), turning: !rays.isEmpty, waiting: waiting, colors: palette.colors(rays))
                 .frame(width: 44, height: 44)
             Text(line)
                 .font(Type.body)

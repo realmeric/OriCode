@@ -7,20 +7,23 @@ struct WorkflowCard: View {
     let call: ToolCall
     /// The thread's heads, whose rays this workflow's agents hold on the thread's mark too.
     @Environment(Heads.self) private var heads: Heads?
+    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     @State private var open = false
 
     var body: some View {
         let run = call.workflow
         let script = call.input["script"]?.string ?? ""
         let groups = WorkflowRun.groups(run?.agents ?? [], planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
-        let rays = run?.state == .running ? Set(heads?.list.first { $0.toolUseId == call.toolUseId && !$0.ending }?.rays ?? []) : []
+        let head = run?.state == .running ? heads?.list.first { $0.toolUseId == call.toolUseId && !$0.ending } : nil
+        let rays = Set(head?.rays ?? [])
         let name = run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         VStack(alignment: .leading, spacing: 12) {
             Button {
                 withAnimation(Motion.fade) { open.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    RaysMark(slots: rays, turning: !rays.isEmpty)
+                    RaysMark(slots: rays, turning: !rays.isEmpty,
+                             colors: head.map(palette.colors(of:)) ?? [:])
                         .frame(width: 16, height: 16)
                     Text(name)
                         .font(Type.body)

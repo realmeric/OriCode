@@ -1,17 +1,21 @@
 import SwiftUI
 
 /// A thread's mark as its heads light it: the dot while its main loop works, and each agent's
-/// ray. The drawer's rows and the title capsule draw it at the same size.
+/// ray, each in its agent's colour. The drawer's rows and the title capsule draw it at the same size.
 struct ThreadMark: View {
+    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     let conversation: Conversation
     /// Turning and pulsing only where someone can see it.
     var moving = true
     var focus: RaysMark.Focus?
 
     var body: some View {
-        let lit = conversation.heads.lit
+        let heads = conversation.heads
+        let lit = heads.lit
         RaysMark(slots: lit, focus: focus, turning: moving && !lit.isEmpty, waiting: moving && conversation.waitingAsk != nil,
-                 restingOpacity: 0.28, dotOpacity: conversation.running ? 0.92 : 0.28)
+                 restingOpacity: 0.28, dotOpacity: conversation.running ? 0.92 : 0.28,
+                 colors: palette.colors(heads.rayAgents),
+                 dotColor: conversation.running ? palette.color(for: conversation.chat.providerID) : nil)
     }
 }
 
@@ -97,6 +101,7 @@ struct HeadsSurface: View {
 /// The main loop: the dot alone lit, and what it's on.
 private struct MainRow: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     let conversation: Conversation
     let cwd: String
     @Binding var hovered: String?
@@ -105,7 +110,8 @@ private struct MainRow: View {
         let step = conversation.mainStep(cwd: cwd)
         let planStep = conversation.planStep
         HeadLine(id: HeadsSurface.main, hovered: $hovered, stop: conversation.running ? { model.stop() } : nil) {
-            RaysMark(restingOpacity: 0.16, dotOpacity: conversation.running ? 0.92 : 0.3)
+            RaysMark(restingOpacity: 0.16, dotOpacity: conversation.running ? 0.92 : 0.3,
+                     dotColor: conversation.running ? palette.color(for: conversation.chat.providerID) : nil)
         } title: {
             HStack(spacing: 6) {
                 Text("Main loop")
@@ -131,6 +137,7 @@ private struct MainRow: View {
 
 private struct HeadRow: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     let head: Head
     let chat: Chat
     @Binding var hovered: String?
@@ -205,7 +212,7 @@ private struct HeadRow: View {
                 .font(Type.mono)
                 .foregroundStyle(Ink.secondary)
         case .agent, .workflow, .other:
-            RaysMark(slots: head.ending ? [] : Set(head.rays), restingOpacity: 0.16, dotOpacity: 0.28)
+            RaysMark(slots: head.ending ? [] : Set(head.rays), restingOpacity: 0.16, dotOpacity: 0.28, colors: palette.colors(of: head))
         }
     }
 
