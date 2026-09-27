@@ -13,6 +13,7 @@ import { grok } from "./grok.ts";
 import { opencode } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
+import { raysFor, raysOf, type Seam } from "./rays.ts";
 import { answer, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
@@ -63,11 +64,32 @@ function session(threadId: string, agent: Provider, path: string): Session {
   if (!found) {
     found = agent.session(threadId, path);
     found.watchHeads(watched.has(threadId));
-    // After the turn.done it's called from, and outside the CLI's message loop it would close.
-    found.onIdle = () => setImmediate(letGo);
-    sessions.set(threadId, found);
+    kept(threadId, found);
   }
   return found;
+}
+
+/// A thread's session or a worker's, let go when idle like every other.
+function kept(threadId: string, found: Session): void {
+  // After the turn.done it's called from, and outside the CLI's message loop it would close.
+  found.onIdle = () => setImmediate(letGo);
+  sessions.set(threadId, found);
+}
+
+const seam: Seam = {
+  provider: (id) => providers.get(id),
+  cli,
+  adopt: kept,
+  forget: (threadId) => sessions.delete(threadId),
+};
+
+/// The URL of a head's tools, when the thread allows workers and its agent takes them. A thread
+/// that no longer allows them keeps the workers it has, and can't start more.
+async function headTools(params: SendParams & { workers?: string[] }, agent: Provider): Promise<string | undefined> {
+  const allowed = agent.capabilities.workers ? (params.workers ?? []).filter((id) => providers.has(id)) : [];
+  const head = allowed.length ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
+  head?.update(params.cwd, params.permissionMode, allowed);
+  return allowed.length ? head?.url : undefined;
 }
 
 /// An agent's models, read once a check finds it signed in after hello didn't, as `models`
@@ -186,14 +208,18 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { models };
   },
 
-  async send(params: SendParams & { provider?: string }) {
+  /// `workers` are the agents the thread's workers may run on, which makes its session a head.
+  async send({ workers, ...params }: SendParams & { provider?: string; workers?: string[] }) {
     const agent = provider(params.provider);
-    const waiting = await session(params.threadId, agent, await cli(agent)).send(params);
+    const path = await cli(agent);
+    const tools = await headTools({ ...params, workers }, agent);
+    const waiting = await session(params.threadId, agent, path).send({ ...params, tools });
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },
 
+  /// Stop on a head stops its workers too.
   async interrupt({ threadId }: { threadId: string }) {
-    await sessions.get(threadId)?.interrupt();
+    await Promise.all([sessions.get(threadId)?.interrupt(), raysOf(threadId)?.stopAll()]);
     return { ok: true };
   },
 
@@ -331,10 +357,17 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     if (on) watched.add(threadId);
     else watched.delete(threadId);
     sessions.get(threadId)?.watchHeads(on);
+    raysOf(threadId)?.watch(on);
     return { ok: true };
   },
 
+  /// A head's worker stops through its own session; anything else the CLI runs, through the CLI.
   async "task.stop"({ threadId, taskId }: { threadId: string; taskId: string }) {
+    const head = raysOf(threadId);
+    if (head?.has(taskId)) {
+      await head.stop(taskId);
+      return { ok: true };
+    }
     const found = sessions.get(threadId);
     if (!found) throw new Error("That has already stopped.");
     await found.stopTask(taskId);
@@ -342,6 +375,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   async close({ threadId }: { threadId: string }) {
+    raysOf(threadId)?.close();
     sessions.get(threadId)?.close();
     sessions.delete(threadId);
     watched.delete(threadId);

@@ -31,6 +31,7 @@ function devinEntry(state: string, cliPath: string | null, cliVersion: string | 
       compact: false,
       commitMessage: false,
       handoff: "devin --resume {session}",
+      workers: true,
     },
     levels: [],
     modes: ["acceptEdits", "plan", "bypassPermissions"],

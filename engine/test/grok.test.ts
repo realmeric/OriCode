@@ -33,6 +33,7 @@ function grokEntry(state: string, cliPath: string | null, cliVersion: string | n
       compact: false,
       commitMessage: false,
       handoff: "grok --resume {session}",
+      workers: true,
     },
     levels: ["low", "medium", "high", "xhigh"],
     modes: ["default", "plan", "bypassPermissions"],

@@ -164,7 +164,7 @@ struct ProviderTests {
                 "capabilities": [
                     "steer": true, "resume": true, "modeLive": true, "attachments": true, "heads": true, "stopTask": true,
                     "limits": true, "usage": true, "commands": true, "compact": true, "commitMessage": true,
-                    "handoff": "claude --resume {session}",
+                    "handoff": "claude --resume {session}", "workers": true,
                 ],
                 "levels": ["low", "medium", "high", "xhigh", "max", "ultracode"],
                 "modes": ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],

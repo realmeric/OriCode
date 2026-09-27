@@ -23,15 +23,27 @@ struct Provenance {
 
     init() {}
 
+    /// The worker whose edits made a file's changes in a turn, by turn and path.
+    private var rays: [Int: [String: Ray]] = [:]
+
+    /// A head's worker, as the review names the ray that changed a file.
+    struct Ray: Hashable, Sendable {
+        let agent: String
+        let label: String
+    }
+
     /// `resolve` turns an edit's file, its view's path or Claude's file_path, into a path from the
-    /// repository's top, or nil for a file outside it.
-    init(items: [Item], resolve: (String) -> String?) {
+    /// repository's top, or nil for a file outside it. A worker's edits count as their turn's,
+    /// after the head's own in it.
+    init(items: [Item], rayEdits: [RayEdit] = [], resolve: (String) -> String?) {
         var turn = 0
+        var waiting = rayEdits[...]
         for item in items {
             switch item {
             case .user(_, let text, _, let midTurn):
                 // Taken up in the middle of a turn, a message is part of that turn.
                 guard !midTurn else { continue }
+                credit(&waiting, through: turn, resolve: resolve)
                 turn += 1
                 prompts[turn] = text
             case .tool(_, let call) where call.kind == .run:
@@ -57,7 +69,29 @@ struct Provenance {
                 break
             }
         }
+        credit(&waiting, through: .max, resolve: resolve)
     }
+
+    /// Workers' edits up to a turn, each line credited to its turn as the head's own edits' are.
+    private mutating func credit(_ waiting: inout ArraySlice<RayEdit>, through last: Int, resolve: (String) -> String?) {
+        while let edit = waiting.first, edit.turn <= last {
+            waiting.removeFirst()
+            for file in edit.files {
+                guard let path = resolve(file.path) else { continue }
+                lastEdit[path] = edit.turn
+                if order[edit.turn, default: [:]][path] == nil { order[edit.turn, default: [:]][path] = order[edit.turn]?.count ?? 0 }
+                for line in file.hunks.flatMap(\.lines) {
+                    let text = String(line.dropFirst())
+                    if line.hasPrefix("+") { added[path, default: [:]][text] = edit.turn }
+                    if line.hasPrefix("-") { deleted[path, default: [:]][text] = edit.turn }
+                }
+                rays[edit.turn, default: [:]][path] = edit.ray
+            }
+        }
+    }
+
+    /// The worker whose edits changed a file in a turn, when a worker's did.
+    func ray(of path: String, in turn: Int) -> Ray? { rays[turn]?[path] }
 
     /// The turn whose edit put this line in, or took it out: a "+" or "-" line of git's diff.
     func turn(of line: String, in path: String) -> Int? {
@@ -88,6 +122,29 @@ struct Provenance {
             if tools.contains(first), words.dropFirst().contains(where: { asks.contains($0) || $0.hasPrefix("test:") }) { return true }
         }
         return false
+    }
+}
+
+/// What a worker brought into the thread's folder, from its `worker` event, and the turn it came in.
+struct RayEdit: Hashable {
+    struct File: Hashable {
+        let path: String
+        let hunks: [Hunk]
+    }
+
+    let turn: Int
+    let ray: Provenance.Ray
+    let files: [File]
+}
+
+extension RayEdit {
+    /// Nil for a worker's turn that only cost something, with no edit here.
+    init?(_ body: JSON, turn: Int) {
+        let files = (body["files"]?.array ?? []).compactMap { file in
+            file["path"]?.string.map { File(path: $0, hunks: Hunk.list(file["hunks"]) ?? []) }
+        }
+        guard !files.isEmpty, let agent = body["agent"]?.string else { return nil }
+        self.init(turn: turn, ray: Provenance.Ray(agent: agent, label: body["label"]?.string ?? ""), files: files)
     }
 }
 

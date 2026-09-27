@@ -354,6 +354,7 @@ private struct FileHeader: View {
                     .truncationMode(.head)
                     Counts(added: section.units.reduce(0) { $0 + $1.added }, deleted: section.units.reduce(0) { $0 + $1.deleted }, quiet: true)
                         .opacity(0.8)
+                    if let ray = section.ray { RayLabel(ray: ray) }
                     Spacer(minLength: 0)
                 }
                 .contentShape(.rect)
@@ -392,6 +393,26 @@ private struct FileHeader: View {
         case "T": "type changed"
         default: nil
         }
+    }
+}
+
+/// Which ray changed a file: the worker's agent mark and its task, faint beside the counts.
+private struct RayLabel: View {
+    @Environment(AppModel.self) private var model
+    let ray: Provenance.Ray
+
+    var body: some View {
+        let name = model.providers.first { $0.id == ray.agent }?.name ?? ray.agent
+        HStack(spacing: 4) {
+            AgentMark(agent: ray.agent)
+                .frame(width: 10, height: 10)
+                .opacity(0.7)
+            Text(ray.label)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .foregroundStyle(Ink.faint)
+        .help("\(name)'s worker made these changes: \(ray.label)")
     }
 }
 

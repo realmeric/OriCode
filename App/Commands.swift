@@ -34,7 +34,7 @@ struct OriCodeCommands: Commands {
             Button(model.shellPrompt ? "Leave Shell Prompt" : "Shell Prompt") { model.toggleShellPrompt() }
                 .keyboardShortcut(shortcuts.key(.shellPrompt))
                 .disabled(model.project == nil)
-            if agent.capabilities.heads {
+            if model.showsHeads(model.chat) {
                 Button(model.headsShown ? "Hide Heads" : "Show Heads") { model.toggleHeads() }
                     .keyboardShortcut(shortcuts.key(.heads))
                     .disabled(model.chat == nil)

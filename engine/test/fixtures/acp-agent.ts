@@ -96,6 +96,11 @@ async function prompt(sessionId: string, text: string): Promise<object> {
     update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Done." } });
     return { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 5, totalTokens: 1200, cachedReadTokens: 1185 } };
   }
+  if (text.startsWith("review")) {
+    update(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Looks right to me." } });
+    update(sessionId, { sessionUpdate: "usage_update", used: 800, size: 200000, cost: { amount: 0.01, currency: "USD" } });
+    return { stopReason: "end_turn", usage: { inputTokens: 700, outputTokens: 12, totalTokens: 712 } };
+  }
   if (text === "opencode") {
     // As OpenCode 1.18 sends them: a command's folder before the command, a todo list as a tool
     // call of its own, and an edit whose diff is only the strings it swapped.
@@ -184,7 +189,7 @@ async function handle(message: any): Promise<void> {
         id,
         result: {
           protocolVersion: 1,
-          agentCapabilities: { loadSession: true, promptCapabilities: { image: false } },
+          agentCapabilities: { loadSession: true, promptCapabilities: { image: false }, mcpCapabilities: { http: true, sse: false } },
           authMethods: [{ id: "stand_in_login", name: "Stand-in login", description: "Run `stand-in login` in Terminal" }],
           agentInfo: { name: "stand-in" },
         },

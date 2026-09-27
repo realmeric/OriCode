@@ -373,6 +373,7 @@ test("a provider from an agent's entry offers what the entry says, and lists its
     compact: false,
     commitMessage: false,
     handoff: "cursor-agent --resume {session}",
+    workers: true,
   });
   assert.deepEqual(provider.levels, ["low", "medium", "high"]);
   assert.deepEqual(await provider.models({ state: "ready", cli: null, version: null, hint: null }, () => {}), []);

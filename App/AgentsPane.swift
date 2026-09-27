@@ -5,6 +5,7 @@ import SwiftUI
 /// the logins its maker forbids for third-party apps.
 struct AgentsPane: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(Rays.allowKey) private var workers = true
 
     var body: some View {
         PaneTitle(text: "Agents")
@@ -23,6 +24,15 @@ struct AgentsPane: View {
             cards(model.agents.filter(\.binary))
             SectionHeading("Model APIs")
             cards(model.agents.filter { !$0.binary })
+        }
+        SectionHeading("Workers")
+        SettingsCard {
+            SettingsRow(
+                title: "Heads may start workers",
+                detail: "A thread's agent can send other agents out on tasks of their own, each a ray on the mark while it works. The model menu says which agents a thread's workers may use."
+            ) {
+                Toggle("Heads may start workers", isOn: $workers).labelsHidden().toggleStyle(.switch)
+            }
         }
     }
 

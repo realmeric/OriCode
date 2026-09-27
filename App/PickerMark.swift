@@ -27,7 +27,8 @@ struct MarkPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: 320, height: page == .effort ? Self.effortHeight : ModelsPage.height(for: model.modelGroups(for: chat)))
+        .frame(width: 320, height: page == .effort ? Self.effortHeight
+            : ModelsPage.height(for: model.modelGroups(for: chat), footer: chat.map { model.offersWorkers($0) } == true ? WorkersMenu.height : 0))
         .animation(Motion.glide, value: page)
         .onAppear {
             model.readAgentModels()

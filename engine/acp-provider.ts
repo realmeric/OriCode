@@ -98,6 +98,7 @@ export function acpProvider(entry: AcpEntry): Provider {
       compact: false,
       commitMessage: false,
       handoff: entry.handoff,
+      workers: true,
     },
     levels: entry.levels ?? [],
     modes: entry.modes,

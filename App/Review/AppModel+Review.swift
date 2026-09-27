@@ -322,9 +322,10 @@ extension AppModel {
     /// the marks go on after, which is all a Space has to redo.
     private func build(_ diff: WorkingDiff, in folder: String) async {
         let items = chat.map { conversation(for: $0).items } ?? []
+        let rayEdits = chat.map { conversation(for: $0).rayEdits } ?? []
         let thread = review.thread
         let base = await Task.detached(priority: .userInitiated) {
-            ReviewBook(diff: diff, provenance: Provenance(items: items) { RepoPath.relative($0, cwd: folder, root: diff.root) })
+            ReviewBook(diff: diff, provenance: Provenance(items: items, rayEdits: rayEdits) { RepoPath.relative($0, cwd: folder, root: diff.root) })
         }.value
         guard review.folder == folder else { return }
         review.diff = diff

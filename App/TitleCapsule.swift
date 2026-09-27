@@ -72,7 +72,7 @@ struct TitleCapsule: View {
                     .buttonStyle(.plain)
                     .help("What each head is doing (\(model.shortcuts.label(.heads)))")
                     // An agent that reports no heads still shows it's working, with nothing to open.
-                    .allowsHitTesting(model.agent(for: model.chat).capabilities.heads)
+                    .allowsHitTesting(model.showsHeads(model.chat))
                     .transition(.opacity)
                 }
             }

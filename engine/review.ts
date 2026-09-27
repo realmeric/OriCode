@@ -89,7 +89,7 @@ async function head(root: string): Promise<string | null> {
 
 /// The user's settings mustn't change what the review reads: no colours, no external diff
 /// tool, no text conversion, git's own prefixes, and paths spelled out rather than escaped.
-const diffArgs = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", "--histogram", "-U3"];
+export const diffArgs = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", "--histogram", "-U3"];
 
 /// A path as git's pathspec takes it, with nothing in it read as a pattern.
 function literal(path: string): string {

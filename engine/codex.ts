@@ -6,7 +6,7 @@ import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
-import { asks as registry, type Session } from "./provider.ts";
+import { asks as registry, toolsServer, toolsTimeout, type Session } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import type { Usage } from "./usage.ts";
 import { version } from "./version.ts";
@@ -34,7 +34,15 @@ export type CodexSendParams = {
   attachments?: { mediaType: string; data: string }[];
   costSoFar?: number;
   id?: string;
+  tools?: string;
 };
+
+/// OriCode's tools among the thread's MCP servers, as a config override beside the user's own
+/// servers rather than in place of them. `approve` spares the head an approval request for each
+/// call, since the thread allowed workers and each worker's own calls are asked about as it makes them.
+export function toolsConfig(url: string): Record<string, unknown> {
+  return { [`mcp_servers.${toolsServer}`]: { url, tool_timeout_sec: toolsTimeout / 1000, default_tools_approval_mode: "approve" } };
+}
 
 export type Answer = { requestId: string; allow: boolean; optionId?: string; answers?: Record<string, string> };
 
@@ -154,9 +162,10 @@ export class CodexSession implements Session {
   private cwd = "";
   /// Codex's thread, which is the session the app keeps.
   private threadId: string | undefined;
-  /// Whether this process has the thread open, and under which mode.
+  /// Whether this process has the thread open, under which mode, and with which of OriCode's tools.
   private live = false;
   private openedMode: string | undefined;
+  private openedTools: string | undefined;
   private mode: string | undefined;
   private running = false;
   private interrupted = false;
@@ -295,7 +304,7 @@ export class CodexSession implements Session {
     try {
       const mode = params.permissionMode ?? this.mode ?? "default";
       this.mode = mode;
-      if (this.server && (params.cwd !== this.cwd || mode !== this.openedMode)) this.stop();
+      if (this.server && (params.cwd !== this.cwd || mode !== this.openedMode || params.tools !== this.openedTools)) this.stop();
       if (!this.server) await this.start(params.cwd);
       if (!this.live) await this.open(params, mode);
       if (this.interrupted) return this.finish(turn, "interrupted");
@@ -341,7 +350,7 @@ export class CodexSession implements Session {
   /// else new. One that's gone is said to be, and the turn goes on in a new one.
   private async open(params: CodexSendParams, mode: string): Promise<void> {
     const earlier = params.sessionId ?? this.threadId;
-    const setup = { cwd: params.cwd, model: params.model ?? null, ...policy(mode) };
+    const setup = { cwd: params.cwd, model: params.model ?? null, ...policy(mode), ...(params.tools ? { config: toolsConfig(params.tools) } : {}) };
     let opened = false;
     if (earlier) {
       try {
@@ -362,6 +371,7 @@ export class CodexSession implements Session {
     }
     this.live = true;
     this.openedMode = mode;
+    this.openedTools = params.tools;
   }
 
   private began(turnId: string): void {

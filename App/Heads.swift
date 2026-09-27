@@ -24,7 +24,14 @@ final class Head: Identifiable {
     /// The call that started it, which a workflow's card and its events name too.
     let toolUseId: String?
     let startedAt: Date
+    /// One of the head's workers, a session of OriCode's own on `agent`, rather than something the
+    /// thread's CLI runs.
+    let worker: Bool
+    /// A worker's model, nil for its agent's default.
+    let model: String?
     fileprivate(set) var label: String
+    /// What a worker has cost so far.
+    fileprivate(set) var cost: Double?
     /// The subagent's type, for an agent.
     fileprivate(set) var type: String?
     fileprivate(set) var background: Bool
@@ -47,6 +54,8 @@ final class Head: Identifiable {
         self.agent = body["agent"]?.string ?? agent
         toolUseId = body["toolUseId"]?.string
         startedAt = body["startedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) } ?? .now
+        worker = body["worker"]?.bool ?? false
+        model = body["model"]?.string
         label = ""
         background = false
         depth = 1
@@ -74,6 +83,8 @@ final class Head: Identifiable {
             if step != self.step { self.step = step }
             let line = body["line"]?.string
             if line != self.line { self.line = line }
+            let cost = body["cost"]?.double
+            if cost != self.cost { self.cost = cost }
         }
     }
 

@@ -29,9 +29,16 @@ export type SendParams = {
   /// The app's id for the message. The CLI reports on a message by it: when a message sent
   /// during a turn is taken up, or cancelled before it was.
   id?: string;
+  /// The URL of OriCode's own tools for a head, its MCP server, when the thread allows workers.
+  tools?: string;
 };
 
 export type Grant = { tool: string; input: Record<string, unknown> };
+
+/// The name OriCode's own tools go by among a head's MCP servers, and how long one call may take:
+/// worker_result waits up to five minutes for a worker, and this leaves it room.
+export const toolsServer = "oricode";
+export const toolsTimeout = 600_000;
 
 export type Command = { name: string; description: string; argumentHint: string };
 
@@ -80,6 +87,8 @@ export type Capabilities = {
   handoff: string | null;
   /// It asks before nothing, Pi and Command Code, so a thread on it has no permission modes.
   unsupervised?: boolean;
+  /// It takes OriCode's worker tools over MCP, so a thread on it can be a head with workers.
+  workers?: boolean;
 };
 
 /// Whether the agent can run: its CLI, what that CLI says its version is, and, when it can't

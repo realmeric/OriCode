@@ -48,6 +48,7 @@ export const codex: Provider = {
     commitMessage: false,
     // Without the shared background server, which would keep the thread after the block quits.
     handoff: "codex resume --no-daemon {session}",
+    workers: true,
   },
   levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
   modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],

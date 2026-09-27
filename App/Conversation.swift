@@ -91,6 +91,14 @@ struct PendingAsk: Hashable {
     var view: JSON = .null
     /// The agent's own answers, when it gave them; Claude's asks have none.
     var choices: [Choice] = []
+    /// The head's worker that asked, when one did.
+    var worker: Worker?
+
+    /// A worker as its ask names it: the agent it runs on and its task.
+    struct Worker: Hashable {
+        let agent: String
+        let label: String
+    }
 
     var toolKind: ToolKind { declared ?? ToolKind(claude: tool) }
 
@@ -235,6 +243,11 @@ final class Conversation {
     private(set) var running = false
     /// Subagents, commands and workflows out for this thread, as the engine last listed them.
     let heads = Heads()
+    /// What the head's workers have cost, which the thread's cost has in it and its own session
+    /// never spent.
+    private(set) var workerCost: Double = 0
+    /// The edits workers brought into the thread's folder, which the review credits to their rays.
+    private(set) var rayEdits: [RayEdit] = []
     /// "Trying again, 1 of 10…" while the CLI retries, which the transcript puts after "Can't
     /// reach" and the agent; a live line, never stored.
     private(set) var retrying: String?
@@ -565,6 +578,10 @@ final class Conversation {
         case "compacted":
             chat.contextUsed = event.body["after"]?.int ?? 0
             record(event.name, event.body)
+        case "worker":
+            // A worker's turn: its cost is the thread's too, and its edits are credited to its ray.
+            chat.costUSD += event.body["costUSD"]?.double ?? 0
+            record(event.name, event.body)
         case "tool.use", "tool.result", "ask", "ask.cancelled", "error", "note":
             if event.name == "error" { failed = true }
             record(event.name, event.body)
@@ -832,7 +849,8 @@ final class Conversation {
                     PendingAsk.Choice(
                         id: choice["id"]?.string ?? "", name: choice["name"]?.string ?? "", kind: choice["kind"]?.string ?? "",
                         help: choice["help"]?.string)
-                })
+                },
+                worker: body["worker"]?["agent"]?.string.map { PendingAsk.Worker(agent: $0, label: body["worker"]?["label"]?.string ?? "") })
             items.append(.ask(id: id, ask: ask))
         case "answer", "ask.cancelled":
             let requestId = body["requestId"]?.string
@@ -871,6 +889,9 @@ final class Conversation {
                                     resetsAt: date("resetsAt"), said: date("said")))
         case "shell":
             items.append(.shell(id: id, run: ShellRun(body)))
+        case "worker":
+            workerCost += body["costUSD"]?.double ?? 0
+            if let edit = RayEdit(body, turn: items.count(where: \.startsTurn)) { rayEdits.append(edit) }
         case "compacted":
             let before = body["before"]?.int.map { $0.formatted(.number.notation(.compactName)) }
             let after = body["after"]?.int.map { $0.formatted(.number.notation(.compactName)) }

@@ -68,6 +68,8 @@ struct ReviewFileSection: Identifiable, Hashable, Sendable {
     let id: String
     let file: FileDiff
     var units: [ReviewUnit]
+    /// The worker whose edits these are, when a head's worker made them.
+    var ray: Provenance.Ray?
 }
 
 /// A turn's changes under the message that asked for them, or the changes no edit here made.
@@ -122,7 +124,8 @@ struct ReviewBook: Sendable {
         for unit in units {
             let file = unit.file
             let key = file.path + "\u{0}" + file.status
-            byTurn[unit.turn, default: [:]][key, default: ReviewFileSection(id: unit.section, file: file, units: [])]
+            let ray = unit.turn.flatMap { provenance.ray(of: file.path, in: $0) }
+            byTurn[unit.turn, default: [:]][key, default: ReviewFileSection(id: unit.section, file: file, units: [], ray: ray)]
                 .units.append(unit)
         }
         let order = Dictionary(diff.files.enumerated().map { ($1.path + "\u{0}" + $1.status, $0) }) { first, _ in first }

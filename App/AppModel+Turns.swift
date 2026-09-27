@@ -120,14 +120,17 @@ extension AppModel {
         }
     }
 
-    private func sendParams(in chat: Chat, text: String, images: [ImageAttachment]) -> [String: JSON] {
+    func sendParams(in chat: Chat, text: String, images: [ImageAttachment]) -> [String: JSON] {
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
             "text": .string(text),
             "permissionMode": .string(chat.permissionMode),
-            "costSoFar": .number(chat.costUSD),
+            // The thread's cost has its workers' in it, which its own session never spent.
+            "costSoFar": .number(chat.costUSD - conversation(for: chat).workerCost),
         ]
+        let workers = workers(for: chat)
+        if !workers.isEmpty { params["workers"] = .array(workers.map(JSON.string)) }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = modelSent(in: chat) { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it: an Ultracode left on after

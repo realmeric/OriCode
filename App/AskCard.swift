@@ -26,12 +26,25 @@ struct AskCard: View {
         }
     }
 
-    @ViewBuilder
     private var waiting: some View {
-        if ask.kind == "question" {
-            QuestionForm(ask: ask, listens: listens)
-        } else {
-            PermissionForm(ask: ask, cwd: cwd, listens: listens)
+        VStack(alignment: .leading, spacing: 8) {
+            // A head's worker asking, which the user answers here as the thread's own ask.
+            if let worker = ask.worker {
+                HStack(spacing: 5) {
+                    AgentMark(agent: worker.agent)
+                        .frame(width: 10, height: 10)
+                    Text("\(model.providers.first { $0.id == worker.agent }?.name ?? worker.agent)'s worker · \(worker.label)")
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+            }
+            if ask.kind == "question" {
+                QuestionForm(ask: ask, listens: listens)
+            } else {
+                PermissionForm(ask: ask, cwd: cwd, listens: listens)
+            }
         }
     }
 

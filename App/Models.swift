@@ -58,6 +58,9 @@ final class Chat {
     var quitMidTurn: Bool = false
     /// A limit stopped its turn and the thread waits for it: when the limit resets it goes on.
     var resumeAt: Date?
+    /// The agents its workers may use, by id, picked in the model menu for a pair; nil follows
+    /// Settings, every ready agent while heads may start workers.
+    var workers: [String]?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

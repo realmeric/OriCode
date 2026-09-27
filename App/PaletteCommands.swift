@@ -325,7 +325,7 @@ extension AppModel {
                                  unavailable: projects.count > 1 ? nil : "There's only one project",
                                  action: .list(PaletteList(title: "Project", placeholder: "Search projects") { [weak self] in self?.paletteProjects ?? [] })))
         items.append(command("project.add", "Add project…", icon: "folder.badge.plus", shortcut: shortcuts.label(.addProject)) { [weak self] in self?.addProject() })
-        if agent.capabilities.heads {
+        if showsHeads(chat) {
             items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: shortcuts.label(.heads), keywords: ["agents", "tasks", "running"],
                                  unavailable: noThread) { [weak self] in self?.toggleHeads() })
         }

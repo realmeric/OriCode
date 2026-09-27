@@ -32,6 +32,8 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
         /// It asks before nothing, so a thread on it has no permission modes. Only an agent that
         /// runs that way sends it.
         var unsupervised: Bool? = nil
+        /// It takes OriCode's worker tools, so a thread on it can be a head with workers.
+        var workers: Bool? = nil
 
         /// What an agent hello doesn't list can do: nothing.
         static let none = Capabilities(
@@ -61,7 +63,7 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
         id: claudeID, name: "Claude Code", agent: "Claude", state: .ready, hint: nil, cli: nil, version: nil,
         capabilities: Capabilities(
             steer: true, resume: true, modeLive: true, attachments: true, heads: true, stopTask: true, limits: true,
-            usage: true, commands: true, compact: true, commitMessage: true, handoff: "claude --resume {session}"),
+            usage: true, commands: true, compact: true, commitMessage: true, handoff: "claude --resume {session}", workers: true),
         levels: ["low", "medium", "high", "xhigh", "max", Effort.ultracode],
         modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"])
 }

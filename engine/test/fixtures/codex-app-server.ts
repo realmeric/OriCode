@@ -2,7 +2,8 @@
 // over NDJSON with no "jsonrpc" on its lines, as Codex 0.157.1 writes them, a scripted turn for
 // each prompt, and no model anywhere. Every message it's sent goes to CODEX_LOG, one per line.
 // CODEX_SIGNED_OUT=1 makes it signed out.
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const signedOut = process.env.CODEX_SIGNED_OUT === "1";
@@ -77,6 +78,18 @@ async function turn(text: string, clientId: string | null): Promise<void> {
   if (text === "hello") {
     say("m-1", "Hi.");
     usage(100, 0, 3);
+    return complete("completed");
+  }
+  if (text.startsWith("write ")) {
+    // A file written for real in the thread's folder, as a worker in a worktree writes one.
+    const path = join(process.cwd(), text.slice("write ".length));
+    const body = "test('greets', () => {});\n";
+    writeFileSync(path, body);
+    const change = { type: "fileChange", id: "patch-w", status: "inProgress", changes: [{ path, kind: { type: "add" }, diff: body }] };
+    notify("item/started", { item: change });
+    notify("item/completed", { item: { ...change, status: "completed" } });
+    usage(500, 0, 20);
+    say("m-1", `Wrote ${text.slice("write ".length)}.`);
     return complete("completed");
   }
   if (text === "twice") {

@@ -40,6 +40,7 @@ function claudeEntry(state: string, path: string | null, cliVersion: string | nu
       compact: true,
       commitMessage: true,
       handoff: "claude --resume {session}",
+      workers: true,
     },
     levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
@@ -230,6 +231,7 @@ function codexEntry(state: string, cliPath: string | null, cliVersion: string | 
       compact: false,
       commitMessage: false,
       handoff: "codex resume --no-daemon {session}",
+      workers: true,
     },
     levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
@@ -258,13 +260,13 @@ function unwiredEntry(id: string, name: string, agent: string, state: string, cl
 
 /// Cursor as hello lists it, in the state it found it.
 function cursorEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
-  const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: null };
+  const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: null, workers: true };
   return { id: "cursor", name: "Cursor", agent: "Cursor", state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: ["acceptEdits", "plan"] };
 }
 
 /// A model API that runs in Claude Code, as hello lists it: Claude's thread without its plan.
 function compatibleEntry(id: string, name: string, state: string, cliPath: string | null, hint: string | null, levels: string[]) {
-  const capabilities = { steer: true, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: true, commitMessage: true, handoff: null };
+  const capabilities = { steer: true, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: true, commitMessage: true, handoff: null, workers: true };
   const modes = ["default", "acceptEdits", "plan", "auto", "bypassPermissions"];
   return { id, name, agent: name, state, hint, cli: cliPath, version: null, capabilities, levels, modes };
 }
@@ -311,6 +313,7 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
         compact: false,
         commitMessage: false,
         handoff: "grok --resume {session}",
+        workers: true,
       },
       levels: ["low", "medium", "high", "xhigh"],
       modes: ["default", "plan", "bypassPermissions"],
@@ -435,6 +438,7 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
       compact: false,
       commitMessage: false,
       handoff: "opencode --session {session}",
+      workers: true,
     },
     levels: [],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
@@ -508,7 +512,7 @@ test("Copilot signed in to a GitHub account with no Copilot plan reads as its ow
     { method: "hello", params: { agents: { copilot: { path: join(bin, "copilot") } } } },
     { method: "provider.check", params: { provider: "copilot" } },
   ]);
-  const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: "copilot --resume {session}" };
+  const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: "copilot --resume {session}", workers: true };
   const entry = { id: "copilot", name: "GitHub Copilot", agent: "Copilot", cli: join(bin, "copilot"), capabilities, levels: ["low", "medium", "high"], modes: ["default", "plan", "bypassPermissions"] };
   assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown", hint: null, version: null });
   assert.deepEqual(checked.result, {

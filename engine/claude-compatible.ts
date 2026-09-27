@@ -142,6 +142,7 @@ export function claudeCompatible(maker: Maker, { security, launch }: { security?
       commitMessage: true,
       // `claude --resume` in Terminal would go to Anthropic with the login.
       handoff: null,
+      workers: true,
     },
     levels: maker.levels,
     modes: claude.modes,

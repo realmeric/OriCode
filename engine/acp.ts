@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { diffHunks, diffOf, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
-import { asks as registry } from "./provider.ts";
+import { asks as registry, toolsServer } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
@@ -64,6 +64,7 @@ export type AcpSendParams = {
   attachments?: { mediaType: string; data: string }[];
   costSoFar?: number;
   id?: string;
+  tools?: string;
 };
 
 type ConfigValue = { value: string; name: string; description?: string | null };
@@ -91,7 +92,12 @@ type SessionModels = {
   }[];
 };
 
-type Capabilities = { loadSession?: boolean; promptCapabilities?: { image?: boolean }; sessionCapabilities?: { resume?: object | null } };
+type Capabilities = {
+  loadSession?: boolean;
+  promptCapabilities?: { image?: boolean };
+  sessionCapabilities?: { resume?: object | null };
+  mcpCapabilities?: { http?: boolean };
+};
 
 type AuthMethod = { id: string; name: string; description?: string | null };
 
@@ -214,8 +220,9 @@ export class AcpSession {
   /// process starts one.
   private startedWith = "";
   private sessionId: string | undefined;
-  /// Whether this process has the session open.
+  /// Whether this process has the session open, and with which of OriCode's tools.
   private live = false;
+  private openedTools: string | undefined;
   /// While a load replays the conversation, which the app already has.
   private loading = false;
   private running = false;
@@ -350,7 +357,8 @@ export class AcpSession {
       const reach = this.reach(params.permissionMode ?? this.mode);
       if (this.child && (params.cwd !== this.cwd || launch(reach) !== this.startedWith)) this.stop();
       if (!this.child) await this.start(params.cwd, reach);
-      if (!this.live) await this.open(params);
+      // A session's MCP servers are named as it opens, so tools turned on or off open it again.
+      if (!this.live || params.tools !== this.openedTools) await this.open(params);
       if (this.interrupted) return this.finish(turn, "interrupted");
       if (reach.mode) await this.applyMode(reach.mode);
       if (params.model) await this.applyModel(params.model);
@@ -440,7 +448,11 @@ export class AcpSession {
   /// and the turn goes on in a new one.
   private async open(params: AcpSendParams): Promise<void> {
     const earlier = params.sessionId ?? this.sessionId;
-    const setup = { cwd: params.cwd, mcpServers: [] };
+    // Every ACP agent takes a stdio server and only some take one over HTTP; each wired here says
+    // it does, and one that doesn't goes without OriCode's tools rather than a bridge process.
+    const tools = params.tools && this.capabilities.mcpCapabilities?.http ? [{ type: "http", name: toolsServer, url: params.tools, headers: [] }] : [];
+    if (params.tools && !tools.length) log(`${this.agent.name} takes no MCP server over HTTP, so thread=${this.id} has no worker tools`);
+    const setup = { cwd: params.cwd, mcpServers: tools };
     let reply: SessionReply | undefined;
     if (earlier && (this.capabilities.sessionCapabilities?.resume || this.capabilities.loadSession)) {
       const resume = Boolean(this.capabilities.sessionCapabilities?.resume);
@@ -465,6 +477,7 @@ export class AcpSession {
       reply = fresh;
     }
     this.live = true;
+    this.openedTools = params.tools;
     this.cost = undefined;
     // Which of them a picked-up session is in isn't said, so the first mode applied is sent.
     const unlisted = this.agent.unlistedModes && { currentModeId: "", availableModes: this.agent.unlistedModes.map((id) => ({ id, name: id })) };

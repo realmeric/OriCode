@@ -17,7 +17,7 @@ import {
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { Heads } from "./heads.ts";
-import { asks, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
+import { asks, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
 import { workflowShape, type WorkflowShape } from "./workflow.ts";
 
@@ -184,7 +184,7 @@ export class Thread implements Session {
       return true;
     }
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
-    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null]);
+    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, params.tools ?? null]);
     if (!this.query || key !== this.key) {
       let env = cleanEnvironment();
       if (this.elsewhere) {
@@ -381,6 +381,8 @@ export class Thread implements Session {
         stderr: (data) => process.stderr.write(data),
         debugFile: cliDebugFile(this.id),
         canUseTool: (tool, input, { signal, toolUseID }) => this.ask(tool, input, toolUseID, signal),
+        // Loaded with the prompt rather than behind tool search, so a head knows it can start workers.
+        mcpServers: params.tools ? { [toolsServer]: { type: "http", url: params.tools, alwaysLoad: true, timeout: toolsTimeout } } : undefined,
       },
     });
     this.pump(this.query);
@@ -497,6 +499,8 @@ export class Thread implements Session {
   }
 
   private ask(tool: string, input: Record<string, unknown>, toolUseId: string, signal: AbortSignal): Promise<PermissionResult> {
+    // The thread allowed workers, and what each worker does is asked about as it does it.
+    if (tool.startsWith(`mcp__${toolsServer}__`)) return Promise.resolve({ behavior: "allow", updatedInput: input });
     if (this.grant && sameCall(this.grant, tool, input)) {
       this.grant = undefined;
       log(`thread=${this.id} ${tool} allowed before the quit`);

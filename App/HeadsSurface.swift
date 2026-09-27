@@ -145,8 +145,9 @@ private struct HeadRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // A worker is OriCode's own session, which stops whatever the thread's agent can do.
             HeadLine(id: head.id, hovered: $hovered,
-                     stop: head.ending || !model.agent(for: chat).capabilities.stopTask ? nil : { model.stop(head, in: chat) }) {
+                     stop: head.ending || !(head.worker || model.agent(for: chat).capabilities.stopTask) ? nil : { model.stop(head, in: chat) }) {
                 icon
             } title: {
                 HStack(spacing: 6) {
@@ -154,7 +155,12 @@ private struct HeadRow: View {
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
                         .lineLimit(1)
-                    if let type = head.type, type != "general-purpose" {
+                    if head.worker {
+                        Text(workerOn)
+                            .font(Type.secondary)
+                            .foregroundStyle(Ink.faint)
+                            .lineLimit(1)
+                    } else if let type = head.type, type != "general-purpose" {
                         Text(type)
                             .font(Type.secondary)
                             .foregroundStyle(Ink.faint)
@@ -165,6 +171,9 @@ private struct HeadRow: View {
                 detail
             } trailing: {
                 HStack(spacing: 10) {
+                    if let cost = head.cost, cost > 0 {
+                        Text(String(format: "$%.2f", cost))
+                    }
                     if let tools = head.tools, tools > 0 {
                         Text("\(tools) \(tools == 1 ? "tool" : "tools")")
                             .contentTransition(.numericText(value: Double(tools)))
@@ -202,6 +211,13 @@ private struct HeadRow: View {
     private var title: String {
         if head.kind == .workflow, let name = head.run?.name { return name }
         return head.label.isEmpty ? "Task" : head.label
+    }
+
+    /// A worker's agent and model as the model menu names them: "Codex · GPT-6 Luna".
+    private var workerOn: String {
+        let agent = model.providers.first { $0.id == head.agent }?.name ?? head.agent
+        guard let id = head.model else { return agent }
+        return agent + " · " + (model.modelsByAgent[head.agent]?.first { $0.id == id }?.name ?? id)
     }
 
     @ViewBuilder
@@ -318,7 +334,7 @@ extension AppModel {
         withAnimation(Motion.move) {
             if headsShown {
                 headsShown = false
-            } else if let chat, agent(for: chat).capabilities.heads {
+            } else if let chat, showsHeads(chat) {
                 openInIsland(.heads)
             }
         }
