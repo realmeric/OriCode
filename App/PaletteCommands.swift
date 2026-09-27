@@ -17,6 +17,7 @@ extension AppModel {
             // A terminal can move the branch behind the app's back, and actions.json can change.
             refreshBranch(for: chat)
             customActions.refresh()
+            readAgentModels()
             withAnimation(Motion.move) { openInIsland(.command) }
         }
     }
@@ -359,18 +360,22 @@ extension AppModel {
     private var modeChoices: [PaletteItem] { modeChoices(named: true) }
 
     /// The models in the pickers' order; `named` puts "Model: " before each, for a search from the
-    /// top level.
+    /// top level. With several agents listed each row names its agent before its line.
     private func modelChoices(named: Bool) -> [PaletteItem] {
         guard project != nil else { return [] }
-        let current = option(for: chat)?.id
-        return modelGroups.flatMap(\.models).map { option in
-            PaletteItem(id: "model." + option.id, kind: .choice, title: (named ? "Model: " : "") + option.name,
-                        subtitle: option.description.isEmpty ? nil : option.description, icon: "cpu", checked: option.id == current,
-                        unavailable: option.needs.map { "Needs Claude Code \($0)" },
-                        action: .run { [weak self] in
-                            guard let self else { return }
-                            withAnimation(Motion.move) { self.setModel(option.id, for: self.chat) }
-                        })
+        let current = option(for: chat).map { ModelRef(provider: providerID(for: chat), id: $0.id).stored }
+        let rows = modelGroups(for: chat).flatMap(\.rows)
+        let several = Set(rows.map(\.agent)).count > 1
+        return rows.map { row in
+            let option = row.option
+            let line = [several ? providerInfo(row.agent).name : nil, option.description.nonEmpty].compactMap { $0 }.joined(separator: " · ")
+            return PaletteItem(id: "model." + row.id, kind: .choice, title: (named ? "Model: " : "") + option.name,
+                               subtitle: line.nonEmpty, icon: "cpu", checked: row.id == current,
+                               unavailable: option.needs.map { "Needs Claude Code \($0)" } ?? forbiddenHelp(option, on: row.agent),
+                               action: .run { [weak self] in
+                                   guard let self else { return }
+                                   withAnimation(Motion.move) { self.setModel(row.ref, for: self.chat) }
+                               })
         }
     }
 

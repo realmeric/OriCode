@@ -40,6 +40,7 @@ struct OfferTests {
         try container.mainContext.save()
         model = AppModel(container: container)
         model.models = Self.models
+        model.modelsByAgent[Self.standIn.id] = Self.models
         model.providers = [.claude, Self.standIn]
         model.selectedProjectID = project.id
         model.selectedChatID = chat.id
@@ -136,6 +137,6 @@ struct OfferTests {
         #expect(agent.id == "gone")
         #expect(agent.levels.isEmpty && agent.permissionModes.isEmpty)
         #expect(!agent.capabilities.steer && agent.capabilities.handoff == nil)
-        #expect(PickerState(model: model, chat: chat).option?.stops == [])
+        #expect(PickerState(model: model, chat: chat).option == nil)
     }
 }

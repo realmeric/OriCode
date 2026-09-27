@@ -22,6 +22,9 @@ export type Model = {
   /// The Claude Code version a catalog model needs, when the running one is older: the app
   /// shows it dimmed and doesn't pick it.
   needs?: string;
+  /// The maker whose login reaches the model, when that maker keeps the login to its own apps:
+  /// `anthropic`, `xai` or `meta` for pi. The app shows it dimmed and doesn't pick it.
+  forbidden?: string;
 };
 
 /// Models that take adaptive thinking, filled from the SDK's list. Asking one that doesn't

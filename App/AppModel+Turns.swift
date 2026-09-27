@@ -207,8 +207,13 @@ extension AppModel {
             if event.name == "error", let message = event.body["message"]?.string {
                 say(message)
             }
-            // The same models as hello's, now with each one's default effort and Ultracode.
+            // The same models as hello's, now with each one's default effort and Ultracode; or
+            // another agent's, which names it.
             if event.name == "models", let list = try? event.body["models"]?.decode([ModelOption].self), !list.isEmpty {
+                if let agent = event.body["provider"]?.string, agent != ProviderInfo.claudeID {
+                    modelsByAgent[agent] = list
+                    return
+                }
                 // A list whose Ultracode nothing answered for says no Ultracode anywhere; that's
                 // not a no, so Ultracode stays assumed where a model has xhigh.
                 let known = event.body["ultraKnown"]?.bool ?? true
@@ -314,14 +319,22 @@ extension AppModel {
 
 extension AppModel {
     /// With no thread open, a pick is for the thread about to start, and a default fixed in
-    /// Settings would win over it there; so that thread starts now, empty, with the pick.
-    func setModel(_ id: String, for chat: Chat?) {
-        let agent = providerID(for: chat)
-        lastProvider = agent
-        lastModel = ModelRef(provider: agent, id: id)
-        guard let chat = chat ?? (id == startingModel ? nil : newChat()) else { return }
-        chat.model = id
-        if let levels = models.first(where: { $0.id == id })?.levels, let effort = chat.effort, !levels.contains(effort) {
+    /// Settings would win over it there; so that thread starts now, empty, with the pick. Another
+    /// agent's model moves a thread to that agent while it's a draft, and never after.
+    func setModel(_ ref: ModelRef, for chat: Chat?) {
+        guard chat.map({ canMoveAgent($0) || $0.providerID == ref.provider }) ?? true else { return }
+        lastProvider = ref.provider
+        lastModel = ref
+        guard let chat = chat ?? (ref.provider == startingProvider && ref.id == startingModel ? nil : newChat()) else { return }
+        if chat.providerID != ref.provider {
+            chat.provider = ref.provider
+            let modes = agent(for: chat).permissionModes
+            if let first = modes.first, !modes.contains(where: { $0.rawValue == chat.permissionMode }) {
+                chat.permissionMode = first.rawValue
+            }
+        }
+        chat.model = ref.id
+        if let levels = option(ref)?.levels, let effort = chat.effort, !levels.contains(effort) {
             chat.effort = nil
         }
         save()
@@ -345,11 +358,6 @@ extension AppModel {
         } else {
             favoriteModels.append(id)
         }
-    }
-
-    /// The models as the pickers group them: favorites, then Claude Code's own, then its older ones.
-    var modelGroups: [ModelsPage.RowGroup] {
-        ModelsPage.groups(models, favorites: favoriteModels)
     }
 
     func fastMode(of chat: Chat) -> Bool {
@@ -407,7 +415,6 @@ extension AppModel {
     /// Where Back to Defaults takes a thread: what Settings › New threads fixes for each choice,
     /// and Claude Code's own default for each it leaves to the last pick.
     struct ThreadDefaults {
-        let model: String
         let effort: String?
         let fast: Bool
         let permissionMode: String
@@ -417,7 +424,6 @@ extension AppModel {
         let fixed = UserDefaults.standard
         let effort = fixed.string(forKey: NewThreads.effort) ?? ""
         return ThreadDefaults(
-            model: Self.storedModel(NewThreads.model).flatMap { $0.provider == ProviderInfo.claudeID ? $0.id : nil } ?? ModelOption.claudeDefault,
             effort: effort.isEmpty || effort == NewThreads.claudeDefault ? nil : effort,
             fast: fixed.string(forKey: NewThreads.fast) == NewThreads.on,
             permissionMode: fixed.string(forKey: NewThreads.permissionMode)?.nonEmpty ?? PermissionModeOption.ask.rawValue)
@@ -427,12 +433,14 @@ extension AppModel {
     /// compared by the level it runs at, so a level picked that equals Default's counts.
     func atDefaults(_ chat: Chat?) -> Bool {
         let target = threadDefaults
+        let model = defaultModel(for: chat)
         let option = option(for: chat)
-        let targetOption = models.first { $0.id == target.model }
+        let targetOption = self.option(model)
         let effort = chat == nil ? startingEffort : chat?.effort
         let fast = (chat?.fastMode ?? startingFast) && option?.fast == true
-        let targetHome = target.model == option?.id ? defaultLevel(for: chat) : targetOption?.defaultEffort
-        return option?.id == target.model
+        let onIt = model.provider == providerID(for: chat) && model.id == option?.id
+        let targetHome = onIt ? defaultLevel(for: chat) : targetOption?.defaultEffort
+        return onIt
             && (effort ?? defaultLevel(for: chat)) == (target.effort ?? targetHome)
             && fast == (target.fast && targetOption?.fast == true)
             && (chat?.permissionMode ?? startingPermissionMode) == target.permissionMode
@@ -442,8 +450,9 @@ extension AppModel {
     /// follow and a new thread starts where this one went back to.
     func resetToDefaults(for chat: Chat?) {
         let target = threadDefaults
+        let model = defaultModel(for: chat)
         guard let chat = chat ?? newChat() else { return }
-        if chat.model != target.model { setModel(target.model, for: chat) }
+        if chat.model != model.id || chat.providerID != model.provider { setModel(model, for: chat) }
         setEffort(target.effort, for: chat)
         if chat.fastMode != target.fast { setFast(target.fast, for: chat) }
         if chat.permissionMode != target.permissionMode { setPermissionMode(target.permissionMode, for: chat) }

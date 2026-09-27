@@ -88,7 +88,8 @@ extension ProviderInfo {
         return ModelOption(
             id: option.id, name: option.name, description: option.description, efforts: efforts, fast: option.fast,
             defaultEffort: option.defaultEffort.flatMap { efforts.contains($0) ? $0 : nil },
-            ultra: option.ultra && ultracode, ultraBlocked: ultracode ? option.ultraBlocked : nil, more: option.more, needs: option.needs)
+            ultra: option.ultra && ultracode, ultraBlocked: ultracode ? option.ultraBlocked : nil, more: option.more, needs: option.needs,
+            forbidden: option.forbidden)
     }
 }
 
@@ -180,6 +181,7 @@ extension AppModel {
         let was = providers[at].state
         providers[at] = found
         guard was != .ready, found.state == .ready else { return }
+        modelsAsked.remove(found.id)
         pickUpAfterQuit()
         scheduleResumes()
     }

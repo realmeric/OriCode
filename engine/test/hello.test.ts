@@ -251,3 +251,17 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
   assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
   assert.deepEqual((await readFile(ran, "utf8")).trim().split("\n").sort(), ["codex --version", "codex login status", "cursor-agent --version", "cursor-agent status --format json"]);
 });
+
+test("models.list for Claude answers with hello's list", async () => {
+  const claude = await standIn(true);
+  const { folder, config, known } = await cachedDefaults();
+  const env = { ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config };
+  const [, listed] = await replies(env, [{ method: "hello" }, { method: "models.list", params: {} }]);
+  assert.deepEqual(listed.result, { models: known });
+});
+
+test("models.list for an agent with no session in the engine says so", async () => {
+  const claude = await standIn(false);
+  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "codex" } }]);
+  assert.equal(unknown.error, "Codex can't list its models yet.");
+});

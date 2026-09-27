@@ -21,9 +21,15 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let more: Bool?
     /// The Claude Code version the model needs, when the one here is older: listed, not picked.
     let needs: String?
+    /// The maker whose login reaches it, when that maker keeps the login to its own apps: pi's
+    /// claude.ai, xAI and Meta logins. Listed, not picked, until it's turned on in Settings › Agents.
+    var forbidden: String? = nil
 
     /// The SDK's id for Default (recommended), the model Claude Code picks.
     static let claudeDefault = "default"
+
+    /// Whether a menu can pick it: nothing it needs is missing and nothing forbids it.
+    var pickable: Bool { needs == nil && forbidden == nil }
 
     /// Levels the picker offers, low to high, with Ultracode last where the model can run it,
     /// the way Claude Code's own picker has it.
@@ -102,7 +108,10 @@ final class AppModel {
     var checkingAgents: Set<String> = []
     var agentSettings = AgentSettings()
     @ObservationIgnored var keychain = Keychain(prefix: "OriCode")
-    var models: [ModelOption] = []
+    /// Each agent's models by its id: Claude Code's from hello, another's once a menu needs them.
+    var modelsByAgent: [String: [ModelOption]] = [:]
+    /// The agents whose models have been asked for since the engine started.
+    @ObservationIgnored var modelsAsked: Set<String> = []
     /// The effortLevel in the user's Claude Code settings, which is where Default lands when set.
     var settingsEffort: String?
     /// Bumped whenever the app's defaults change, so what reads them there (a new thread's
@@ -270,6 +279,12 @@ final class AppModel {
         set { UserDefaults.standard.set(newValue, forKey: "lastFast") }
     }
 
+    /// Claude Code's models, as hello and the `models` events give them.
+    var models: [ModelOption] {
+        get { models(of: ProviderInfo.claudeID) }
+        set { modelsByAgent[ProviderInfo.claudeID] = newValue }
+    }
+
     /// What the next new thread starts with: what Settings › New threads fixes, and the last
     /// pick in the composer for what it leaves to that.
     var startingModel: String? {
@@ -302,10 +317,11 @@ final class AppModel {
     }
 
     /// The model a thread runs on: its own, or with no thread the one the next starts on, or
-    /// the first the SDK lists, which is Claude Code's default; with only the levels its agent takes.
+    /// the first its agent lists, for Claude Code the SDK's default; with only the levels its agent takes.
     func option(for chat: Chat?) -> ModelOption? {
         let id = chat == nil ? startingModel : chat?.model
-        return (models.first { $0.id == id } ?? models.first).map(agent(for: chat).narrowing)
+        let list = models(of: providerID(for: chat))
+        return (list.first { $0.id == id } ?? list.first).map(agent(for: chat).narrowing)
     }
 
     init(container: ModelContainer) {
@@ -418,6 +434,7 @@ final class AppModel {
             // Which models run Ultracode comes a moment later, in the models event.
             models = hello.models.map(\.assumingUltracode)
             providers = hello.providers
+            modelsAsked = []
             engineState = .ready
             Task { await loadAgents() }
             refreshBranch(for: chat)

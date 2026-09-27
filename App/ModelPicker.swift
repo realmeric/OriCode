@@ -86,9 +86,11 @@ struct Tag: View {
     }
 }
 
-/// Claude's mark and the model's name: the way to the list of models.
+/// The agent's mark and the model's name: the way to the list of models.
 struct ModelLine: View {
     let option: ModelOption?
+    /// The agent whose mark it shows: the thread's, or the one Back to Defaults would move it to.
+    let agent: String
     /// The model Back to Defaults would pick, while the pointer is on it.
     let preview: ModelOption?
     let action: () -> Void
@@ -98,7 +100,7 @@ struct ModelLine: View {
         let shown = preview ?? option
         Button(action: action) {
             HStack(spacing: 5) {
-                ClaudeMark()
+                AgentMark(agent: agent)
                     .frame(width: 12, height: 12)
                 Text(shown?.name ?? "Model")
                     .font(Type.secondary)
@@ -188,21 +190,44 @@ struct ModelsPage: View {
     @State private var keyed: String?
     @FocusState private var focused: Bool
 
-    /// Rows and headings as the page draws them.
-    struct RowGroup: Identifiable {
-        let title: String?
-        let models: [ModelOption]
-        var id: String { title ?? "" }
+    /// A model with its agent.
+    struct Row: Identifiable, Hashable {
+        let agent: String
+        let option: ModelOption
+
+        var ref: ModelRef { ModelRef(provider: agent, id: option.id) }
+        /// ModelRef's key, so two agents' models never share one.
+        var id: String { ref.stored }
     }
 
-    static func groups(_ models: [ModelOption], favorites: [String]) -> [RowGroup] {
-        let starred = favorites.compactMap { id in models.first { $0.id == id } }
-        let rest = models.filter { !favorites.contains($0.id) }
-        return [
-            RowGroup(title: "Favorites", models: starred),
-            RowGroup(title: starred.isEmpty ? nil : "Models", models: rest.filter { $0.more != true }),
-            RowGroup(title: "More models", models: rest.filter { $0.more == true }),
-        ].filter { !$0.models.isEmpty }
+    /// Rows and headings as the page draws them.
+    struct RowGroup: Identifiable {
+        let id: String
+        let title: String?
+        /// The agent whose mark the heading shows, when the page lists more than one.
+        let agent: String?
+        let rows: [Row]
+    }
+
+    /// Favorites first, from every agent; then with one agent its models, under Models when
+    /// there are favorites, and with several each agent's under its name; and Claude Code's
+    /// older ones under More models after its own.
+    static func groups(_ agents: [(agent: ProviderInfo, models: [ModelOption])], favorites: [String]) -> [RowGroup] {
+        let listed = agents.filter { !$0.models.isEmpty }
+        let all = listed.flatMap { entry in entry.models.map { Row(agent: entry.agent.id, option: $0) } }
+        let starred = favorites.compactMap { id in all.first { $0.id == id } }
+        let rest = all.filter { !favorites.contains($0.id) }
+        let several = listed.count > 1
+        var groups = [RowGroup(id: "Favorites", title: "Favorites", agent: nil, rows: starred)]
+        for entry in listed {
+            let own = rest.filter { $0.agent == entry.agent.id }
+            let title = several ? entry.agent.name : starred.isEmpty ? nil : "Models"
+            groups.append(RowGroup(id: several ? "agent:" + entry.agent.id : title ?? "", title: title, agent: several ? entry.agent.id : nil,
+                                   rows: own.filter { $0.option.more != true }))
+            groups.append(RowGroup(id: several ? "more:" + entry.agent.id : "More models", title: "More models", agent: nil,
+                                   rows: own.filter { $0.option.more == true }))
+        }
+        return groups.filter { !$0.rows.isEmpty }
     }
 
     private static let row: CGFloat = 42
@@ -210,32 +235,31 @@ struct ModelsPage: View {
 
     /// The page's height: all of it up to the effort page's, and past that it scrolls.
     static func height(for groups: [RowGroup]) -> CGFloat {
-        let rows = groups.reduce(0) { $0 + $1.models.count }
+        let rows = groups.reduce(0) { $0 + $1.rows.count }
         let headings = groups.filter { $0.title != nil }.count
         return min(CGFloat(rows) * row + CGFloat(headings) * heading + 16, MarkPicker.effortHeight)
     }
 
     var body: some View {
-        let chosen = PickerState(model: model, chat: chat).option?.id
+        let chosen = PickerState(model: model, chat: chat).option.map { ModelRef(provider: model.providerID(for: chat), id: $0.id).stored }
         ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(model.modelGroups) { group in
+                    ForEach(model.modelGroups(for: chat)) { group in
                         if let title = group.title {
-                            Text(title)
-                                .font(Type.secondary)
-                                .foregroundStyle(Ink.faint)
+                            heading(title, agent: group.agent)
                                 .padding(.horizontal, 10)
                                 .frame(height: Self.heading - 2, alignment: .bottomLeading)
-                                .id(title)
+                                .id(group.id)
                         }
-                        ForEach(group.models) { option in
-                            ModelRow(option: option, chosen: option.id == chosen, keyed: option.id == keyed,
-                                     favorite: model.favoriteModels.contains(option.id), glide: glide,
-                                     star: { withAnimation(Motion.move) { model.toggleFavorite(option.id) } }) {
-                                pick(option.id)
+                        ForEach(group.rows) { row in
+                            ModelRow(option: row.option, agent: row.agent, forbidden: model.forbiddenHelp(row.option, on: row.agent),
+                                     chosen: row.id == chosen, keyed: row.id == keyed,
+                                     favorite: model.favoriteModels.contains(row.id), glide: glide,
+                                     star: { withAnimation(Motion.move) { model.toggleFavorite(row.id) } }) {
+                                pick(row.ref)
                             }
-                            .id(option.id)
+                            .id(row.id)
                         }
                     }
                 }
@@ -262,26 +286,43 @@ struct ModelsPage: View {
         }
         .onKeyPress(.return) {
             guard let keyed else { return .ignored }
-            pick(keyed)
+            pick(ModelRef(stored: keyed))
             return .handled
+        }
+    }
+
+    /// A group's name, and with several agents on the page the agent's mark before it.
+    @ViewBuilder
+    private func heading(_ title: String, agent: String?) -> some View {
+        let text = Text(title)
+            .font(Type.secondary)
+            .foregroundStyle(Ink.faint)
+        if let agent {
+            HStack(spacing: 5) {
+                AgentMark(agent: agent)
+                    .frame(width: 10, height: 10)
+                text
+            }
+        } else {
+            text
         }
     }
 
     /// A group's first row brings its heading into view with it.
     private func scrollTarget(_ row: String?) -> String? {
-        model.modelGroups.first { $0.models.first?.id == row }?.title ?? row
+        model.modelGroups(for: chat).first { $0.rows.first?.id == row }.flatMap { $0.title == nil ? nil : $0.id } ?? row
     }
 
     private func move(_ by: Int) -> KeyPress.Result {
-        let ids = model.modelGroups.flatMap(\.models).filter { $0.needs == nil }.map(\.id)
+        let ids = model.modelGroups(for: chat).flatMap(\.rows).filter(\.option.pickable).map(\.id)
         let at = keyed.flatMap(ids.firstIndex(of:)) ?? -1
         guard ids.indices.contains(at + by) else { return .ignored }
         keyed = ids[at + by]
         return .handled
     }
 
-    private func pick(_ id: String) {
-        withAnimation(Motion.move) { model.setModel(id, for: chat) }
+    private func pick(_ ref: ModelRef) {
+        withAnimation(Motion.move) { model.setModel(ref, for: chat) }
         Task {
             // Long enough to see the highlight land before the page turns back.
             try? await Task.sleep(for: .milliseconds(140))
@@ -290,11 +331,34 @@ struct ModelsPage: View {
     }
 }
 
-/// A model: its name and the SDK's line about it, a bolt if it can go fast, on the gliding
-/// highlight when it's the one, and at the end a star of its own, which shows on the row under
-/// the pointer or the arrow keys and stays on a favorite.
+/// A group's models in a native menu, the Thread menu's or Settings', under its agent's name
+/// when the menu lists several agents.
+struct ModelMenuItems: View {
+    let group: ModelsPage.RowGroup
+
+    var body: some View {
+        if let title = group.title, group.agent != nil {
+            Section(title) { items }
+        } else {
+            items
+        }
+    }
+
+    private var items: some View {
+        ForEach(group.rows.filter(\.option.pickable)) { row in
+            Text(row.option.name).tag(row.id)
+        }
+    }
+}
+
+/// A model: its agent's mark, its name and the agent's line about it, a bolt if it can go fast,
+/// on the gliding highlight when it's the one, and at the end a star of its own, which shows on
+/// the row under the pointer or the arrow keys and stays on a favorite.
 struct ModelRow: View {
     let option: ModelOption
+    let agent: String
+    /// What a model its maker's login keeps from OriCode says of the toggle that would let it run.
+    let forbidden: String?
     let chosen: Bool
     let keyed: Bool
     let favorite: Bool
@@ -304,12 +368,12 @@ struct ModelRow: View {
     @State private var hovering = false
 
     var body: some View {
-        let unavailable = option.needs != nil
+        let unavailable = !option.pickable
         let starShown = !unavailable && (favorite || hovering || keyed)
         HStack(spacing: 0) {
             Button(action: action) {
                 HStack(spacing: 10) {
-                    ClaudeMark()
+                    AgentMark(agent: agent)
                         .frame(width: 14, height: 14)
                         .opacity(chosen ? 1 : 0.45)
                     VStack(alignment: .leading, spacing: 1) {
@@ -345,6 +409,7 @@ struct ModelRow: View {
             .buttonStyle(.plain)
             .disabled(unavailable)
             .help(option.needs.map { "Run claude update in Terminal to use \(option.name), which needs Claude Code \($0)" }
+                ?? forbidden
                 ?? (option.description.isEmpty ? option.name : option.description))
             .accessibilityAddTraits(chosen ? .isSelected : [])
             .accessibilityAction(named: favorite ? "Remove from Favorites" : "Add to Favorites") { if !unavailable { star() } }

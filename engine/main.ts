@@ -50,11 +50,13 @@ function session(threadId: string, agent: Provider, path: string): Session {
 async function listAfterLogin(agent: Provider, found: Availability): Promise<void> {
   let told = false;
   const listedFirst = Promise.withResolvers<void>();
+  // Claude Code's go unnamed, as they always have.
+  const named = agent.id === claude.id ? {} : { provider: agent.id };
   const models = await agent.models(found, (fields) => {
     told = true;
-    void listedFirst.promise.then(() => event("models", fields));
+    void listedFirst.promise.then(() => event("models", { ...fields, ...named }));
   });
-  if (!told) event("models", { models, settingsEffort: null, ultraKnown: false });
+  if (!told) event("models", { models, settingsEffort: null, ultraKnown: false, ...named });
   listedFirst.resolve();
 }
 
@@ -148,6 +150,15 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// Every agent OriCode knows, for Settings › Agents.
   async agents() {
     return { agents: registry() };
+  },
+
+  /// An agent's models, asked of its CLI the first time the app needs them rather than at launch.
+  /// Claude Code has none of its own to ask, so its answer is hello's list.
+  async "models.list"({ provider: id = claude.id }: { provider?: string }) {
+    const wired = providers.get(id);
+    if (!wired) throw new Error(agent(id) ? `${agent(id)!.name} can't list its models yet.` : `Unknown provider ${id}`);
+    const models = wired.listModels ? await wired.listModels(await cli(wired)) : await wired.models(await wired.availability(), () => {});
+    return { models };
   },
 
   async send(params: SendParams & { provider?: string }) {

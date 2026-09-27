@@ -27,9 +27,10 @@ struct MarkPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: 320, height: page == .effort ? Self.effortHeight : ModelsPage.height(for: model.modelGroups))
+        .frame(width: 320, height: page == .effort ? Self.effortHeight : ModelsPage.height(for: model.modelGroups(for: chat)))
         .animation(Motion.glide, value: page)
         .onAppear {
+            model.readAgentModels()
             // Asked now, so the Fast button already knows Claude Code's answer when it's clicked.
             if let option = model.option(for: chat), option.fast, model.fastReading(for: chat) == nil {
                 model.checkFast(model: option.id, on: model.providerID(for: chat))
@@ -135,8 +136,9 @@ private struct MarkPage: View {
             .help(state.option?.fast == true ? "Fast mode: faster output from the same model" : "This model can't run fast")
             .frame(width: 30, height: 30)
             Spacer(minLength: 6)
-            ModelLine(option: state.option, preview: previewingReset ? model.models.first { $0.id == model.threadDefaults.model } : nil,
-                      action: openModels)
+            let back = model.defaultModel(for: chat)
+            ModelLine(option: state.option, agent: previewingReset ? back.provider : model.providerID(for: chat),
+                      preview: previewingReset ? model.option(back) : nil, action: openModels)
             Spacer(minLength: 6)
             Group {
                 if !model.atDefaults(chat) {
@@ -238,9 +240,9 @@ private struct MarkPage: View {
 
     /// Where the thumb lands after Back to Defaults, when the model stays the same.
     private func resetTarget(_ state: PickerState) -> String? {
-        let target = model.threadDefaults
-        guard target.model == state.option?.id else { return nil }
-        return target.effort ?? state.home
+        let back = model.defaultModel(for: chat)
+        guard back.provider == model.providerID(for: chat), back.id == state.option?.id else { return nil }
+        return model.threadDefaults.effort ?? state.home
     }
 
     private func blocked(_ state: PickerState) -> Bool {

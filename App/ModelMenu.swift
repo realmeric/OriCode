@@ -53,7 +53,7 @@ struct ModelMenu: View {
             model.modelPickerShown.toggle()
         } label: {
             HStack(spacing: 6) {
-                ClaudeMark()
+                AgentMark(agent: model.providerID(for: chat))
                     .frame(width: 14, height: 14)
                 let name = selectedModel.map { Self.shortName($0.name) } ?? "Model"
                 Text(name)

@@ -79,11 +79,12 @@ struct OriCodeCommands: Commands {
             }
             Divider()
             Picker("Model", selection: modelBinding) {
-                ForEach(model.modelGroups) { group in
-                    if group.id != model.modelGroups.first?.id { Divider() }
-                    ForEach(group.models.filter { $0.needs == nil }) { option in
-                        Text(option.name).tag(option.id)
-                    }
+                let groups = model.modelGroups(for: model.chat)
+                // An agent's section brings its own separators.
+                let sectioned = groups.contains { $0.agent != nil }
+                ForEach(groups) { group in
+                    if !sectioned, group.id != groups.first?.id { Divider() }
+                    ModelMenuItems(group: group)
                 }
             }
             if let option = model.option(for: model.chat), !option.levels.isEmpty {
@@ -131,9 +132,9 @@ struct OriCodeCommands: Commands {
 
     private var modelBinding: Binding<String> {
         Binding {
-            model.option(for: model.chat)?.id ?? ""
-        } set: { id in
-            model.setModel(id, for: model.chat)
+            model.option(for: model.chat).map { ModelRef(provider: model.providerID(for: model.chat), id: $0.id).stored } ?? ""
+        } set: { stored in
+            model.setModel(ModelRef(stored: stored), for: model.chat)
         }
     }
 

@@ -257,6 +257,8 @@ extension AppModel {
         if let found { listed.append(found) }
         let order = agents.map(\.id)
         providers = listed.sorted { (order.firstIndex(of: $0.id) ?? .max) < (order.firstIndex(of: $1.id) ?? .max) }
+        // A login turned on or off changes which of its models can be picked, so the menu asks again.
+        modelsAsked.remove(id)
         // Claude Code on a CLI chosen now may run where the last one couldn't.
         if was != .ready, found?.state == .ready {
             pickUpAfterQuit()

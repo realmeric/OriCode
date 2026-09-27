@@ -275,6 +275,7 @@ private struct GeneralPane: View {
     @AppStorage("nodePath") private var nodePath = ""
     @AppStorage(Editor.key) private var editor = ""
     @AppStorage(NewThreads.model) private var newModel = ""
+    @AppStorage(NewThreads.provider) private var newProvider = ""
     @AppStorage(NewThreads.effort) private var newEffort = ""
     @AppStorage(NewThreads.fast) private var newFast = ""
     @AppStorage(NewThreads.permissionMode) private var newMode = ""
@@ -310,16 +311,22 @@ private struct GeneralPane: View {
         SectionHeading("New threads")
         SettingsCard {
             SettingsRow(title: "Model", detail: "Each of these can follow what you last picked in the composer.") {
-                Picker("Model", selection: $newModel) {
-                    Text(lastPicked(model.models.first { $0.id == lastModel }?.name)).tag("")
-                    ForEach(model.modelGroups) { group in
-                        Divider()
-                        ForEach(group.models.filter { $0.needs == nil }) { option in
-                            Text(option.name).tag(option.id)
-                        }
+                // A model fixes its agent too, so a new thread starts on the agent that has it.
+                Picker("Model", selection: Binding(get: { newModel }, set: { stored in
+                    newModel = stored
+                    newProvider = stored.isEmpty ? "" : ModelRef(stored: stored).provider
+                })) {
+                    Text(lastPicked(model.option(ModelRef(stored: lastModel))?.name)).tag("")
+                    let groups = model.modelGroups(for: nil)
+                    // An agent's section brings its own separators.
+                    let sectioned = groups.contains { $0.agent != nil }
+                    ForEach(groups) { group in
+                        if !sectioned || group.id == groups.first?.id && group.agent == nil { Divider() }
+                        ModelMenuItems(group: group)
                     }
                 }
                 .menuRow()
+                .onAppear { model.readAgentModels() }
             }
             if !agent.levels.isEmpty {
                 SettingsRow(title: "Effort", detail: effortDetail) {
@@ -385,14 +392,15 @@ private struct GeneralPane: View {
     /// The fixed model's levels, or every level some model has while the model follows the last
     /// pick, as far as the agent takes them. Never Ultracode, which a new thread doesn't start in.
     private var levels: [String] {
-        let options = model.models.filter { newModel.isEmpty || $0.id == newModel }.map(agent.narrowing)
+        let options = model.models(of: agent.id).filter { newModel.isEmpty || ModelRef(provider: agent.id, id: $0.id).stored == newModel }
+            .map(agent.narrowing)
         let order = ["low", "medium", "high", "xhigh", "max"]
         return order.filter { level in options.contains { $0.levels.contains(level) } }
     }
 
     /// The model a new thread starts on.
     private var startingOption: ModelOption? {
-        model.models.first { $0.id == (newModel.nonEmpty ?? lastModel) }.map(agent.narrowing)
+        model.option(ModelRef(stored: newModel.nonEmpty ?? lastModel)).map(agent.narrowing)
     }
 
     /// Where the CLI's default lands for the model a new thread starts on.

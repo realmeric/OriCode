@@ -113,6 +113,9 @@ export type Provider = {
   /// Hello's list, read once `ready` says the CLI can be asked; `tell` sends the `models`
   /// events that follow it.
   models(ready: Availability, tell: (models: ModelsEvent) => void): Promise<Model[]>;
+  /// The models the agent's own CLI lists, asked by `models.list` when the app first needs them,
+  /// so launch starts no agent's CLI. Claude Code's come with hello instead.
+  listModels?(cli: string): Promise<Model[]>;
   session(threadId: string, cli: string): Session;
   fastCheck?(cli: string, model: string | undefined): Promise<{ state: string; reason: string | null }>;
   /// Commands for a folder when no thread there has a CLI running.
