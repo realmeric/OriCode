@@ -74,9 +74,10 @@ extension ProviderInfo {
 
     var unsupervised: Bool { capabilities.unsupervised == true }
 
-    /// The modes a thread on it picks from, in the tiles' order; none when it asks before nothing.
+    /// The modes a thread on it picks from, in the tiles' order. One that asks before nothing may
+    /// still have some, which say what it's allowed: Command Code's, where Pi has none.
     var permissionModes: [PermissionModeOption] {
-        unsupervised ? [] : PermissionModeOption.allCases.filter { modes.contains($0.rawValue) }
+        PermissionModeOption.allCases.filter { modes.contains($0.rawValue) }
     }
 
     /// A model as a thread on this agent runs it: only the levels the agent takes, and Ultracode

@@ -70,7 +70,7 @@ struct OfferTests {
         #expect(conversation.waiting.isEmpty)
     }
 
-    @Test func anUnsupervisedAgentHasNoModesAndSaysSo() throws {
+    @Test func anUnsupervisedAgentSaysSoAndKeepsOnlyItsOwnModes() throws {
         let reply: JSON = [
             "steer": false, "resume": true, "modeLive": false, "attachments": false, "heads": false, "stopTask": false,
             "limits": false, "usage": false, "commands": false, "compact": false, "commitMessage": false, "handoff": .null,
@@ -79,12 +79,16 @@ struct OfferTests {
         let capabilities = try reply.decode(ProviderInfo.Capabilities.self)
         #expect(capabilities.unsupervised == true)
         let pi = ProviderInfo(id: "pi", name: "Pi", agent: "Pi", state: .ready, hint: nil, cli: nil, version: nil,
-                              capabilities: capabilities, levels: [], modes: ["default"])
+                              capabilities: capabilities, levels: [], modes: [])
         model.providers = [.claude, pi]
         chat.provider = "pi"
         let state = PickerState(model: model, chat: chat)
         #expect(state.modes.isEmpty)
         #expect(state.unsupervised)
+        // One that has modes keeps them: Command Code's say what it may do without asking.
+        let cmd = ProviderInfo(id: "commandcode", name: "Command Code", agent: "Command Code", state: .ready, hint: nil, cli: nil, version: nil,
+                               capabilities: capabilities, levels: [], modes: ["default", "plan", "bypassPermissions"])
+        #expect(cmd.permissionModes == [.ask, .plan, .dontAsk])
         // Claude Code's, which never sends it, reads as supervised.
         #expect(ProviderInfo.claude.capabilities.unsupervised == nil)
         #expect(model.agent(for: nil).permissionModes == PermissionModeOption.allCases)

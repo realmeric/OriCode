@@ -98,14 +98,17 @@ private struct MarkPage: View {
             if !state.modes.isEmpty {
                 ModeTiles(modes: state.modes, mode: Binding(get: { state.mode.rawValue }, set: { model.setPermissionMode($0, for: chat) }),
                           preview: previewingReset ? PermissionModeOption(rawValue: model.threadDefaults.permissionMode) : nil,
-                          compact: false)
-            } else if state.unsupervised {
-                // Where the tiles' line would be, since it says the same kind of thing.
+                          compact: state.unsupervised)
+            }
+            if state.unsupervised {
+                // Where the tiles' line would be, since it says the same kind of thing. Claude's
+                // words for a mode, "Edits and commands wait for you", would be wrong here.
                 Text("\(state.agent.agent) runs unsupervised · nothing waits for you")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.secondary)
                     .lineLimit(1)
                     .frame(height: 16)
+                    .padding(.top, state.modes.isEmpty ? 0 : 6)
             }
         }
         .padding(.horizontal, 16)

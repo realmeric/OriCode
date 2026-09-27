@@ -653,3 +653,98 @@ test("a Pi thread through the engine: checked ready, its models with the forbidd
   // No pi it started, for a thread or a list, got a variable of Claude's.
   assert.ok(sent.filter((message) => message.args).every((start) => start.env.length === 0));
 });
+
+/// Command Code as hello lists it, in the state it found it.
+function commandCodeEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
+  return {
+    id: "commandcode",
+    name: "Command Code",
+    agent: "Command Code",
+    state,
+    hint,
+    cli: cliPath,
+    version: cliVersion,
+    capabilities: {
+      steer: false,
+      resume: true,
+      modeLive: false,
+      attachments: false,
+      heads: false,
+      stopTask: false,
+      limits: false,
+      usage: false,
+      commands: false,
+      compact: false,
+      commitMessage: false,
+      handoff: "cmd --resume {session}",
+      unsupervised: true,
+    },
+    levels: [],
+    modes: ["default", "plan", "bypassPermissions"],
+  };
+}
+
+test("a Command Code thread through the engine: signed in by its own login, its models listed once, a turn in Don't ask, and the next resuming it", async (t) => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), "oricode-cmd-")));
+  await writeFile(join(cwd, "hello.txt"), "zero\none\nend\n");
+  const log = join(cwd, "cmd.log");
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
+  const cmd = await fixtureStandIn(bin, "cmd", "commandcode-cli.ts", { CMD_LOG: log });
+  const signedOut = engineWith(env);
+  t.after(signedOut.kill);
+  await signedOut.request("hello", { agents: { commandcode: {} } });
+  const hint = "Command Code has no working API key. Add yours in Settings › Agents.";
+  assert.deepEqual((await signedOut.request("provider.check", { provider: "commandcode" })).result, commandCodeEntry("signedOut", cmd, "1.66.0", hint));
+  await signedOut.end();
+
+  // A `cmd login` made in Terminal, with no key kept, is cmd's own to count.
+  await fixtureStandIn(bin, "cmd", "commandcode-cli.ts", { CMD_LOG: log, CMD_LOGIN: "1" });
+  const engine = engineWith(env);
+  t.after(engine.kill);
+  const hello = await engine.request("hello", { agents: { commandcode: {} } });
+  assert.deepEqual(hello.result.providers[1], commandCodeEntry("unknown", cmd, null, null));
+  assert.deepEqual((await engine.request("provider.check", { provider: "commandcode" })).result, commandCodeEntry("ready", cmd, "1.66.0", null));
+  const told = await engine.until((line) => line.event === "models");
+  assert.equal(told.provider, "commandcode");
+  const listed = (await engine.request("models.list", { provider: "commandcode" })).result.models;
+  assert.deepEqual(
+    listed.map((model: any) => [model.id, model.name, model.efforts]),
+    [
+      ["deepseek/deepseek-v4-flash", "deepseek-v4-flash", []],
+      ["deepseek/deepseek-v4-pro", "deepseek-v4-pro", []],
+      ["inclusionai/ling-3.0-flash-sante:free", "ling-3.0-flash-sante:free", []],
+      ["claude-sonnet-5", "claude-sonnet-5", []],
+    ],
+  );
+
+  let from = engine.lines.length;
+  const send = { threadId: "k190", cwd, text: "work", model: "deepseek/deepseek-v4-pro", permissionMode: "bypassPermissions", provider: "commandcode" };
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  const done = await engine.until((line) => line.event === "turn.done", from);
+  assert.equal(done.stopReason, "end_turn");
+  assert.equal(done.sessionId, "s-1");
+  const edit = engine.lines.slice(from).find((line) => line.event === "tool.result" && line.toolUseId === "t-edit");
+  assert.deepEqual(edit.patch, [{ oldStart: 1, newStart: 1, lines: [" zero", "-one", "+two", " end"] }]);
+  from = engine.lines.length;
+  await engine.request("send", { ...send, text: "hello", permissionMode: "plan" });
+  assert.equal((await engine.until((line) => line.event === "turn.done", from)).sessionId, "s-1");
+  await engine.end();
+
+  const runs = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  // The menu and models.list read one list between them.
+  assert.equal(runs.filter((run) => run.args[0] === "--list-models").length, 1);
+  const turns = runs.filter((run) => run.prompt !== undefined);
+  assert.deepEqual(
+    turns.map((run) => run.args),
+    [
+      ["-p", "--output-format", "json", "--yolo", "--tools-enable", "todo_write", "--model", "deepseek/deepseek-v4-pro"],
+      ["-p", "--output-format", "json", "--permission-mode", "plan", "--tools-enable", "todo_write", "--model", "deepseek/deepseek-v4-pro", "--resume", "s-1"],
+    ],
+  );
+  // No key was kept, so none was read, and cmd ran on its own login.
+  assert.deepEqual(turns.map((run) => run.key), [null, null]);
+});

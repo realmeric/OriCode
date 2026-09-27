@@ -2,18 +2,21 @@
 // and `-p --output-format json` with the frames cmd 1.66.0 writes, a scripted run for each
 // prompt read from stdin, and no model anywhere. Each run logs its arguments, prompt, folder and
 // environment to CMD_LOG, and the sessions it has made to CMD_LOG.sessions, which --resume reads.
+// It's signed in by COMMAND_CODE_API_KEY, or by CMD_LOGIN=1, standing for a `cmd login`.
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const args = process.argv.slice(2);
 const key = process.env.COMMAND_CODE_API_KEY;
+const signedIn = key !== undefined || process.env.CMD_LOGIN === "1";
 
 if (args[0] === "status") {
-  process.stdout.write(JSON.stringify(key ? { authenticated: true, version: "1.66.0", model: "deepseek/deepseek-v4-flash", context_window: 1000000 } : { authenticated: false, version: "1.66.0" }) + "\n");
-  process.exit(key ? 0 : 1);
+  process.stdout.write(JSON.stringify(signedIn ? { authenticated: true, version: "1.66.0", model: "deepseek/deepseek-v4-flash", context_window: 1000000 } : { authenticated: false, version: "1.66.0" }) + "\n");
+  process.exit(signedIn ? 0 : 1);
 }
 
 if (args[0] === "--list-models") {
+  if (process.env.CMD_LOG) appendFileSync(process.env.CMD_LOG, JSON.stringify({ args, key: key ?? null }) + "\n");
   process.stdout.write(`Available models  ·  4 models
 
 Open Source
@@ -73,7 +76,7 @@ process.on("SIGINT", () => {
 
 async function run(prompt: string): Promise<void> {
   record({ args, prompt, cwd: process.cwd(), env: Object.keys(process.env).filter((name) => name.startsWith("CLAUDE")), key: key ?? null });
-  if (!key) result({ subtype: "error", error: `Error: Not authenticated. Please run "cmd login" first.` }, 3);
+  if (!signedIn) result({ subtype: "error", error: `Error: Not authenticated. Please run "cmd login" first.` }, 3);
   const known = existsSync(sessionsFile) ? readFileSync(sessionsFile, "utf8").split("\n").filter(Boolean) : [];
   const resume = flag("--resume");
   if (resume && !known.includes(resume)) result({ subtype: "error", error: `Error: No session "${resume}" found to resume.` }, 1);

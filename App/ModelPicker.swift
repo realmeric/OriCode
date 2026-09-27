@@ -33,7 +33,7 @@ struct PickerState {
 
     var agent: ProviderInfo { model.agent(for: chat) }
 
-    /// The tiles: none for an agent with no modes, or one that asks before nothing.
+    /// The tiles: none for an agent with no modes.
     var modes: [PermissionModeOption] { agent.permissionModes }
 
     var unsupervised: Bool { agent.unsupervised }

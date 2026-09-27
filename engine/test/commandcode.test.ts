@@ -1,10 +1,13 @@
 // A Command Code thread against a stand-in cmd that scripts its frames, so nothing reaches a model.
-import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { agentEnvironment } from "../acp.ts";
+import { turnOn } from "../agents.ts";
 import { CommandCodeSession, availability, listModels, modeFlags, parseModels, stopReason, undo, viewOf, type CommandCodeBinary } from "../commandcode.ts";
+import { commandCode } from "../commandcode-provider.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
 const events: Record<string, any>[] = [];
@@ -275,4 +278,37 @@ test("modes, stop reasons, views and an edit undone", () => {
   assert.equal(undo("a $& b", { old_string: "x", new_string: "$&" }), "a x b");
   assert.equal(undo("new new", { old_string: "old", new_string: "new", replace_all: true }), "old old");
   assert.equal(undo("text", { old_string: "a", new_string: "" }), undefined);
+});
+
+test("the key Settings keeps reaches each cmd the provider starts, read as it starts, and no other process", async () => {
+  const folder = await realpath(await mkdtemp(join(tmpdir(), "oricode-cmd-key-")));
+  const logFile = join(folder, "cmd.log");
+  const keyFile = join(folder, "key");
+  const cmd = join(folder, "cmd");
+  await writeFile(cmd, `#!/bin/sh\nexport CMD_LOG='${logFile}'\nexec "${process.execPath}" "${new URL("./fixtures/commandcode-cli.ts", import.meta.url).pathname}" "$@"\n`);
+  const security = join(folder, "security");
+  // The key as the login Keychain holds it now, which Settings may change between turns.
+  await writeFile(security, `#!/bin/sh\ncase "$*" in\n  "find-generic-password -s OriCode.commandcode -a commandcode -w") cat "${keyFile}" ;;\n  *) exit 44 ;;\nesac\n`);
+  await Promise.all([chmod(cmd, 0o755), chmod(security, 0o755)]);
+  await writeFile(keyFile, "cc-key-190\n");
+  turnOn({ commandcode: { key: true, path: cmd } });
+  const provider = commandCode({ security });
+
+  assert.deepEqual(await provider.availability(), { state: "ready", cli: cmd, version: "1.66.0", hint: null });
+  assert.equal((await provider.listModels!(cmd))[0].id, "deepseek/deepseek-v4-flash");
+  await provider.listModels!(cmd);
+  const session = provider.session("keyed", cmd);
+  sessions.push(session as CommandCodeSession);
+  let from = events.length;
+  await session.send({ threadId: "keyed", cwd: folder, text: "hello", permissionMode: "default" });
+  await until(named("turn.done", "keyed"), from);
+  await writeFile(keyFile, "cc-key-190-new\n");
+  from = events.length;
+  await session.send({ threadId: "keyed", cwd: folder, text: "hello", permissionMode: "default" });
+  assert.equal((await until(named("turn.done", "keyed"), from)).stopReason, "end_turn");
+
+  const runs = (await readFile(logFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(runs.map((run) => [run.args[0], run.key]), [["--list-models", "cc-key-190"], ["-p", "cc-key-190"], ["-p", "cc-key-190-new"]]);
+  assert.equal(process.env.COMMAND_CODE_API_KEY, undefined);
+  assert.equal(agentEnvironment().COMMAND_CODE_API_KEY, undefined);
 });

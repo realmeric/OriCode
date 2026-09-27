@@ -18,8 +18,8 @@ import { event, log } from "./wire.ts";
 // the binary's env, which cmd prefers to a login of its own.
 
 /// How to run the user's cmd, and what goes before its arguments, which is how the tests run a
-/// stand-in under node.
-export type CommandCodeBinary = { command: string; args?: string[]; env?: Record<string, string> };
+/// stand-in under node. `key` reads the API key from the Keychain for the one cmd about to start.
+export type CommandCodeBinary = { command: string; args?: string[]; env?: Record<string, string>; key?: () => Promise<Record<string, string>> };
 
 export type CommandCodeSendParams = {
   threadId: string;
@@ -87,7 +87,7 @@ export function modeFlags(mode: string | undefined): string[] {
 }
 
 /// The session a thread on Command Code talks to, one cmd process per turn. It implements
-/// provider.ts's Session once it's wired.
+/// provider.ts's Session.
 export class CommandCodeSession {
   readonly id: string;
   private binary: CommandCodeBinary;
@@ -108,6 +108,10 @@ export class CommandCodeSession {
   private work: Promise<void> = Promise.resolve();
   /// Sent during a turn: cmd takes nothing mid-turn, so each runs as a turn of its own.
   private queued: CommandCodeSendParams[] = [];
+  /// The key the last message read, which the turns it starts take, and the reads in the order
+  /// their messages came.
+  private key: Record<string, string> = {};
+  private reading: Promise<Record<string, string>> = Promise.resolve({});
   onIdle: (() => void) | undefined;
 
   constructor(id: string, binary: CommandCodeBinary = { command: "cmd" }) {
@@ -122,6 +126,10 @@ export class CommandCodeSession {
   /// A send during a turn waits for it to end, and the reply says it's waiting.
   async send(params: CommandCodeSendParams): Promise<boolean> {
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
+    if (this.binary.key) {
+      this.reading = this.reading.then(this.binary.key);
+      this.key = await this.reading;
+    }
     if (this.running) {
       this.queued.push(params);
       return true;
@@ -200,7 +208,7 @@ export class CommandCodeSession {
     if (params.effort) args.push("--effort", params.effort);
     if (resume) args.push("--resume", resume);
     log(`start thread=${this.id} ${this.binary.command} ${args.slice(this.binary.args?.length ?? 0).join(" ")} cwd=${params.cwd}`);
-    const child = spawn(this.binary.command, args, { cwd: params.cwd, env: agentEnvironment(this.binary.env), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(this.binary.command, args, { cwd: params.cwd, env: agentEnvironment({ ...this.binary.env, ...this.key }), stdio: ["pipe", "pipe", "pipe"] });
     this.child = child;
     this.stderr = "";
     // Written to after it has gone, its stdin fails with EPIPE, which unheard ends the engine.
