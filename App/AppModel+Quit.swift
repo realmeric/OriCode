@@ -22,6 +22,9 @@ extension AppModel {
     func pickUpAfterQuit() {
         guard engineState == .ready else { return }
         let cutOff = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.quitMidTurn }))) ?? []
+        // Hello asks no agent but Claude Code whether it's signed in; one a thread waits on is
+        // asked now, and a check that finds it ready comes back here.
+        askUnasked(Set(cutOff.map(\.providerID)))
         for chat in cutOff where agentReady(for: chat) {
             let conversation = conversation(for: chat)
             guard !conversation.running else { continue }

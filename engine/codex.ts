@@ -6,7 +6,9 @@ import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
+import { asks as registry, type Session } from "./provider.ts";
 import { lastLine } from "./shell.ts";
+import type { Usage } from "./usage.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
 
@@ -81,15 +83,18 @@ export function answer(params: Answer): boolean {
   const ask = asks.get(params.requestId);
   if (!ask) return false;
   asks.delete(params.requestId);
+  registry.delete(params.requestId);
   ask.reply(params);
   return true;
 }
 
-/// A thread's mode as Codex's approval policy and sandbox. Ask asks before anything Codex doesn't
-/// know to be read-only. Accept edits lets it write inside the folder unasked; Codex can't tell
-/// an edit from a command that writes, so a command inside the folder runs unasked too. Auto
-/// leaves the sandbox to the user's config.toml and Codex to judge when to ask. Plan reads and
-/// never asks, so nothing it does can change a file. Don't ask runs anything anywhere.
+/// A thread's mode as Codex's approval policy and sandbox. Ask asks before every edit and anything
+/// Codex doesn't know to be read-only; it names workspace-write because in a folder Codex hasn't
+/// been told to trust, its own default is read-only and its model then won't try an edit at all.
+/// Accept edits lets it write inside the folder unasked; Codex can't tell an edit from a command
+/// that writes, so a command inside the folder runs unasked too. Auto leaves the sandbox to the
+/// user's config.toml and Codex to judge when to ask. Plan reads and never asks, so nothing it
+/// does can change a file. Don't ask runs anything anywhere.
 export function policy(mode: string | undefined): { approvalPolicy: string; sandbox?: string } {
   switch (mode) {
     case "acceptEdits":
@@ -101,7 +106,7 @@ export function policy(mode: string | undefined): { approvalPolicy: string; sand
     case "bypassPermissions":
       return { approvalPolicy: "never", sandbox: "danger-full-access" };
     default:
-      return { approvalPolicy: "untrusted" };
+      return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
   }
 }
 
@@ -137,9 +142,8 @@ function decide(offered: Decision[], answer: Answer): Decision {
   return offered.find((decision) => choiceOf(decision).id === answer.optionId) ?? offered.find((decision) => choiceOf(decision).kind === wanted) ?? (answer.allow ? "accept" : "decline");
 }
 
-/// The session a thread on Codex talks to, one app-server per thread. It implements
-/// provider.ts's Session once K-172 lands.
-export class CodexSession {
+/// The session a thread on Codex talks to, one app-server per thread.
+export class CodexSession implements Session {
   readonly id: string;
   private binary: CodexBinary;
   private server: AppServer | undefined;
@@ -162,6 +166,8 @@ export class CodexSession {
   private used = new Set<string>();
   private done = new Set<string>();
   private summaryParts = new Map<string, number>();
+  /// The message the text last streamed belongs to, until something else is told.
+  private message: string | undefined;
   private lastPlan = "";
   private lastError: TurnError | undefined;
   private spent = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -274,6 +280,7 @@ export class CodexSession {
     this.used.clear();
     this.done.clear();
     this.summaryParts.clear();
+    this.message = undefined;
     this.spent = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     const turn = ++this.turns;
     if (params.id) event("message.taken", { threadId: this.id, messageId: params.id, newTurn: true });
@@ -293,7 +300,8 @@ export class CodexSession {
         threadId: this.threadId,
         input: input(params),
         model: params.model ?? null,
-        effort: params.effort ?? null,
+        // The app's Ultracode is Codex's ultra, the level above max on the models that have it.
+        effort: params.effort === "ultracode" ? "ultra" : (params.effort ?? null),
         summary: "auto",
         clientUserMessageId: params.id ?? null,
       });
@@ -430,6 +438,7 @@ export class CodexSession {
     for (const [requestId, ask] of asks) {
       if (ask.session !== this) continue;
       asks.delete(requestId);
+      registry.delete(requestId);
       event("ask.cancelled", { threadId: this.id, requestId });
       ask.reply(undefined);
     }
@@ -483,6 +492,7 @@ export class CodexSession {
         for (const [requestId, ask] of asks) {
           if (ask.session !== this || ask.serverId !== params.requestId) continue;
           asks.delete(requestId);
+          registry.delete(requestId);
           event("ask.cancelled", { threadId: this.id, requestId });
         }
         return;
@@ -492,18 +502,24 @@ export class CodexSession {
       case "turn/started":
         this.began(params.turn.id);
         return;
-      case "item/agentMessage/delta":
-        event("text", { threadId: this.id, delta: params.delta });
+      case "item/agentMessage/delta": {
+        // Two of Codex's messages with nothing between them would run into one sentence.
+        const gap = this.message !== undefined && this.message !== params.itemId ? "\n\n" : "";
+        this.message = params.itemId;
+        event("text", { threadId: this.id, delta: gap + params.delta });
         return;
+      }
       case "item/reasoning/summaryTextDelta": {
         // Each part of a summary is a paragraph of its own.
         const part = this.summaryParts.get(params.itemId);
         this.summaryParts.set(params.itemId, params.summaryIndex);
         const gap = part !== undefined && part !== params.summaryIndex ? "\n\n" : "";
+        this.message = undefined;
         event("thinking", { threadId: this.id, delta: gap + params.delta });
         return;
       }
       case "item/reasoning/textDelta":
+        this.message = undefined;
         event("thinking", { threadId: this.id, delta: params.delta });
         return;
       case "item/started":
@@ -548,6 +564,7 @@ export class CodexSession {
     for (const call of toolCalls(item)) {
       if (this.used.has(call.id)) continue;
       this.used.add(call.id);
+      this.message = undefined;
       event("tool.use", { threadId: this.id, toolUseId: call.id, name: call.name, input: call.input, kind: call.kind, view: call.view });
     }
   }
@@ -560,6 +577,7 @@ export class CodexSession {
     if (told === this.lastPlan) return;
     this.lastPlan = told;
     const toolUseId = `plan-${randomUUID()}`;
+    this.message = undefined;
     event("tool.use", { threadId: this.id, toolUseId, name: "TodoWrite", input: { todos: list }, kind: "plan", view: { todos: list } });
     event("tool.result", { threadId: this.id, toolUseId, content: "", isError: false });
   }
@@ -595,6 +613,7 @@ export class CodexSession {
     const stop = offered.includes("cancel") ? "cancel" : "decline";
     const requestId = randomUUID();
     asks.set(requestId, { session: this, serverId: id, reply: (answer) => server.respond(id, { decision: answer ? decide(offered, answer) : stop }) });
+    this.register(requestId);
     event("ask", {
       threadId: this.id,
       requestId,
@@ -608,6 +627,11 @@ export class CodexSession {
     });
   }
 
+  /// main.ts answers every ask through the shared registry, which hands this one to `answer`.
+  private register(requestId: string): void {
+    registry.set(requestId, { threadId: this.id, answer, stop: () => this.cancelAsks() });
+  }
+
   /// Codex's questions in AskUserQuestion's shape, which the ask card already draws. The app
   /// answers by each question's words, and Codex wants them by its ids.
   private question(server: AppServer, id: number | string, params: { itemId: string; questions: { id: string; header: string; question: string; options: { label: string; description: string }[] | null }[] }): void {
@@ -618,6 +642,7 @@ export class CodexSession {
       server.respond(id, { answers });
     };
     asks.set(requestId, { session: this, serverId: id, reply });
+    this.register(requestId);
     const questions = params.questions.map((question) => ({
       question: question.question,
       header: question.header,
@@ -708,10 +733,13 @@ export function unifiedHunks(diff: string): Hunk[] {
   return result;
 }
 
-/// The command inside the login shell Codex wraps it in, `/bin/zsh -lc 'cat hello.txt'`.
+/// The command inside the login shell Codex wraps it in, `/bin/zsh -lc 'cat hello.txt'`, or in
+/// double quotes when the command has a single quote of its own, `/bin/zsh -lc "python3 -c 'print(1)'"`.
 export function unwrap(command: string): string {
-  const inner = /^\S*\/(?:ba|z)?sh -l?c '([\s\S]*)'$/.exec(command)?.[1];
-  return inner === undefined ? command : inner.replaceAll(`'\\''`, "'");
+  const single = /^\S*\/(?:ba|z)?sh -l?c '([\s\S]*)'$/.exec(command)?.[1];
+  if (single !== undefined) return single.replaceAll(`'\\''`, "'");
+  const double = /^\S*\/(?:ba|z)?sh -l?c "([\s\S]*)"$/.exec(command)?.[1];
+  return double === undefined ? command : double.replace(/\\([\\"$`])/g, "$1");
 }
 
 type Limits = {
@@ -791,6 +819,20 @@ export async function listModels(binary: CodexBinary = { command: "codex" }): Pr
     } while (cursor);
     return models;
   });
+}
+
+let usageRead: { at: number; command: string; usage: Usage } | undefined;
+
+/// The plan's windows as the usage glass draws them, asked of a short-lived app-server, which
+/// reads them from OpenAI without reaching a model. An answer is kept a minute, as Claude's is.
+export async function usage(binary: CodexBinary = { command: "codex" }): Promise<Usage> {
+  if (usageRead && usageRead.command === binary.command && Date.now() - usageRead.at < 60_000) return usageRead.usage;
+  const read: { rateLimits: RateLimits } = await withServer(binary, (server) => server.request("account/rateLimits/read", {}));
+  const limits = limitsOf(read.rateLimits);
+  const windows = limits.windows.map((window) => ({ id: window.id, label: window.label, used: window.used, resetsAt: new Date(window.resetsAt).toISOString() }));
+  const result = { available: windows.length > 0, plan: limits.plan, windows };
+  usageRead = { at: Date.now(), command: binary.command, usage: result };
+  return result;
 }
 
 export type CodexAvailability = { state: "ready" | "signedOut" | "missing"; plan: string | null; hint: string | null };

@@ -79,6 +79,11 @@ async function turn(text: string, clientId: string | null): Promise<void> {
     usage(100, 0, 3);
     return complete("completed");
   }
+  if (text === "twice") {
+    say("m-1", "First.");
+    say("m-2", "Second.");
+    return complete("completed");
+  }
   if (text === "work") {
     notify("item/started", { item: { type: "reasoning", id: "r-1", summary: [], content: [] } });
     notify("item/reasoning/summaryTextDelta", { itemId: "r-1", delta: "Reading first.", summaryIndex: 0 });
@@ -202,6 +207,8 @@ async function handle(message: any): Promise<void> {
       return;
     case "account/read":
       return send({ id, result: signedOut ? { account: null, requiresOpenaiAuth: true } : { account: { type: "chatgpt", email: "someone@example.com", planType: "go" }, requiresOpenaiAuth: true } });
+    case "account/rateLimits/read":
+      return send({ id, result: { rateLimits: { limitId: "codex", primary: { usedPercent: 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null } } });
     case "model/list":
       return send({ id, result: params.cursor ? { data: [models[1]], nextCursor: null } : { data: [models[0]], nextCursor: "page-2" } });
     case "thread/start":

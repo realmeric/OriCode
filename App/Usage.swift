@@ -32,10 +32,11 @@ struct PlanUsage: Sendable {
     }
 
     /// A window as a thread's CLI just reported it, over the probe's older reading. Windows the
-    /// probe doesn't name are left out, as it leaves them out.
-    mutating func take(_ id: String, used: Double, resetsAt: Date?) {
+    /// probe doesn't name are left out, as it leaves them out, unless the report names them itself,
+    /// as Codex's "30-day window" does.
+    mutating func take(_ id: String, label named: String? = nil, used: Double, resetsAt: Date?) {
         let names = ["five_hour": "Session", "seven_day": "Week", "seven_day_opus": "Opus week", "seven_day_sonnet": "Sonnet week"]
-        guard let label = windows.first(where: { $0.id == id })?.label ?? names[id] else { return }
+        guard let label = windows.first(where: { $0.id == id })?.label ?? names[id] ?? named else { return }
         let window = Window(id: id, label: label, used: used, resetsAt: resetsAt)
         if let index = windows.firstIndex(where: { $0.id == id }) {
             windows[index] = window
@@ -131,17 +132,17 @@ extension AppModel {
     /// without spawning a probe. Its readings are fractions already, as the probe's are once the
     /// engine has divided them.
     func takeLimits(_ body: JSON, for agent: String) {
-        var readings = (body["windows"]?.array ?? []).compactMap { window -> (String, Double, Date?)? in
+        var readings = (body["windows"]?.array ?? []).compactMap { window -> (String, String?, Double, Date?)? in
             guard let id = window["id"]?.string, let used = window["used"]?.double else { return nil }
-            return (id, used, window["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) })
+            return (id, window["label"]?.string, used, window["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) })
         }
         // The limit the CLI names, when it didn't send each window's reading.
         if let id = body["rateLimitType"]?.string, let used = body["utilization"]?.double, !readings.contains(where: { $0.0 == id }) {
-            readings.append((id, used, body["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }))
+            readings.append((id, nil, used, body["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }))
         }
         guard !readings.isEmpty else { return }
         var taken = usages[agent] ?? PlanUsage(json: ["available": true])
-        for (id, used, resetsAt) in readings { taken.take(id, used: used, resetsAt: resetsAt) }
+        for (id, label, used, resetsAt) in readings { taken.take(id, label: label, used: used, resetsAt: resetsAt) }
         usages[agent] = taken
         usageStale = false
     }

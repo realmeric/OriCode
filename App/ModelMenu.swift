@@ -97,6 +97,7 @@ struct ModelMenu: View {
         .help("Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
         .accessibilityValue(accessibilityEffort)
+        .task(id: "\(model.providerID(for: chat)) \(model.engineState == .ready)") { model.readModels(for: chat) }
     }
 
     private var fast: Bool {

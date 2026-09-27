@@ -411,7 +411,7 @@ function byKey(entry: Agent): Availability {
   return keyKept(entry.id) ? { state: "soon", cli: null, version: null, hint: null } : { state: "signedOut", cli: null, version: null, hint: entry.login };
 }
 
-async function versionOf(cli: string): Promise<string | null> {
+export async function versionOf(cli: string): Promise<string | null> {
   try {
     const { stdout } = await run(cli, ["--version"], { env: agentEnvironment(), timeout: 5000 });
     return stdout.trim().split("\n")[0] || null;

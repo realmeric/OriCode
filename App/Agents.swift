@@ -227,10 +227,11 @@ extension AppModel {
         await tellAgent(id)
     }
 
-    /// Asks the agents turned on that hello found and didn't ask, once Settings › Agents shows
-    /// them: their versions, and whether they're signed in.
-    func askUnasked() {
-        for entry in providers where entry.state == .unknown && entry.version == nil && !checkingAgents.contains(entry.id) {
+    /// Asks the agents turned on that hello found and didn't ask, once Settings › Agents or a menu
+    /// shows them, or a thread cut off by a quit waits on one: their versions, and whether
+    /// they're signed in.
+    func askUnasked(_ only: Set<String>? = nil) {
+        for entry in providers where entry.state == .unknown && entry.version == nil && !checkingAgents.contains(entry.id) && only?.contains(entry.id) != false {
             checkingAgents.insert(entry.id)
             Task {
                 await checkProvider(entry.id)

@@ -204,6 +204,49 @@ async function replies(env: Record<string, string | undefined>, requests: { meth
   return requests.map((_, index) => answered.get(index + 1));
 }
 
+/// Codex as hello lists it, in the state it found it.
+function codexEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
+  return {
+    id: "codex",
+    name: "Codex",
+    agent: "Codex",
+    state,
+    hint,
+    cli: cliPath,
+    version: cliVersion,
+    capabilities: {
+      steer: true,
+      resume: true,
+      modeLive: false,
+      attachments: true,
+      heads: false,
+      stopTask: false,
+      limits: true,
+      usage: true,
+      commands: false,
+      compact: false,
+      commitMessage: false,
+      handoff: "codex resume {session}",
+    },
+    levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
+    modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
+  };
+}
+
+/// A `codex` that says its version and runs the stand-in app-server for everything else, writing
+/// down what it was asked outside the app-server.
+async function codexStandIn(bin: string, ran: string): Promise<string> {
+  const fixture = new URL("./fixtures/codex-app-server.ts", import.meta.url).pathname;
+  const path = join(bin, "codex");
+  await writeFile(
+    path,
+    `#!/bin/sh\ncase "$*" in\n  app-server) exec "${process.execPath}" "${fixture}" "$@" ;;\nesac\necho "codex $*" >> "${ran}"\n` +
+      `case "$*" in\n  --version) echo "codex-cli 9.9.9" ;;\n  *) exec "${process.execPath}" "${fixture}" "$@" ;;\nesac\n`,
+  );
+  await chmod(path, 0o755);
+  return path;
+}
+
 /// An agent with no session in the engine yet, as hello lists it.
 function unwiredEntry(id: string, name: string, agent: string, state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
   const capabilities = { steer: false, resume: false, modeLive: false, attachments: false, heads: false, stopTask: false, limits: false, usage: false, commands: false, compact: false, commitMessage: false, handoff: null };
@@ -220,7 +263,7 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
     await writeFile(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${ran}"\ncase "$*" in\n${cases}\nesac\n`);
     await chmod(join(bin, name), 0o755);
   };
-  await standInAgent("codex", `  --version) echo "codex-cli 9.9.9" ;;\n  "login status") exit 0 ;;`);
+  await codexStandIn(bin, ran);
   await standInAgent("cursor-agent", `  --version) echo "2026.09.02" ;;\n  "status --format json") echo '{"isAuthenticated": false}' ;;`);
   const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
   const agents = { codex: {}, cursor: {}, grok: {}, zai: { key: true }, deepseek: {} };
@@ -235,13 +278,13 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
   ]);
   assert.deepEqual(hello.result.providers, [
     claudeEntry("signedOut", claude.path, cli, "Run `claude` in Terminal and log in."),
-    unwiredEntry("codex", "Codex", "Codex", "unknown", join(bin, "codex"), null, null),
+    codexEntry("unknown", join(bin, "codex"), null, null),
     unwiredEntry("cursor", "Cursor", "Cursor", "unknown", join(bin, "cursor-agent"), null, null),
     unwiredEntry("grok", "Grok Build", "Grok", "missing", null, null, "Grok Build isn't installed. Install it with `curl -fsSL https://x.ai/cli/install.sh | bash`, then run `grok login`."),
     unwiredEntry("zai", "Z.ai", "Z.ai", "soon", null, null, null),
     unwiredEntry("deepseek", "DeepSeek", "DeepSeek", "signedOut", null, null, "Add your DeepSeek key in Settings › Agents."),
   ]);
-  assert.deepEqual(codex.result, unwiredEntry("codex", "Codex", "Codex", "soon", join(bin, "codex"), "codex-cli 9.9.9", null));
+  assert.deepEqual(codex.result, codexEntry("ready", join(bin, "codex"), "codex-cli 9.9.9", null));
   assert.deepEqual(cursor.result, unwiredEntry("cursor", "Cursor", "Cursor", "signedOut", join(bin, "cursor-agent"), "2026.09.02", "Run `cursor-agent login` in Terminal."));
   assert.deepEqual(off.result, { provider: null });
   assert.equal(checkedOff.error, "Codex is off in Settings › Agents.");
@@ -262,6 +305,79 @@ test("models.list for Claude answers with hello's list", async () => {
 
 test("models.list for an agent with no session in the engine says so", async () => {
   const claude = await standIn(false);
-  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "codex" } }]);
-  assert.equal(unknown.error, "Codex can't list its models yet.");
+  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "cursor" } }]);
+  assert.equal(unknown.error, "Cursor can't list its models yet.");
+});
+
+test("a Codex thread through the engine: checked ready, its models listed, a turn whose asks the shared registry answers, its usage", async () => {
+  const claude = await standIn(false);
+  const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
+  const bin = join(home, "bin");
+  await mkdir(bin);
+  const cwd = await mkdtemp(join(tmpdir(), "oricode-codex-"));
+  const log = join(cwd, "codex.log");
+  const codex = await codexStandIn(bin, join(home, "ran"));
+  const engine = startEngine({ ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin`, CODEX_LOG: log });
+  const lines: any[] = [];
+  let arrived = () => {};
+  createInterface({ input: engine.stdout }).on("line", (line) => {
+    lines.push(JSON.parse(line));
+    arrived();
+  });
+  const until = async (matches: (line: any) => boolean, from = 0) => {
+    while (!lines.slice(from).some(matches)) await new Promise<void>((done) => (arrived = done));
+    return lines.slice(from).find(matches);
+  };
+  let next = 0;
+  const request = (method: string, params: object = {}) => {
+    const id = ++next;
+    engine.stdin.write(JSON.stringify({ id, method, params }) + "\n");
+    return until((line) => line.id === id);
+  };
+
+  const hello = await request("hello", { agents: { codex: {} } });
+  assert.deepEqual(hello.result.providers[1], codexEntry("unknown", codex, null, null));
+  const checked = await request("provider.check", { provider: "codex" });
+  assert.deepEqual(checked.result, codexEntry("ready", codex, "codex-cli 9.9.9", null));
+  const told = await until((line) => line.event === "models");
+  assert.equal(told.provider, "codex");
+  assert.deepEqual(told.models.map((model: { id: string }) => model.id), ["gpt-large", "gpt-small"]);
+  const listed = await request("models.list", { provider: "codex" });
+  assert.deepEqual(listed.result.models[0], {
+    id: "gpt-large",
+    name: "GPT Large",
+    description: "Deep",
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+    fast: false,
+    defaultEffort: "high",
+    ultra: true,
+    ultraBlocked: null,
+  });
+
+  const from = lines.length;
+  const send = { threadId: "k180", cwd, text: "work", model: "gpt-large", effort: "ultracode", permissionMode: "default", provider: "codex" };
+  assert.deepEqual((await request("send", send)).result, { ok: true });
+  const run = await until((line) => line.event === "ask", from);
+  assert.deepEqual(run.choices.map((choice: { id: string }) => choice.id), ["accept", "acceptWithExecpolicyAmendment", "cancel"]);
+  assert.deepEqual((await request("answer", { requestId: run.requestId, allow: true, optionId: "acceptWithExecpolicyAmendment" })).result, { ok: true });
+  const edit = await until((line) => line.event === "ask" && line.requestId !== run.requestId, from);
+  await request("answer", { requestId: edit.requestId, allow: false });
+  const done = await until((line) => line.event === "turn.done", from);
+  assert.equal(done.sessionId, "t-1");
+  assert.equal((await request("answer", { requestId: run.requestId, allow: true })).error, "That question is no longer waiting.");
+  const limits = lines.slice(from).find((line) => line.event === "limits");
+  assert.deepEqual(limits.windows, [{ id: "30_day", label: "30-day window", used: 0.01, resetsAt: 1792439399000 }]);
+
+  const usage = await request("usage", { provider: "codex" });
+  assert.deepEqual(usage.result, { available: true, plan: "go", windows: [{ id: "30_day", label: "30-day window", used: 0.02, resetsAt: new Date(1792439399000).toISOString() }] });
+  engine.stdin.end();
+  await new Promise((done) => engine.on("close", done));
+
+  const sent = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  const start = sent.find((message) => message.method === "turn/start").params;
+  assert.equal(start.model, "gpt-large");
+  assert.equal(start.effort, "ultra");
+  assert.deepEqual(sent.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write" });
+  const decisions = sent.filter((message) => message.method === undefined && message.result?.decision).map((message) => message.result.decision);
+  assert.deepEqual(decisions, [{ acceptWithExecpolicyAmendment: { execpolicy_amendment: ["make", "test"] } }, "decline"]);
 });

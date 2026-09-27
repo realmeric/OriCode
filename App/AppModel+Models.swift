@@ -55,11 +55,22 @@ extension AppModel {
         return ModelRef(provider: own, id: first ?? ModelOption.claudeDefault)
     }
 
+    /// A thread on another agent names its model from that agent's list, so a composer showing one
+    /// reads the list, and a launch with a Claude thread open still asks no agent anything.
+    func readModels(for chat: Chat?) {
+        let agent = providerID(for: chat)
+        guard agent != ProviderInfo.claudeID, models(of: agent).isEmpty else { return }
+        readAgentModels([agent])
+    }
+
     /// Asks each ready agent but Claude Code for its models the first time a menu needs them,
-    /// rather than at launch, so opening OriCode starts no agent's CLI.
-    func readAgentModels() {
+    /// rather than at launch, so opening OriCode starts no agent's CLI. One with a session in the
+    /// engine that hello found and didn't ask is asked first whether it's signed in, and its
+    /// models follow the check.
+    func readAgentModels(_ only: Set<String>? = nil) {
         guard engineState == .ready else { return }
-        for agent in providers where agent.id != ProviderInfo.claudeID && agent.state == .ready && !modelsAsked.contains(agent.id) {
+        askUnasked(Set(providers.filter { $0.capabilities != ProviderInfo.Capabilities.none && only?.contains($0.id) != false }.map(\.id)))
+        for agent in providers where agent.id != ProviderInfo.claudeID && agent.state == .ready && !modelsAsked.contains(agent.id) && only?.contains(agent.id) != false {
             modelsAsked.insert(agent.id)
             Task {
                 guard let reply = try? await engine.request("models.list", ["provider": .string(agent.id)]),

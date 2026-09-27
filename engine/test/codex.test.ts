@@ -84,12 +84,20 @@ test("the handshake: initialize names OriCode, the account is read, a thread sta
   assert.equal(initialize.params.clientInfo.name, "oricode");
   assert.equal(initialize.params.capabilities.experimentalApi, false);
   assert.ok(initialize.params.capabilities.optOutNotificationMethods.includes("item/commandExecution/outputDelta"));
-  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: null, approvalPolicy: "untrusted" });
+  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write" });
   const start = log.find((message) => message.method === "turn/start").params;
   assert.deepEqual(start.input, [{ type: "text", text: "hello", text_elements: [] }]);
   assert.equal(start.threadId, "t-1");
   assert.equal(start.clientUserMessageId, "m1");
   assert.equal(await codex.setFast(true), false);
+});
+
+test("two messages with nothing between them come apart as paragraphs", async () => {
+  const { session: codex, cwd } = await session("twice");
+  const from = events.length;
+  await codex.send({ threadId: "twice", cwd, text: "twice" });
+  await until(named("turn.done", "twice"), from);
+  assert.deepEqual(told("twice", from).flatMap((event) => (event.event === "text" ? [event.delta] : [])), ["First.", "\n\nSecond."]);
 });
 
 test("a turn: reasoning, text, a read, a command asked and approved, a plan, a file change with its diff, the usage and the limits", async () => {
@@ -240,7 +248,7 @@ test("an idle app-server is let go, the next send resumes the thread without its
   assert.deepEqual(
     log.filter((message) => message.method === "thread/resume").map((message) => message.params),
     [
-      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "untrusted" },
+      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write" },
       { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "never", sandbox: "read-only" },
     ],
   );
@@ -341,12 +349,12 @@ test("a send into a folder that's gone is refused, and a mode can't reach a runn
 
 test("modes, decisions, commands, diffs and windows in the app's words", () => {
   assert.deepEqual(["default", "acceptEdits", "auto", "plan", "bypassPermissions", undefined].map(policy), [
-    { approvalPolicy: "untrusted" },
+    { approvalPolicy: "untrusted", sandbox: "workspace-write" },
     { approvalPolicy: "on-request", sandbox: "workspace-write" },
     { approvalPolicy: "on-request" },
     { approvalPolicy: "never", sandbox: "read-only" },
     { approvalPolicy: "never", sandbox: "danger-full-access" },
-    { approvalPolicy: "untrusted" },
+    { approvalPolicy: "untrusted", sandbox: "workspace-write" },
   ]);
   assert.deepEqual(choiceOf({ applyNetworkPolicyAmendment: { network_policy_amendment: { host: "npmjs.org", action: "allow" } } }), {
     id: "applyNetworkPolicyAmendment",
@@ -356,6 +364,8 @@ test("modes, decisions, commands, diffs and windows in the app's words", () => {
   assert.equal(choiceOf("decline").kind, "reject_once");
   assert.equal(unwrap("/bin/zsh -lc 'cat hello.txt'"), "cat hello.txt");
   assert.equal(unwrap(`/bin/bash -lc 'echo '\\''hi'\\'''`), "echo 'hi'");
+  assert.equal(unwrap(`/bin/zsh -lc "python3 -c 'print(6*7)'"`), "python3 -c 'print(6*7)'");
+  assert.equal(unwrap(`/bin/zsh -lc "echo \\"\\$HOME\\" 'x'"`), `echo "$HOME" 'x'`);
   assert.equal(unwrap("ls -la"), "ls -la");
   assert.deepEqual(unifiedHunks("--- a/x\n+++ b/x\n@@ -2,2 +2,3 @@\n a\n+b\n c\n@@ -10 +11 @@\n-z\n+Z\n"), [
     { oldStart: 2, newStart: 2, lines: [" a", "+b", " c"] },
