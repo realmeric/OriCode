@@ -370,7 +370,7 @@ extension AppModel {
             let option = row.option
             let line = [several ? providerInfo(row.agent).name : nil, option.description.nonEmpty].compactMap { $0 }.joined(separator: " · ")
             return PaletteItem(id: "model." + row.id, kind: .choice, title: (named ? "Model: " : "") + option.name,
-                               subtitle: line.nonEmpty, icon: "cpu", checked: row.id == current,
+                               subtitle: line.nonEmpty, agent: row.agent, checked: row.id == current,
                                unavailable: option.needs.map { "Needs Claude Code \($0)" } ?? forbiddenHelp(option, on: row.agent),
                                action: .run { [weak self] in
                                    guard let self else { return }

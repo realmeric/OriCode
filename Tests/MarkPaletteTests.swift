@@ -4,10 +4,10 @@ import SwiftUI
 import Testing
 @testable import OriCode
 
-/// Each agent's colour on a thread's mark: the dot while the head works on it, and a ray for each
-/// worker, as drawn, still and turning. One at a time, since two set the palette's default.
+/// Each agent's colour and logo: apart from every other agent's, on a thread's mark, the dot while
+/// the head works on it and a ray for each worker, as drawn, still and turning, and on the effort
+/// rail of a thread on that agent.
 @MainActor
-@Suite(.serialized)
 struct MarkPaletteTests {
     private let context: ModelContext
     private let project: Project
@@ -18,13 +18,10 @@ struct MarkPaletteTests {
         context = ModelContext(container)
         project = Project(name: "alpha", path: "/tmp/alpha")
         context.insert(project)
-        UserDefaults.standard.removeObject(forKey: MarkPalette.key)
     }
 
     private static let agents = ["codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "zai", "deepseek",
                                  "openrouter", "meta", "commandcode"]
-    /// Makers whose own mark is black or white.
-    private static let white = ["cursor", "opencode", "grok", "pi"]
 
     private func thread(on agent: String?) -> Conversation {
         let chat = Chat(project: project)
@@ -50,30 +47,67 @@ struct MarkPaletteTests {
         return [color.redComponent, color.greenComponent, color.blueComponent]
     }
 
-    @Test func claudeIsClaudesOrangeInEveryPalette() {
-        for palette in MarkPalette.allCases {
-            #expect(components(palette.color(for: ProviderInfo.claudeID)) == components(Ink.claude))
-        }
-        #expect(MarkPalette.standard == .soft)
+    /// Where a colour sits in OKLab.
+    private func oklab(_ color: Color) -> (l: Double, a: Double, b: Double) {
+        let linear = components(color).map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+        let (r, g, b) = (linear[0], linear[1], linear[2])
+        let l = cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+        let m = cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+        let s = cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+        return (0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+                1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s)
     }
 
-    @Test func everyOtherAgentHasAColourOfItsOwnAndAnUnknownOneIsWhite() {
-        for palette in MarkPalette.allCases {
-            for agent in Self.agents {
-                let color = components(palette.color(for: agent))
-                if Self.white.contains(agent) {
-                    #expect(color == [1, 1, 1], "\(agent) in \(palette)")
-                } else {
-                    #expect(color != [1, 1, 1], "\(agent) in \(palette)")
-                    #expect(color != components(Ink.claude), "\(agent) in \(palette)")
-                }
-            }
-            #expect(components(palette.color(for: "someone-new")) == [1, 1, 1])
+    private func hueApart(_ p: (l: Double, a: Double, b: Double), _ q: (l: Double, a: Double, b: Double)) -> Double {
+        let turn = abs(atan2(p.b, p.a) - atan2(q.b, q.a)) * 180 / .pi
+        return min(turn, 360 - turn)
+    }
+
+    @Test func claudeKeepsItsOrangeAndAnUnknownAgentIsWhite() {
+        #expect(components(MarkPalette.color(for: ProviderInfo.claudeID)).map { ($0 * 255).rounded() } == [0xD9, 0x77, 0x57])
+        #expect(MarkPalette.ink(for: ProviderInfo.claudeID) == .claude)
+        #expect(components(MarkPalette.color(for: "someone-new")) == [1, 1, 1])
+    }
+
+    /// Fourteen colours round the hue circle: no two within 24° of each other, and none closer
+    /// than 0.07 in OKLab, about what tells two 14pt marks apart on the glass.
+    @Test func everyAgentHasAColourOfItsOwn() {
+        let all = [ProviderInfo.claudeID] + Self.agents
+        let points = all.map { oklab(MarkPalette.color(for: $0)) }
+        for (agent, point) in zip(all, points) {
+            #expect(hypot(point.a, point.b) > 0.1, "\(agent) is nearly grey")
         }
-        // Brand is each maker's own; soft and quiet move it.
-        #expect(components(MarkPalette.brand.color(for: "deepseek")).map { ($0 * 255).rounded() } == [0x4D, 0x6B, 0xFE])
-        #expect(components(MarkPalette.soft.color(for: "deepseek")) != components(MarkPalette.brand.color(for: "deepseek")))
-        #expect(components(MarkPalette.quiet.color(for: "deepseek")) != components(MarkPalette.soft.color(for: "deepseek")))
+        for i in all.indices {
+            for j in all.indices where j > i {
+                let (p, q) = (points[i], points[j])
+                let distance = sqrt(pow(p.l - q.l, 2) + pow(p.a - q.a, 2) + pow(p.b - q.b, 2))
+                #expect(distance >= 0.07, "\(all[i]) and \(all[j]) are \(distance) apart")
+                #expect(hueApart(p, q) >= 24, "\(all[i]) and \(all[j]) are \(hueApart(p, q))° apart")
+            }
+        }
+    }
+
+    /// An agent's ember and white-hot are its own hue, paler, as Claude's are its orange.
+    @Test func eachAgentsHeatPalesTowardItsOwnHue() {
+        for agent in Self.agents {
+            let ink = MarkPalette.ink(for: agent)
+            let (base, ember, hot) = (oklab(ink.color), oklab(ink.emberColor), oklab(ink.whiteHotColor))
+            #expect(ember.l > base.l && hot.l > ember.l, "\(agent)")
+            #expect(hueApart(base, ember) < 6, "\(agent)'s ember turns \(hueApart(base, ember))°")
+        }
+    }
+
+    /// Each agent's maker's logo is in the asset catalog under the agent's id, as a template the
+    /// mark tints.
+    @Test func everyAgentHasItsMakersLogo() {
+        for agent in [ProviderInfo.claudeID] + Self.agents {
+            let image = NSImage(named: agent)
+            #expect(image != nil, "\(agent) has no logo")
+            #expect(image?.isTemplate == true, "\(agent)'s logo isn't a template")
+            #expect(AgentMark.hasLogo(agent))
+        }
+        #expect(!AgentMark.hasLogo("someone-new"))
     }
 
     @Test func aHeadIsOnTheThreadsAgentUnlessTheEngineNamesAnother() {
@@ -100,23 +134,26 @@ struct MarkPaletteTests {
 
     private static let side: CGFloat = 40
 
-    private func render(_ view: some View) async throws -> NSBitmapImageRep {
-        let host = NSHostingView(rootView: view.frame(width: Self.side, height: Self.side).environment(\.colorScheme, .dark))
-        host.frame = NSRect(x: 0, y: 0, width: Self.side, height: Self.side)
+    /// Drawn after `steps` layouts 20ms apart: enough for a mark, and fifty for the rail to pour in.
+    private func render(_ view: some View, size: CGSize = CGSize(width: side, height: side), steps: Int = 4) async throws -> NSBitmapImageRep {
+        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height).environment(\.colorScheme, .dark))
+        host.frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = host
-        for _ in 0..<4 {
+        for _ in 0..<steps {
             host.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(20))
         }
         let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: rep)
+        // Gone with its window, so the picker's timers can't draw it again once its store is gone.
+        window.contentView = nil
         window.close()
         return rep
     }
 
-    private func pixel(_ rep: NSBitmapImageRep, at point: CGPoint) -> [Double] {
-        let scale = CGFloat(rep.pixelsWide) / Self.side
+    private func pixel(_ rep: NSBitmapImageRep, at point: CGPoint, side: CGFloat = side) -> [Double] {
+        let scale = CGFloat(rep.pixelsWide) / side
         let color = rep.colorAt(x: Int(point.x * scale), y: Int(point.y * scale))!
         return [color.redComponent, color.greenComponent, color.blueComponent]
     }
@@ -142,22 +179,20 @@ struct MarkPaletteTests {
         receive("turn.started", ["sessionId": "s"], in: conversation)
         receive("heads", ["heads": [head("a", agent: "codex"), head("b", agent: "codex"), head("c", agent: "cursor")]], in: conversation)
         let rep = try await render(ThreadMark(conversation: conversation))
-        let codex = MarkPalette.standard.color(for: "codex")
-        #expect(try await drawn(rep, ray: nil, in: Ink.claude))
+        let codex = MarkPalette.color(for: "codex")
+        #expect(try await drawn(rep, ray: nil, in: MarkPalette.color(for: ProviderInfo.claudeID)))
         #expect(try await drawn(rep, ray: 0, in: codex))
         #expect(try await drawn(rep, ray: 1, in: codex))
-        #expect(try await drawn(rep, ray: 2, in: .white))
+        #expect(try await drawn(rep, ray: 2, in: MarkPalette.color(for: "cursor")))
         // At rest, white.
         #expect(try await drawn(rep, ray: 4, in: .white))
     }
 
     @Test func aCodexThreadIsCodexsColourAndWhiteOnceItsTurnEnds() async throws {
-        UserDefaults.standard.set(MarkPalette.brand.rawValue, forKey: MarkPalette.key)
-        defer { UserDefaults.standard.removeObject(forKey: MarkPalette.key) }
         let conversation = thread(on: "codex")
         receive("turn.started", ["sessionId": "s"], in: conversation)
         // The dot alone, which the still mark draws.
-        let codex = MarkPalette.brand.color(for: "codex")
+        let codex = MarkPalette.color(for: "codex")
         var rep = try await render(ThreadMark(conversation: conversation))
         #expect(try await drawn(rep, ray: nil, in: codex))
 
@@ -179,6 +214,38 @@ struct MarkPaletteTests {
             let plain = try await render(RaysMark(slots: [0, 2, 3], turning: turning))
             let given = try await render(RaysMark(slots: [0, 2, 3], turning: turning, colors: white, dotColor: .white))
             #expect(plain.tiffRepresentation == given.tiffRepresentation)
+        }
+    }
+
+    /// The picker's rail burns in the thread's agent's colour: Codex's in a Codex thread, and
+    /// Claude's orange in a Claude one.
+    @Test func theRailIsInTheThreadsAgentsColour() async throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let project = Project(name: "alpha", path: "/tmp/alpha")
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        let levels = ["low", "medium", "high"]
+        model.models = [ModelOption(id: "default", name: "Default", description: "", efforts: levels, fast: false, defaultEffort: "high",
+                                    ultra: false, ultraBlocked: nil, more: nil, needs: nil)]
+        model.modelsByAgent["codex"] = [ModelOption(id: "gpt-6-luna", name: "GPT-6 Luna", description: "", efforts: levels, fast: false,
+                                                    defaultEffort: "high", ultra: false, ultraBlocked: nil, more: nil, needs: nil)]
+        model.providers = [.claude, ProviderInfo(id: "codex", name: "Codex", agent: "Codex", state: .ready, hint: nil, cli: "/usr/local/bin/codex",
+                                                 version: "0.130.0", capabilities: .none, levels: levels, modes: ["default"])]
+        model.selectedProjectID = project.id
+        let size = CGSize(width: 320, height: MarkPicker.effortHeight)
+        for agent in [ProviderInfo.claudeID, "codex"] {
+            let chat = Chat(project: project)
+            chat.provider = agent
+            chat.model = agent == "codex" ? "gpt-6-luna" : "default"
+            chat.effort = "high"
+            container.mainContext.insert(chat)
+            let rep = try await render(MarkPicker(chat: chat).environment(model), size: size, steps: 50)
+            let reference = try await render(Rectangle().fill(MarkPalette.color(for: agent)))
+            // The fill's start, left of the thumb, halfway down the rail.
+            let fill = pixel(rep, at: CGPoint(x: 26, y: 208), side: size.width)
+            let expected = pixel(reference, at: CGPoint(x: 20, y: 20))
+            #expect(zip(fill, expected).allSatisfy { abs($0 - $1) < 0.04 }, "\(agent): \(fill) against \(expected)")
         }
     }
 }

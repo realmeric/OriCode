@@ -1,45 +1,42 @@
 import AppKit
 import SwiftUI
 
-/// An agent's mark beside its models: Claude's own in its orange, and every other agent's in
-/// white, as a template image OriCode draws itself rather than its maker's logo: an SF Symbol
-/// where one fits the agent, and otherwise its initial in the system font.
+/// An agent's mark beside its models, in the agent's colour: its maker's logo, a template image
+/// in the asset catalog named by the agent's id, from the maker's own site or press kit, or Simple
+/// Icons' drawing where the maker has none to take. An agent with no logo gets its initial.
 struct AgentMark: View {
     let agent: String
 
     var body: some View {
-        if agent == ProviderInfo.claudeID {
-            ClaudeMark()
-        } else {
-            Image(nsImage: Self.glyph(agent))
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(Ink.primary)
-                .accessibilityHidden(true)
+        Group {
+            if Self.hasLogo(agent) {
+                Image(agent).resizable()
+            } else {
+                Image(nsImage: Self.letter(agent.prefix(1).uppercased())).resizable()
+            }
         }
+        .scaledToFit()
+        .foregroundStyle(MarkPalette.color(for: agent))
+        .accessibilityHidden(true)
     }
 
-    /// Cursor's pointer, Command Code's ⌘ and Meta's loop.
-    private static let symbols = ["cursor": "cursorarrow", "commandcode": "command", "meta": "infinity"]
-    /// Pi's name is its letter.
-    private static let initials = ["pi": "π"]
-    private static var drawn: [String: NSImage] = [:]
+    private static var logos: [String: Bool] = [:]
 
-    static func glyph(_ agent: String) -> NSImage {
-        if let image = drawn[agent] { return image }
-        let image = symbols[agent].flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
-            ?? letter(initials[agent] ?? agent.prefix(1).uppercased())
-        image.isTemplate = true
-        drawn[agent] = image
-        return image
+    static func hasLogo(_ agent: String) -> Bool {
+        if let known = logos[agent] { return known }
+        let found = NSImage(named: agent) != nil
+        logos[agent] = found
+        return found
     }
 
     private static func letter(_ text: String) -> NSImage {
-        NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
             let string = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold)])
             let size = string.size()
             string.draw(at: NSPoint(x: (rect.width - size.width) / 2, y: (rect.height - size.height) / 2))
             return true
         }
+        image.isTemplate = true
+        return image
     }
 }

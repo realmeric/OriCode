@@ -1,56 +1,81 @@
 import SwiftUI
 
-/// Each agent's colour, drawn on a thread's mark and nowhere else: the dot while the head works on
-/// it, and each worker's ray while it's lit. Claude's is Claude's orange in every palette. Three
-/// candidates stay in the app until Meriç picks one, behind a hidden default:
-/// `defaults write <bundle id> markPalette brand|soft|quiet`.
-enum MarkPalette: String, CaseIterable {
-    /// Each maker's own colour as its mark has it on a dark background.
-    case brand
-    /// The same hues at one lightness and chroma, a little lighter than Claude's orange, since
-    /// blues and purples read darker on the glass than orange does.
-    case soft
-    /// White tinted toward each maker's hue, so Claude's orange is the one colour on the mark.
-    case quiet
+/// An agent's colour and the two it pales toward as it heats: ember, at the rail's hot end and on
+/// its lamps, and white-hot, what a spark is born as. A thread on the agent draws its logo, its
+/// mark's dot and rays, the effort rail and the picker's head in these. As sRGB components, so
+/// SwiftUI and Core Animation draw the same colour.
+struct AgentInk: Equatable {
+    let base: SIMD3<Double>
+    let ember: SIMD3<Double>
+    let whiteHot: SIMD3<Double>
 
-    static let key = "markPalette"
-    static let standard = MarkPalette.soft
+    /// Claude's orange, #D97757, and the ember and white-hot the rail was first drawn in.
+    static let claude = AgentInk(base: [0xD9 / 255, 0x77 / 255, 0x57 / 255], ember: [1, 0.86, 0.78], whiteHot: [1, 0.97, 0.92])
+    static let white = AgentInk(base: [1, 1, 1], ember: [1, 1, 1], whiteHot: [1, 1, 1])
 
-    /// Brand, soft and quiet, as sRGB hex. An agent whose maker's mark is black or white is white
-    /// in all three, and Codex takes its app icon's blue rather than OpenAI's black; an agent
-    /// missing here is white too.
-    private static let table: [String: (brand: UInt32, soft: UInt32, quiet: UInt32)] = [
-        "codex": (0x7A9DFF, 0x87A7FD, 0xD2DEFA),
-        "copilot": (0x8534F3, 0xB299F3, 0xE0D9F6),
-        "devin": (0x21C19A, 0x39C59F, 0xC5E7DA),
-        "antigravity": (0x3186FF, 0x76ACFC, 0xCEDFF9),
-        "zai": (0x1F63EC, 0x7DAAFD, 0xD0DFF9),
-        "deepseek": (0x4D6BFE, 0x8AA6FD, 0xD3DDFA),
-        "openrouter": (0xC8FF00, 0x9AB857, 0xD8E3C6),
-        "meta": (0x0668E1, 0x77ACFC, 0xCEDFF9),
-        "commandcode": (0x8C4EDD, 0xB797F1, 0xE2D9F5),
+    var color: Color { Color(base) }
+    var emberColor: Color { Color(ember) }
+    var whiteHotColor: Color { Color(whiteHot) }
+}
+
+extension Color {
+    init(_ rgb: SIMD3<Double>) {
+        self.init(red: rgb.x, green: rgb.y, blue: rgb.z)
+    }
+}
+
+extension CGColor {
+    static func of(_ rgb: SIMD3<Double>, alpha: CGFloat = 1) -> CGColor {
+        CGColor(red: rgb.x, green: rgb.y, blue: rgb.z, alpha: alpha)
+    }
+}
+
+/// Each agent's colour, one apart from every other on the glass. Claude keeps its orange; each
+/// other agent starts from its maker's brand and takes the nearest free place on OKLCH's hue
+/// circle, 14 places about 26° apart, at a lightness between 0.68 and 0.86 where its hue reads
+/// best; a maker whose mark is black or white gets a place no other maker here owns. Ember and
+/// white-hot are the agent's hue at the lightness and chroma of Claude's.
+enum MarkPalette {
+    /// Base, ember and white-hot, as sRGB hex. An agent missing here is white.
+    private static let table: [String: (base: UInt32, ember: UInt32, whiteHot: UInt32)] = [
+        "grok": (0xEE6478, 0xFED9DB, 0xFFF6F6),
+        "cursor": (0xFEA845, 0xFADEC2, 0xFFF7EF),
+        "antigravity": (0xF1C530, 0xEFE3C0, 0xFDF8EB),
+        "openrouter": (0xC3D842, 0xE1E8C4, 0xF7FAED),
+        "opencode": (0x6ED26A, 0xD1ECCF, 0xF1FCF0),
+        "devin": (0x01C89B, 0xC5EEDE, 0xEDFCF6),
+        "zai": (0x4AEBEA, 0xBFEEED, 0xEBFCFC),
+        "codex": (0x00BAE1, 0xC1ECFA, 0xEEFBFF),
+        "meta": (0x299FF4, 0xCDE7FF, 0xF3F9FF),
+        "deepseek": (0x738EFF, 0xD9E3FF, 0xF6F8FE),
+        "copilot": (0xAC82FF, 0xE6DEFF, 0xF9F7FF),
+        "commandcode": (0xD67CE1, 0xF4D9F6, 0xFEF5FF),
+        "pi": (0xEF80BA, 0xFDD7E9, 0xFFF5F9),
     ]
 
-    func color(for agent: String) -> Color {
-        if agent == ProviderInfo.claudeID { return Ink.claude }
-        guard let entry = Self.table[agent] else { return .white }
-        let hex = switch self {
-        case .brand: entry.brand
-        case .soft: entry.soft
-        case .quiet: entry.quiet
-        }
-        return Color(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    static func ink(for agent: String) -> AgentInk {
+        if agent == ProviderInfo.claudeID { return .claude }
+        guard let entry = table[agent] else { return .white }
+        return AgentInk(base: rgb(entry.base), ember: rgb(entry.ember), whiteHot: rgb(entry.whiteHot))
+    }
+
+    static func color(for agent: String) -> Color {
+        ink(for: agent).color
     }
 
     /// The colour of each lit ray, from the agent that holds it.
-    func colors(_ agents: [Int: String]) -> [Int: Color] {
+    static func colors(_ agents: [Int: String]) -> [Int: Color] {
         agents.mapValues(color(for:))
     }
 
     /// The rays one head holds, in its agent's colour.
     @MainActor
-    func colors(of head: Head) -> [Int: Color] {
+    static func colors(of head: Head) -> [Int: Color] {
         let color = color(for: head.agent)
         return Dictionary(uniqueKeysWithValues: head.rays.map { ($0, color) })
+    }
+
+    private static func rgb(_ hex: UInt32) -> SIMD3<Double> {
+        [Double(hex >> 16 & 0xFF) / 255, Double(hex >> 8 & 0xFF) / 255, Double(hex & 0xFF) / 255]
     }
 }

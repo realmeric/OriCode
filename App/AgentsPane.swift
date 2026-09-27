@@ -59,7 +59,7 @@ private struct AgentCard: View {
 
     var body: some View {
         SettingsCard {
-            row(agent.name, detail: agent.status(entry, on: on, checking: model.checkingAgents.contains(agent.id))) {
+            row(agent.name, mark: agent.id, detail: agent.status(entry, on: on, checking: model.checkingAgents.contains(agent.id))) {
                 // Claude Code's threads and hello's models are its own, so it has no switch.
                 if !isClaude {
                     Toggle(agent.name, isOn: Binding(get: { on }, set: { model.turnAgent(agent.id, on: $0) }))
@@ -77,10 +77,17 @@ private struct AgentCard: View {
     }
 
     /// A settings row whose line may carry a Terminal command in backticks; a path is read verbatim.
-    private func row<Control: View>(_ title: String, detail: String, verbatim: Bool = false, @ViewBuilder control: () -> Control) -> some View {
+    /// The agent's own row has its mark before its name.
+    private func row<Control: View>(_ title: String, mark: String? = nil, detail: String, verbatim: Bool = false,
+                                    @ViewBuilder control: () -> Control) -> some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
+                HStack(spacing: 7) {
+                    if let mark {
+                        AgentMark(agent: mark).frame(width: 14, height: 14)
+                    }
+                    Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
+                }
                 Group {
                     if verbatim { Text(verbatim: detail) } else { Text(LocalizedStringKey(detail)) }
                 }

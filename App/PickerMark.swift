@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Candidate B: OriCode's mark over the slider. The dot is the main head: it grows and heats as
-/// Claude thinks harder, white at Low and Claude's orange at Max. At Ultracode the six rays light
+/// the agent thinks harder, white at Low and in the agent's colour at Max. At Ultracode the six rays light
 /// around it, the heads it runs on every task. The slider underneath sets the level, and a drag
 /// across the mark walks it too.
 struct MarkPicker: View {
@@ -71,10 +71,11 @@ private struct MarkPage: View {
         let stops = state.option?.stops ?? []
         let level = held ?? state.level
         let shown = level.flatMap(stops.firstIndex(of:))
+        let ink = MarkPalette.ink(for: model.providerID(for: chat))
         VStack(spacing: 0) {
             header(state)
                 .frame(height: 30)
-            HeadMark(level: stops.isEmpty ? nil : level, fast: state.fastAsked, live: live, pops: pops)
+            HeadMark(level: stops.isEmpty ? nil : level, ink: ink, fast: state.fastAsked, live: live, pops: pops)
                 .frame(maxWidth: .infinity)
                 .frame(height: 92)
                 .contentShape(.rect)
@@ -88,7 +89,7 @@ private struct MarkPage: View {
                 .frame(height: 16)
                 .padding(.top, 2)
             if let option = state.option, !option.efforts.isEmpty {
-                EffortRail(stops: option.stops, home: state.home, blocked: blocked(state),
+                EffortRail(stops: option.stops, home: state.home, blocked: blocked(state), ink: ink,
                            effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
                            held: $held, hovered: $hovered, fast: state.fastAsked, compact: true,
                            ghost: previewingReset ? resetTarget(state) : nil,
@@ -272,11 +273,12 @@ private struct MarkPage: View {
 }
 
 /// OriCode's mark, large. The dot is the main head, and how hard it thinks is how big and how hot
-/// it is: a small white point at Low, Claude's orange burning at Max. The rays are heads, idle and
-/// faint until Ultracode lights all six. In fast mode bubbles swirl inside the head at every level,
-/// and at Ultracode the rays race round in half a second with a trail behind each.
+/// it is: a small white point at Low, its agent's colour burning at Max. The rays are heads, idle
+/// and faint until Ultracode lights all six. In fast mode bubbles swirl inside the head at every
+/// level, and at Ultracode the rays race round in half a second with a trail behind each.
 private struct HeadMark: View {
     let level: String?
+    let ink: AgentInk
     let fast: Bool
     let live: Bool
     let pops: Int
@@ -284,7 +286,7 @@ private struct HeadMark: View {
 
     var body: some View {
         let ultra = level == Effort.ultracode
-        let heat = Heat(level)
+        let heat = Heat(level, in: ink)
         ZStack {
             RaysMark(lit: ultra ? RaysMark.rays : 0, turning: live && ultra && !reduceMotion, restingOpacity: 0.13, litOpacity: 0.9,
                      dotOpacity: 0, color: .white, stagger: true, layered: true, settles: true, fast: fast)
@@ -322,22 +324,24 @@ private struct HeadMark: View {
         let rim: Color
         let glow: Color
         let reach: CGFloat
-        /// Fast mode's bubbles: Claude's orange on the white heads, white-hot, the way the
-        /// slider's sparks are born, on the orange ones.
+        /// Fast mode's bubbles: the agent's colour on the white heads, white-hot, the way the
+        /// slider's sparks are born, on the coloured ones.
         let bubble: Color
 
-        init(_ level: String?) {
+        init(_ level: String?, in ink: AgentInk) {
             let white = Color.white.opacity(0.95)
-            let orange = Ink.claude.opacity(0.6)
-            let whiteHot = Color(red: 1, green: 0.97, blue: 0.92).opacity(0.95)
+            let tinted = ink.color.opacity(0.6)
+            let whiteHot = ink.whiteHotColor.opacity(0.95)
+            let base = ink.color
+            let ember = ink.emberColor
             switch level {
-            case "low": self.init(16, white, .white.opacity(0.8), .white.opacity(0.12), 4, orange)
-            case "medium": self.init(20, white, .white.opacity(0.85), .white.opacity(0.16), 6, orange)
-            case "high": self.init(24, white, Ink.ember, Ink.ember.opacity(0.28), 8, Ink.claude.opacity(0.65))
-            case "xhigh": self.init(28, Ink.ember, Ink.claude.mix(with: Ink.ember, by: 0.45, in: .device), Ink.claude.opacity(0.35), 11, whiteHot)
-            case "max": self.init(32, Ink.ember, Ink.claude, Ink.claude.opacity(0.7), 16, whiteHot)
-            case Effort.ultracode: self.init(28, Ink.ember, Ink.claude, Ink.claude.opacity(0.6), 14, whiteHot)
-            default: self.init(20, white, .white.opacity(0.85), .white.opacity(0.14), 6, orange)
+            case "low": self.init(16, white, .white.opacity(0.8), .white.opacity(0.12), 4, tinted)
+            case "medium": self.init(20, white, .white.opacity(0.85), .white.opacity(0.16), 6, tinted)
+            case "high": self.init(24, white, ember, ember.opacity(0.28), 8, base.opacity(0.65))
+            case "xhigh": self.init(28, ember, base.mix(with: ember, by: 0.45, in: .device), base.opacity(0.35), 11, whiteHot)
+            case "max": self.init(32, ember, base, base.opacity(0.7), 16, whiteHot)
+            case Effort.ultracode: self.init(28, ember, base, base.opacity(0.6), 14, whiteHot)
+            default: self.init(20, white, .white.opacity(0.85), .white.opacity(0.14), 6, tinted)
             }
         }
 

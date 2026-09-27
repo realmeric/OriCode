@@ -16,6 +16,8 @@ struct PaletteItem: Identifiable {
     var keywords: [String] = []
     var shortcut: String?
     var icon: String?
+    /// A model's agent, whose mark stands in for the icon.
+    var agent: String?
     /// Threads and projects show the project's badge, and a message shows it by its thread's name.
     var project: Project?
     /// The current model, level or mode in a list.

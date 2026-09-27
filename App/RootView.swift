@@ -398,7 +398,6 @@ struct EmptyStateView: View {
     /// The mark, the gap and the line, for centring what's under it.
     static let height: CGFloat = 44 + 14 + 18
 
-    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     let line: String
     /// The agent on each lit ray.
     var rays: [Int: String] = [:]
@@ -406,7 +405,7 @@ struct EmptyStateView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            RaysMark(slots: Set(rays.keys), turning: !rays.isEmpty, waiting: waiting, colors: palette.colors(rays))
+            RaysMark(slots: Set(rays.keys), turning: !rays.isEmpty, waiting: waiting, colors: MarkPalette.colors(rays))
                 .frame(width: 44, height: 44)
             Text(line)
                 .font(Type.body)

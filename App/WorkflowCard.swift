@@ -7,7 +7,6 @@ struct WorkflowCard: View {
     let call: ToolCall
     /// The thread's heads, whose rays this workflow's agents hold on the thread's mark too.
     @Environment(Heads.self) private var heads: Heads?
-    @AppStorage(MarkPalette.key) private var palette = MarkPalette.standard
     @State private var open = false
 
     var body: some View {
@@ -23,7 +22,7 @@ struct WorkflowCard: View {
             } label: {
                 HStack(spacing: 8) {
                     RaysMark(slots: rays, turning: !rays.isEmpty,
-                             colors: head.map(palette.colors(of:)) ?? [:])
+                             colors: head.map(MarkPalette.colors(of:)) ?? [:])
                         .frame(width: 16, height: 16)
                     Text(name)
                         .font(Type.body)

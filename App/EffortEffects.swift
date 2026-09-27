@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// What moves in and around the effort rail: Claude's heat, and where it goes. At every level a
+/// What moves in and around the effort rail: the agent's heat, and where it goes. At every level a
 /// change arrives: rising, light runs up the fill into the thumb and flares the lamps it passes,
 /// a slug at Medium, a brighter one with embers at High, a sweep at Extra high; falling, the heat
 /// the fill gave up drains back into the thumb. At Max, motes drift toward the thumb, slugs of
@@ -24,6 +24,8 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
     /// The level under the thumb.
     var level: String?
+    /// The thread's agent's colour, which the heat is drawn in.
+    var ink: AgentInk
     /// Fast mode, which turns the Ultracode wheel at its speed, with the thumb's rays.
     var fast = false
     /// False for the first moments after the picker opens, while the fill pours in, and once the
@@ -84,6 +86,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         /// Keeps whatever is thrown off the rail away from the text above and below it.
         private let band = CAGradientLayer()
         private var level: String?
+        private var ink = AgentInk.claude
         private var fast = false
         private var wheelPeriod = RaysMark.turn
         private var live = false
@@ -117,7 +120,6 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             band.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
             layer?.mask = band
             glow.type = .radial
-            glow.colors = [Self.ember, Self.claude.copy(alpha: 0.5)!, Self.claude.copy(alpha: 0)!]
             glow.locations = [0, 0.5, 1]
             glow.startPoint = CGPoint(x: 0.5, y: 0.5)
             glow.endPoint = CGPoint(x: 1, y: 1)
@@ -152,14 +154,13 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             moteLayer.emitterShape = .rectangle
             moteLayer.emitterMode = .surface
             burstLayer.emitterShape = .point
-            burstLayer.emitterCells = [Self.burstCell]
             emberLayer.emitterShape = .rectangle
             emberLayer.emitterMode = .surface
             puffLayer.emitterShape = .rectangle
             puffLayer.emitterMode = .surface
             puffLayer.renderMode = .additive
-            puffLayer.emitterCells = [Self.puffCell]
             jetLayer.emitterShape = .point
+            tint()
         }
 
         required init?(coder: NSCoder) { nil }
@@ -260,6 +261,10 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             }
             let moved = wanted.level != level || wanted.compact != compact || wanted.thumb != thumb
             level = wanted.level
+            if wanted.ink != ink {
+                ink = wanted.ink
+                tint()
+            }
             fast = wanted.fast
             live = wanted.live
             if wanted.bursts > bursts { pendingBurst = true }
@@ -309,11 +314,11 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             }
             // Extra high is the first level where heat lingers: a few motes, no more.
             let motes: Float = heat != nil ? 1 : level == "xhigh" ? 0.4 : 0
-            run(moteLayer, rate: on ? motes : 0, prewarm: heat != nil, cells: [Self.moteCell])
-            run(emberLayer, rate: on ? embers : 0, cells: [Self.emberCell])
-            run(jetLayer, rate: on && heat == .max ? 1 : 0, ramp: false, cells: Self.jetCells)
+            run(moteLayer, rate: on ? motes : 0, prewarm: heat != nil, cells: [moteCell])
+            run(emberLayer, rate: on ? embers : 0, cells: [emberCell])
+            run(jetLayer, rate: on && heat == .max ? 1 : 0, ramp: false, cells: jetCells)
             for (index, jet) in jets.enumerated() {
-                run(jet, rate: on && heat == .ultracode ? 1 : 0, ramp: false, cells: Self.wheelCells(index))
+                run(jet, rate: on && heat == .ultracode ? 1 : 0, ramp: false, cells: wheelCells(index))
             }
             // The wheel turns with the thumb's rays, at their speed, and doesn't ask whether the
             // window is covered either.
@@ -398,7 +403,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             let travel = atMax ? 1.35 : 1.0
             let slug = CAGradientLayer()
             slug.type = .radial
-            slug.colors = [Self.ember.copy(alpha: atMax ? 0.6 : 0.5)!, Self.ember.copy(alpha: 0)!]
+            slug.colors = [ember.copy(alpha: atMax ? 0.6 : 0.5)!, ember.copy(alpha: 0)!]
             slug.startPoint = CGPoint(x: 0.5, y: 0.5)
             slug.endPoint = CGPoint(x: 1, y: 1)
             slug.bounds = atMax ? CGRect(x: 0, y: 0, width: 48, height: 20) : CGRect(x: 0, y: 0, width: 32, height: 14)
@@ -455,12 +460,12 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             let carrier = CAGradientLayer()
             if level == "xhigh" {
                 // A sweep, the CLI's shimmer at Extra high done in heat.
-                carrier.colors = [Self.ember.copy(alpha: 0)!, Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
+                carrier.colors = [ember.copy(alpha: 0)!, ember.copy(alpha: spec.light)!, ember.copy(alpha: 0)!]
                 carrier.startPoint = CGPoint(x: 0, y: 0.5)
                 carrier.endPoint = CGPoint(x: 1, y: 0.5)
             } else {
                 carrier.type = .radial
-                carrier.colors = [Self.ember.copy(alpha: spec.light)!, Self.ember.copy(alpha: 0)!]
+                carrier.colors = [ember.copy(alpha: spec.light)!, ember.copy(alpha: 0)!]
                 carrier.startPoint = CGPoint(x: 0.5, y: 0.5)
                 carrier.endPoint = CGPoint(x: 1, y: 1)
             }
@@ -489,7 +494,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             for lamp in lamps where lamp > from && lamp < to {
                 let flare = CAGradientLayer()
                 flare.type = .radial
-                flare.colors = [Self.ember.copy(alpha: 0.9)!, Self.ember.copy(alpha: 0)!]
+                flare.colors = [ember.copy(alpha: 0.9)!, ember.copy(alpha: 0)!]
                 flare.startPoint = CGPoint(x: 0.5, y: 0.5)
                 flare.endPoint = CGPoint(x: 1, y: 1)
                 flare.bounds = CGRect(x: 0, y: 0, width: 12, height: 12)
@@ -516,7 +521,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         private func drain(from: CGFloat) {
             guard from > landing else { return }
             let heat = CAGradientLayer()
-            heat.colors = [Self.claude.copy(alpha: 0.55)!, Self.claude.copy(alpha: 0.3)!]
+            heat.colors = [base.copy(alpha: 0.55)!, base.copy(alpha: 0.3)!]
             heat.startPoint = CGPoint(x: 0, y: 0.5)
             heat.endPoint = CGPoint(x: 1, y: 0.5)
             heat.cornerRadius = EffortRail.rail / 2
@@ -603,22 +608,29 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             context.drawRadialGradient(gradient, startCenter: centre, startRadius: 0, endCenter: centre, endRadius: size.width / 2, options: [])
         }
 
-        /// A pale ember: the particles' white, warmed to sit in Claude's orange.
-        private static let ember = CGColor(red: 1, green: 0.86, blue: 0.78, alpha: 1)
-        /// What a spark is born as, before it cools to Claude's orange.
-        private static let whiteHot = CGColor(red: 1, green: 0.97, blue: 0.92, alpha: 1)
-        private static let claude = CGColor(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255, alpha: 1)
+        /// The agent's colour, and a pale ember: the particles' white, warmed to sit in it.
+        private var base: CGColor { .of(ink.base) }
+        private var ember: CGColor { .of(ink.ember) }
+        /// What a spark is born as, before it cools to the agent's colour.
+        private var whiteHot: CGColor { .of(ink.whiteHot) }
+
+        /// What's drawn in the agent's colour before anything is fired.
+        private func tint() {
+            glow.colors = [ember, base.copy(alpha: 0.5)!, base.copy(alpha: 0)!]
+            burstLayer.emitterCells = [burstCell]
+            puffLayer.emitterCells = [puffCell]
+        }
 
         /// Where ray `index` stands, clockwise from twelve in this view's downward-running y.
         private static func rayAngle(_ index: Int) -> CGFloat {
             (-90 + 60 * CGFloat(index)) * .pi / 180
         }
 
-        /// Takes a cell from `color` to Claude's orange over `seconds`.
-        private static func cool(_ cell: CAEmitterCell, from color: CGColor, over seconds: Float) {
+        /// Takes a cell from `color` to the agent's colour over `seconds`.
+        private func cool(_ cell: CAEmitterCell, from color: CGColor, over seconds: Float) {
             cell.color = color
             let from = color.components ?? [1, 1, 1, 1]
-            let to = claude.components ?? [1, 1, 1, 1]
+            let to = base.components ?? [1, 1, 1, 1]
             cell.redSpeed = Float(to[0] - from[0]) / seconds
             cell.greenSpeed = Float(to[1] - from[1]) / seconds
             cell.blueSpeed = Float(to[2] - from[2]) / seconds
@@ -626,9 +638,9 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
         /// The reasoning at the top of the scale: soft points drifting toward the thumb, growing as
         /// they near it and fading out rather than vanishing.
-        private static var moteCell: CAEmitterCell {
+        private var moteCell: CAEmitterCell {
             let cell = CAEmitterCell()
-            cell.contents = dot
+            cell.contents = Self.dot
             cell.color = ember
             cell.contentsScale = 2
             cell.birthRate = 10
@@ -648,10 +660,10 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
         /// Arriving at the top: embers thrown back out of the thumb white-hot, slowed, and drawn
         /// back in, cooling as they go.
-        private static var burstCell: CAEmitterCell {
+        private var burstCell: CAEmitterCell {
             let cell = CAEmitterCell()
             cell.name = "burst"
-            cell.contents = dot
+            cell.contents = Self.dot
             cell.contentsScale = 2
             cell.birthRate = 0
             cell.lifetime = 0.95
@@ -670,17 +682,17 @@ struct EffortEffects: NSViewRepresentable, Animatable {
         }
 
         /// The same embers, thrown in a handful as High and Extra high arrive.
-        private static var puffCell: CAEmitterCell {
+        private var puffCell: CAEmitterCell {
             let cell = emberCell
             cell.name = "puff"
             cell.birthRate = 0
             return cell
         }
 
-        /// Embers lifting off the top of the fill, born bright in the orange and gone within 12pt.
-        private static var emberCell: CAEmitterCell {
+        /// Embers lifting off the top of the fill, born bright in the agent's colour and gone within 12pt.
+        private var emberCell: CAEmitterCell {
             let cell = CAEmitterCell()
-            cell.contents = dot
+            cell.contents = Self.dot
             cell.contentsScale = 2
             cell.birthRate = 8
             cell.lifetime = 0.8
@@ -699,10 +711,10 @@ struct EffortEffects: NSViewRepresentable, Animatable {
             return cell
         }
 
-        private static func spark(_ name: String, birthRate: Float, velocity: CGFloat, longitude: CGFloat, life: Float) -> CAEmitterCell {
+        private func spark(_ name: String, birthRate: Float, velocity: CGFloat, longitude: CGFloat, life: Float) -> CAEmitterCell {
             let cell = CAEmitterCell()
             cell.name = name
-            cell.contents = dot
+            cell.contents = Self.dot
             cell.contentsScale = 2
             cell.birthRate = birthRate
             cell.lifetime = life
@@ -715,7 +727,7 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
         /// Max's jet, off the rim like a grinder's: sparks that rise a few points, arc back and die
         /// over the fill behind the thumb, and a spit of them, lower, as the thumb arrives.
-        private static var jetCells: [CAEmitterCell] {
+        private var jetCells: [CAEmitterCell] {
             [spark("spark", birthRate: 11, velocity: 46, longitude: -2.05, life: 0.55),
              spark("spit", birthRate: 0, velocity: 55, longitude: -2.5, life: 0.55)].map { cell in
                 cell.lifetimeRange = 0.3
@@ -731,8 +743,8 @@ struct EffortEffects: NSViewRepresentable, Animatable {
 
         /// A jet on the wheel, firing against the turn and 35° out from it, so six of them read as
         /// a wheel of fire turning with the rays.
-        private static func wheelCells(_ index: Int) -> [CAEmitterCell] {
-            let longitude = rayAngle(index) - 55 * .pi / 180
+        private func wheelCells(_ index: Int) -> [CAEmitterCell] {
+            let longitude = Self.rayAngle(index) - 55 * .pi / 180
             return [spark("spark", birthRate: 14 * (0.9 + 0.04 * Float(index)), velocity: 30, longitude: longitude, life: 0.4),
                     spark("puff", birthRate: 0, velocity: 40, longitude: longitude, life: 0.4)].map { cell in
                 cell.lifetimeRange = 0.1

@@ -2,7 +2,7 @@
 
 A native macOS window for coding agents: Swift and SwiftUI, one pane of glass with the conversation on it. It runs the agents you already have, Claude Code, Codex, Cursor, Copilot, OpenCode and others, each through its own CLI and the login you made for it in Terminal, and a few model APIs by a key kept in your Keychain.
 
-OriCode isn't made or endorsed by Anthropic or by any other agent's maker. Claude, Claude Code and the Claude logo are Anthropic's trademarks, and every other agent's name belongs to its maker.
+OriCode isn't made or endorsed by Anthropic or by any other agent's maker. Claude, Claude Code and the Claude logo are Anthropic's trademarks, and every other agent's name and logo belong to its maker.
 <img width="3410" height="2166" alt="image" src="https://github.com/user-attachments/assets/f015cde4-ba20-439d-8db5-bbebeff3f0d9" />
 
 ## What it needs
@@ -74,7 +74,7 @@ Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP o
 
 ## The marks in the model menu
 
-The model menu lists each agent's models under its name and mark. Claude's models carry Claude's logo, which is Anthropic's. Every other agent's mark there is one OriCode draws itself, an SF Symbol or the agent's initial, not its maker's logo, and each agent's name belongs to its maker.
+The model menu lists each agent's models under its name and its maker's logo, drawn in a colour of the agent's own, which the effort rail and the thread's mark take too. Claude's logo is Anthropic's. The logos of OpenAI (Codex), Anysphere (Cursor), GitHub (Copilot), OpenCode, xAI (Grok Build), Cognition (Devin), Pi, Google (Antigravity), Z.ai, DeepSeek, OpenRouter, Meta and Command Code belong to their makers, as each agent's name does. OriCode shows them only to mark each agent's models, none of those makers made or endorsed it, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where each came from.
 
 ## Building
 
