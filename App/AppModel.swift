@@ -141,6 +141,13 @@ final class AppModel {
     var favoriteModels = UserDefaults.standard.stringArray(forKey: "favoriteModels") ?? [] {
         didSet { UserDefaults.standard.set(favoriteModels, forKey: "favoriteModels") }
     }
+    /// The models Settings › Agents turned on or off for the model menu, by ModelRef's key. One
+    /// not here follows its agent's picks (`ModelsPage.picks`).
+    var menuModels = UserDefaults.standard.dictionary(forKey: "menuModels") as? [String: Bool] ?? [:] {
+        didSet { UserDefaults.standard.set(menuModels, forKey: "menuModels") }
+    }
+    /// The agents the model page has open, the one in use when it turns to the page.
+    var modelsOpen: Set<String> = []
     /// A transient line under the composer, for things the user did that didn't work.
     private(set) var note: String?
     /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.

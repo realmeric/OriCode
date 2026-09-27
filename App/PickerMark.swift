@@ -18,7 +18,11 @@ struct MarkPicker: View {
         ZStack {
             switch page {
             case .effort:
-                MarkPage(chat: chat) { page = .models }
+                MarkPage(chat: chat) {
+                    // The agent of the model in use opens with the page, the rest folded.
+                    model.modelsOpen = [model.providerID(for: chat)]
+                    page = .models
+                }
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: -24)).animation(Motion.move),
                                             removal: .opacity.combined(with: .offset(x: -24)).animation(Motion.fade)))
             case .models:
@@ -28,7 +32,7 @@ struct MarkPicker: View {
             }
         }
         .frame(width: 320, height: page == .effort ? Self.effortHeight
-            : ModelsPage.height(for: model.modelGroups(for: chat), footer: chat.map { model.offersWorkers($0) } == true ? WorkersMenu.height : 0))
+            : ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen), footer: chat.map { model.offersWorkers($0) } == true ? WorkersMenu.height : 0))
         .animation(Motion.glide, value: page)
         .onAppear {
             model.readAgentModels()

@@ -30,9 +30,34 @@ extension AppModel {
         return providers.filter { $0.id == ProviderInfo.claudeID || $0.id == own || $0.state == .ready }
     }
 
-    /// The models as the pickers group them: favorites from every agent listed, then each agent's.
-    func modelGroups(for chat: Chat?) -> [ModelsPage.RowGroup] {
-        ModelsPage.groups(agentsListed(for: chat).map { ($0, models(of: $0.id)) }, favorites: favoriteModels)
+    /// The models as the pickers group them: favorites from every agent listed, then each agent's,
+    /// only the ones shown in the model menu and always the one in use. `open` folds every agent
+    /// the model page doesn't have open; nil lists them all, as the native menus do.
+    func modelGroups(for chat: Chat?, open: Set<String>? = nil) -> [ModelsPage.RowGroup] {
+        let current = option(for: chat).map { ModelRef(provider: providerID(for: chat), id: $0.id).stored }
+        return ModelsPage.groups(agentsListed(for: chat).map { ($0, shownModels(of: $0.id, keeping: current)) }, favorites: favoriteModels, open: open)
+    }
+
+    /// An agent's models the model menu shows, and `keeping`, the one in use, whatever Settings says.
+    func shownModels(of agent: String, keeping: String? = nil) -> [ModelOption] {
+        let all = models(of: agent)
+        let picks = ModelsPage.picks(all, on: agent)
+        return all.filter { option in
+            let key = ModelRef(provider: agent, id: option.id).stored
+            return key == keeping || menuModels[key] ?? picks.contains(option.id)
+        }
+    }
+
+    /// Whether the model menu shows a model, as Settings › Agents has it.
+    func showsInMenu(_ ref: ModelRef, picks: Set<String>) -> Bool {
+        menuModels[ref.stored] ?? picks.contains(ref.id)
+    }
+
+    /// Settings › Agents' toggle. A choice that matches the agent's picks is forgotten, so the
+    /// model follows them again.
+    func showInMenu(_ ref: ModelRef, _ shown: Bool) {
+        let picked = ModelsPage.picks(models(of: ref.provider), on: ref.provider).contains(ref.id)
+        menuModels[ref.stored] = shown == picked ? nil : shown
     }
 
     /// What a forbidden model's row says: the Settings › Agents toggle that would let it run.

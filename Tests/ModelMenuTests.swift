@@ -52,7 +52,7 @@ struct ModelMenuTests {
     /// host's defaults, so each test that touches them puts them back as they were.
     private static func keepingDefaults() -> () -> Void {
         let defaults = UserDefaults.standard
-        let keys = [NewThreads.model, NewThreads.provider, "lastModel", "lastProvider", "lastEffort", "lastPermissionMode", "favoriteModels"]
+        let keys = [NewThreads.model, NewThreads.provider, "lastModel", "lastProvider", "lastEffort", "lastPermissionMode", "favoriteModels", "menuModels"]
         let kept = keys.map { defaults.object(forKey: $0) }
         for key in keys { defaults.removeObject(forKey: key) }
         return { for (key, value) in zip(keys, kept) { defaults.set(value, forKey: key) } }
@@ -114,6 +114,7 @@ struct ModelMenuTests {
         defer { restore() }
         model.modelsByAgent[Self.pi.id] = try Self.piModels(forbidden: nil)
         model.favoriteModels = ["codex/gpt-6-luna", "haiku", "pi/zai/glm-5.3"]
+        model.showInMenu(ModelRef(provider: "claude", id: "claude-opus-4-1"), true)
         let groups = model.modelGroups(for: nil)
         #expect(groups.map(\.title) == ["Favorites", "Claude Code", "More models", "Codex", "Pi"])
         #expect(groups.map(\.agent) == [nil, "claude", nil, "codex", "pi"])
@@ -196,6 +197,7 @@ struct ModelMenuTests {
         // An older Claude thread is offered Claude's alone, a codex favorite included.
         let older = try thread(on: nil, started: true)
         model.favoriteModels = ["codex/gpt-6-luna", "haiku"]
+        model.showInMenu(ModelRef(provider: "claude", id: "claude-opus-4-1"), true)
         let groups = model.modelGroups(for: older)
         #expect(groups.map(\.title) == ["Favorites", "Models", "More models"])
         #expect(groups.flatMap(\.rows).allSatisfy { $0.agent == "claude" })
@@ -225,5 +227,89 @@ struct ModelMenuTests {
                                                                       "ultraKnown": false, "provider": "codex"]))
         #expect(model.models(of: "codex").map(\.id) == ["gpt-6-mini"])
         #expect(model.models == Self.claudeModels)
+    }
+
+    private static func many(_ count: Int, _ prefix: String, more: Bool? = nil) -> [ModelOption] {
+        (1...count).map {
+            ModelOption(id: "\(prefix)\($0)", name: "Model \($0)", description: "", efforts: [], fast: false, defaultEffort: nil,
+                        ultra: false, ultraBlocked: nil, more: more, needs: nil)
+        }
+    }
+
+    @Test func eachAgentShowsItsDefaultAndItsOwnShortListOutOfTheBox() throws {
+        let restore = Self.keepingDefaults()
+        defer { restore() }
+        // Claude Code's own list without its older models, five at most.
+        #expect(ModelsPage.picks(Self.claudeModels, on: "claude") == ["default", "haiku"])
+        #expect(ModelsPage.picks(Self.many(7, "c") + Self.many(2, "old", more: true), on: "claude") == ["c1", "c2", "c3", "c4", "c5"])
+        // Another agent's list of five or fewer is its own; past that only its default, which comes first.
+        #expect(ModelsPage.picks(Self.many(5, "m"), on: "codex") == ["m1", "m2", "m3", "m4", "m5"])
+        #expect(ModelsPage.picks(Self.many(392, "vendor/m"), on: "opencode") == ["vendor/m1"])
+        #expect(ModelsPage.picks([], on: "opencode").isEmpty)
+
+        model.modelsByAgent["pi"] = Self.many(392, "vendor/m")
+        let rows = model.modelGroups(for: nil).flatMap(\.rows).map(\.id)
+        #expect(rows == ["default", "haiku", "codex/gpt-6-luna", "codex/haiku", "pi/vendor/m1"])
+        #expect(model.menuModels.isEmpty)
+    }
+
+    @Test func turningAModelOffTakesItOutOfTheMenuAndTheOneInUseStays() throws {
+        let restore = Self.keepingDefaults()
+        defer { restore() }
+        let luna = ModelRef(provider: "codex", id: "gpt-6-luna")
+        model.showInMenu(luna, false)
+        #expect(model.menuModels == ["codex/gpt-6-luna": false])
+        #expect(!model.modelGroups(for: nil).flatMap(\.rows).contains { $0.id == "codex/gpt-6-luna" })
+        model.engineState = .ready
+        #expect(model.paletteSearchable().contains { $0.id == "model.codex/haiku" })
+        #expect(!model.paletteSearchable().contains { $0.id == "model.codex/gpt-6-luna" })
+        // One of OpenCode's hundreds turned on joins the menu.
+        model.modelsByAgent["pi"] = Self.many(392, "vendor/m")
+        model.showInMenu(ModelRef(provider: "pi", id: "vendor/m200"), true)
+        #expect(model.modelGroups(for: nil).flatMap(\.rows).map(\.id).contains("pi/vendor/m200"))
+
+        // A thread on the model turned off keeps it in its menu, checked.
+        let draft = try thread(on: "codex", started: false)
+        draft.model = "gpt-6-luna"
+        #expect(model.modelGroups(for: draft).flatMap(\.rows).contains { $0.id == "codex/gpt-6-luna" })
+        let begun = try thread(on: "codex", started: true)
+        begun.model = "gpt-6-luna"
+        #expect(model.modelGroups(for: begun).flatMap(\.rows).map(\.id) == ["codex/gpt-6-luna", "codex/haiku"])
+        // Turned back on, the choice is forgotten and the model follows its agent's picks again.
+        model.showInMenu(luna, true)
+        #expect(model.menuModels == ["pi/vendor/m200": true])
+    }
+
+    @Test func theChoiceSurvivesARelaunch() throws {
+        let restore = Self.keepingDefaults()
+        defer { restore() }
+        model.showInMenu(ModelRef(provider: "codex", id: "haiku"), false)
+        model.showInMenu(ModelRef(provider: "claude", id: "claude-opus-4-1"), true)
+        let relaunched = AppModel(container: container)
+        #expect(relaunched.menuModels == ["codex/haiku": false, "claude-opus-4-1": true])
+        relaunched.models = Self.claudeModels
+        relaunched.modelsByAgent["codex"] = Self.codexModels
+        relaunched.providers = [.claude, Self.codex]
+        #expect(relaunched.shownModels(of: "codex").map(\.id) == ["gpt-6-luna"])
+        #expect(relaunched.shownModels(of: "claude").map(\.id) == ["default", "haiku", "claude-opus-4-1"])
+    }
+
+    @Test func severalAgentsFoldToTheirNamesAndTheOneInUseIsOpen() throws {
+        let restore = Self.keepingDefaults()
+        defer { restore() }
+        model.modelsByAgent[Self.pi.id] = try Self.piModels(forbidden: nil)
+        let groups = model.modelGroups(for: nil, open: ["claude"])
+        #expect(groups.map(\.id) == ["agent:claude", "agent:codex", "agent:pi"])
+        #expect(groups.map(\.open) == [true, false, false])
+        #expect(groups.flatMap(\.rows).map(\.id) == ["default", "haiku"])
+        // Three agents' rows of 36pt, Claude's two models of 42 and the page's padding.
+        #expect(ModelsPage.height(for: groups) == 208)
+        // Opened, an agent lists its models; without `open` the native menus list them all.
+        #expect(model.modelGroups(for: nil, open: ["claude", "codex"]).flatMap(\.rows).count == 4)
+        #expect(model.modelGroups(for: nil).allSatisfy { $0.open == nil })
+        // One agent alone, as a thread that has begun has, doesn't fold.
+        let begun = try thread(on: "codex", started: true)
+        #expect(model.modelGroups(for: begun, open: []).map(\.open) == [nil])
+        #expect(model.modelGroups(for: begun, open: []).flatMap(\.rows).count == 2)
     }
 }

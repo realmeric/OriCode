@@ -207,12 +207,29 @@ struct ModelsPage: View {
         /// The agent whose mark the heading shows, when the page lists more than one.
         let agent: String?
         let rows: [Row]
+        /// Whether an agent's heading on the model page is open; nil where nothing folds.
+        var open: Bool? = nil
+
+        /// The heading's own height on the page: an agent's that folds is a row to click.
+        var headingHeight: CGFloat {
+            title == nil ? 0 : open == nil ? ModelsPage.heading : ModelsPage.section
+        }
+    }
+
+    /// The models an agent shows out of the box: Claude Code's own list without its older models,
+    /// and another agent's whole list when it's five or fewer, as Codex's picker list and the
+    /// model APIs' are, or else only its default, which it lists first; five at most. OpenCode's
+    /// and OpenRouter's hundreds wait in Settings.
+    static func picks(_ models: [ModelOption], on agent: String) -> Set<String> {
+        let own = agent == ProviderInfo.claudeID ? models.filter { $0.more != true } : models.count <= 5 ? models : Array(models.prefix(1))
+        return Set(own.prefix(5).map(\.id))
     }
 
     /// Favorites first, from every agent; then with one agent its models, under Models when
     /// there are favorites, and with several each agent's under its name; and Claude Code's
-    /// older ones under More models after its own.
-    static func groups(_ agents: [(agent: ProviderInfo, models: [ModelOption])], favorites: [String]) -> [RowGroup] {
+    /// older ones under More models after its own. With `open`, several agents fold to their
+    /// headings, all but the ones it names.
+    static func groups(_ agents: [(agent: ProviderInfo, models: [ModelOption])], favorites: [String], open: Set<String>? = nil) -> [RowGroup] {
         let listed = agents.filter { !$0.models.isEmpty }
         let all = listed.flatMap { entry in entry.models.map { Row(agent: entry.agent.id, option: $0) } }
         let starred = favorites.compactMap { id in all.first { $0.id == id } }
@@ -222,30 +239,34 @@ struct ModelsPage: View {
         for entry in listed {
             let own = rest.filter { $0.agent == entry.agent.id }
             let title = several ? entry.agent.name : starred.isEmpty ? nil : "Models"
+            let folds = several && open != nil && !own.isEmpty
+            let shut = folds && open?.contains(entry.agent.id) == false
             groups.append(RowGroup(id: several ? "agent:" + entry.agent.id : title ?? "", title: title, agent: several ? entry.agent.id : nil,
-                                   rows: own.filter { $0.option.more != true }))
+                                   rows: shut ? [] : own.filter { $0.option.more != true }, open: folds ? !shut : nil))
+            guard !shut else { continue }
             groups.append(RowGroup(id: several ? "more:" + entry.agent.id : "More models", title: "More models", agent: nil,
                                    rows: own.filter { $0.option.more == true }))
         }
-        return groups.filter { !$0.rows.isEmpty }
+        return groups.filter { !$0.rows.isEmpty || $0.open != nil }
     }
 
     private static let row: CGFloat = 42
-    private static let heading: CGFloat = 28
+    fileprivate static let heading: CGFloat = 28
+    fileprivate static let section: CGFloat = 36
 
     /// The page's height: all of it up to the effort page's, and past that it scrolls. `footer` is
     /// the line under the list, the workers' menu, which never scrolls.
     static func height(for groups: [RowGroup], footer: CGFloat = 0) -> CGFloat {
         let rows = groups.reduce(0) { $0 + $1.rows.count }
-        let headings = groups.filter { $0.title != nil }.count
-        return min(CGFloat(rows) * row + CGFloat(headings) * heading + 16, MarkPicker.effortHeight - footer) + footer
+        let headings = groups.reduce(0) { $0 + $1.headingHeight }
+        return min(CGFloat(rows) * row + headings + 16, MarkPicker.effortHeight - footer) + footer
     }
 
     /// Whether a row ends past what the page shows before it scrolls.
     static func below(_ id: String?, in groups: [RowGroup]) -> Bool {
         var top: CGFloat = 8
         for group in groups {
-            if group.title != nil { top += heading }
+            top += group.headingHeight
             for candidate in group.rows {
                 if candidate.id == id { return top + row > height(for: groups) }
                 top += row
@@ -267,8 +288,12 @@ struct ModelsPage: View {
             ScrollView {
                 // Lazy, since an agent can list hundreds: OpenCode's 392 took 0.9s to draw at once.
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(model.modelGroups(for: chat)) { group in
-                        if let title = group.title {
+                    ForEach(groups) { group in
+                        if let open = group.open, let agent = group.agent {
+                            AgentSection(agent: agent, title: group.title ?? agent, open: open, keyed: group.id == keyed) { fold(agent) }
+                                .frame(height: Self.section - 2)
+                                .id(group.id)
+                        } else if let title = group.title {
                             heading(title, agent: group.agent)
                                 .padding(.horizontal, 10)
                                 .frame(height: Self.heading - 2, alignment: .bottomLeading)
@@ -293,7 +318,7 @@ struct ModelsPage: View {
                 focused = true
                 // Only when it has to: a lazy stack scrolled while the page glides in comes to rest
                 // a fraction of a point to the side.
-                if Self.below(chosen, in: model.modelGroups(for: chat)) { reader.scrollTo(scrollTarget(chosen)) }
+                if Self.below(chosen, in: groups) { reader.scrollTo(scrollTarget(chosen)) }
             }
             .onChange(of: keyed) { _, row in
                 withAnimation(Motion.move) { reader.scrollTo(scrollTarget(row)) }
@@ -308,11 +333,31 @@ struct ModelsPage: View {
             back()
             return .handled
         }
-        .onKeyPress(.return) {
-            guard let keyed else { return .ignored }
-            pick(ModelRef(stored: keyed))
+        .onKeyPress(.rightArrow) {
+            guard let keyed, let agent = folding(keyed) else { return .ignored }
+            fold(agent)
             return .handled
         }
+        .onKeyPress(.return) {
+            guard let keyed else { return .ignored }
+            if let agent = folding(keyed) {
+                fold(agent)
+            } else {
+                pick(ModelRef(stored: keyed))
+            }
+            return .handled
+        }
+    }
+
+    private var groups: [RowGroup] { model.modelGroups(for: chat, open: model.modelsOpen) }
+
+    /// The agent whose heading the arrow keys are on, when it's one that folds.
+    private func folding(_ id: String) -> String? {
+        groups.first { $0.id == id && $0.open != nil }?.agent
+    }
+
+    private func fold(_ agent: String) {
+        withAnimation(Motion.move) { model.modelsOpen.formSymmetricDifference([agent]) }
     }
 
     /// A group's name, and with several agents on the page the agent's mark before it.
@@ -334,11 +379,12 @@ struct ModelsPage: View {
 
     /// A group's first row brings its heading into view with it.
     private func scrollTarget(_ row: String?) -> String? {
-        model.modelGroups(for: chat).first { $0.rows.first?.id == row }.flatMap { $0.title == nil ? nil : $0.id } ?? row
+        groups.first { $0.rows.first?.id == row }.flatMap { $0.title == nil ? nil : $0.id } ?? row
     }
 
+    /// Up and down go over the models and the headings that fold.
     private func move(_ by: Int) -> KeyPress.Result {
-        let ids = model.modelGroups(for: chat).flatMap(\.rows).filter(\.option.pickable).map(\.id)
+        let ids = groups.flatMap { group in (group.open == nil ? [] : [group.id]) + group.rows.filter(\.option.pickable).map(\.id) }
         let at = keyed.flatMap(ids.firstIndex(of:)) ?? -1
         guard ids.indices.contains(at + by) else { return .ignored }
         keyed = ids[at + by]
@@ -352,6 +398,45 @@ struct ModelsPage: View {
             try? await Task.sleep(for: .milliseconds(140))
             back()
         }
+    }
+}
+
+/// An agent on the model page when it lists several: its mark and name, which open to its
+/// models and fold them away again.
+struct AgentSection: View {
+    let agent: String
+    let title: String
+    let open: Bool
+    let keyed: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                AgentMark(agent: agent)
+                    .frame(width: 14, height: 14)
+                Text(title)
+                    .font(Type.body)
+                    .foregroundStyle(open ? Ink.primary : Ink.primary.opacity(0.8))
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Ink.faint)
+                    .rotationEffect(.degrees(open ? 90 : 0))
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, 14)
+            .frame(maxHeight: .infinity)
+            .background(hovering || keyed ? Surface.hover : .clear, in: .rect(cornerRadius: 10, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(open ? "Hide \(title)'s models" : "Show \(title)'s models")
+        .accessibilityLabel(title)
+        .accessibilityValue(open ? "Open" : "Folded")
+        .accessibilityHint(open ? "Hides its models" : "Shows its models")
     }
 }
 
