@@ -527,10 +527,10 @@ test("models.list for Claude answers with hello's list", async () => {
   assert.deepEqual(listed.result, { models: known });
 });
 
-test("models.list for an agent with no session in the engine says so", async () => {
+test("models.list for an agent whose CLI isn't found says how to install it", async () => {
   const claude = await standIn(false);
-  const [, unknown] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "devin" } }]);
-  assert.equal(unknown.error, "Devin can't list its models yet.");
+  const [, missing] = await replies({ ORICODE_CLAUDE: claude.path }, [{ method: "hello" }, { method: "models.list", params: { provider: "devin" } }]);
+  assert.equal(missing.error, "Devin isn't installed. Install it with `brew install --cask devin-cli`, then run `devin auth login`.");
 });
 
 test("a Codex thread through the engine: checked ready, its models listed, a turn whose asks the shared registry answers, its usage", async () => {

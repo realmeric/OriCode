@@ -516,7 +516,7 @@ export class AcpSession {
 
   /// What a -32000 says to do: the agent's own words, else the Terminal line that signs it in, else
   /// what its sign-in says of itself. Grok's data is a bare string for developers, "no auth method
-  /// id provided".
+  /// id provided", and Devin's message sends the user to a /login only its own REPL has.
   private signInHint(error: AgentError): string {
     const said = (error.data as { message?: unknown } | undefined)?.message;
     if (typeof said === "string" && said) return said;

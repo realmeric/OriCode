@@ -157,6 +157,16 @@ export const agents: Agent[] = [
     login: "Run `devin auth login` in Terminal.",
     key: null,
     forbidden: [],
+    // `devin auth status` exits 0 either way; its first line says which.
+    signedIn: async (cli) => {
+      try {
+        const { stdout } = await run(cli, ["auth", "status"], { env: agentEnvironment(), timeout: 10_000 });
+        if (/^Logged in\b/m.test(stdout)) return true;
+        return /^Not logged in\b/m.test(stdout) ? false : null;
+      } catch {
+        return null;
+      }
+    },
   },
   {
     id: "pi",
