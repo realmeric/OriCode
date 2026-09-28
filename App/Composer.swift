@@ -5,7 +5,7 @@ struct Composer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let running: Bool
-    let maxHeight: CGFloat
+    let windowHeight: CGFloat
     /// What's typed, in an object of its own: the body never reads it, so a key redraws only the
     /// field and the few views below that do.
     @State private var draft = Draft()
@@ -38,6 +38,10 @@ struct Composer: View {
     /// The tallest picker, its gap and the 52pt title bar: with less room than this above the
     /// composer, the picker opens below it.
     static let pickerRoom: CGFloat = 380
+    /// The title bar's 52pt and a gap under it, which the picker stays clear of when it rises.
+    private static let pickerTop: CGFloat = 62
+    /// The gap the picker keeps from the window's foot when it drops below.
+    private static let pickerFoot: CGFloat = 16
     /// A text field's placeholder, as AppKit draws it.
     private static let placeholderInk = Color(nsColor: .placeholderTextColor)
 
@@ -80,7 +84,10 @@ struct Composer: View {
             if model.modelPickerShown {
                 let below = top < Self.pickerRoom
                 let anchor: UnitPoint = below ? .topTrailing : .bottomTrailing
-                PickerCard(chat: model.chat)
+                // The Rays page grows past the effort page's height, so the card is held to the
+                // room the window has on its side of the composer, and the list scrolls in it.
+                let room = below ? windowHeight - top - height - 10 - Self.pickerFoot : top - 10 - Self.pickerTop
+                PickerCard(chat: model.chat, room: room)
                     .padding(below ? .top : .bottom, height + 10)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.92, anchor: anchor).combined(with: .opacity).combined(with: .offset(y: below ? -8 : 8))
@@ -403,6 +410,8 @@ struct Composer: View {
         .help("Attach an image")
         .accessibilityLabel("Attach an image")
     }
+
+    private var maxHeight: CGFloat { windowHeight * 0.4 }
 
     private var maxLines: Int {
         // The queue's lines, their gap and padding count against the same 40%.

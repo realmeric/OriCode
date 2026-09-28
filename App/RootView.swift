@@ -40,7 +40,7 @@ struct RootView: View {
                     // One composer in one place in the tree, whichever layout is showing, so the
                     // first message moves it rather than swapping it for another.
                     if model.project != nil {
-                        Composer(running: conversation?.running ?? false, maxHeight: window.size.height * 0.4)
+                        Composer(running: conversation?.running ?? false, windowHeight: window.size.height)
                             // Moves as one piece: otherwise a label that changes with the thread,
                             // like the model's name, is drawn where the composer is going while
                             // the rest of it is still on the way.

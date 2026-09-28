@@ -7,13 +7,15 @@ import SwiftUI
 struct PickerCard: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
+    /// The height the window has for the card on its side of the composer.
+    var room: CGFloat = .infinity
     @State private var watch = ClickWatch()
 
     static let radius: CGFloat = 20
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-        MarkPicker(chat: chat)
+        MarkPicker(chat: chat, room: room)
             .background(Surface.composer, in: shape)
             .background(.ultraThinMaterial, in: shape)
             .overlay {

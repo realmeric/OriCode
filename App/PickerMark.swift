@@ -8,6 +8,8 @@ import SwiftUI
 struct MarkPicker: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
+    /// The window's room for the card; a page taller than this scrolls.
+    var room: CGFloat = .infinity
     @State private var page = Page.effort
 
     enum Page { case effort, models }
@@ -46,10 +48,11 @@ struct MarkPicker: View {
     }
 
     /// The effort page's height, or with its rays shown the mark's part of it and the list under
-    /// it, scrolling past 470.
+    /// it, scrolling past 470 or past the window's room, with the mark and a row or two kept.
     private var height: CGFloat {
         switch page {
-        case .effort where model.raysShown: min(Self.raysTop + RayList.height(model, chat: chat), 470)
+        case .effort where model.raysShown:
+            min(Self.raysTop + RayList.height(model, chat: chat), 470, max(room, Self.effortHeight))
         case .effort: Self.effortHeight
         case .models: ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen))
         }
