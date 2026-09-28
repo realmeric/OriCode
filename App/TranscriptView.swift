@@ -5,16 +5,20 @@ struct TranscriptView: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let cwd: String
-    // Starting at .bottom scrolled past a long transcript's lazily measured content and left the
-    // window blank at launch; defaultScrollAnchor places the first frame instead.
     @State private var position = ScrollPosition()
     @State private var pinned = true
     @State private var showAll = false
     /// The item a reveal brought into view, lit for a moment.
     @State private var lit: UUID?
+    /// How tall the laid-out thread is, kept where reading it draws nothing.
+    @State private var content = ContentHeight()
 
-    /// A plain VStack: LazyVStack left a long transcript blank at launch when anchored to the
-    /// bottom. To keep a long thread cheap, only the latest items are laid out until asked.
+    private final class ContentHeight {
+        var height: CGFloat = 0
+    }
+
+    /// The latest items, until an earlier one is asked for. The stack is lazy, laying out what's
+    /// on screen and a little around it, and anchored at the bottom it lays out the newest first.
     private static let recent = 200
 
     private var shown: ArraySlice<Item> {
@@ -23,7 +27,7 @@ struct TranscriptView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 if shown.count < conversation.items.count {
                     Button("Show \(conversation.items.count - shown.count) earlier") { showAll = true }
                         .buttonStyle(.plain)
@@ -40,7 +44,9 @@ struct TranscriptView: View {
                 let listening = model.openShell != nil ? nil : conversation.waitingAsk?.requestId
                 let lastLimit = conversation.lastLimit
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    view(of: entry, listening: listening, lastLimit: lastLimit)
+                    // One view a row, whatever the item draws: an item that can draw nothing, a footer
+                    // with nothing to say, would have the lazy stack make every row to count them.
+                    VStack(alignment: .leading, spacing: 0) { view(of: entry, listening: listening, lastLimit: lastLimit) }
                         .background {
                             if lit == entry.id {
                                 Surface.selected
@@ -79,6 +85,7 @@ struct TranscriptView: View {
         } action: { _, atBottom in
             pinned = atBottom
         }
+        .onScrollGeometryChange(for: CGFloat.self, of: \.contentSize.height) { content.height = $1 }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear(perform: takeReveal)
         .onChange(of: model.reveal) { takeReveal() }
@@ -103,9 +110,17 @@ struct TranscriptView: View {
         guard let id = model.reveal, conversation.items.contains(where: { $0.id == id }) else { return }
         model.reveal = nil
         if !shown.contains(where: { $0.id == id }) { showAll = true }
+        pinned = false
         Task {
             // A beat for the layout a new thread or the earlier items bring.
             try? await Task.sleep(for: .milliseconds(80))
+            // The lazy stack finds an item only once what's around it has been laid out, so the
+            // scroll goes first to where the item should be by its place in the thread.
+            let entries = TranscriptEntry.fold(shown)
+            if let index = entries.firstIndex(where: { $0.id == id }) {
+                position.scrollTo(y: content.height * CGFloat(index) / CGFloat(entries.count))
+                try? await Task.sleep(for: .milliseconds(50))
+            }
             withAnimation(Motion.move) { position.scrollTo(id: id, anchor: .center) }
             withAnimation(Motion.fade) { lit = id }
             try? await Task.sleep(for: .seconds(1.2))
