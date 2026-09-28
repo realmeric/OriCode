@@ -151,6 +151,9 @@ final class AppModel {
     }
     /// The agents the model page has open, the one in use when it turns to the page.
     var modelsOpen: Set<String> = []
+    /// Whether the picker shows its rays' page, and the agents open on it.
+    var raysShown = false
+    var raysOpen: Set<String> = []
     /// A transient line under the composer, for things the user did that didn't work.
     private(set) var note: String?
     /// "from the next reply", shown under the capsule when a mode change can't reach the running turn.

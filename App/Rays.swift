@@ -46,80 +46,57 @@ extension AppModel {
         return (chat.rays ?? []).map(ModelRef.init(stored:)).filter { ready.contains($0.provider) }
     }
 
-    /// Picks a model as one of the thread's rays, after the others, or lets it go.
+    /// Picks a model as one of the thread's rays, after the others, or lets it go. The mark has
+    /// six arcs, so a seventh waits for one to go.
     func setRay(_ ref: ModelRef, _ on: Bool, for chat: Chat?) {
         var rays = (chat?.rays ?? []).filter { $0 != ref.stored }
-        if on { rays.append(ref.stored) }
+        if on {
+            guard rays.count < RaysMark.rays else { return }
+            rays.append(ref.stored)
+        }
         setRays(rays, for: chat)
+    }
+
+    /// The arc each ray stands on, clockwise from twelve in the order they were picked.
+    func raySlots(for chat: Chat?) -> [ModelRef: Int] {
+        Dictionary(uniqueKeysWithValues: rays(for: chat).prefix(RaysMark.rays).enumerated().map { ($1, $0) })
+    }
+
+    /// Each picked ray's arc in its agent's colour, for the mark.
+    func rayColors(for chat: Chat?) -> [Int: Color] {
+        Dictionary(uniqueKeysWithValues: raySlots(for: chat).map { ($1, MarkPalette.color(for: $0.provider)) })
+    }
+
+    /// Turns the effort page to the rays' page and back. It opens with the agents the rays are on,
+    /// or with none every agent but the head's, which is where rays most often go.
+    func showRays(_ shown: Bool, for chat: Chat?) {
+        guard !shown || offersWorkers(chat) else { return }
+        if shown {
+            let picked = Set(rays(for: chat).map(\.provider))
+            raysOpen = picked.isEmpty ? Set(rayChoices(for: chat).map(\.agent.id)).subtracting([providerID(for: chat)]) : picked
+        }
+        raysShown = shown
+    }
+
+    /// The rays by their short names, "GPT-6-Luna".
+    func rayNames(for chat: Chat?) -> [String] {
+        rays(for: chat).map { ray in option(ray).map { ModelMenu.shortName($0.name) } ?? ray.id }
+    }
+
+    /// The pair as VoiceOver says it: "Opus, 2 rays: GPT-6-Luna, GPT-6", or "Opus, no rays".
+    func pairLine(for chat: Chat?) -> String {
+        let head = ModelMenu.shortName(option(for: chat)?.name ?? "The head")
+        let names = rayNames(for: chat)
+        return switch names.count {
+        case 0: "\(head), no rays"
+        case 1: "\(head), 1 ray: \(names[0])"
+        default: "\(head), \(names.count) rays: " + names.joined(separator: ", ")
+        }
     }
 
     func setRays(_ rays: [String], for chat: Chat?) {
         guard let chat = chat ?? (rays.isEmpty ? nil : newChat()) else { return }
         chat.rays = rays.isEmpty ? nil : rays
         try? chat.modelContext?.save()
-    }
-}
-
-/// The model page's last line: the thread's rays, each with its agent's mark in its colour, and a
-/// native menu of switches that picks them from every ready agent's models, "Rays: GPT-6-Luna".
-struct RaysMenu: View {
-    @Environment(AppModel.self) private var model
-    let chat: Chat?
-
-    static let height: CGFloat = 34
-
-    var body: some View {
-        let picked = model.rays(for: chat)
-        Menu {
-            ForEach(model.rayChoices(for: chat), id: \.agent.id) { entry in
-                Section(entry.agent.name) {
-                    ForEach(entry.models) { option in
-                        let ref = ModelRef(provider: entry.agent.id, id: option.id)
-                        Toggle(option.name, isOn: Binding(get: { picked.contains(ref) }, set: { model.setRay(ref, $0, for: chat) }))
-                    }
-                }
-            }
-            Divider()
-            Button("No Rays") { model.setRays([], for: chat) }
-                .disabled(picked.isEmpty)
-        } label: {
-            HStack(spacing: 6) {
-                Text("Rays")
-                    .foregroundStyle(Ink.secondary)
-                ForEach(picked, id: \.self) { ray in
-                    AgentMark(agent: ray.provider)
-                        .frame(width: 12, height: 12)
-                }
-                Text(Self.line(picked.map(name)))
-                    .foregroundStyle(picked.isEmpty ? Ink.faint : Ink.primary.opacity(0.8))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Ink.faint)
-            }
-            .font(Type.secondary)
-            .padding(.horizontal, 10)
-            .frame(maxHeight: .infinity)
-            .contentShape(.rect)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .leading)
-        .help("The models this thread's head sends workers out on")
-        .accessibilityLabel("Rays")
-        .accessibilityValue(Self.line(picked.map(name)))
-    }
-
-    private func name(_ ray: ModelRef) -> String {
-        model.option(ray).map { ModelMenu.shortName($0.name) } ?? ray.id
-    }
-
-    /// "GPT-6-Luna, Sonnet", or with none what that means.
-    static func line(_ names: [String]) -> String {
-        names.isEmpty ? "None · the head works alone" : names.joined(separator: ", ")
     }
 }

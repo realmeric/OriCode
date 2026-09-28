@@ -254,12 +254,11 @@ struct ModelsPage: View {
     fileprivate static let heading: CGFloat = 28
     fileprivate static let section: CGFloat = 36
 
-    /// The page's height: all of it up to the effort page's, and past that it scrolls. `footer` is
-    /// the line under the list, the rays' menu, which never scrolls.
-    static func height(for groups: [RowGroup], footer: CGFloat = 0) -> CGFloat {
+    /// The page's height: all of it up to the effort page's, and past that it scrolls.
+    static func height(for groups: [RowGroup]) -> CGFloat {
         let rows = groups.reduce(0) { $0 + $1.rows.count }
         let headings = groups.reduce(0) { $0 + $1.headingHeight }
-        return min(CGFloat(rows) * row + headings + 16, MarkPicker.effortHeight - footer) + footer
+        return min(CGFloat(rows) * row + headings + 16, MarkPicker.effortHeight)
     }
 
     /// Whether a row ends past what the page shows before it scrolls.
@@ -277,13 +276,6 @@ struct ModelsPage: View {
 
     var body: some View {
         let chosen = PickerState(model: model, chat: chat).option.map { ModelRef(provider: model.providerID(for: chat), id: $0.id).stored }
-        VStack(spacing: 0) {
-            list(chosen: chosen)
-            if model.offersWorkers(chat) { RaysMenu(chat: chat) }
-        }
-    }
-
-    private func list(chosen: String?) -> some View {
         ScrollViewReader { reader in
             ScrollView {
                 // Lazy, since an agent can list hundreds: OpenCode's 392 took 0.9s to draw at once.

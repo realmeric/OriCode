@@ -118,7 +118,7 @@ struct ModelMenu: View {
     private var rays: [ModelRef] { model.rays(for: chat) }
 
     private var raysLine: String {
-        "Rays: " + rays.map { model.option($0).map { Self.shortName($0.name) } ?? $0.id }.joined(separator: ", ")
+        "Rays: " + model.rayNames(for: chat).joined(separator: ", ")
     }
 
     private var selectedModel: ModelOption? { model.option(for: chat) }

@@ -31,10 +31,12 @@ struct MarkPicker: View {
                                             removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
             }
         }
-        .frame(width: 320, height: page == .effort ? Self.effortHeight
-            : ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen), footer: model.offersWorkers(chat) ? RaysMenu.height : 0))
+        .frame(width: 320, height: height)
         .animation(Motion.glide, value: page)
+        .animation(Motion.glide, value: model.raysShown)
         .onAppear {
+            // The picker opens on the effort page, whatever it last showed.
+            model.raysShown = false
             model.readAgentModels()
             // Asked now, so the Fast button already knows Claude Code's answer when it's clicked.
             if let option = model.option(for: chat), option.fast, model.fastReading(for: chat) == nil {
@@ -42,6 +44,19 @@ struct MarkPicker: View {
             }
         }
     }
+
+    /// The effort page's height, or with its rays shown the mark's part of it and the list under
+    /// it, scrolling past 470.
+    private var height: CGFloat {
+        switch page {
+        case .effort where model.raysShown: min(Self.raysTop + RayList.height(model, chat: chat), 470)
+        case .effort: Self.effortHeight
+        case .models: ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen))
+        }
+    }
+
+    /// The rays' page above its list: the header, the mark and the title under it.
+    static let raysTop: CGFloat = 12 + 30 + 96 + 44 + 6
 }
 
 private struct MarkPage: View {
@@ -55,6 +70,7 @@ private struct MarkPage: View {
     @State private var dragFrom: Int?
     @State private var lastShown: Int?
     @State private var previewingReset = false
+    @State private var markHovered = false
     @State private var resetTurns = 0
     @State private var blockedNote = false
     /// For a few seconds after a change the rays turn at Ultracode, then rest upright.
@@ -76,17 +92,125 @@ private struct MarkPage: View {
         let level = held ?? state.level
         let shown = level.flatMap(stops.firstIndex(of:))
         let ink = MarkPalette.ink(for: model.providerID(for: chat))
+        let heads = model.offersWorkers(chat)
+        let raysShown = heads && model.raysShown
         VStack(spacing: 0) {
-            header(state)
-                .frame(height: 30)
-            HeadMark(level: stops.isEmpty ? nil : level, ink: ink, fast: state.fastAsked, live: live, pops: pops)
+            ZStack {
+                if raysShown {
+                    raysHeader
+                        .transition(Self.swap)
+                } else {
+                    header(state)
+                        .transition(Self.swap)
+                }
+            }
+            .frame(height: 30)
+            // One mark for both pages, so it stays where it is as the page turns: the dot turns
+            // from the level's heat to the head's colour, and the rays stay lit on their arcs.
+            HeadMark(level: stops.isEmpty ? nil : level, ink: ink, fast: state.fastAsked && !raysShown, live: live, pops: pops,
+                     rays: heads ? model.rayColors(for: chat) : [:], head: raysShown ? MarkPalette.color(for: model.providerID(for: chat)) : nil,
+                     inviting: heads && markHovered && !raysShown)
                 .frame(maxWidth: .infinity)
                 .frame(height: 92)
                 .contentShape(.rect)
-                .gesture(scrub(stops, index: state.level.flatMap(stops.firstIndex(of:)), blocked: blocked(state)))
-                // VoiceOver meets the slider underneath, which says the same.
-                .accessibilityHidden(true)
+                .onHover { markHovered = $0 }
+                .onTapGesture { if heads { showRays(!raysShown) } }
+                .gesture(scrub(stops, index: state.level.flatMap(stops.firstIndex(of:)), blocked: blocked(state)), including: raysShown ? .none : .all)
+                .help(heads ? raysShown ? "Back to the effort" : "Rays: the models \(ModelMenu.shortName(state.option?.name ?? "the head")) sends work to" : "")
+                // The level is the slider's to say; the mark says the pair and turns the page.
+                .accessibilityElement()
+                .accessibilityLabel(model.pairLine(for: chat))
+                .accessibilityHint(raysShown ? "Goes back to the effort" : "Shows the rays")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { showRays(!raysShown) }
+                .accessibilityHidden(!heads)
                 .padding(.top, 4)
+            ZStack(alignment: .top) {
+                if raysShown {
+                    VStack(spacing: 0) {
+                        RaysTitle(chat: chat)
+                            .padding(.bottom, 6)
+                        DeferredRayList(chat: chat) { showRays(false) }
+                            .padding(.horizontal, -16)
+                            .padding(.bottom, -12)
+                    }
+                    .transition(Self.turn)
+                } else {
+                    effortControls(state, level: level, shown: shown, stops: stops, ink: ink)
+                        .transition(Self.turn)
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        // The rail takes left and right, so up goes to the mark above it and its rays.
+        .onKeyPress(.upArrow) {
+            guard heads, !raysShown else { return .ignored }
+            showRays(true)
+            return .handled
+        }
+        .onChange(of: shown, initial: true) { old, now in
+            lastShown = old ?? now
+        }
+        .onChange(of: state.effort) {
+            pops += 1
+            wake()
+        }
+        // The dot pops as the head takes a ray on or lets one go.
+        .onChange(of: model.rays(for: chat).count) { pops += 1 }
+        // Switching fast wakes the mark, so the bubbles swirl as they come and the rays race.
+        .onChange(of: state.fastAsked) { wake() }
+        .onAppear { wake() }
+        .onDisappear { calming?.cancel() }
+    }
+
+    /// What's under the mark as the page turns: the old part goes in 0.1s and the new one rises in
+    /// after it, so the two never show over each other.
+    private static let turn = AnyTransition.asymmetric(
+        insertion: .opacity.combined(with: .offset(y: 12)).animation(Motion.move.delay(0.1)),
+        removal: .opacity.animation(.easeOut(duration: 0.1)))
+    /// The header's, which stays in place.
+    private static let swap = AnyTransition.asymmetric(
+        insertion: .opacity.animation(Motion.fade.delay(0.1)),
+        removal: .opacity.animation(.easeOut(duration: 0.1)))
+
+    private func showRays(_ shown: Bool) {
+        withAnimation(Motion.move) { model.showRays(shown, for: chat) }
+    }
+
+    /// The rays' page's header: back to the effort at the left, the head in the middle, and No Rays
+    /// at the right while there are any.
+    private var raysHeader: some View {
+        HStack(spacing: 0) {
+            CircleButton(symbol: "chevron.left", help: "Back to the effort") { showRays(false) }
+            Spacer(minLength: 6)
+            HStack(spacing: 5) {
+                AgentMark(agent: model.providerID(for: chat))
+                    .frame(width: 12, height: 12)
+                Text(model.option(for: chat)?.name ?? "Model")
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 6)
+            Group {
+                if model.rays(for: chat).isEmpty {
+                    Color.clear
+                } else {
+                    CircleButton(symbol: "arrow.counterclockwise", help: "No rays") {
+                        withAnimation(Motion.move) { model.setRays([], for: chat) }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.6)).animation(Motion.move))
+                }
+            }
+            .frame(width: 30, height: 30)
+        }
+    }
+
+    private func effortControls(_ state: PickerState, level: String?, shown: Int?, stops: [String], ink: AgentInk) -> some View {
+        VStack(spacing: 0) {
             title(state, level: level, shown: shown, stops: stops)
                 .frame(height: 26)
             line(state, level: level, stops: stops)
@@ -117,20 +241,6 @@ private struct MarkPage: View {
                     .padding(.top, state.modes.isEmpty ? 0 : 6)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-        .onChange(of: shown, initial: true) { old, now in
-            lastShown = old ?? now
-        }
-        .onChange(of: state.effort) {
-            pops += 1
-            wake()
-        }
-        // Switching fast wakes the mark, so the bubbles swirl as they come and the rays race.
-        .onChange(of: state.fastAsked) { wake() }
-        .onAppear { wake() }
-        .onDisappear { calming?.cancel() }
     }
 
     /// Fast mode at the left, where every model shows it, dimmed on one that can't go fast; the
@@ -286,14 +396,25 @@ private struct HeadMark: View {
     let fast: Bool
     let live: Bool
     let pops: Int
+    /// The head's rays, lit on their arcs in their agents' colours; at Ultracode the arcs left over
+    /// light white around them.
+    var rays: [Int: Color] = [:]
+    /// On the rays' page, the head's colour, which the dot takes in place of the level's heat.
+    var head: Color?
+    /// The pointer is on a mark that opens the rays, so its arcs at rest come up.
+    var inviting = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let ultra = level == Effort.ultracode
-        let heat = Heat(level, in: ink)
+        let ultra = level == Effort.ultracode && head == nil
+        let heat = head.map(Heat.init(head:)) ?? Heat(level, in: ink)
+        // With rays picked, the arcs at rest step back and the lit ones glow in their colour, so a
+        // white ray still reads as lit beside white arcs at rest.
+        let resting = rays.isEmpty ? (inviting ? 0.3 : 0.13) : (inviting ? 0.2 : 0.07)
         ZStack {
-            RaysMark(lit: ultra ? RaysMark.rays : 0, turning: live && ultra && !reduceMotion, restingOpacity: 0.13, litOpacity: 0.9,
-                     dotOpacity: 0, color: .white, stagger: true, layered: true, settles: true, fast: fast)
+            RaysMark(slots: ultra ? Set(0..<RaysMark.rays) : Set(rays.keys), turning: live && ultra && !reduceMotion,
+                     restingOpacity: resting, litOpacity: rays.isEmpty ? 0.9 : 1, dotOpacity: 0, color: .white, colors: rays,
+                     stagger: true, layered: true, settles: true, fast: fast, glow: !rays.isEmpty)
                 .frame(width: 88, height: 88)
             ZStack {
                 dot(heat)
@@ -313,6 +434,7 @@ private struct HeadMark: View {
         }
         .animation(.spring(duration: 0.35, bounce: 0.3), value: level)
         .animation(Motion.move, value: fast)
+        .animation(Motion.move, value: head)
     }
 
     private func dot(_ heat: Heat) -> some View {
@@ -347,6 +469,11 @@ private struct HeadMark: View {
             case Effort.ultracode: self.init(28, ember, base, base.opacity(0.6), 14, whiteHot)
             default: self.init(20, white, .white.opacity(0.85), .white.opacity(0.14), 6, tinted)
             }
+        }
+
+        /// The head itself on the rays' page: its agent's colour, lit from the upper left.
+        init(head color: Color) {
+            self.init(26, color.mix(with: .white, by: 0.35, in: .device), color, color.opacity(0.5), 10, color)
         }
 
         private init(_ size: CGFloat, _ core: Color, _ rim: Color, _ glow: Color, _ reach: CGFloat, _ bubble: Color) {

@@ -40,6 +40,10 @@ struct RaysMark: View {
     /// Fast mode: a turn goes round in half a second with a trail behind each ray, and coasts
     /// further to rest.
     var fast = false
+    /// A lit ray glows softly in its own colour, so a white one still reads as lit beside the
+    /// white arcs at rest: the picker's mark, carrying the rays picked for its head. Drawn on the
+    /// layered mark only, which is the picker's.
+    var glow = false
 
     enum Focus: Hashable {
         case dot
@@ -53,7 +57,7 @@ struct RaysMark: View {
                 MovingRays(lit: lit, opacities: (0..<Self.rays).map(opacity), dotOpacity: dot, turning: turning, waiting: waiting,
                            restingOpacity: restingOpacity,
                            color: NSColor(color), rayColors: (0..<Self.rays).map { NSColor(rayColor($0)) },
-                           dotColor: NSColor(dotColor ?? color), stagger: stagger, settles: settles, fast: fast)
+                           dotColor: NSColor(dotColor ?? color), stagger: stagger, settles: settles, fast: fast, glow: glow)
             } else {
                 GeometryReader { proxy in
                     let side = min(proxy.size.width, proxy.size.height)
@@ -155,13 +159,14 @@ private struct MovingRays: NSViewRepresentable {
     let stagger: Bool
     let settles: Bool
     let fast: Bool
+    let glow: Bool
 
     func makeNSView(context: Context) -> RaysView { RaysView() }
 
     func updateNSView(_ view: RaysView, context: Context) {
         view.paint(color)
         view.show(lit: lit, opacities: opacities, colors: rayColors.map(\.cgColor), dotOpacity: dotOpacity, dotColor: dotColor.cgColor,
-                  turning: turning, waiting: waiting, resting: restingOpacity, stagger: stagger, settles: settles, fast: fast)
+                  turning: turning, waiting: waiting, resting: restingOpacity, stagger: stagger, settles: settles, fast: fast, glow: glow)
     }
 
     final class RaysView: NSView {
@@ -214,7 +219,7 @@ private struct MovingRays: NSViewRepresentable {
         }
 
         func show(lit: Set<Int>, opacities: [Double], colors: [CGColor], dotOpacity: Double, dotColor: CGColor, turning: Bool,
-                  waiting: Bool, resting: Double, stagger: Bool = false, settles: Bool = false, fast: Bool = false) {
+                  waiting: Bool, resting: Double, stagger: Bool = false, settles: Bool = false, fast: Bool = false, glow: Bool = false) {
             let before = self.lit ?? []
             CATransaction.begin()
             // A ray that lights or goes out eases there, the way the still mark's spring takes it;
@@ -224,6 +229,10 @@ private struct MovingRays: NSViewRepresentable {
             for (index, ray) in rays.enumerated() {
                 ray.opacity = Float(opacities[index])
                 if ray.strokeColor != colors[index] { ray.strokeColor = colors[index] }
+                // A still glow, drawn once with the ray: nothing runs while the mark rests.
+                let glows = glow && lit.contains(index)
+                if ray.shadowColor != colors[index] { ray.shadowColor = colors[index] }
+                ray.shadowOpacity = glows ? 0.9 : 0
             }
             dot.opacity = Float(dotOpacity)
             if dot.fillColor != dotColor { dot.fillColor = dotColor }
@@ -301,6 +310,8 @@ private struct MovingRays: NSViewRepresentable {
             for (index, ray) in rays.enumerated() {
                 ray.frame = spinner.bounds
                 ray.lineWidth = width
+                ray.shadowRadius = side * 0.06
+                ray.shadowOffset = .zero
                 ray.path = Ray(index: index, count: RaysMark.rays).path(in: circle).cgPath
             }
             let dotSide = side * 0.3

@@ -53,9 +53,12 @@ struct RaysTests {
     }
 
     @Test func aThreadsRaysAreTheModelsPickedForItAndWithoutThemItsHeadWorksAlone() {
+        model.models = [Self.option("opus", "Opus"), Self.option("sonnet", "Sonnet")]
+        model.modelsByAgent["codex"] = [Self.option("gpt-6-luna", "GPT-6-Luna")]
+        chat.model = "opus"
         #expect(model.rays(for: chat).isEmpty)
         #expect(sent()["rays"] == nil)
-        #expect(RaysMenu.line([]) == "None · the head works alone")
+        #expect(model.pairLine(for: chat) == "Opus, no rays")
 
         let luna = ModelRef(provider: "codex", id: "gpt-6-luna")
         let sonnet = ModelRef(provider: ProviderInfo.claudeID, id: "sonnet")
@@ -67,9 +70,10 @@ struct RaysTests {
         #expect(model.rays(for: chat) == [luna, sonnet])
         // Each as agent/model, Claude's too.
         #expect(sent()["rays"] == ["codex/gpt-6-luna", "claude/sonnet"])
-        #expect(RaysMenu.line(["GPT-6-Luna", "Sonnet"]) == "GPT-6-Luna, Sonnet")
+        #expect(model.pairLine(for: chat) == "Opus, 2 rays: GPT-6-Luna, Sonnet")
 
         model.setRay(luna, false, for: chat)
+        #expect(model.pairLine(for: chat) == "Opus, 1 ray: Sonnet")
         #expect(sent()["rays"] == ["claude/sonnet"])
         model.setRays([], for: chat)
         #expect(chat.rays == nil)
