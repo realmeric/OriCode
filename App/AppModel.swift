@@ -24,6 +24,9 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     /// The maker whose login reaches it, when that maker keeps the login to its own apps: pi's
     /// claude.ai, xAI and Meta logins. Listed, not picked, until it's turned on in Settings › Agents.
     var forbidden: String? = nil
+    /// Its Ultracode is OriCode's own, on Rays: the head plans, sends workers out and merges what
+    /// they bring, on a model with no Ultracode of its own.
+    var ultraRays: Bool? = nil
 
     /// The SDK's id for Default (recommended), the model Claude Code picks.
     static let claudeDefault = "default"

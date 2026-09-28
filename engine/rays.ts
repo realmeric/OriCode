@@ -213,10 +213,12 @@ export class Rays {
   private watched: boolean;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private told = "";
-  /// The thread's folder, its mode and its rays, as its latest send had them.
+  /// The thread's folder, its mode, its rays and what the head is told of them, as its latest
+  /// send had them.
   private cwd = "";
   private mode = "default";
   private rays: Ray[] = [];
+  private instructions = "";
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -234,11 +236,12 @@ export class Rays {
   }
 
   /// What the thread's latest send says: where it works, in which mode, and its rays, none when
-  /// it has none left.
-  update(cwd: string, mode: string, rays: Ray[]): void {
+  /// it has none left, with what the head is told of them: `brief`, or Ultracode's.
+  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays)): void {
     this.cwd = cwd;
     this.mode = mode;
     this.rays = rays;
+    this.instructions = instructions;
   }
 
   has(workerId: string): boolean {
@@ -248,7 +251,7 @@ export class Rays {
   async rpc(method: string, params: any): Promise<{ result: unknown } | { error: { code: number; message: string } }> {
     switch (method) {
       case "initialize":
-        return { result: { protocolVersion: params.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "oricode", title: "OriCode", version }, instructions: brief(this.rays) } };
+        return { result: { protocolVersion: params.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "oricode", title: "OriCode", version }, instructions: this.instructions } };
       case "ping":
         return { result: {} };
       case "tools/list":
@@ -346,7 +349,8 @@ export class Rays {
       threadId,
       agent,
       model,
-      effort: typeof args.effort === "string" && args.effort ? args.effort : null,
+      // A worker never runs as Ultracode, which would send out workers of its own.
+      effort: typeof args.effort === "string" && args.effort && args.effort !== "ultracode" ? args.effort : null,
       // The thread's mode, or the agent's first when it has no such mode.
       mode: agent.modes.includes(this.mode) ? this.mode : (agent.modes[0] ?? this.mode),
       label: task.split("\n")[0].slice(0, 80),

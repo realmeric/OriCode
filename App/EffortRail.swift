@@ -3,17 +3,28 @@ import SwiftUI
 /// What each effort level says about itself, and how hot its part of the rail burns.
 enum EffortScale {
     /// One line each, from Claude Code's own /effort wording. The clause after the dot under Max
-    /// and Ultracode is what they cost, drawn in the session's usage band.
-    static func line(_ level: String) -> (words: String, cost: String?) {
+    /// and Ultracode is what they cost, drawn in the session's usage band. Ultracode's says whose
+    /// it is on the model, on the agent.
+    static func line(_ level: String, on option: ModelOption? = nil, agent: String = ProviderInfo.claudeID) -> (words: String, cost: String?) {
         switch level {
+        case "none", "off": ("No reasoning, straight to the answer", nil)
+        case "minimal": ("Barely any reasoning", nil)
         case "low": ("Quick, simple work", nil)
         case "medium": ("Balanced, with standard testing", nil)
         case "high": ("Thorough, with extensive testing", nil)
         case "xhigh": ("Extended reasoning, thorough analysis", nil)
         case "max": ("Deepest reasoning", "uses more of your plan")
-        case Effort.ultracode: ("Workflows on every task", "far more of your plan")
+        case Effort.ultracode: (ultracode(on: option, agent: agent), "far more of your plan")
         default: ("", nil)
         }
+    }
+
+    /// OriCode's own on Rays, Claude Code's workflows, or another agent's own: Codex's ultra, which
+    /// Codex calls "Maximum reasoning with automatic task delegation". Short enough for the cost
+    /// after it.
+    static func ultracode(on option: ModelOption?, agent: String) -> String {
+        if option?.ultraRays == true { return "Workers on every task" }
+        return agent == ProviderInfo.claudeID ? "Workflows on every task" : "Max, delegating itself"
     }
 
     /// The two that spend the plan faster, and get the heavier tap and the halo.

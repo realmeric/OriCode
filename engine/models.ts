@@ -16,6 +16,9 @@ export type Model = {
   /// Why an xhigh model has no Ultracode when the user can change it: `workflows` while
   /// enableWorkflows is off in their settings.
   ultraBlocked: "workflows" | null;
+  /// Its Ultracode is OriCode's own, on Rays (ultracode.ts), for a model with no Ultracode of its
+  /// own on an agent that can be a head.
+  ultraRays?: boolean;
   /// One of the account's older models, from the catalog's overflow section; the app lists
   /// them under More models. Absent on the SDK's own rows.
   more?: boolean;

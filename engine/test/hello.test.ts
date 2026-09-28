@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { defaultsKey, writeCache } from "../cache.ts";
-import { fallback, helloList } from "../models.ts";
+import { fallback, helloList, type Model } from "../models.ts";
 import { version } from "../version.ts";
 
 const cli = "9.9.9 (Claude Code)";
@@ -264,11 +264,12 @@ function cursorEntry(state: string, cliPath: string | null, cliVersion: string |
   return { id: "cursor", name: "Cursor", agent: "Cursor", state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: ["acceptEdits", "plan"] };
 }
 
-/// A model API that runs in Claude Code, as hello lists it: Claude's thread without its plan.
+/// A model API that runs in Claude Code, as hello lists it: Claude's thread without its plan, with
+/// OriCode's Ultracode atop its levels.
 function compatibleEntry(id: string, name: string, state: string, cliPath: string | null, hint: string | null, levels: string[]) {
   const capabilities = { steer: true, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: true, commitMessage: true, handoff: null, workers: true };
   const modes = ["default", "acceptEdits", "plan", "auto", "bypassPermissions"];
-  return { id, name, agent: name, state, hint, cli: cliPath, version: null, capabilities, levels, modes };
+  return { id, name, agent: name, state, hint, cli: cliPath, version: null, capabilities, levels: levels.length ? [...levels, "ultracode"] : levels, modes };
 }
 
 test("hello lists the agents turned on without asking their CLIs anything, a check asks one, and one turned off is forgotten", async () => {
@@ -313,7 +314,7 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
         compact: false,
         commitMessage: false,
         handoff: "grok --resume {session}",
-        workers: true,
+        workers: false,
       },
       levels: ["low", "medium", "high", "xhigh"],
       modes: ["default", "plan", "bypassPermissions"],
@@ -399,7 +400,11 @@ test("with no Claude Code, Z.ai says it needs it", async () => {
   assert.deepEqual(hello.result.providers[1], compatibleEntry("zai", "Z.ai", "missing", null, "Z.ai runs in Claude Code, which isn't installed. Install Claude Code to use it.", []));
 });
 
-test("OpenCode turned on is found at hello, reads ready once checked, and lists its models through ACP, deleting the session that read them", async () => {
+/// What `opencode models --verbose` prints for the stand-in's two models: one with no variants, and
+/// one with three.
+const variantsOutput = `small\n{\n  "id": "small",\n  "variants": {}\n}\nlarge\n{\n  "id": "large",\n  "variants": {\n    "low": {},\n    "medium": {},\n    "high": {}\n  }\n}\n`;
+
+test("OpenCode turned on is found at hello, reads ready once checked, and lists its models through ACP with their variants, deleting the session that read them", async () => {
   const claude = await standIn(false);
   const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
   const bin = join(home, "bin");
@@ -408,7 +413,7 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
   const agent = new URL("./fixtures/acp-agent.ts", import.meta.url).pathname;
   await writeFile(
     join(bin, "opencode"),
-    `#!/bin/sh\necho "opencode $*" >> "${ran}"\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${agent}" ;;\nesac\n`,
+    `#!/bin/sh\necho "opencode $*" >> "${ran}"\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${agent}" ;;\n  models) printf '${variantsOutput}' ;;\nesac\n`,
   );
   await chmod(join(bin, "opencode"), 0o755);
   const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
@@ -440,15 +445,16 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
       handoff: "opencode --session {session}",
       workers: true,
     },
-    levels: [],
+    levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultracode"],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
   };
   assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown" });
+  // Each model's variants are its levels, and a model with levels takes OriCode's Ultracode.
   assert.deepEqual(
-    listed.result.models.map((model: { id: string; name: string }) => [model.id, model.name]),
+    listed.result.models.map((model: Model) => [model.id, model.name, model.efforts, model.ultra, model.ultraRays]),
     [
-      ["small", "Small"],
-      ["large", "Large"],
+      ["small", "Small", [], false, undefined],
+      ["large", "Large", ["low", "medium", "high"], true, true],
     ],
   );
   assert.deepEqual(checked.result, { ...entry, version: "1.18.32" });
@@ -459,7 +465,7 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
     await new Promise((resolve) => setTimeout(resolve, 50));
     asked = (await readFile(ran, "utf8")).trim().split("\n");
   }
-  assert.deepEqual(asked.sort(), ["opencode --version", "opencode acp", "opencode acp", "opencode session delete s-1", "opencode session delete s-1"]);
+  assert.deepEqual(asked.sort(), ["opencode --version", "opencode acp", "opencode acp", "opencode models --verbose", "opencode models --verbose", "opencode session delete s-1", "opencode session delete s-1"]);
 });
 
 test("Cursor on the Free plan reads ready and lists only Auto, as Cursor names it, deleting the session that listed it", async () => {
@@ -513,7 +519,7 @@ test("Copilot signed in to a GitHub account with no Copilot plan reads as its ow
     { method: "provider.check", params: { provider: "copilot" } },
   ]);
   const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: "copilot --resume {session}", workers: true };
-  const entry = { id: "copilot", name: "GitHub Copilot", agent: "Copilot", cli: join(bin, "copilot"), capabilities, levels: ["low", "medium", "high"], modes: ["default", "plan", "bypassPermissions"] };
+  const entry = { id: "copilot", name: "GitHub Copilot", agent: "Copilot", cli: join(bin, "copilot"), capabilities, levels: ["low", "medium", "high", "ultracode"], modes: ["default", "plan", "bypassPermissions"] };
   assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown", hint: null, version: null });
   assert.deepEqual(checked.result, {
     ...entry,

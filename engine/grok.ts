@@ -48,4 +48,6 @@ export const grok = acpProvider({
   levels: ["low", "medium", "high", "xhigh"],
   modes: ["default", "plan", "bypassPermissions"],
   unlistedModes: ["default", "plan"],
+  // Its initialize names no mcpCapabilities.
+  workers: false,
 });

@@ -47,7 +47,7 @@ const models =
       ];
 const configOptions = () => [
   { id: "model", name: "Model", category: "model", type: "select", currentValue: model, options: models },
-  { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: level, options: ["low", "medium", "high"].map((value) => ({ value, name: value })) },
+  { id: "effort", name: "Effort", category: "thought_level", type: "select", currentValue: level, options: ["low", "medium", "high", "default"].map((value) => ({ value, name: value })) },
 ];
 
 const history = [

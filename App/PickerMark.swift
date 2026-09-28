@@ -202,7 +202,7 @@ private struct MarkPage: View {
         } else if stops.isEmpty {
             words = ("\(ModelMenu.shortName(state.option?.name ?? "This model")) has one reasoning level", nil)
         } else if let shown = previewed ?? level {
-            words = EffortScale.line(shown)
+            words = EffortScale.line(shown, on: state.option, agent: state.agent.id)
         } else {
             words = ("Runs at the model's default level", nil)
         }

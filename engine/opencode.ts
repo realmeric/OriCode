@@ -28,6 +28,35 @@ export function reach(mode: string): Reach {
   }
 }
 
+/// OpenCode's variants, lowest first: the reasoning levels a model offers, which its ACP session
+/// names only for the model it's on, as a thought_level option with "default" beside them.
+export const levels = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+/// Each model's variants from `opencode models --verbose`, which prints each model's id on a line
+/// and its JSON under it, read from OpenCode's own model cache without reaching a model.
+export function variants(output: string): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  let id: string | undefined;
+  let body: string[] = [];
+  for (const line of output.split("\n")) {
+    if (id === undefined) {
+      if (/^[^\s{}]\S*$/.test(line)) id = line;
+      continue;
+    }
+    body.push(line);
+    if (line !== "}") continue;
+    try {
+      const named = Object.keys(JSON.parse(body.join("\n")).variants ?? {});
+      found.set(id, levels.filter((level) => named.includes(level)));
+    } catch {
+      // A model whose JSON doesn't read offers no levels.
+    }
+    id = undefined;
+    body = [];
+  }
+  return found;
+}
+
 export const opencode = acpProvider({
   id: "opencode",
   args: ["acp"],
@@ -38,5 +67,8 @@ export const opencode = acpProvider({
   modeLive: false,
   handoff: "opencode --session {session}",
   modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
+  levels,
+  variants: async (cli) =>
+    variants((await run(cli, ["models", "--verbose"], { env: agentEnvironment(), timeout: 20_000, maxBuffer: 16 * 1024 * 1024 })).stdout),
   forget: (cli, sessionId) => run(cli, ["session", "delete", sessionId], { env: agentEnvironment(), timeout: 10_000 }),
 });

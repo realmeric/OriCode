@@ -365,7 +365,7 @@ export class AcpSession {
       if (this.interrupted) return this.finish(turn, "interrupted");
       if (reach.mode) await this.applyMode(reach.mode);
       if (params.model) await this.applyModel(params.model);
-      if (params.effort) await this.applyLevel(params.effort);
+      await this.applyLevel(params.effort);
       event("turn.started", { threadId: this.id, sessionId: this.sessionId });
       const reply: { stopReason?: string; usage?: Record<string, number | null> | null } = await this.request("session/prompt", { sessionId: this.sessionId, prompt: this.prompt(params) });
       if (this.held !== undefined && turn === this.turns) {
@@ -515,7 +515,9 @@ export class AcpSession {
     }
   }
 
-  private async applyLevel(level: string): Promise<void> {
+  /// No level is the model's own, which an agent offering "default" among its levels is told:
+  /// OpenCode puts a model it moves to on its first variant.
+  private async applyLevel(level = "default"): Promise<void> {
     const option = this.configOptions.find((option) => option.category === "thought_level");
     if (option && option.currentValue !== level && values(option).some((value) => value.value === level)) await this.setConfig(option.id, level);
   }

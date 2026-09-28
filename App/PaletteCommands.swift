@@ -392,7 +392,7 @@ extension AppModel {
         let levels = option.efforts + (option.ultra || option.ultraBlocked != nil ? [Effort.ultracode] : [])
         items += levels.map { level in
             PaletteItem(id: "effort." + level, kind: .choice, title: prefix + ModelMenu.effortName(level),
-                        subtitle: EffortScale.line(level).0, icon: "gauge.with.dots.needle.67percent", checked: current == level,
+                        subtitle: EffortScale.line(level, on: option, agent: providerID(for: chat)).0, icon: "gauge.with.dots.needle.67percent", checked: current == level,
                         unavailable: level == Effort.ultracode && !option.ultra ? "Needs dynamic workflows, see /config in \(agent(for: chat).name)" : nil,
                         action: .run { [weak self] in
                             guard let self else { return }

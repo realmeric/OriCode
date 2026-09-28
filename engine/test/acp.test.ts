@@ -322,7 +322,7 @@ test("OpenCode's calls: a command told once it has one, its todo list as the pla
   assert.deepEqual(edited.patch, [{ oldStart: 1, newStart: 1, lines: [" one", "-two", "+2", " three"] }]);
 });
 
-test("a mode the process wasn't started for starts another, which picks the session up; a level goes to thought_level", async () => {
+test("a mode the process wasn't started for starts another, which picks the session up; a level goes to thought_level, and none to its default", async () => {
   const { session, cwd, sent } = await standIn("reach");
   sessions.push(session);
   (session as any).agent.permissions = (mode: string) => (mode === "auto" ? { mode: "agent" } : { mode: mode === "plan" ? "plan" : "agent", env: { ACP_EXTRA: "asks" } });
@@ -339,7 +339,13 @@ test("a mode the process wasn't started for starts another, which picks the sess
   const log = await sent();
   assert.deepEqual(log.filter((message) => message.env).map((message) => message.extra), ["asks", "passed"]);
   assert.deepEqual(log.filter((message) => message.method === "session/load").map((message) => message.params.sessionId), ["s-1"]);
-  assert.deepEqual(log.find((message) => message.method === "session/set_config_option").params, { sessionId: "s-1", configId: "effort", value: "high" });
+  assert.deepEqual(
+    log.filter((message) => message.method === "session/set_config_option").map((message) => message.params),
+    [
+      { sessionId: "s-1", configId: "effort", value: "high" },
+      { sessionId: "s-1", configId: "effort", value: "default" },
+    ],
+  );
   assert.deepEqual(log.filter((message) => message.method === "session/set_mode").map((message) => message.params.modeId), ["plan"]);
 });
 

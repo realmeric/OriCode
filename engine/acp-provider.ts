@@ -30,10 +30,16 @@ export type AcpEntry = {
   handoff: string | null;
   /// The values of its thought_level option, for an agent that has one.
   levels?: string[];
+  /// Each model's levels, by id, for an agent whose session names them only for the model it's on:
+  /// OpenCode's variants. Asked while the session that lists the models opens.
+  variants?: (cli: string) => Promise<Map<string, string[]>>;
   /// The permission modes a thread on it picks from, the SDK's ids, which `permissions` turns
   /// into its own.
   modes: string[];
   unlistedModes?: string[];
+  /// False for an agent whose initialize takes no MCP server over http, which OriCode's worker
+  /// tools need, so a thread on it can't be a head.
+  workers?: boolean;
   /// Deletes a session the engine opened only to read the models, for an agent that keeps every
   /// session it opens.
   forget?: (cli: string, sessionId: string) => Promise<unknown>;
@@ -60,10 +66,15 @@ export function acpProvider(entry: AcpEntry): Provider {
   /// The models a session offers, from one opened for nothing else.
   async function offered(cli: string): Promise<Model[]> {
     const plan = entry.runs?.(cli);
+    const variants = entry.variants?.(cli).catch((error) => {
+      log(`${known.name} didn't say its models' levels: ${describe(error)}`);
+      return undefined;
+    });
     const session = new AcpSession(`${entry.id}-models`, started(cli));
     const sessionId = await session.peek(tmpdir());
     if (sessionId && entry.forget) void entry.forget(cli, sessionId).catch((error) => log(`${known.name} kept session ${sessionId}: ${describe(error)}`));
     const { current, models } = listModels(session);
+    const levels = await variants;
     // The agent's own default first, which a thread on it with no model runs.
     const ordered = [...models.filter((model) => model.id === current), ...models.filter((model) => model.id !== current)];
     const listed = ordered.map(
@@ -72,7 +83,11 @@ export function acpProvider(entry: AcpEntry): Provider {
         name: model.name,
         description: model.description ?? "",
         // Only the levels the model has, where the agent says.
-        efforts: (entry.levels ?? []).filter((level) => !model.levels || model.levels.includes(level)),
+        efforts: (entry.levels ?? []).filter((level) => {
+          // An agent that names them apart names none when it couldn't be asked.
+          const known = entry.variants ? (levels?.get(model.id) ?? []) : model.levels;
+          return !known || known.includes(level);
+        }),
         fast: false,
         defaultEffort: null,
         ultra: false,
@@ -98,7 +113,7 @@ export function acpProvider(entry: AcpEntry): Provider {
       compact: false,
       commitMessage: false,
       handoff: entry.handoff,
-      workers: true,
+      workers: entry.workers ?? true,
     },
     levels: entry.levels ?? [],
     modes: entry.modes,

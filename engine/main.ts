@@ -14,6 +14,8 @@ import { opencode } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
 import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
+import { brief as ultracode, headLevel, lead, levels, onRays } from "./ultracode.ts";
+import type { Model } from "./models.ts";
 import { answer, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
@@ -42,6 +44,9 @@ const providers = new Map<string, Provider>([
 const sessions = new Map<string, Session>();
 /// Agents whose models were read while they could run; hello's list for one signed out is a fallback.
 const listed = new Set<string>();
+/// Each agent's models as it last listed them, with OriCode's Ultracode where it's on Rays, for
+/// what a send at Ultracode runs. Claude Code's aren't kept: its Ultracode is always its own.
+const lists = new Map<string, Model[]>();
 /// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
 const watched = new Set<string>();
 
@@ -84,12 +89,33 @@ const seam: Seam = {
 };
 
 /// The URL of a head's tools and what it's told of its rays, when the thread has rays and its
-/// agent takes the tools. A thread with none left keeps the workers it has, and can't start more.
-async function headTools(params: SendParams & { rays?: string[] }, agent: Provider): Promise<Pick<SendParams, "tools" | "instructions">> {
-  const rays = agent.capabilities.workers ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
+/// agent takes the tools, or runs as OriCode's Ultracode, on its own model when it has no rays.
+/// A thread with none left keeps the workers it has, and can't start more.
+async function headTools(params: SendParams & { rays?: string[] }, agent: Provider, ultra?: Model): Promise<Pick<SendParams, "tools" | "instructions">> {
+  const picked = agent.capabilities.workers ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
+  const rays = ultra && !picked.length ? [{ agent: agent.id, model: ultra.id }] : picked;
+  const instructions = ultra ? ultracode(rays) : brief(rays);
   const head = rays.length ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
-  head?.update(params.cwd, params.permissionMode, rays);
-  return rays.length && head ? { tools: head.url, instructions: brief(rays) } : {};
+  head?.update(params.cwd, params.permissionMode, rays, instructions);
+  return rays.length && head ? { tools: head.url, instructions } : {};
+}
+
+/// An agent's models as the app gets them, kept for its sends at Ultracode.
+function remember(agent: Provider, models: Model[]): Model[] {
+  if (agent.id === claude.id) return models;
+  const marked = onRays(agent, models);
+  lists.set(agent.id, marked);
+  return marked;
+}
+
+/// The model a send at Ultracode runs when its Ultracode is OriCode's own, from the agent's list,
+/// asked once if this engine hasn't read it; undefined when it's the model's own.
+async function onRaysModel(agent: Provider, path: string, id: string | undefined): Promise<Model | undefined> {
+  if (agent.id === claude.id || !agent.capabilities.workers) return undefined;
+  if (!lists.has(agent.id) && agent.listModels) remember(agent, await agent.listModels(path));
+  const models = lists.get(agent.id) ?? [];
+  const model = id ? models.find((model) => model.id === id) : models[0];
+  return model?.ultraRays ? model : undefined;
 }
 
 /// An agent's models, read once a check finds it signed in after hello didn't, as `models`
@@ -101,9 +127,9 @@ async function listAfterLogin(agent: Provider, found: Availability): Promise<voi
   const named = agent.id === claude.id ? {} : { provider: agent.id };
   const models = await agent.models(found, (fields) => {
     told = true;
-    void listedFirst.promise.then(() => event("models", { ...fields, ...named }));
+    void listedFirst.promise.then(() => event("models", { ...fields, models: remember(agent, fields.models), ...named }));
   });
-  if (!told) event("models", { models, settingsEffort: null, ultraKnown: false, ...named });
+  if (!told) event("models", { models: remember(agent, models), settingsEffort: null, ultraKnown: false, ...named });
   listedFirst.resolve();
 }
 
@@ -136,7 +162,7 @@ function described(id: string, found: Availability) {
     cli: found.cli,
     version: found.version,
     capabilities: wired?.capabilities ?? unwired,
-    levels: wired?.levels ?? [],
+    levels: wired ? levels(wired) : [],
     modes: wired?.modes ?? [],
   };
 }
@@ -205,16 +231,21 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const wired = providers.get(id);
     if (!wired) throw new Error(agent(id) ? `${agent(id)!.name} can't list its models yet.` : `Unknown provider ${id}`);
     const models = wired.listModels ? await wired.listModels(await cli(wired)) : await wired.models(await wired.availability(), () => {});
-    return { models };
+    return { models: remember(wired, models) };
   },
 
   /// `rays` are the models, as `agent/model`, the thread's workers may run on, which makes its
-  /// session a head.
+  /// session a head. Ultracode on a model without its own is OriCode's: the head is told to fan
+  /// each task out to workers on its rays, with the message too, and runs at xhigh itself.
   async send({ rays, ...params }: SendParams & { provider?: string; rays?: string[] }) {
     const agent = provider(params.provider);
     const path = await cli(agent);
-    const head = await headTools({ ...params, rays }, agent);
-    const waiting = await session(params.threadId, agent, path).send({ ...params, ...head });
+    const ultra = params.effort === "ultracode" ? await onRaysModel(agent, path, params.model) : undefined;
+    const head = await headTools({ ...params, rays }, agent, ultra);
+    const effort = ultra ? (headLevel(ultra) as SendParams["effort"]) : params.effort;
+    // A message into a running turn joins one that was told already.
+    const text = ultra && !sessions.get(params.threadId)?.isRunning ? `${lead}\n\n${params.text}` : params.text;
+    const waiting = await session(params.threadId, agent, path).send({ ...params, text, effort, ...head });
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },
 
