@@ -228,13 +228,42 @@ struct StoredEvent: Sendable {
     }
 }
 
+/// The item a reply or its thinking is streaming into, and its text so far. Only that item's
+/// view reads it, so a delta draws the reply and nothing else in the transcript.
+@MainActor
+@Observable
+final class LiveText {
+    fileprivate(set) var id: UUID?
+    fileprivate(set) var text = ""
+}
+
 /// One thread's transcript: the stored events replayed into items, then kept current
 /// from the engine's live events. Streaming text lands in one event per assistant
 /// message, updated in place.
 @MainActor
 @Observable
 final class Conversation {
-    private(set) var items: [Item] = []
+    /// Every item, the streaming one's text included. A delta changes that text without telling
+    /// what reads `items`, which would lay the whole transcript out again for it: the streaming
+    /// item's own view follows `live` instead.
+    private(set) var items: [Item] {
+        get {
+            access(keyPath: \.items)
+            return stored
+        }
+        set {
+            withMutation(keyPath: \.items) { stored = newValue }
+        }
+        _modify {
+            access(keyPath: \.items)
+            _$observationRegistrar.willSet(self, keyPath: \.items)
+            defer { _$observationRegistrar.didSet(self, keyPath: \.items) }
+            yield &stored
+        }
+    }
+    @ObservationIgnored private var stored: [Item] = []
+    /// The text of the item still streaming, as it grows.
+    let live = LiveText()
     /// Whether it has anything in it yet. Kept apart from `items`, so a view that only asks this
     /// isn't drawn again by every delta.
     private(set) var started = false
@@ -284,7 +313,12 @@ final class Conversation {
     let chat: Chat
     private let context: ModelContext
     private var seq = 0
-    private var open: (item: Int, event: Event, kind: String)?
+    @ObservationIgnored private var open: (item: Int, event: Event, kind: String)? {
+        didSet {
+            if let open { live.text = stored[open.item].text ?? "" }
+            live.id = open?.event.id
+        }
+    }
     /// Deltas for the open item that haven't reached it yet: a fast stream reaches the view at
     /// most once a frame.
     private var held = ""
@@ -743,11 +777,12 @@ final class Conversation {
     private func showHeld() {
         holding = false
         guard let open, !held.isEmpty else { return }
-        let current = items[open.item]
+        let current = stored[open.item]
         let text = (current.text ?? "") + held
         held = ""
         shownAt = .now
-        items[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
+        stored[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
+        live.text = text
         open.event.payload = (try? JSON.object(["event": .string(open.kind), "delta": .string(text)]).data()) ?? Data()
         if open.kind == "text" { said?.update(open.event.id, text: text) }
         unsaved = true

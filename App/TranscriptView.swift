@@ -66,23 +66,18 @@ struct TranscriptView: View {
             .padding(.bottom, 24)
         }
         .scrollIndicators(.never)
-        // MarkdownUI makes `App/Foo.swift` a URL with no scheme, which the default action hands
-        // to Launch Services, and nothing there opens it.
-        .environment(\.openURL, OpenURLAction { model.openLink($0, cwd: cwd) })
+        .environment(\.openURL, model.transcriptLinks)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
+        // Following the bottom while it grows, a reply streaming or an item arriving, is the
+        // scroll view's own; scrolled up, what's read stays where it is.
+        .defaultScrollAnchor(pinned ? .bottom : .top, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 48
         } action: { _, atBottom in
             pinned = atBottom
-        }
-        .onChange(of: conversation.items) {
-            if pinned { position.scrollTo(edge: .bottom) }
-        }
-        .onChange(of: conversation.waiting) {
-            if pinned { position.scrollTo(edge: .bottom) }
         }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear(perform: takeReveal)
@@ -120,6 +115,7 @@ struct TranscriptView: View {
 
     @ViewBuilder
     private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?) -> some View {
+        let streaming = conversation.live.id
         switch entry {
         case .item(let item):
             ItemView(
@@ -127,9 +123,11 @@ struct TranscriptView: View {
                 live: conversation.running && item.id == conversation.items.last?.id,
                 limitCard: item.id == lastLimit,
                 resumes: conversation.resumeAt != nil && item.id == lastLimit,
-                waiting: conversation.waiting.contains { $0.id == item.id })
+                waiting: conversation.waiting.contains { $0.id == item.id },
+                stream: item.id == streaming ? conversation.live : nil)
         case .run(let items):
-            ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id)
+            ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id,
+                       stream: items.contains { $0.id == streaming } ? conversation.live : nil)
         }
     }
 
@@ -227,6 +225,8 @@ struct ItemView: View {
     var resumes = false
     /// A message sent into the turn that Claude hasn't taken up yet.
     var waiting = false
+    /// The text streaming into this item, which it reads in place of its own.
+    var stream: LiveText?
 
     /// Your messages' pictures, decoded once by the message rather than on every render.
     private static let decoded = NSCache<NSUUID, NSArray>()
@@ -272,9 +272,9 @@ struct ItemView: View {
             .frame(maxWidth: 560, alignment: .trailing)
             .frame(maxWidth: .infinity, alignment: .trailing)
         case .text(let id, let text):
-            Reply(id: id, text: text, live: live)
+            Reply(id: id, text: stream?.text ?? text, live: live)
         case .thinking(_, let text):
-            ThinkingLine(text: text, live: live)
+            ThinkingLine(text: stream?.text ?? text, live: live)
         case .tool(_, let call):
             if call.isEdit && !call.isError {
                 DiffCard(call: call, cwd: cwd)
@@ -365,6 +365,8 @@ struct ToolRunRow: View {
     let cwd: String
     /// The turn is still in this run.
     let live: Bool
+    /// The text streaming into one of its items, thinking between the calls.
+    var stream: LiveText?
     @State private var open = false
 
     var body: some View {
@@ -402,7 +404,8 @@ struct ToolRunRow: View {
             if open {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        ItemView(item: item, cwd: cwd, listening: nil, live: live && index == items.count - 1)
+                        ItemView(item: item, cwd: cwd, listening: nil, live: live && index == items.count - 1,
+                                 stream: item.id == stream?.id ? stream : nil)
                             .padding(.top, index == 0 ? 0 : TranscriptView.spacing(before: item, after: items[index - 1]))
                     }
                 }

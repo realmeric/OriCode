@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Observation
 import SwiftData
+import SwiftUI
 
 struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     let id: String
@@ -128,6 +129,12 @@ final class AppModel {
     /// Bumped to put the cursor in the composer when nothing else would move it there: ⌘N on the
     /// draft that's already open.
     var composerFocus = 0
+    /// What a link in the transcript does, made once: MarkdownUI makes `App/Foo.swift` a URL with
+    /// no scheme, which the default action hands to Launch Services, and nothing there opens it.
+    /// A new action on every body changed the environment of every Markdown block in the thread.
+    @ObservationIgnored lazy var transcriptLinks = OpenURLAction { [unowned self] url in
+        openLink(url, cwd: chat?.cwd ?? "")
+    }
     /// The models the user starred, by ModelRef's key, in the order starred; the models page and
     /// the model pickers put them first. One Claude Code stops listing stays here, unseen, in case
     /// it's back.

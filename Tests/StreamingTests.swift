@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftData
 import Testing
 @testable import OriCode
@@ -143,5 +144,32 @@ struct StreamingTests {
         let now = model.conversation(for: chat)
         try await Task.sleep(for: .milliseconds(200))
         #expect(model.currentConversation === now)
+    }
+
+    @Test func aDeltaReachesTheLiveTextAndNotTheItemsReaders() async throws {
+        let conversation = Conversation(chat: chat, context: context)
+        conversation.userSent("Go")
+        delta("One", in: conversation)
+        #expect(conversation.live.id == conversation.items.last?.id)
+        nonisolated(unsafe) var itemsChanged = false
+        withObservationTracking { _ = conversation.items } onChange: { itemsChanged = true }
+        delta(" two", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(!itemsChanged)
+        #expect(conversation.live.text == "One two")
+        #expect(conversation.items.last?.text == "One two")
+        conversation.receive(EngineEvent(name: "tool.use", threadId: chat.id.uuidString,
+                                         body: ["event": "tool.use", "toolUseId": "t", "name": "Read", "input": ["file_path": "/tmp/alpha/a"]]))
+        #expect(itemsChanged)
+        #expect(conversation.live.id == nil)
+    }
+
+    @Test func aLinkInTheTranscriptOpensItsFileInTheThreadsFolder() {
+        let model = AppModel(container: container)
+        model.selectedProjectID = chat.project?.id
+        model.selectedChatID = chat.id
+        model.transcriptLinks(URL(string: "App/Files.swift:42")!)
+        #expect(model.openFile?.path == "App/Files.swift")
+        #expect(model.openFile?.line == 42)
     }
 }
