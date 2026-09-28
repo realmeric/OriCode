@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Candidate B: OriCode's mark over the slider. The dot is the main head: it grows and heats as
-/// the agent thinks harder, white at Low and in the agent's colour at Max. At Ultracode the six rays light
-/// around it, the heads it runs on every task. The slider underneath sets the level, and a drag
-/// across the mark walks it too.
+/// the agent thinks harder, white at Low and in the agent's colour at Max. With workflows on the six
+/// rays light around it, the heads it runs on every task. The slider underneath sets the level, and
+/// a drag across the mark walks it too.
 struct MarkPicker: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
@@ -76,7 +76,7 @@ private struct MarkPage: View {
     @State private var markHovered = false
     @State private var resetTurns = 0
     @State private var blockedNote = false
-    /// For a few seconds after a change the rays turn at Ultracode, then rest upright.
+    /// For a few seconds after a change the rays turn with workflows on, then rest upright.
     @State private var live = false
     @State private var calming: Task<Void, Never>?
     /// Bumped as a level lands, for the dot's pop.
@@ -84,14 +84,12 @@ private struct MarkPage: View {
 
     /// How far a drag across the mark goes for each level.
     private static let step: CGFloat = 26
-    /// The extra a drag has to push past Max to reach Ultracode.
-    private static let gate: CGFloat = 22
 
     private var state: PickerState { PickerState(model: model, chat: chat) }
 
     var body: some View {
         let state = state
-        let stops = state.option?.stops ?? []
+        let stops = state.option?.efforts ?? []
         let level = held ?? state.level
         let shown = level.flatMap(stops.firstIndex(of:))
         let ink = MarkPalette.ink(for: model.providerID(for: chat))
@@ -112,13 +110,14 @@ private struct MarkPage: View {
             // from the level's heat to the head's colour, and the rays stay lit on their arcs.
             HeadMark(level: stops.isEmpty ? nil : level, ink: ink, fast: state.fastAsked && !raysShown, live: live, pops: pops,
                      rays: heads ? model.rayColors(for: chat) : [:], head: raysShown ? MarkPalette.color(for: model.providerID(for: chat)) : nil,
-                     inviting: heads && markHovered && !raysShown)
+                     inviting: heads && markHovered && !raysShown,
+                     workflows: state.workflows && !raysShown, headColor: MarkPalette.color(for: model.providerID(for: chat)))
                 .frame(maxWidth: .infinity)
                 .frame(height: 92)
                 .contentShape(.rect)
                 .onHover { markHovered = $0 }
                 .onTapGesture { if heads { showRays(!raysShown) } }
-                .gesture(scrub(stops, index: state.level.flatMap(stops.firstIndex(of:)), blocked: blocked(state)), including: raysShown ? .none : .all)
+                .gesture(scrub(stops, index: state.level.flatMap(stops.firstIndex(of:))), including: raysShown ? .none : .all)
                 .help(heads ? raysShown ? "Back to the effort" : "Rays: the models \(ModelMenu.shortName(state.option?.name ?? "the head")) sends work to" : "")
                 // The level is the slider's to say; the mark says the pair and turns the page.
                 .accessibilityElement()
@@ -154,6 +153,12 @@ private struct MarkPage: View {
             showRays(true)
             return .handled
         }
+        // W for workflows, beside the level the rail is on.
+        .onKeyPress(characters: .init(charactersIn: "wW")) { press in
+            guard !raysShown, press.modifiers.isDisjoint(with: [.command, .control, .option]), offersWorkflows(state) else { return .ignored }
+            toggleWorkflows(state)
+            return .handled
+        }
         .onChange(of: shown, initial: true) { old, now in
             lastShown = old ?? now
         }
@@ -163,8 +168,10 @@ private struct MarkPage: View {
         }
         // The dot pops as the head takes a ray on or lets one go.
         .onChange(of: model.rays(for: chat).count) { pops += 1 }
-        // Switching fast wakes the mark, so the bubbles swirl as they come and the rays race.
+        // Switching fast wakes the mark, so the bubbles swirl as they come and the rays race;
+        // switching workflows, so the arcs turn as they light.
         .onChange(of: state.fastAsked) { wake() }
+        .onChange(of: state.workflows) { wake() }
         .onAppear { wake() }
         .onDisappear { calming?.cancel() }
     }
@@ -220,11 +227,11 @@ private struct MarkPage: View {
                 .frame(height: 16)
                 .padding(.top, 2)
             if let option = state.option, !option.efforts.isEmpty {
-                EffortRail(stops: option.stops, home: state.home, blocked: blocked(state), ink: ink,
+                EffortRail(stops: option.efforts, home: state.home, ink: ink,
                            effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
-                           held: $held, hovered: $hovered, fast: state.fastAsked, compact: true,
+                           held: $held, hovered: $hovered, compact: true,
                            ghost: previewingReset ? resetTarget(state) : nil,
-                           onBlocked: showBlocked, onReturn: { model.modelPickerShown = false })
+                           onReturn: { model.modelPickerShown = false })
                     .padding(.top, 10)
             }
             Spacer(minLength: 0)
@@ -246,10 +253,13 @@ private struct MarkPage: View {
         }
     }
 
-    /// Fast mode at the left, where every model shows it, dimmed on one that can't go fast; the
-    /// model in the middle; Back to Defaults at the right when there's anything to go back from.
+    /// Fast mode at the left, where every model shows it, dimmed on one that can't go fast, and
+    /// workflows beside it where the model can run them; the model in the middle; Back to Defaults
+    /// at the right when there's anything to go back from, in as wide a slot as the left's, so the
+    /// model stays in the middle.
     private func header(_ state: PickerState) -> some View {
-        HStack(spacing: 0) {
+        let workflows = offersWorkflows(state)
+        return HStack(spacing: 0) {
             FastButton(on: state.fastAsked, dimmed: previewingReset && !model.threadDefaults.fast) {
                 model.setFast(!state.fastAsked, for: chat)
             }
@@ -257,6 +267,13 @@ private struct MarkPage: View {
             .opacity(state.option?.fast == true ? 1 : 0.35)
             .help(state.option?.fast == true ? "Fast mode: faster output from the same model" : "This model can't run fast")
             .frame(width: 30, height: 30)
+            if workflows {
+                WorkflowsButton(on: state.workflows, color: MarkPalette.color(for: model.providerID(for: chat)), blocked: blocked(state)) {
+                    toggleWorkflows(state)
+                }
+                .opacity(previewingReset && state.workflows ? 0.45 : 1)
+                .padding(.leading, 6)
+            }
             Spacer(minLength: 6)
             let back = model.defaultModel(for: chat)
             ModelLine(option: state.option, agent: previewingReset ? back.provider : model.providerID(for: chat),
@@ -276,8 +293,19 @@ private struct MarkPage: View {
                     Color.clear
                 }
             }
-            .frame(width: 30, height: 30)
+            .frame(width: workflows ? 66 : 30, height: 30, alignment: .trailing)
         }
+    }
+
+    /// Whether the header shows workflows: a model that can run them, or could but for the agent's
+    /// own settings.
+    private func offersWorkflows(_ state: PickerState) -> Bool {
+        state.option.map { $0.ultra || $0.ultraBlocked != nil } ?? false
+    }
+
+    private func toggleWorkflows(_ state: PickerState) {
+        guard !blocked(state) else { return showBlocked() }
+        withAnimation(Motion.move) { model.setWorkflows(!state.workflows, for: chat) }
     }
 
     private func title(_ state: PickerState, level: String?, shown: Int?, stops: [String]) -> some View {
@@ -290,10 +318,7 @@ private struct MarkPage: View {
                 .id(name)
                 .transition(.asymmetric(insertion: AnyTransition(.blurReplace).combined(with: .offset(y: rising ? 6 : -6)),
                                         removal: AnyTransition(.blurReplace)))
-            if level == Effort.ultracode {
-                Tag(text: "This thread")
-                    .transition(.opacity.animation(Motion.fade))
-            } else if level != nil, held == nil ? state.effort == nil : level == state.home {
+            if level != nil, held == nil ? state.effort == nil : level == state.home {
                 Tag(text: "Default")
                     .transition(.opacity.animation(Motion.fade))
             }
@@ -301,21 +326,23 @@ private struct MarkPage: View {
         .animation(Motion.move, value: name)
     }
 
-    /// What the level does, or what a hovered stop would do; the cost of Max and Ultracode in the
-    /// session's usage band.
+    /// What the level does, or what a hovered stop would do, or with workflows on what they do; the
+    /// cost of Max and workflows in the session's usage band.
     private func line(_ state: PickerState, level: String?, stops: [String]) -> some View {
         let previewed = held == nil ? hovered : nil
         let words: (String, String?)
-        if blockedNote || (previewed == Effort.ultracode && blocked(state)) {
+        if blockedNote {
             words = ("Needs dynamic workflows, see /config in \(state.agent.name)", nil)
         } else if let problem = state.fastProblem, previewed == nil, held == nil {
             words = (problem, nil)
-        } else if let missing = state.ultracodeMissing, previewed == nil, held == nil {
+        } else if let missing = state.workflowsMissing, previewed == nil, held == nil {
             words = (missing, nil)
+        } else if state.workflows, previewed == nil, held == nil {
+            words = (EffortScale.workflows(at: level, on: state.option, agent: state.agent.id), "more of your plan")
         } else if stops.isEmpty {
             words = ("\(ModelMenu.shortName(state.option?.name ?? "This model")) has one reasoning level", nil)
         } else if let shown = previewed ?? level {
-            words = EffortScale.line(shown, on: state.option, agent: state.agent.id)
+            words = EffortScale.line(shown)
         } else {
             words = ("Runs at the model's default level", nil)
         }
@@ -335,18 +362,14 @@ private struct MarkPage: View {
     }
 
     /// Dragging across the mark walks the levels too, a detent on the trackpad at each, and the
-    /// slider follows as each one lands. Ultracode sits past a gate the drag has to push through.
-    private func scrub(_ stops: [String], index: Int?, blocked: Bool) -> some Gesture {
+    /// slider follows as each one lands.
+    private func scrub(_ stops: [String], index: Int?) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .onChanged { drag in
                 guard !stops.isEmpty else { return }
                 let from = dragFrom ?? index ?? 0
                 if dragFrom == nil { dragFrom = from }
-                var target = min(max(from + Int((drag.translation.width / Self.step).rounded()), 0), stops.count - 1)
-                if stops[target] == Effort.ultracode, from != target,
-                   blocked || drag.translation.width < CGFloat(target - from) * Self.step + Self.gate {
-                    target -= 1
-                }
+                let target = min(max(from + Int((drag.translation.width / Self.step).rounded()), 0), stops.count - 1)
                 let was = state.level.flatMap(stops.firstIndex(of:)) ?? from
                 guard target != was else { return }
                 if target > was, EffortScale.spendsFaster(stops[target]) {
@@ -391,33 +414,39 @@ private struct MarkPage: View {
 
 /// OriCode's mark, large. The dot is the main head, and how hard it thinks is how big and how hot
 /// it is: a small white point at Low, its agent's colour burning at Max. The rays are heads, idle
-/// and faint until Ultracode lights all six. In fast mode bubbles swirl inside the head at every
-/// level, and at Ultracode the rays race round in half a second with a trail behind each.
+/// and faint until workflows light all six. In fast mode bubbles swirl inside the head at every
+/// level, and with workflows on the rays race round in half a second with a trail behind each.
 private struct HeadMark: View {
     let level: String?
     let ink: AgentInk
     let fast: Bool
     let live: Bool
     let pops: Int
-    /// The head's rays, lit on their arcs in their agents' colours; at Ultracode the arcs left over
-    /// light white around them.
+    /// The head's rays, lit on their arcs in their agents' colours; with workflows on the arcs
+    /// left over light in the head's own around them.
     var rays: [Int: Color] = [:]
     /// On the rays' page, the head's colour, which the dot takes in place of the level's heat.
     var head: Color?
     /// The pointer is on a mark that opens the rays, so its arcs at rest come up.
     var inviting = false
+    /// Workflows on: the head fanning out on its own model, whatever the level.
+    var workflows = false
+    /// The head's agent's colour, which the arcs its rays leave free light in with workflows on.
+    var headColor = Color.white
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let ultra = level == Effort.ultracode && head == nil
+        let fanning = workflows && head == nil
         let heat = head.map(Heat.init(head:)) ?? Heat(level, in: ink)
         // With rays picked, the arcs at rest step back and the lit ones glow in their colour, so a
-        // white ray still reads as lit beside white arcs at rest.
+        // white ray still reads as lit beside white arcs at rest. Workflows light every arc, which
+        // leaves none at rest to tell them from.
         let resting = rays.isEmpty ? (inviting ? 0.3 : 0.13) : (inviting ? 0.2 : 0.07)
         ZStack {
-            RaysMark(slots: ultra ? Set(0..<RaysMark.rays) : Set(rays.keys), turning: live && ultra && !reduceMotion,
-                     restingOpacity: resting, litOpacity: rays.isEmpty ? 0.9 : 1, dotOpacity: 0, color: .white, colors: rays,
-                     stagger: true, layered: true, settles: true, fast: fast, glow: !rays.isEmpty)
+            RaysMark(slots: fanning ? Set(0..<RaysMark.rays) : Set(rays.keys), turning: live && fanning && !reduceMotion,
+                     restingOpacity: resting, litOpacity: rays.isEmpty ? 0.9 : 1, dotOpacity: 0, color: .white,
+                     colors: fanning ? freeArcs : rays,
+                     stagger: true, layered: true, settles: true, fast: fast, glow: !rays.isEmpty && !fanning)
                 .frame(width: 88, height: 88)
             ZStack {
                 dot(heat)
@@ -438,6 +467,11 @@ private struct HeadMark: View {
         .animation(.spring(duration: 0.35, bounce: 0.3), value: level)
         .animation(Motion.move, value: fast)
         .animation(Motion.move, value: head)
+    }
+
+    /// Every arc: the picked rays in their agents' colours, the rest in the head's.
+    private var freeArcs: [Int: Color] {
+        Dictionary(uniqueKeysWithValues: (0..<RaysMark.rays).map { ($0, rays[$0] ?? headColor) })
     }
 
     private func dot(_ heat: Heat) -> some View {
@@ -469,7 +503,6 @@ private struct HeadMark: View {
             case "high": self.init(24, white, ember, ember.opacity(0.28), 8, base.opacity(0.65))
             case "xhigh": self.init(28, ember, base.mix(with: ember, by: 0.45, in: .device), base.opacity(0.35), 11, whiteHot)
             case "max": self.init(32, ember, base, base.opacity(0.7), 16, whiteHot)
-            case Effort.ultracode: self.init(28, ember, base, base.opacity(0.6), 14, whiteHot)
             default: self.init(20, white, .white.opacity(0.85), .white.opacity(0.14), 6, tinted)
             }
         }

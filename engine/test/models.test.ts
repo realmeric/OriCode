@@ -253,23 +253,26 @@ test("CLIs that never answer leave hello's list as it was, and the list still co
   assert.deepEqual(missed.map((miss) => [miss.id, miss.ultracode]), [["settings", false], ["settings", true]]);
 });
 
-test("Ultracode on the aliases answers for every model with xhigh, and the Ultracode CLI never switches to a full id", async () => {
+test("Ultracode on the aliases answers for workflows on every model, and the Ultracode CLI never switches to a full id", async () => {
   const { models, ultraCalls, ultraKnown } = await learnAll(reads, { ...reads, ultracode: everywhere });
   assert.deepEqual(ultraCalls, ["default", "opus[1m]", "sonnet"]);
   assert.equal(ultraKnown, true);
+  // Workflows are the account's: the models without xhigh run them at their own levels, Haiku at none.
   assert.deepEqual(models.filter((model) => model.ultra).map((model) => model.id), [
-    "default", "opus[1m]", "claude-fable-5-1[1m]", "sonnet", "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
+    "default", "opus[1m]", "claude-fable-5-1[1m]", "sonnet", "haiku", "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
+    "claude-opus-4-6", "claude-sonnet-4-6",
   ]);
   assert.ok(models.every((model) => model.ultraBlocked === null));
 });
 
-test("with workflows off in the settings, every model with xhigh is blocked by them", async () => {
+test("with workflows off in the settings, every model is blocked by them", async () => {
   const off = { ...reads, effective: { effortLevel: "medium", enableWorkflows: false } };
   const { models, ultraKnown } = await learnAll(off, off);
   assert.equal(ultraKnown, true);
   assert.ok(models.every((model) => !model.ultra));
   assert.deepEqual(models.filter((model) => model.ultraBlocked === "workflows").map((model) => model.id), [
-    "default", "opus[1m]", "claude-fable-5-1[1m]", "sonnet", "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
+    "default", "opus[1m]", "claude-fable-5-1[1m]", "sonnet", "haiku", "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
+    "claude-opus-4-6", "claude-sonnet-4-6",
   ]);
 });
 

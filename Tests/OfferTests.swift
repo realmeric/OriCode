@@ -48,7 +48,7 @@ struct OfferTests {
 
     @Test func theStandInHasNoRailAndNoTiles() {
         let state = PickerState(model: model, chat: chat)
-        #expect(state.option?.stops == [])
+        #expect(state.option?.efforts == [])
         #expect(state.effort == nil)
         #expect(state.level == nil)
         #expect(state.modes.isEmpty)
@@ -56,7 +56,7 @@ struct OfferTests {
         // Claude's thread keeps all of it.
         chat.provider = nil
         let claude = PickerState(model: model, chat: chat)
-        #expect(claude.option?.stops == ["low", "medium", "high", "xhigh", "max", Effort.ultracode])
+        #expect(claude.option?.efforts == ["low", "medium", "high", "xhigh", "max"])
         #expect(claude.effort == "max")
         #expect(claude.modes == PermissionModeOption.allCases)
         #expect(claude.option == Self.models[0])

@@ -55,7 +55,7 @@ struct CommandCodeTests {
         let state = PickerState(model: model, chat: chat)
         #expect(state.modes == [.ask, .plan, .dontAsk])
         #expect(state.unsupervised)
-        #expect(state.option?.stops == [])
+        #expect(state.option?.efforts == [])
         #expect(model.modelSent(in: chat) == "deepseek/deepseek-v4-flash")
     }
 

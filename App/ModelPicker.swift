@@ -10,7 +10,7 @@ struct PickerState {
 
     /// The level picked, nil for Default, and never one the model doesn't have.
     var effort: String? {
-        guard let effort = chat == nil ? model.startingEffort : chat?.effort, option?.levels.contains(effort) == true else { return nil }
+        guard let effort = chat == nil ? model.startingEffort : chat?.effort, option?.efforts.contains(effort) == true else { return nil }
         return effort
     }
 
@@ -49,11 +49,20 @@ struct PickerState {
         }
     }
 
-    /// Ultracode picked, but the thread's CLI says it didn't come on.
-    var ultracodeMissing: String? {
-        guard effort == Effort.ultracode, conversation?.askedUltracode == true, conversation?.appliedUltracode == false else { return nil }
-        let running = conversation?.appliedEffort.flatMap { $0 }.map(ModelMenu.effortName) ?? "its own level"
-        return "Ultracode didn't turn on here · running at \(running)"
+    /// Workflows as the user set them, on a model that can run them. The button and the arcs
+    /// follow this; `workflowsMissing` says when Claude Code won't.
+    var workflows: Bool { model.workflows(of: chat) }
+
+    /// Workflows on, but the thread's CLI says they didn't come on: Ultracode at Extra high, or
+    /// the Workflow tool below it.
+    var workflowsMissing: String? {
+        guard workflows, agent.id == ProviderInfo.claudeID, let conversation else { return nil }
+        if conversation.askedUltracode, conversation.appliedUltracode == false {
+            let running = conversation.appliedEffort.flatMap { $0 }.map(ModelMenu.effortName) ?? "its own level"
+            return "Ultracode didn't turn on here · running at \(running)"
+        }
+        if conversation.workflowsAvailable == false { return "Workflows are off in \(agent.name) · see /config" }
+        return nil
     }
 }
 
@@ -72,7 +81,7 @@ extension View {
     }
 }
 
-/// A word beside a choice that says what it is: Default, or This thread for Ultracode.
+/// A word beside a choice that says what it is: Default.
 struct Tag: View {
     let text: String
 

@@ -69,7 +69,7 @@ struct MakerEndpointTests {
         let rows = Set(model.paletteSearchable().map(\.id))
         #expect(!rows.contains("fast.toggle"))
         // No levels, no Ultracode, and no Continue in, since `claude --resume` would go to Anthropic.
-        #expect(state.option?.stops == [])
+        #expect(state.option?.efforts == [])
         #expect(!rows.contains("effort.list") && !rows.contains("terminal.claude"))
         // Claude's thread keeps its glass and its bolt.
         chat.provider = nil
@@ -113,7 +113,7 @@ struct MakerEndpointTests {
             #expect(model.usage == nil)
             let state = PickerState(model: model, chat: chat)
             #expect(state.option?.id == maker.model)
-            #expect(state.option?.stops == maker.efforts)
+            #expect(state.option?.efforts == maker.efforts)
             #expect(!model.fastMode(of: chat))
             let rows = Set(model.paletteSearchable().map(\.id))
             #expect(!rows.contains("fast.toggle") && !rows.contains("terminal.claude"))

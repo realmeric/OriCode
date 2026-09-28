@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
 import { Thread } from "../thread.ts";
-import { headLevel, lead } from "../ultracode.ts";
+import { lead } from "../ultracode.ts";
 import { engineWith, sandbox } from "./engine.ts";
 
 /// A folder with a repository in it and one commit.
@@ -245,7 +245,7 @@ test("an OpenCode head names the tools in session/new, since it takes MCP over H
   await engine.end();
 });
 
-test("Ultracode on a Codex model without ultra is OriCode's: the head is told to fan out on its own model, at xhigh or below, and its workers never run as Ultracode", async (t) => {
+test("workflows on a Codex model without ultra are OriCode's: the head is told to fan out on its own model at the thread's level, and its workers take that level unless told another", async (t) => {
   const { bin, env } = await sandbox();
   const logs = await mkdtemp(join(tmpdir(), "oricode-rays-logs-"));
   await agents(bin, logs);
@@ -255,32 +255,26 @@ test("Ultracode on a Codex model without ultra is OriCode's: the head is told to
   await engine.request("hello", { agents: { codex: { path: join(bin, "codex") } } });
   const small = (await engine.request("models.list", { provider: "codex" })).result.models.find((model: { id: string }) => model.id === "gpt-small");
   assert.deepEqual([small.ultra, small.ultraRays], [true, true]);
-  // No rays picked: Ultracode's ray is the head's own model, and the head hears so where it hears of rays.
-  await engine.request("send", { threadId: "k199", cwd, text: "hello", model: "gpt-small", effort: "ultracode", permissionMode: "bypassPermissions", provider: "codex" });
+  // No rays picked: the workflows' ray is the head's own model, and the head hears so where it hears of rays.
+  await engine.request("send", { threadId: "k199", cwd, text: "hello", model: "gpt-small", effort: "medium", workflows: true, permissionMode: "bypassPermissions", provider: "codex" });
   await engine.until((line) => line.event === "turn.done" && line.threadId === "k199");
   const sent = await logged(join(logs, "codex.log"));
   const opened = sent.find((message) => message.method === "thread/start").params;
   const url: string = opened.config["mcp_servers.oricode"].url;
-  assert.match(opened.developerInstructions, /Ultracode is on: .*start_worker on these rays, as its agent and model: codex gpt-small\./);
+  assert.match(opened.developerInstructions, /workflows are on: .*start_worker on these rays, as its agent and model: codex gpt-small\./);
   assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, opened.developerInstructions);
   assert.deepEqual((await call(url, "list_agents")).agents.map((agent: any) => [agent.id, agent.models.map((model: { id: string }) => model.id)]), [["codex", ["gpt-small"]]]);
   const start = sent.find((message) => message.method === "turn/start").params;
-  assert.equal(start.effort, "high");
+  assert.equal(start.effort, "medium");
   assert.equal(start.input[0].text, `${lead}\n\nhello`);
 
-  const started = await call(url, "start_worker", { agent: "codex", model: "gpt-small", effort: "ultracode", task: "hello" });
-  await call(url, "worker_result", { worker: started.worker, wait: true });
-  const worker = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "turn/start")[1].params;
-  assert.equal(worker.effort, null);
-  assert.equal(worker.input[0].text, "hello");
+  const inheriting = await call(url, "start_worker", { agent: "codex", model: "gpt-small", task: "hello" });
+  await call(url, "worker_result", { worker: inheriting.worker, wait: true });
+  const told = await call(url, "start_worker", { agent: "codex", model: "gpt-small", effort: "low", task: "again" });
+  await call(url, "worker_result", { worker: told.worker, wait: true });
+  const workers = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "turn/start").slice(1).map((message) => message.params);
+  assert.deepEqual(workers.map((worker) => [worker.effort, worker.input[0].text]), [["medium", "hello"], ["low", "again"]]);
   await engine.end();
-});
-
-test("an Ultracode head runs at xhigh, as Claude Code's does, or its model's highest below it", () => {
-  const model = (efforts: string[]) => ({ id: "m", name: "M", description: "", efforts, fast: false, defaultEffort: null, ultra: true, ultraBlocked: null });
-  assert.equal(headLevel(model(["low", "medium", "high", "xhigh", "max"])), "xhigh");
-  assert.equal(headLevel(model(["low", "high", "max"])), "high");
-  assert.equal(headLevel(model(["none", "low", "medium"])), "medium");
 });
 
 test("a Claude head gets the tools as an HTTP server loaded with its prompt, allows its own calls to them, and starts again without them", async () => {

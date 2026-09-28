@@ -62,6 +62,10 @@ final class Chat {
     /// model page; nil, and the head works alone. It took the place of K-193's `workers`, agents by
     /// id, which name no model and were let go with it.
     var rays: [String]?
+    /// Workflows on: its head fans each task out at the thread's own level, Claude Code's as its
+    /// workflows, as Ultracode at Extra high, and another agent's on its rays. Never carried to a
+    /// new thread, since it spends a plan much faster.
+    var workflows: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

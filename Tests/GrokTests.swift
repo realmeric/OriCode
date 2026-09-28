@@ -56,11 +56,11 @@ struct GrokTests {
         let state = PickerState(model: model, chat: chat)
         #expect(state.modes == [.ask, .plan, .dontAsk])
         #expect(!state.unsupervised)
-        #expect(state.option?.stops == ["low", "medium", "high", "xhigh"])
+        #expect(state.option?.efforts == ["low", "medium", "high", "xhigh"])
         chat.model = "grok-4.5"
-        #expect(PickerState(model: model, chat: chat).option?.stops == ["low", "medium", "high"])
+        #expect(PickerState(model: model, chat: chat).option?.efforts == ["low", "medium", "high"])
         chat.model = "grok-code-fast-1"
-        #expect(PickerState(model: model, chat: chat).option?.stops == [])
+        #expect(PickerState(model: model, chat: chat).option?.efforts == [])
         #expect(!model.takesImages)
     }
 

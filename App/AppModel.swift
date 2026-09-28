@@ -13,7 +13,7 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     /// The level a thread gets when it picks none: the model's own, or the effortLevel in the
     /// user's Claude Code settings. Nil when the model has no levels, or until the engine knows.
     let defaultEffort: String?
-    /// Whether the thread can run as Ultracode on this model.
+    /// Whether a thread on it can run workflows, at any of its levels.
     let ultra: Bool
     /// Why it can't when it nearly could: "workflows" while dynamic workflows are off.
     let ultraBlocked: String?
@@ -24,8 +24,8 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     /// The maker whose login reaches it, when that maker keeps the login to its own apps: pi's
     /// claude.ai, xAI and Meta logins. Listed, not picked, until it's turned on in Settings › Agents.
     var forbidden: String? = nil
-    /// Its Ultracode is OriCode's own, on Rays: the head plans, sends workers out and merges what
-    /// they bring, on a model with no Ultracode of its own.
+    /// Its workflows are OriCode's own, on Rays: the head plans, sends workers out and merges what
+    /// they bring, on a model with no workflows of its own.
     var ultraRays: Bool? = nil
 
     /// The SDK's id for Default (recommended), the model Claude Code picks.
@@ -34,22 +34,11 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     /// Whether a menu can pick it: nothing it needs is missing and nothing forbids it.
     var pickable: Bool { needs == nil && forbidden == nil }
 
-    /// Levels the picker offers, low to high, with Ultracode last where the model can run it,
-    /// the way Claude Code's own picker has it.
-    var levels: [String] {
-        efforts + (ultra ? [Effort.ultracode] : [])
-    }
-
-    /// The stops the picker draws: Ultracode shows, dimmed, when only workflows keep it off.
-    var stops: [String] {
-        efforts + (ultra || ultraBlocked != nil ? [Effort.ultracode] : [])
-    }
-
-    /// The model with Ultracode wherever it has xhigh, for as long as the engine hasn't learned
-    /// which models run it: a thread's stored Ultracode then shows, and goes out, as it is, and
-    /// Claude Code runs it or not.
-    var assumingUltracode: ModelOption {
-        guard !ultra, ultraBlocked == nil, efforts.contains("xhigh") else { return self }
+    /// The model with workflows, for as long as the engine hasn't learned whether Claude Code runs
+    /// them: a thread's workflows then show, and go out, as they are, and Claude Code runs them
+    /// or not.
+    var assumingWorkflows: ModelOption {
+        guard !ultra, ultraBlocked == nil, needs == nil else { return self }
         return ModelOption(
             id: id, name: name, description: description, efforts: efforts, fast: fast, defaultEffort: defaultEffort,
             ultra: true, ultraBlocked: nil, more: more, needs: needs)
@@ -70,8 +59,9 @@ enum NewThreads {
     static let off = "off"
 }
 
-/// Effort as the wire has it: nil is Claude Code's default, and `ultracode` rides the same
-/// field as the levels even though it's a session setting underneath.
+/// Hello's levels for an agent end in `ultracode` when it can run workflows. A thread stored
+/// before workflows were a switch of their own may still hold it as its effort, which
+/// `carryUltracode` turns into Extra high with workflows on.
 enum Effort {
     static let ultracode = "ultracode"
 }
@@ -343,6 +333,7 @@ final class AppModel {
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
         clearDrafts()
+        carryUltracode()
         loadSelectedConversation()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
@@ -444,8 +435,8 @@ final class AppModel {
             let reply = try await engine.request("hello", ["agents": agentsForHello])
             Engine.logger.notice("hello \(String(decoding: (try? reply.data()) ?? Data(), as: UTF8.self), privacy: .public)")
             let hello = try reply.decode(Hello.self)
-            // Which models run Ultracode comes a moment later, in the models event.
-            models = hello.models.map(\.assumingUltracode)
+            // Which models run workflows comes a moment later, in the models event.
+            models = hello.models.map(\.assumingWorkflows)
             providers = hello.providers
             modelsAsked = []
             engineState = .ready

@@ -65,9 +65,9 @@ struct PiTests {
         let state = PickerState(model: model, chat: chat)
         #expect(state.modes.isEmpty)
         #expect(state.unsupervised)
-        #expect(state.option?.stops == ["off", "low", "medium", "high", "xhigh"])
+        #expect(state.option?.efforts == ["off", "low", "medium", "high", "xhigh"])
         chat.model = "openai/gpt-4"
-        #expect(PickerState(model: model, chat: chat).option?.stops == [])
+        #expect(PickerState(model: model, chat: chat).option?.efforts == [])
         #expect(model.takesImages)
         // It steers, so Return during a turn goes into it rather than the queue, as Claude's does.
         #expect(model.agent(for: chat).capabilities.steer)

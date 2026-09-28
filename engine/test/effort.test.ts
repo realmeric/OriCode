@@ -3,7 +3,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 import { withDefaults, type Model } from "../models.ts";
-import { changedEffort } from "../thread.ts";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { changedEffort, Thread, ultracode } from "../thread.ts";
 
 const every = ["low", "medium", "high", "xhigh", "max"];
 
@@ -42,7 +45,8 @@ test("defaults come from the plain CLI and Ultracode from the one launched with 
   const { models } = await learn([model("default", every), model("opus", every), model("haiku", [])], { default: "medium", opus: "high", haiku: null }, ["default", "opus"]);
   // Read on the Ultracode CLI, they would all say xhigh.
   assert.deepEqual(models.map((found) => found.defaultEffort), ["medium", "high", null]);
-  assert.deepEqual(models.map((found) => found.ultra), [true, true, false]);
+  // Workflows are the account's, so Haiku runs them too, at no level.
+  assert.deepEqual(models.map((found) => found.ultra), [true, true, true]);
 });
 
 test("neither probe is ever given flag settings", async () => {
@@ -58,7 +62,8 @@ test("a model without xhigh is never switched to on the Ultracode CLI", async ()
     ["opus", "sonnet", "haiku"],
   );
   assert.deepEqual(ultraCalls, ["model opus"]);
-  assert.deepEqual(models.map((found) => found.ultra), [true, false, false]);
+  // Opus's reading answers for the rest, which run workflows at their own levels.
+  assert.deepEqual(models.map((found) => found.ultra), [true, true, true]);
 });
 
 test("a maxEffortLevel takes the levels above it off every model", async () => {
@@ -69,9 +74,9 @@ test("a maxEffortLevel takes the levels above it off every model", async () => {
   assert.deepEqual(models.map((found) => found.efforts), [["low", "medium", "high"], ["low", "medium", "high"]]);
   // A default above the cap isn't a level the thread can be at.
   assert.deepEqual(models.map((found) => found.defaultEffort), [null, "medium"]);
-  // Under xhigh there's no Ultracode to try, and none to call blocked.
+  // Under xhigh there's no Ultracode to try, and workflows off block them at every level.
   assert.deepEqual(ultraCalls, []);
-  assert.deepEqual(models.map((found) => [found.ultra, found.ultraBlocked]), [[false, null], [false, null]]);
+  assert.deepEqual(models.map((found) => [found.ultra, found.ultraBlocked]), [[false, "workflows"], [false, "workflows"]]);
 });
 
 test("a cap at xhigh takes only max, and a level the list doesn't know takes nothing", async () => {
@@ -115,4 +120,33 @@ test("an effort reading is told only when the level or Ultracode changes", () =>
   assert.deepEqual(changedEffort(first, { effort: "medium", ultracode: true }), { level: "medium", ultracode: true });
   assert.deepEqual(changedEffort(first, {}), { level: null, ultracode: false });
   assert.deepEqual(changedEffort(undefined, {}), { level: null, ultracode: false });
+});
+
+test("workflows at xhigh start the CLI as Ultracode, and below it at the level picked with no Ultracode", async () => {
+  const launched: any[] = [];
+  const launch = ((args: { options: any }) => {
+    launched.push(args.options);
+    return {
+      async *[Symbol.asyncIterator]() {
+        await new Promise(() => {});
+      },
+      initializationResult: () => Promise.reject(new Error("no CLI here")),
+      close: () => {},
+      interrupt: async () => {},
+    };
+  }) as never;
+  const cwd = await mkdtemp(join(tmpdir(), "oricode-workflows-"));
+  const thread = new Thread("k203", "claude", launch);
+  const send = (effort: "medium" | "xhigh", workflows: boolean) => thread.send({ threadId: "k203", cwd, text: "Go", permissionMode: "default", effort, workflows });
+  await send("medium", true);
+  thread.close();
+  await send("xhigh", true);
+  thread.close();
+  await send("xhigh", false);
+  thread.close();
+  assert.deepEqual(
+    launched.map((options) => [options.effort, options.settings?.ultracode ?? false]),
+    [["medium", false], [undefined, true], ["xhigh", false]],
+  );
+  assert.deepEqual([ultracode({ effort: "xhigh", workflows: true }), ultracode({ effort: "max", workflows: true }), ultracode({ effort: "xhigh" })], [true, false, false]);
 });

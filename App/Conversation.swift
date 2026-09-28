@@ -258,6 +258,9 @@ final class Conversation {
     private(set) var appliedUltracode: Bool?
     /// Whether the CLI that gave that reading was started as Ultracode.
     private(set) var askedUltracode = false
+    /// Whether the thread's CLI has the Workflow tool, which workflows off in /config take away;
+    /// nil until one has said.
+    private(set) var workflowsAvailable: Bool?
     /// The level read while the thread picked none, and for which model: where Default really
     /// lands, project settings included, which the engine's first reading with the user's
     /// settings alone can't know.
@@ -536,8 +539,10 @@ final class Conversation {
             let asked = event.body["asked"]?.string
             appliedEffort = .some(level)
             appliedUltracode = event.body["ultracode"]?.bool ?? false
-            askedUltracode = asked == Effort.ultracode
+            askedUltracode = event.body["askedUltracode"]?.bool ?? false
             if asked == nil { defaultReading = (chat.model, level) }
+        case "workflowTool":
+            workflowsAvailable = event.body["available"]?.bool
         case "heads":
             heads.update(event.body, agent: chat.providerID)
         case "retrying":

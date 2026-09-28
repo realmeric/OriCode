@@ -3,9 +3,8 @@ import SwiftUI
 /// What each effort level says about itself, and how hot its part of the rail burns.
 enum EffortScale {
     /// One line each, from Claude Code's own /effort wording. The clause after the dot under Max
-    /// and Ultracode is what they cost, drawn in the session's usage band. Ultracode's says whose
-    /// it is on the model, on the agent.
-    static func line(_ level: String, on option: ModelOption? = nil, agent: String = ProviderInfo.claudeID) -> (words: String, cost: String?) {
+    /// is what it costs, drawn in the session's usage band.
+    static func line(_ level: String) -> (words: String, cost: String?) {
         switch level {
         case "none", "off": ("No reasoning, straight to the answer", nil)
         case "minimal": ("Barely any reasoning", nil)
@@ -14,22 +13,22 @@ enum EffortScale {
         case "high": ("Thorough, with extensive testing", nil)
         case "xhigh": ("Extended reasoning, thorough analysis", nil)
         case "max": ("Deepest reasoning", "uses more of your plan")
-        case Effort.ultracode: (ultracode(on: option, agent: agent), "far more of your plan")
         default: ("", nil)
         }
     }
 
-    /// OriCode's own on Rays, Claude Code's workflows, or another agent's own: Codex's ultra, which
-    /// Codex calls "Maximum reasoning with automatic task delegation". Short enough for the cost
-    /// after it.
-    static func ultracode(on option: ModelOption?, agent: String) -> String {
-        if option?.ultraRays == true { return "Workers on every task" }
-        return agent == ProviderInfo.claudeID ? "Workflows on every task" : "Max, delegating itself"
+    /// What workflows on do at a level, by whose they are: Claude Code's own, OriCode's on Rays, or
+    /// Codex's ultra at Max, which Codex calls "Maximum reasoning with automatic task delegation".
+    /// Short enough for the cost after it.
+    static func workflows(at level: String?, on option: ModelOption?, agent: String) -> String {
+        if agent == ProviderInfo.claudeID { return "Workflows on every task" }
+        if option?.ultraRays != true, level == "max" { return "Max, delegating itself" }
+        return "Workers on every task"
     }
 
-    /// The two that spend the plan faster, and get the heavier tap and the halo.
+    /// The one that spends the plan faster, and gets the heavier tap and the halo.
     static func spendsFaster(_ level: String) -> Bool {
-        level == "max" || level == Effort.ultracode
+        level == "max"
     }
 
     /// How a level burns. The fill is the agent's colour at full strength at every level, since
@@ -51,7 +50,6 @@ enum EffortScale {
         case "high": Burn(core: 32, heat: 0.2, white: 0.56, glow: 0.32, reach: 7)
         case "xhigh": Burn(core: 44, heat: 0.3, white: 0.63, glow: 0.4, reach: 8)
         case "max": Burn(core: 56, heat: 0.4, white: 0.8, glow: 0.6, reach: 9)
-        case Effort.ultracode: Burn(core: 96, heat: 0.55, white: 0.84, glow: 0.6, reach: 11)
         default: Burn(core: 0, heat: 0, white: 0.8, glow: 0, reach: 0)
         }
     }
@@ -71,8 +69,6 @@ struct EffortRail: View {
     let stops: [String]
     /// Where Default lands; nil until the engine has read it.
     let home: String?
-    /// Ultracode is drawn, dimmed, but dynamic workflows are off.
-    let blocked: Bool
     /// The thread's agent's colour, which the fill, the lamps and the thumb's heat are drawn in.
     let ink: AgentInk
     /// The thread's choice; nil is Default.
@@ -81,13 +77,9 @@ struct EffortRail: View {
     /// title and the line under the rail.
     @Binding var held: String?
     @Binding var hovered: String?
-    /// Fast mode: the thumb's rays turn at its speed at Ultracode.
-    var fast = false
     var compact = false
     /// Where Back to Defaults would put the thumb, while the pointer is on it.
     var ghost: String?
-    /// A click on Ultracode while workflows keep it off.
-    var onBlocked: () -> Void = {}
     /// Return, which closes the picker.
     var onReturn: () -> Void = {}
 
@@ -95,8 +87,6 @@ struct EffortRail: View {
     @State private var heldStop: Int?
     /// Where on the thumb the press landed, so grabbing it doesn't make it jump.
     @State private var grab: CGFloat = 0
-    /// A press that began on a dimmed Ultracode: it only says why, and moves nothing.
-    @State private var pressedBlocked = false
     @State private var poured = false
     /// Whether what moves in the fill is moving: for a few seconds after the picker opens or the
     /// level changes, then still, since a moving picker makes the window server redraw its blur
@@ -133,7 +123,7 @@ struct EffortRail: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let track = EffortTrack(levels: stops, start: Self.thumb / 2 + Self.cap, end: geometry.size.width - Self.thumb / 2, blocked: blocked)
+            let track = EffortTrack(levels: stops, start: Self.thumb / 2 + Self.cap, end: geometry.size.width - Self.thumb / 2)
             let xs = track.positions
             let stop = heldStop ?? index
             let centre = thumbX ?? stop.map { xs[$0] } ?? track.start
@@ -149,7 +139,7 @@ struct EffortRail: View {
                     // The whole rail, reaching past its last stop and above and below it for what's
                     // thrown off, placed rather than framed so the rail's hit area doesn't grow.
                     let width = geometry.size.width - Self.thumb / 2 + EffortEffects.reach
-                    EffortEffects(level: level, ink: ink, fast: fast, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
+                    EffortEffects(level: level, ink: ink, live: live, bursts: bursts, wakes: wakes, thumb: centre, landing: centre,
                                   positions: xs, index: stop, arrival: arrival, compact: compact)
                         .frame(width: width, height: Self.rail + 2 * EffortEffects.air)
                         .position(x: width / 2, y: Self.row / 2)
@@ -205,11 +195,7 @@ struct EffortRail: View {
         .onKeyPress(keys: [.leftArrow, .rightArrow], phases: [.down, .repeat]) { press in
             keyed = true
             let up = press.key == .rightArrow
-            if press.modifiers.contains(.option) { return go(up ? maxIndex : 0) }
-            // A held key stops at Max: Ultracode takes a press of its own.
-            if press.phase == .repeat, up, let index, stops.indices.contains(index + 1), stops[index + 1] == Effort.ultracode {
-                return .handled
-            }
+            if press.modifiers.contains(.option) { return go(up ? stops.count - 1 : 0) }
             return step(up ? 1 : -1)
         }
         .onKeyPress(.home) {
@@ -218,7 +204,7 @@ struct EffortRail: View {
         }
         .onKeyPress(.end) {
             keyed = true
-            return go(maxIndex)
+            return go(stops.count - 1)
         }
         // ⌫ back to Default. Backspace reaches a focused view as the Delete command, never as a key
         // press, the way it does in the review.
@@ -250,10 +236,6 @@ struct EffortRail: View {
                 try? await Task.sleep(for: .milliseconds(350))
                 wake()
             }
-        }
-        // Switching fast at Ultracode spins the thumb's rays up to its speed, or back down.
-        .onChange(of: fast) {
-            if let index, stops[index] == Effort.ultracode { stoke() }
         }
         .onChange(of: effort) { old, new in
             wake()
@@ -306,14 +288,9 @@ struct EffortRail: View {
         return stops[heldStop] == home
     }
 
-    private var maxIndex: Int {
-        stops.lastIndex { $0 != Effort.ultracode } ?? 0
-    }
-
     private var spoken: String {
         guard let index else { return "Default" }
         let level = stops[index]
-        if level == Effort.ultracode { return "Ultracode, this thread only" }
         return ModelMenu.effortName(level) + (effort == nil ? ", default" : "")
     }
 
@@ -352,12 +329,7 @@ struct EffortRail: View {
     @ViewBuilder
     private func stopMark(_ mark: Int, onFill: Bool) -> some View {
         let hover = stops[mark] == hovered && thumbX == nil
-        if stops[mark] == Effort.ultracode {
-            RaysMark(lit: RaysMark.rays, litOpacity: 1, dotOpacity: 1)
-                .frame(width: 10, height: 10)
-                .opacity(blocked ? 0.18 : 0.45)
-                .scaleEffect(hover ? 1.2 : 1)
-        } else if mark == homeIndex {
+        if mark == homeIndex {
             Circle()
                 .strokeBorder(onFill ? ink.emberColor.opacity(0.9) : Color.white.opacity(0.5), lineWidth: 1.5)
                 .frame(width: hover ? 11 : 9, height: hover ? 11 : 9)
@@ -372,9 +344,7 @@ struct EffortRail: View {
     }
 
     /// The part you hold: a bead of the rail's own heat carrying OriCode's dot, the main head.
-    /// At Ultracode six rays light around it, the heads it runs on every task.
     private func thumb(level: String, holding: Bool) -> some View {
-        let ultra = level == Effort.ultracode
         let burn = EffortScale.burn(level)
         let hot = EffortScale.hot(level, in: ink)
         // Lit from below by the level's heat: pale at the top, warm at the bottom, and white only
@@ -395,17 +365,11 @@ struct EffortRail: View {
                               lineWidth: 1)
             Circle()
                 .fill(Color.black.opacity(0.85))
-                .frame(width: ultra ? 6.6 : 8, height: ultra ? 6.6 : 8)
-            if ultra {
-                RaysMark(lit: RaysMark.rays, turning: live && !reduceMotion, restingOpacity: 0, litOpacity: 0.85, dotOpacity: 0,
-                         color: .black, stagger: true, layered: true, settles: true, fast: fast)
-                    .frame(width: 22, height: 22)
-                    .transition(.opacity.animation(.easeOut(duration: 0.14)))
-            }
+                .frame(width: 8, height: 8)
         }
         .frame(width: Self.thumb, height: Self.thumb)
         .shadow(color: .black.opacity(0.3), radius: holding ? 7 : 4, y: 1.5)
-        // A glow that reaches further at each level, widest at Ultracode, the corona of six heads.
+        // A glow that reaches further at each level, widest at Max.
         .shadow(color: ink.color.opacity(burn.glow + (holding ? 0.06 : 0)), radius: burn.reach + (holding ? 1 : 0))
         .scaleEffect(holding ? 1.08 : 1)
         .animation(Motion.move, value: holding)
@@ -430,18 +394,13 @@ struct EffortRail: View {
             .onChanged { drag in
                 let xs = track.positions
                 let was = heldStop ?? index
-                if thumbX == nil, blocked, stops[track.nearest(drag.startLocation.x)] == Effort.ultracode,
-                   abs(drag.startLocation.x - (xs.last ?? 0)) <= Self.thumb / 2 {
-                    pressedBlocked = true
-                }
-                if pressedBlocked { return }
                 if thumbX == nil {
                     // A press on the thumb takes it where it was hit; anywhere else, the thumb
                     // springs to the pointer and follows from there.
                     let centre = was.map { xs[$0] } ?? track.start
                     grab = abs(drag.startLocation.x - centre) <= Self.thumb / 2 ? centre - drag.startLocation.x : 0
                 }
-                let (x, stop) = track.follow(drag.location.x + grab, holding: was)
+                let (x, stop) = track.follow(drag.location.x + grab)
                 if thumbX == nil {
                     withAnimation(Motion.move) { thumbX = x }
                 } else {
@@ -466,12 +425,6 @@ struct EffortRail: View {
                 hovered = nil
             }
             .onEnded { drag in
-                // A press on Ultracode while workflows are off says why and leaves the thread alone.
-                if pressedBlocked {
-                    pressedBlocked = false
-                    onBlocked()
-                    return
-                }
                 let holding = heldStop ?? index ?? 0
                 let clicked = abs(drag.translation.width) < 3
                 let target = clicked ? holding : track.settle(drag.location.x + grab, velocity: drag.velocity.width, holding: holding)
@@ -508,10 +461,6 @@ struct EffortRail: View {
 
     private func go(_ stop: Int) -> KeyPress.Result {
         guard stops.indices.contains(stop) else { return .ignored }
-        if blocked, stops[stop] == Effort.ultracode {
-            onBlocked()
-            return .handled
-        }
         // A key that lands on the top of the scale arrives there as a drag does, without the tap.
         if stop > (index ?? -1), EffortScale.spendsFaster(stops[stop]) {
             bursts += 1

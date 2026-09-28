@@ -10,14 +10,15 @@ export type Model = {
   /// The level Claude Code uses when the thread picks none, or null when the model has no
   /// levels or it isn't known yet.
   defaultEffort: string | null;
-  /// Whether the session can run as Ultracode on this model: xhigh effort with standing
-  /// multi-agent workflows. Needs an xhigh model and workflows turned on for the account.
+  /// Whether a thread on it can run workflows, at any of its levels: Claude Code's, which need
+  /// them turned on for the account and run as Ultracode at xhigh, Codex's own ultra, or OriCode's
+  /// on Rays.
   ultra: boolean;
-  /// Why an xhigh model has no Ultracode when the user can change it: `workflows` while
+  /// Why a model can't run workflows when the user can change it: `workflows` while
   /// enableWorkflows is off in their settings.
   ultraBlocked: "workflows" | null;
-  /// Its Ultracode is OriCode's own, on Rays (ultracode.ts), for a model with no Ultracode of its
-  /// own on an agent that can be a head.
+  /// Its workflows are OriCode's own, on Rays (ultracode.ts), for a model with none of its own on
+  /// an agent that can be a head.
   ultraRays?: boolean;
   /// One of the account's older models, from the catalog's overflow section; the app lists
   /// them under More models. Absent on the SDK's own rows.
@@ -215,9 +216,10 @@ async function readThrough(session: Query, pick: (effective: Effective) => Model
 /// the probe's settings, when it names a level.
 ///
 /// Ultracode needs xhigh on the model and workflows on the account, so one model it runs on
-/// answers for every model with xhigh: the Ultracode CLI is switched to aliases only, and an
-/// older model, a full id or one the probe couldn't read takes that answer. A model the plain
-/// CLI couldn't read gets the default `settled` gives it.
+/// answers for every model: the Ultracode CLI is switched to aliases only, and an older model, a
+/// full id, one without xhigh or one the probe couldn't read takes that answer, since workflows
+/// run on any model at its own levels. A model the plain CLI couldn't read gets the default
+/// `settled` gives it.
 export async function withDefaults(
   probe: Query,
   ultraProbe: Query,
@@ -237,15 +239,16 @@ export async function withDefaults(
     const reading = plain.read.get(model.id);
     const level = reading ? (reading.effort ?? null) : settled({ ...model, efforts }, settingsEffort);
     const ultraReading = ultra.read.get(model.id);
-    const xhigh = efforts.includes("xhigh");
-    const ultracode = xhigh && (ultraReading ? ultraReading.ultracode === true : workflows);
+    // Workflows are the account's, on any model this Claude Code runs; the Ultracode CLI's reading
+    // of a model with xhigh says the same of that model.
+    const runs = !model.needs && (ultraReading && efforts.includes("xhigh") ? ultraReading.ultracode === true : workflows);
     return {
       ...model,
       efforts,
       // A default above the cap isn't a level the thread can be at.
       defaultEffort: level && efforts.includes(level) ? level : null,
-      ultra: ultracode,
-      ultraBlocked: xhigh && !ultracode && effective.enableWorkflows === false ? "workflows" : null,
+      ultra: runs,
+      ultraBlocked: !model.needs && !runs && effective.enableWorkflows === false ? "workflows" : null,
     };
   });
   const missed = [...plain.missed.map((miss) => ({ ...miss, ultracode: false })), ...ultra.missed.map((miss) => ({ ...miss, ultracode: true }))];

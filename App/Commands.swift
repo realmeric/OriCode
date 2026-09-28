@@ -87,10 +87,10 @@ struct OriCodeCommands: Commands {
                     ModelMenuItems(group: group)
                 }
             }
-            if let option = model.option(for: model.chat), !option.levels.isEmpty {
+            if let option = model.option(for: model.chat), !option.efforts.isEmpty {
                 Picker("Effort", selection: effortBinding) {
                     Text(model.defaultLevel(for: model.chat).map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default").tag("")
-                    ForEach(option.levels, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
+                    ForEach(option.efforts, id: \.self) { Text(ModelMenu.effortName($0)).tag($0) }
                 }
             }
             Button(model.modelPickerShown ? "Hide Model and Effort" : "Model and Effort…") { model.modelPickerShown.toggle() }
@@ -100,6 +100,8 @@ struct OriCodeCommands: Commands {
                 .disabled(model.project == nil || model.atDefaults(model.chat))
             Toggle("Fast Mode", isOn: fastBinding)
                 .disabled(!(model.option(for: model.chat)?.fast ?? false))
+            Toggle("Workflows", isOn: workflowsBinding)
+                .disabled(model.project == nil || !(model.option(for: model.chat)?.ultra ?? false))
             if !agent.permissionModes.isEmpty {
                 Picker("Permission Mode", selection: modeBinding) {
                     ForEach(agent.permissionModes) { Text($0.title).tag($0.rawValue) }
@@ -144,6 +146,10 @@ struct OriCodeCommands: Commands {
 
     private var modeBinding: Binding<String> {
         Binding { model.chat?.permissionMode ?? model.startingPermissionMode } set: { model.setPermissionMode($0, for: model.chat) }
+    }
+
+    private var workflowsBinding: Binding<Bool> {
+        Binding { model.workflows(of: model.chat) } set: { model.setWorkflows($0, for: model.chat) }
     }
 
     private var fastBinding: Binding<Bool> {

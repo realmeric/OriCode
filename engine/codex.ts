@@ -30,6 +30,8 @@ export type CodexSendParams = {
   text: string;
   model?: string;
   effort?: string;
+  /// Codex's own workflows, its `ultra`: sent only for a model that has it, at Max.
+  workflows?: boolean;
   permissionMode?: string;
   attachments?: { mediaType: string; data: string }[];
   costSoFar?: number;
@@ -316,8 +318,8 @@ export class CodexSession implements Session {
         threadId: this.threadId,
         input: input(params),
         model: params.model ?? null,
-        // The app's Ultracode is Codex's ultra, the level above max on the models that have it.
-        effort: params.effort === "ultracode" ? "ultra" : (params.effort ?? null),
+        // Max with workflows on is Codex's ultra, the level above max on the models that have it.
+        effort: params.workflows && params.effort === "max" ? "ultra" : (params.effort ?? null),
         summary: "auto",
         clientUserMessageId: params.id ?? null,
       });

@@ -589,7 +589,7 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
   });
 
   const from = lines.length;
-  const send = { threadId: "k180", cwd, text: "work", model: "gpt-large", effort: "ultracode", permissionMode: "default", provider: "codex" };
+  const send = { threadId: "k180", cwd, text: "work", model: "gpt-large", effort: "max", workflows: true, permissionMode: "default", provider: "codex" };
   assert.deepEqual((await request("send", send)).result, { ok: true });
   const run = await until((line) => line.event === "ask", from);
   assert.deepEqual(run.choices.map((choice: { id: string }) => choice.id), ["accept", "acceptWithExecpolicyAmendment", "cancel"]);

@@ -97,7 +97,7 @@ const tools = [
       properties: {
         agent: { type: "string", description: "A ray's agent, such as codex or opencode." },
         model: { type: "string", description: "A ray's model on that agent. The agent's first ray when left out." },
-        effort: { type: "string", description: "One of the model's effort levels from list_agents. The model's default when left out." },
+        effort: { type: "string", description: "One of the model's effort levels from list_agents. Your own level when left out and the model has it, else the model's default." },
         task: { type: "string", description: "What the worker should do, written for someone who hasn't seen this conversation." },
         isolated: { type: "boolean", description: "Work in a worktree of its own. Use it for a worker that edits files, so its edits can't run into yours or another worker's." },
       },
@@ -219,6 +219,8 @@ export class Rays {
   private mode = "default";
   private rays: Ray[] = [];
   private instructions = "";
+  /// The head's own level, which a worker takes when it's given none and its model has it.
+  private level: string | undefined;
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -235,13 +237,15 @@ export class Rays {
     });
   }
 
-  /// What the thread's latest send says: where it works, in which mode, and its rays, none when
-  /// it has none left, with what the head is told of them: `brief`, or Ultracode's.
-  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays)): void {
+  /// What the thread's latest send says: where it works, in which mode, at what level, and its
+  /// rays, none when it has none left, with what the head is told of them: `brief`, or what
+  /// workflows on tell it.
+  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string): void {
     this.cwd = cwd;
     this.mode = mode;
     this.rays = rays;
     this.instructions = instructions;
+    this.level = level;
   }
 
   has(workerId: string): boolean {
@@ -328,6 +332,15 @@ export class Rays {
       throw new Error(`${mostAtWork} workers are at work already. Wait for one to finish, or stop one.`);
     }
     const cli = await this.seam.cli(agent);
+    const named = typeof args.effort === "string" && args.effort ? args.effort : undefined;
+    const level = this.level;
+    const inherited =
+      named || !level
+        ? undefined
+        : await modelsOf(agent, this.seam).then(
+            (models) => (models.find((known) => known.id === model)?.efforts.includes(level) ? level : undefined),
+            () => undefined,
+          );
     const workerId = `worker-${++this.count}`;
     let cwd = this.cwd;
     let isolated: Worker["isolated"] = null;
@@ -349,8 +362,9 @@ export class Rays {
       threadId,
       agent,
       model,
-      // A worker never runs as Ultracode, which would send out workers of its own.
-      effort: typeof args.effort === "string" && args.effort && args.effort !== "ultracode" ? args.effort : null,
+      // The level asked for, or the head's own where the worker's model has it. A worker never
+      // runs with workflows on, which would send out workers of its own.
+      effort: named ?? inherited ?? null,
       // The thread's mode, or the agent's first when it has no such mode.
       mode: agent.modes.includes(this.mode) ? this.mode : (agent.modes[0] ?? this.mode),
       label: task.split("\n")[0].slice(0, 80),

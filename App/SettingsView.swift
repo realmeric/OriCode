@@ -390,12 +390,12 @@ private struct GeneralPane: View {
     private var agent: ProviderInfo { model.agent(for: nil) }
 
     /// The fixed model's levels, or every level some model has while the model follows the last
-    /// pick, as far as the agent takes them. Never Ultracode, which a new thread doesn't start in.
+    /// pick, as far as the agent takes them.
     private var levels: [String] {
         let options = model.models(of: agent.id).filter { newModel.isEmpty || ModelRef(provider: agent.id, id: $0.id).stored == newModel }
             .map(agent.narrowing)
         let order = ["low", "medium", "high", "xhigh", "max"]
-        return order.filter { level in options.contains { $0.levels.contains(level) } }
+        return order.filter { level in options.contains { $0.efforts.contains(level) } }
     }
 
     /// The model a new thread starts on.
@@ -406,7 +406,7 @@ private struct GeneralPane: View {
     /// Where the CLI's default lands for the model a new thread starts on.
     private var effortDetail: String {
         let starting = startingOption
-        if let starting, starting.levels.isEmpty {
+        if let starting, starting.efforts.isEmpty {
             return "\(ModelMenu.shortName(starting.name)) has one reasoning level."
         }
         guard let starting, let level = starting.defaultEffort else {

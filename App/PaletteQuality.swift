@@ -61,10 +61,10 @@ extension AppModel {
             self?.copy(folder, saying: "Copied the path.")
         })
 
-        if let option = option(for: chat), !option.levels.isEmpty {
-            let at = option.levels.firstIndex(of: effectiveLevel ?? "") ?? -1
+        if let option = option(for: chat), !option.efforts.isEmpty {
+            let at = option.efforts.firstIndex(of: effectiveLevel ?? "") ?? -1
             items.append(command("effort.raise", "Raise effort", icon: "arrow.up", keywords: ["more", "harder", "thinking"],
-                                 unavailable: at >= option.levels.count - 1 ? "Already at the highest level" : nil) { [weak self] in
+                                 unavailable: at >= option.efforts.count - 1 ? "Already at the highest level" : nil) { [weak self] in
                 self?.stepEffort(1)
             })
             items.append(command("effort.lower", "Lower effort", icon: "arrow.down", keywords: ["less", "faster", "thinking"],
@@ -110,10 +110,10 @@ extension AppModel {
     /// One level up or down, the way a step on the rail goes: landing on Default's own level is
     /// Default.
     func stepEffort(_ by: Int) {
-        guard let option = option(for: chat), let at = option.levels.firstIndex(of: effectiveLevel ?? "") else { return }
-        let next = min(max(at + by, 0), option.levels.count - 1)
+        guard let option = option(for: chat), let at = option.efforts.firstIndex(of: effectiveLevel ?? "") else { return }
+        let next = min(max(at + by, 0), option.efforts.count - 1)
         guard next != at else { return }
-        let level = option.levels[next]
+        let level = option.efforts[next]
         withAnimation(Motion.move) { setEffort(level == defaultLevel(for: chat) ? nil : level, for: chat) }
     }
 

@@ -281,11 +281,11 @@ extension AppModel {
         items.append(PaletteItem(id: "model.list", kind: .command, title: "Model…", subtitle: option?.name,
                                  keywords: ["opus", "sonnet", "haiku", "fable"], icon: "cpu", unavailable: noProject,
                                  action: .list(PaletteList(title: "Model", placeholder: "Search models") { [weak self] in self?.modelChoices(named: false) ?? [] })))
-        if let option, !option.levels.isEmpty {
-            let level = (chat == nil ? startingEffort : chat?.effort).flatMap { option.levels.contains($0) ? $0 : nil }
+        if let option, !option.efforts.isEmpty {
+            let level = (chat == nil ? startingEffort : chat?.effort).flatMap { option.efforts.contains($0) ? $0 : nil }
             items.append(PaletteItem(id: "effort.list", kind: .command, title: "Effort…",
                                      subtitle: level.map(ModelMenu.effortName) ?? "Default",
-                                     keywords: ["thinking", "level", "ultracode"], icon: "gauge.with.dots.needle.67percent", unavailable: noProject,
+                                     keywords: ["thinking", "level"], icon: "gauge.with.dots.needle.67percent", unavailable: noProject,
                                      action: .list(PaletteList(title: "Effort", placeholder: "Search levels") { [weak self] in self?.effortChoices(named: false) ?? [] })))
         }
         if !agent.permissionModes.isEmpty {
@@ -299,6 +299,15 @@ extension AppModel {
             items.append(command("fast.toggle", on ? "Fast mode off" : "Fast mode on", icon: on ? "bolt.slash" : "bolt",
                                  subtitle: on ? PickerState(model: self, chat: chat).fastProblem : nil, keywords: ["speed", "fast"],
                                  unavailable: noProject) { [weak self] in self?.setFast(!on, for: chat) })
+        }
+        if let option, option.ultra || option.ultraBlocked != nil {
+            let on = workflows(of: chat)
+            items.append(command("workflows.toggle", on ? "Workflows off" : "Workflows on", icon: "circle.dashed.inset.filled",
+                                 subtitle: on ? PickerState(model: self, chat: chat).workflowsMissing : nil,
+                                 keywords: ["ultracode", "agents", "fan out", "workflow"],
+                                 unavailable: noProject ?? (option.ultra ? nil : "Needs dynamic workflows, see /config in \(agent.name)")) { [weak self] in
+                self?.setWorkflows(!on, for: chat)
+            })
         }
         items.append(command("model.defaults", "Back to defaults", icon: "arrow.counterclockwise",
                              unavailable: noProject ?? (atDefaults(chat) ? "Already at the defaults" : nil)) { [weak self] in
@@ -380,8 +389,8 @@ extension AppModel {
     }
 
     private func effortChoices(named: Bool) -> [PaletteItem] {
-        guard project != nil, let option = option(for: chat), !option.levels.isEmpty else { return [] }
-        let current = (chat == nil ? startingEffort : chat?.effort).flatMap { option.levels.contains($0) ? $0 : nil }
+        guard project != nil, let option = option(for: chat), !option.efforts.isEmpty else { return [] }
+        let current = (chat == nil ? startingEffort : chat?.effort).flatMap { option.efforts.contains($0) ? $0 : nil }
         let prefix = named ? "Effort: " : ""
         let home = defaultLevel(for: chat).map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default"
         var items = [PaletteItem(id: "effort.default", kind: .choice, title: prefix + home, icon: "gauge.with.dots.needle.50percent",
@@ -389,11 +398,9 @@ extension AppModel {
                                      guard let self else { return }
                                      withAnimation(Motion.move) { self.setEffort(nil, for: self.chat) }
                                  })]
-        let levels = option.efforts + (option.ultra || option.ultraBlocked != nil ? [Effort.ultracode] : [])
-        items += levels.map { level in
+        items += option.efforts.map { level in
             PaletteItem(id: "effort." + level, kind: .choice, title: prefix + ModelMenu.effortName(level),
-                        subtitle: EffortScale.line(level, on: option, agent: providerID(for: chat)).0, icon: "gauge.with.dots.needle.67percent", checked: current == level,
-                        unavailable: level == Effort.ultracode && !option.ultra ? "Needs dynamic workflows, see /config in \(agent(for: chat).name)" : nil,
+                        subtitle: EffortScale.line(level).0, icon: "gauge.with.dots.needle.67percent", checked: current == level,
                         action: .run { [weak self] in
                             guard let self else { return }
                             withAnimation(Motion.move) { self.setEffort(level, for: self.chat) }

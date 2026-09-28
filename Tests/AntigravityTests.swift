@@ -62,7 +62,7 @@ struct AntigravityTests {
         let state = PickerState(model: model, chat: chat)
         #expect(state.modes == [.ask, .acceptEdits, .plan])
         #expect(state.unsupervised)
-        #expect(state.option?.stops == [])
+        #expect(state.option?.efforts == [])
         #expect(model.modelSent(in: chat) == "gemini-3.8-flash-high")
     }
 

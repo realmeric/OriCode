@@ -83,16 +83,17 @@ extension ProviderInfo {
         PermissionModeOption.allCases.filter { modes.contains($0.rawValue) }
     }
 
-    /// A model as a thread on this agent runs it: only the levels the agent takes, and Ultracode
-    /// only when it's one of them. Claude Code's come back as they are.
+    /// A model as a thread on this agent runs it: only the levels the agent takes, and workflows
+    /// only when its levels end in `ultracode`, hello's way of saying it runs them. Claude Code's
+    /// come back as they are.
     func narrowing(_ option: ModelOption) -> ModelOption {
         let efforts = option.efforts.filter(levels.contains)
-        let ultracode = levels.contains(Effort.ultracode)
-        guard efforts != option.efforts || !ultracode && (option.ultra || option.ultraBlocked != nil) else { return option }
+        let workflows = levels.contains(Effort.ultracode)
+        guard efforts != option.efforts || !workflows && (option.ultra || option.ultraBlocked != nil) else { return option }
         return ModelOption(
             id: option.id, name: option.name, description: option.description, efforts: efforts, fast: option.fast,
             defaultEffort: option.defaultEffort.flatMap { efforts.contains($0) ? $0 : nil },
-            ultra: option.ultra && ultracode, ultraBlocked: ultracode ? option.ultraBlocked : nil, more: option.more, needs: option.needs,
+            ultra: option.ultra && workflows, ultraBlocked: workflows ? option.ultraBlocked : nil, more: option.more, needs: option.needs,
             forbidden: option.forbidden, ultraRays: option.ultraRays)
     }
 }

@@ -54,7 +54,7 @@ struct DevinTests {
         let state = PickerState(model: model, chat: chat)
         #expect(state.modes == [.acceptEdits, .plan, .dontAsk])
         #expect(!state.unsupervised)
-        #expect(state.option?.stops == [])
+        #expect(state.option?.efforts == [])
         #expect(model.takesImages)
     }
 

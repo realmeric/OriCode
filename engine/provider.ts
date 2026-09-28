@@ -14,8 +14,10 @@ export type SendParams = {
   cwd: string;
   text: string;
   model?: string;
-  /// A level, or `ultracode`: xhigh with Claude Code's standing multi-agent workflows.
-  effort?: EffortLevel | "ultracode";
+  effort?: EffortLevel;
+  /// Workflows on: the head fans each task out at the thread's own level. Claude Code runs its
+  /// workflows, as Ultracode at xhigh; another head sends workers out on its rays (ultracode.ts).
+  workflows?: boolean;
   permissionMode: PermissionMode;
   attachments?: Attachment[];
   /// Fast mode for the thread. SDK sessions get it only when their flag settings ask for it.

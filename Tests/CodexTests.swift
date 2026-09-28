@@ -95,9 +95,9 @@ struct CodexTests {
         #expect(model.checkingAgents == ["codex"])
     }
 
-    /// Codex's own ultra and OriCode's on Rays both sit at the top of the rail, each saying what
-    /// it does; Claude's still says workflows.
-    @Test func eachUltracodeSaysWhoseItIs() throws {
+    /// Workflows say whose they are: OriCode's on Rays at any level, Codex's own ultra at Max on a
+    /// model that has it and OriCode's below, and Claude's own. The rail keeps only the levels.
+    @Test func eachWorkflowsSayWhoseTheyAre() throws {
         let model = AppModel(container: container)
         model.providers = [.claude, Self.codex]
         let listed = """
@@ -112,12 +112,13 @@ struct CodexTests {
         chat.model = "gpt-6-luna"
         container.mainContext.insert(chat)
         let rays = try #require(model.option(for: chat))
-        #expect(rays.stops.last == Effort.ultracode)
-        #expect(EffortScale.line(Effort.ultracode, on: rays, agent: "codex").words == "Workers on every task")
+        #expect(rays.efforts.last == "max")
+        #expect(EffortScale.workflows(at: "max", on: rays, agent: "codex") == "Workers on every task")
         chat.model = "gpt-5.6-terra"
         let own = try #require(model.option(for: chat))
         #expect(own.ultraRays == nil)
-        #expect(EffortScale.line(Effort.ultracode, on: own, agent: "codex").words == "Max, delegating itself")
-        #expect(EffortScale.line(Effort.ultracode).words == "Workflows on every task")
+        #expect(EffortScale.workflows(at: "max", on: own, agent: "codex") == "Max, delegating itself")
+        #expect(EffortScale.workflows(at: "medium", on: own, agent: "codex") == "Workers on every task")
+        #expect(EffortScale.workflows(at: "medium", on: nil, agent: ProviderInfo.claudeID) == "Workflows on every task")
     }
 }

@@ -15,8 +15,7 @@ enum Haptics {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 
-    /// The heavier one, for the two efforts that spend the plan faster: arriving at Max, or
-    /// through the gate at Ultracode, on the way up.
+    /// The heavier one, for the effort that spends the plan faster: arriving at Max on the way up.
     static func threshold() {
         last = .now
         NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)

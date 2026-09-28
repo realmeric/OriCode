@@ -1,4 +1,5 @@
 import AppKit
+import SwiftData
 import SwiftUI
 
 extension AppModel {
@@ -134,10 +135,10 @@ extension AppModel {
         if !rays.isEmpty { params["rays"] = .array(rays.map { .string("\($0.provider)/\($0.id)") }) }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = modelSent(in: chat) { params["model"] = .string(model) }
-        // Only a level the model has now, the way the picker shows it: an Ultracode left on after
-        // workflows were turned off would still start the CLI at xhigh.
-        if let effort = chat.effort, option(for: chat)?.levels.contains(effort) ?? true { params["effort"] = .string(effort) }
+        // Only a level the model has now, the way the picker shows it.
+        if let effort = chat.effort, option(for: chat)?.efforts.contains(effort) ?? true { params["effort"] = .string(effort) }
         params["fast"] = .bool(fastMode(of: chat))
+        if workflows(of: chat) { params["workflows"] = true }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
@@ -209,17 +210,17 @@ extension AppModel {
             if event.name == "error", let message = event.body["message"]?.string {
                 say(message)
             }
-            // The same models as hello's, now with each one's default effort and Ultracode; or
+            // The same models as hello's, now with each one's default effort and workflows; or
             // another agent's, which names it.
             if event.name == "models", let list = try? event.body["models"]?.decode([ModelOption].self), !list.isEmpty {
                 if let agent = event.body["provider"]?.string, agent != ProviderInfo.claudeID {
                     modelsByAgent[agent] = list
                     return
                 }
-                // A list whose Ultracode nothing answered for says no Ultracode anywhere; that's
-                // not a no, so Ultracode stays assumed where a model has xhigh.
+                // A list whose workflows nothing answered for says no workflows anywhere; that's
+                // not a no, so workflows stay assumed.
                 let known = event.body["ultraKnown"]?.bool ?? true
-                models = known ? list : list.map(\.assumingUltracode)
+                models = known ? list : list.map(\.assumingWorkflows)
                 settingsEffort = event.body["settingsEffort"]?.string
             }
             return
@@ -336,24 +337,48 @@ extension AppModel {
             }
         }
         chat.model = ref.id
-        if let levels = option(ref)?.levels, let effort = chat.effort, !levels.contains(effort) {
+        if let levels = option(ref)?.efforts, let effort = chat.effort, !levels.contains(effort) {
             chat.effort = nil
         }
         save()
         if fastMode(of: chat) { checkFast(chat) }
     }
 
-    /// Ultracode stays with the thread it was picked in: a new thread never starts in it.
     func setEffort(_ effort: String?, for chat: Chat?) {
         let unchanged = chat == nil && effort == startingEffort
-        if effort != Effort.ultracode { lastEffort = effort }
+        lastEffort = effort
         guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.effort = effort
         save()
     }
 
-    /// On when the thread asks for it and its model can do it; a switch to a model that can't
-    /// leaves the thread's choice alone for when it switches back.
+    /// On when the thread asks for them and its model can run them; a switch to a model that
+    /// can't leaves the thread's choice alone for when it switches back.
+    func workflows(of chat: Chat?) -> Bool {
+        chat?.workflows == true && option(for: chat)?.ultra == true
+    }
+
+    /// Workflows stay with the thread they were turned on in: a new thread never starts with them,
+    /// so with none open, turning them on starts the thread they're for. The next send carries
+    /// them; the engine needs nothing before it.
+    func setWorkflows(_ on: Bool, for chat: Chat?) {
+        guard let chat = chat ?? (on ? newChat() : nil) else { return }
+        chat.workflows = on
+        save()
+    }
+
+    /// Threads stored at Ultracode, from when it was a level, at Extra high with workflows on,
+    /// which is what Ultracode is.
+    func carryUltracode() {
+        let ultracode = Effort.ultracode
+        guard let stored = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.effort == ultracode })), !stored.isEmpty else { return }
+        for chat in stored {
+            chat.effort = "xhigh"
+            chat.workflows = true
+        }
+        save()
+    }
+
     func toggleFavorite(_ id: String) {
         if let at = favoriteModels.firstIndex(of: id) {
             favoriteModels.remove(at: at)
@@ -445,6 +470,7 @@ extension AppModel {
         return onIt
             && (effort ?? defaultLevel(for: chat)) == (target.effort ?? targetHome)
             && fast == (target.fast && targetOption?.fast == true)
+            && chat?.workflows != true
             && (chat?.permissionMode ?? startingPermissionMode) == target.permissionMode
     }
 
@@ -457,6 +483,7 @@ extension AppModel {
         if chat.model != model.id || chat.providerID != model.provider { setModel(model, for: chat) }
         setEffort(target.effort, for: chat)
         if chat.fastMode != target.fast { setFast(target.fast, for: chat) }
+        if chat.workflows { setWorkflows(false, for: chat) }
         if chat.permissionMode != target.permissionMode { setPermissionMode(target.permissionMode, for: chat) }
     }
 }

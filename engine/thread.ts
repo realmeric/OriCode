@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import {
   query,
-  type EffortLevel,
   type FastModeDisabledReason,
   type FastModeState,
   type PermissionMode,
@@ -105,6 +104,10 @@ export class Thread implements Session {
   /// The effort this CLI was started with, sent beside each reading so the app can tell a
   /// reading taken on Default, or under Ultracode, from one taken under another pick.
   private asked: string | null = null;
+  /// Whether this CLI was started as Ultracode, sent beside each reading too.
+  private askedUltracode = false;
+  /// Whether this CLI's init listed the Workflow tool, as last told to the app.
+  private workflowsTold: boolean | undefined;
   /// When the last turn ended, for letting an idle CLI go.
   private idleSince: number | undefined;
   /// The call the user already allowed, until the turn asks about it or ends.
@@ -184,7 +187,9 @@ export class Thread implements Session {
       return true;
     }
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
-    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, params.tools ?? null, params.instructions ?? null]);
+    // Ultracode is a launch setting: switched on in a running CLI, Claude Code saves its launch
+    // effort unpins into ~/.claude.json for good. Workflows below xhigh need nothing of the CLI.
+    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, ultracode(params), params.tools ?? null, params.instructions ?? null]);
     if (!this.query || key !== this.key) {
       let env = cleanEnvironment();
       if (this.elsewhere) {
@@ -353,18 +358,20 @@ export class Thread implements Session {
     this.fastTold = "";
     this.effortTold = undefined;
     this.asked = params.effort ?? null;
+    const ultra = ultracode(params);
+    this.askedUltracode = ultra;
+    this.workflowsTold = undefined;
     this.reports = undefined;
     this.initialized = Promise.withResolvers<void>();
     const inbox = new Inbox();
     this.inbox = inbox;
-    const ultra = params.effort === "ultracode";
     this.query = this.launch({
       prompt: inbox,
       options: {
         cwd: params.cwd,
         model: params.model,
-        // Ultracode sets its own effort, xhigh.
-        effort: ultra ? undefined : (params.effort as EffortLevel | undefined),
+        // Ultracode sets its own effort, xhigh, and an effort passed beside it turns it off.
+        effort: ultra ? undefined : params.effort,
         // Summarized, so the thinking deltas carry text the app can show when asked.
         thinking: adaptive.has(params.model ?? "default") ? { type: "adaptive", display: "summarized" } : undefined,
         permissionMode: params.permissionMode,
@@ -413,7 +420,7 @@ export class Thread implements Session {
       const told = changedEffort(this.effortTold, now);
       if (!told) return;
       this.effortTold = told;
-      event("effort", { threadId: this.id, ...told, asked: this.asked });
+      event("effort", { threadId: this.id, ...told, asked: this.asked, askedUltracode: this.askedUltracode });
     } catch {}
   }
 
@@ -648,6 +655,13 @@ export class Thread implements Session {
       case "system": {
         if (message.subtype === "init") {
           this.tellFast(message);
+          // Workflows on need the Workflow tool, which workflows off in /config take away. An
+          // init that lists no tools at all says nothing about it.
+          const workflows = message.tools?.includes("Workflow");
+          if (workflows !== undefined && workflows !== this.workflowsTold) {
+            this.workflowsTold = workflows;
+            event("workflowTool", { threadId: this.id, available: workflows });
+          }
           const capabilities = message.capabilities ?? [];
           this.reports = capabilities.includes("msg_lifecycle_v1") && capabilities.includes("interrupt_cancel_queued_v1");
           this.initialized.resolve();
@@ -749,6 +763,12 @@ export function lifecycleEvent(frame: Lifecycle, waiting: ReadonlySet<string>, r
   if (!waiting.has(id) || frame.state === "queued") return undefined;
   if (frame.state === "started") return { name: "message.taken", id, fields: { messageId: id, newTurn: !running } };
   return { name: "message.cancelled", id, fields: { messageId: id } };
+}
+
+/// Whether a send starts its CLI as Ultracode: workflows on at xhigh, which Claude Code runs as
+/// its own Ultracode, with the standing reminders and authoring reference that come with it.
+export function ultracode(params: Pick<SendParams, "effort" | "workflows">): boolean {
+  return params.workflows === true && params.effort === "xhigh";
 }
 
 /// The effort a reading of the session's settings shows, or undefined when the app was last

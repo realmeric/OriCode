@@ -80,11 +80,16 @@ struct ModelMenu: View {
                         .help(PickerState(model: model, chat: chat).fastProblem ?? "Fast mode")
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
+                if workflows {
+                    WorkflowsGlyph(on: true, color: MarkPalette.color(for: model.providerID(for: chat)), side: 11)
+                        .help(PickerState(model: model, chat: chat).workflowsMissing ?? "Workflows")
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
+                }
                 // The level in effect: faint when it's Default's, brighter when picked, and at
-                // full strength while Ultracode is on, so a thread can't stay on it unnoticed.
+                // full strength while workflows are on, so a thread can't stay on them unnoticed.
                 if let level = shownEffort ?? model.defaultLevel(for: chat) {
                     Text(Self.effortName(level))
-                        .foregroundStyle(level == Effort.ultracode ? Ink.primary : shownEffort == nil ? Ink.faint : Ink.secondary)
+                        .foregroundStyle(workflows ? Ink.primary : shownEffort == nil ? Ink.faint : Ink.secondary)
                         .id(level)
                         .transition(.blurReplace)
                 }
@@ -95,7 +100,7 @@ struct ModelMenu: View {
             .font(Type.secondary)
             // The picker's choices arrive here as it makes them; the button grows leftwards,
             // since the composer's field gives way and the send button holds its right.
-            .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil] + rays.map(\.stored))
+            .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil, workflows ? "workflows" : nil] + rays.map(\.stored))
             .padding(.horizontal, 8)
             .frame(height: 30)
             .background(hovering || model.modelPickerShown ? Surface.hover : .clear, in: .capsule)
@@ -107,13 +112,15 @@ struct ModelMenu: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.modelButtonFrame = $0 }
         .help("Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
-        .accessibilityValue(rays.isEmpty ? accessibilityEffort : accessibilityEffort + ", " + raysLine)
+        .accessibilityValue([accessibilityEffort, workflows ? "workflows on" : nil, rays.isEmpty ? nil : raysLine].compactMap { $0 }.joined(separator: ", "))
         .task(id: "\(model.providerID(for: chat)) \(model.engineState == .ready)") { model.readModels(for: chat) }
     }
 
     private var fast: Bool {
         PickerState(model: model, chat: chat).fastAsked
     }
+
+    private var workflows: Bool { model.workflows(of: chat) }
 
     private var rays: [ModelRef] { model.rays(for: chat) }
 
@@ -126,7 +133,7 @@ struct ModelMenu: View {
     /// The thread's level, or with no thread the one the next starts with, if its model has it.
     private var shownEffort: String? {
         guard let effort = chat == nil ? model.startingEffort : chat?.effort,
-              selectedModel?.levels.contains(effort) == true
+              selectedModel?.efforts.contains(effort) == true
         else { return nil }
         return effort
     }
@@ -139,7 +146,6 @@ struct ModelMenu: View {
     static func effortName(_ effort: String) -> String {
         switch effort {
         case "xhigh": "Extra high"
-        case Effort.ultracode: "Ultracode"
         default: effort.capitalized
         }
     }
