@@ -7,11 +7,8 @@ struct Composer: View {
     let running: Bool
     let windowHeight: CGFloat
     /// What's typed, in an object of its own: the body never reads it, so a key redraws only the
-    /// field and the few views below that do.
+    /// few views below that do.
     @State private var draft = Draft()
-    /// A new id after each send rebuilds the field, whose editor otherwise sometimes writes the
-    /// sent text back after Return.
-    @State private var field = UUID()
     @State private var slashSelected = 0
     /// What Tab found when several things match, as the last word would read with each, and the
     /// one the text holds while Tab cycles through them.
@@ -33,7 +30,6 @@ struct Composer: View {
     @State private var dropTarget = false
     /// Whether the queue's lines are scrolled to the last, which leaves nothing below to fade into.
     @State private var queueAtEnd = true
-    @FocusState private var focused: Bool
 
     /// The tallest picker, its gap and the 52pt title bar: with less room than this above the
     /// composer, the picker opens below it.
@@ -96,20 +92,37 @@ struct Composer: View {
             }
         }
         .onChange(of: model.modelPickerShown) { _, shown in
-            if !shown { focused = model.composerTakesKeyboard }
+            if !shown { draft.keyboard(model.composerTakesKeyboard) }
         }
         .overlay(alignment: .bottomLeading) {
+            // Reads only what a key seldom changes, so typing redraws nothing here.
             Isolated {
-                if !slashMatches.isEmpty {
-                    SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }
-                        .frame(maxWidth: 520, alignment: .leading)
-                        .padding(.bottom, height + 8)
-                        .transition(.opacity)
-                } else if !completions.isEmpty {
-                    CompletionMenu(candidates: completions, descriptions: completionNotes, selected: completionIndex) { pick($0) }
-                        .frame(maxWidth: 520, alignment: .leading)
-                        .padding(.bottom, height + 8)
-                        .transition(.opacity)
+                ZStack(alignment: .bottomLeading) {
+                    if !slashMatches.isEmpty {
+                        SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }
+                            .frame(maxWidth: 520, alignment: .leading)
+                            .padding(.bottom, height + 8)
+                            .transition(.opacity)
+                    } else if !completions.isEmpty {
+                        CompletionMenu(candidates: completions, descriptions: completionNotes, selected: completionIndex) { pick($0) }
+                            .frame(maxWidth: 520, alignment: .leading)
+                            .padding(.bottom, height + 8)
+                            .transition(.opacity)
+                    }
+                }
+                // Typing anything but what Tab left puts its list away; only watched while there is one.
+                .onChange(of: completions.isEmpty ? 0 : draft.edits) {
+                    if !completions.isEmpty, text != completed { completions = [] }
+                }
+                // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
+                .onChange(of: draft.bang) { _, bang in
+                    guard bang, !model.shellPrompt else { return }
+                    model.shellPrompt = true
+                    text = String(text.dropFirst())
+                }
+                .onChange(of: slashQuery) { _, query in
+                    slashSelected = 0
+                    if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
                 }
             }
         }
@@ -131,17 +144,17 @@ struct Composer: View {
         .onChange(of: dropTarget) { _, over in
             if over { Haptics.detent() }
         }
-        .onAppear { focused = model.composerTakesKeyboard }
+        .onAppear { draft.keyboard(model.composerTakesKeyboard) }
         // Not while a block is open, which has the keyboard until it goes.
         .onChange(of: model.composerFocus) {
-            if model.openShell == nil { focused = true }
+            if model.openShell == nil { draft.keyboard(true) }
         }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
             if waiting != nil {
-                focused = false
+                draft.keyboard(false)
             } else if !model.keyboardTaken {
-                focused = model.composerTakesKeyboard
+                draft.keyboard(model.composerTakesKeyboard)
             }
         }
         // Messages that won't go out after all, sent into the turn or queued, come back here when
@@ -206,7 +219,7 @@ struct Composer: View {
             text = QueuedMessage.joined([text, taken.text])
             model.draftAttachments += taken.images
         }
-        focused = true
+        draft.keyboard(true)
     }
 
     private var thumbnails: some View {
@@ -255,6 +268,16 @@ struct Composer: View {
         return took
     }
 
+    /// Images and files dropped on the field's text.
+    private func accept(_ board: NSPasteboard) -> Bool {
+        if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            return urls.map { model.attach(fileAt: $0) }.contains(true)
+        }
+        guard let images = board.readObjects(forClasses: [NSImage.self]) as? [NSImage], !images.isEmpty else { return false }
+        model.attach(images)
+        return true
+    }
+
     private var row: some View {
         HStack(alignment: .bottom, spacing: 6) {
             if model.shellPrompt {
@@ -271,98 +294,30 @@ struct Composer: View {
             // keyboard; SwiftUI's opacity doesn't reach its AppKit view, so its colours fade instead.
             KeyframeAnimator(initialValue: 1.0, trigger: model.shellPrompt) { shown in
                 let placeholder = placeholder(shell: model.shellPrompt)
-                TextField(placeholder, text: Bindable(draft).text, prompt: Text(placeholder).foregroundStyle(Self.placeholderInk.opacity(shown)), axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(model.shellPrompt ? Type.mono : Type.body)
-                    .foregroundStyle(Ink.primary.opacity(shown))
-                    .lineLimit(1...maxLines)
-                    .focused($focused)
-                    .overlay(alignment: Alignment(horizontal: .leading, vertical: .firstTextBaseline)) {
+                let font = model.shellPrompt ? ComposerTextView.mono : ComposerTextView.body
+                let baseline = Alignment(horizontal: .leading, vertical: .firstTextBaseline)
+                let underTop = ComposerTextView.baseline(font)
+                ComposerField(draft: draft, placeholder: placeholder, font: font, shown: shown, maxLines: maxLines, keys: keys)
+                    .frame(height: draft.height)
+                    .alignmentGuide(.firstTextBaseline) { _ in underTop }
+                    .background(alignment: baseline) {
+                        if draft.empty {
+                            Text(placeholder)
+                                .font(model.shellPrompt ? Type.mono : Type.body)
+                                .foregroundStyle(Self.placeholderInk.opacity(shown))
+                                .lineLimit(1)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .overlay(alignment: baseline) {
                         // In and out with the keyframes alone, not faded in by the move spring.
                         if shown < 1 { ghost.opacity(1 - shown).transition(.identity) }
-                    }
-                    // Here, where a key already redraws, rather than in the composer's body.
-                    // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
-                    .onChange(of: text) { _, now in
-                        if now != completed { completions = [] }
-                        guard !model.shellPrompt, now.hasPrefix("!") else { return }
-                        model.shellPrompt = true
-                        text = String(now.dropFirst())
-                    }
-                    .onChange(of: slashQuery) { _, query in
-                        slashSelected = 0
-                        if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
                     }
             } keyframes: { _ in
                 MoveKeyframe(0)
                 LinearKeyframe(1, duration: 0.18, timingCurve: .easeOut)
             }
-            .id(field)
-            // ⌫ in an empty prompt turns it back. The Backspace key sends DEL, 0x7F, which
-            // isn't SwiftUI's .delete, 0x08.
-            .onKeyPress(keys: [.delete, KeyEquivalent("\u{7F}")]) { _ in
-                guard model.shellPrompt, text.isEmpty else { return .ignored }
-                model.shellPrompt = false
-                return .handled
-            }
-            .onKeyPress(.downArrow) {
-                if !slashMatches.isEmpty {
-                    slashSelected = min(slashSelected + 1, slashMatches.count - 1)
-                    return .handled
-                }
-                if !completions.isEmpty {
-                    tab(backward: false)
-                    return .handled
-                }
-                return recall(older: false) ? .handled : .ignored
-            }
-            .onKeyPress(.upArrow) {
-                if !slashMatches.isEmpty {
-                    slashSelected = max(slashSelected - 1, 0)
-                    return .handled
-                }
-                if !completions.isEmpty {
-                    tab(backward: true)
-                    return .handled
-                }
-                // The last message queued comes back to be edited before any sent before it.
-                if text.isEmpty, !model.shellPrompt, let last = queue.last {
-                    takeBack(last)
-                    return .handled
-                }
-                return recall(older: true) ? .handled : .ignored
-            }
-            // Tab never takes the keyboard out of the composer: it completes, or does nothing.
-            // ⇧Tab arrives as a backtab.
-            .onKeyPress(keys: [.tab, KeyEquivalent("\u{19}")]) { press in
-                tab(backward: press.key != .tab || press.modifiers.contains(.shift))
-                return .handled
-            }
-            .onKeyPress(.return, phases: .down) { press in
-                completions = []
-                // Which Return does what is Settings › Shortcuts' to say; the prompt has no queue.
-                let action = model.shortcuts.returnPress(press.modifiers, working: working && !model.shellPrompt)
-                if action == .queue {
-                    sendAfterTurn()
-                } else if action == .newLine {
-                    // Where the cursor is, as a text field would: at the start it pushes the text down.
-                    if let editor = NSApp.keyWindow?.firstResponder as? NSTextView {
-                        editor.insertNewlineIgnoringFieldEditor(nil)
-                    } else {
-                        text += "\n"
-                    }
-                } else if model.shellPrompt {
-                    runCommand()
-                } else if let command = selectedSlash, text != "/" + command.name {
-                    complete(command)
-                } else if !canSend, let ask = waitingPermission {
-                    model.answer(ask, allow: true)
-                } else {
-                    send()
-                }
-                return .handled
-            }
-
             .padding(.vertical, 9)
             .padding(.leading, model.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
@@ -375,6 +330,69 @@ struct Composer: View {
         }
         // The prompt comes and goes with the move spring, or, with Reduce Motion, fades in place.
         .animation(reduceMotion ? nil : Motion.move, value: model.shellPrompt)
+    }
+
+    /// The keys the field hands the composer.
+    private var keys: ComposerKeys {
+        ComposerKeys(
+            enter: enter,
+            up: {
+                if !slashMatches.isEmpty {
+                    slashSelected = max(slashSelected - 1, 0)
+                    return true
+                }
+                if !completions.isEmpty {
+                    tab(backward: true)
+                    return true
+                }
+                // The last message queued comes back to be edited before any sent before it.
+                if text.isEmpty, !model.shellPrompt, let last = queue.last {
+                    takeBack(last)
+                    return true
+                }
+                return recall(older: true)
+            },
+            down: {
+                if !slashMatches.isEmpty {
+                    slashSelected = min(slashSelected + 1, slashMatches.count - 1)
+                    return true
+                }
+                if !completions.isEmpty {
+                    tab(backward: false)
+                    return true
+                }
+                return recall(older: false)
+            },
+            tab: tab,
+            // ⌫ in an empty prompt turns it back.
+            delete: {
+                guard model.shellPrompt, text.isEmpty else { return false }
+                model.shellPrompt = false
+                return true
+            },
+            drop: offers.attachments ? { accept($0) } : nil,
+            dropping: { dropTarget = $0 })
+    }
+
+    /// Return: Settings › Shortcuts says whether it sends, queues or breaks the line. The prompt has
+    /// no queue.
+    private func enter(_ modifiers: EventModifiers) {
+        completions = []
+        let action = model.shortcuts.returnPress(modifiers, working: working && !model.shellPrompt)
+        if action == .queue {
+            sendAfterTurn()
+        } else if action == .newLine {
+            // Where the caret is: at the start it pushes the text down.
+            draft.newLine()
+        } else if model.shellPrompt {
+            runCommand()
+        } else if let command = selectedSlash, text != "/" + command.name {
+            complete(command)
+        } else if !canSend, let ask = waitingPermission {
+            model.answer(ask, allow: true)
+        } else {
+            send()
+        }
     }
 
     /// The field as it looked before the prompt turned, fading out as the field fades in.
@@ -472,27 +490,10 @@ struct Composer: View {
 
     private func runCommand() {
         guard canSend else { return }
-        let moving = model.currentConversation?.items.isEmpty ?? true
         model.rememberCommand(text)
         model.runCommand(text)
         text = ""
         recalled = nil
-        rebuild(after: moving)
-    }
-
-    /// A new field after each send or command, whose editor otherwise sometimes writes the sent
-    /// text back after Return, given the keyboard once it's in the window: asked for in the same
-    /// update as the new field, focus stayed with the old one on its way out, and the next keys
-    /// went nowhere. After a first message the composer slides down first.
-    private func rebuild(after moving: Bool) {
-        Task { @MainActor in
-            if moving { try? await Task.sleep(for: .milliseconds(650)) }
-            text = ""
-            field = UUID()
-            try? await Task.sleep(for: .milliseconds(30))
-            // A program that took the whole screen meanwhile, vim run as the first command, keeps it.
-            if model.openShell == nil { focused = true }
-        }
     }
 
     /// Tab: the slash command the list is on; again, the next of several matches; else the word
@@ -577,8 +578,7 @@ struct Composer: View {
 
     /// The word after a leading "/", while it's still being typed.
     private var slashQuery: String? {
-        guard !model.shellPrompt, text.hasPrefix("/"), !text.contains(where: \.isWhitespace) else { return nil }
-        return String(text.dropFirst())
+        model.shellPrompt ? nil : draft.slash
     }
 
     private var slashMatches: [SlashCommandInfo] {
@@ -609,16 +609,12 @@ struct Composer: View {
 
     private func send() {
         guard canSend else { return }
-        let moving = model.currentConversation?.items.isEmpty ?? true
         // The first message moves the composer from the middle of an empty thread to the bottom.
         var sent = false
         withAnimation(Motion.glide) { sent = model.send(text) }
         guard sent else { return }
         text = ""
         recalled = nil
-        // A new field is inserted at its final place, so while the composer is still sliding
-        // it would draw apart from it; it's rebuilt once the slide is over.
-        rebuild(after: moving)
     }
 
     /// A turn running, or messages sent into one still to run.
@@ -631,21 +627,7 @@ struct Composer: View {
         guard canSend, model.queue(text) else { return }
         text = ""
         recalled = nil
-        rebuild(after: false)
     }
-}
-
-@Observable
-private final class Draft {
-    var text = "" {
-        didSet {
-            let blank = text.allSatisfy(\.isWhitespace)
-            if blank != self.blank { self.blank = blank }
-        }
-    }
-    /// Nothing but spaces and newlines. The send button reads this rather than the text, so it's
-    /// drawn again when this changes, not at every key.
-    private(set) var blank = true
 }
 
 /// Its content drawn in a body of its own, so what only the content reads redraws it alone.
