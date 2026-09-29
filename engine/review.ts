@@ -3,7 +3,7 @@ import { lstat, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run, type RunError } from "./child.ts";
-import { gitDeadline } from "./git.ts";
+import { gitDeadline, notARepository } from "./git.ts";
 
 // Review: what the working tree changes against HEAD, as hunks, and the git the Review surface
 // does with them. Every path is from the repository's top, whichever folder the thread is in.
@@ -52,6 +52,7 @@ export async function gitRun(cwd: string, args: string[], options: Options = {})
     return (await run("git", args, { cwd, env, input: options.input, timeout: gitDeadline(args), maxBuffer: 96 * 1024 * 1024 })).stdout;
   } catch (error) {
     const { code, stderr, message } = error as RunError;
+    if (stderr?.includes("not a git repository")) throw new Error(notARepository);
     if (code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") throw new Error("This diff is too large to show.");
     throw new Error(stderr?.trim() || (typeof code === "number" ? `git ${args.find((arg) => !arg.startsWith("-")) ?? ""} failed` : message));
   }
@@ -61,7 +62,7 @@ export async function top(cwd: string): Promise<string> {
   try {
     return (await gitRun(cwd, ["rev-parse", "--show-toplevel"])).trim();
   } catch {
-    throw new Error("This folder isn't in a git repository.");
+    throw new Error(notARepository);
   }
 }
 

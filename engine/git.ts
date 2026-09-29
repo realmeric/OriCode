@@ -16,9 +16,13 @@ export async function git(cwd: string, args: string[]): Promise<string> {
     return stdout;
   } catch (error) {
     const stderr = (error as { stderr?: string }).stderr?.trim();
+    if (stderr?.includes("not a git repository")) throw new Error(notARepository);
     throw new Error(stderr || (error as Error).message);
   }
 }
+
+/// What a folder without git is told when something asks git about it.
+export const notARepository = "This folder isn't a git repository.";
 
 /// The branch and how many commits it has that its upstream doesn't.
 export async function branch(cwd: string): Promise<{ branch: string; ahead: number; upstream: boolean }> {

@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { branches, create, friendly, git, previous, pull, remote, switchTo, webURL } from "../git.ts";
+import { addWorktree, branch, branches, create, friendly, git, notARepository, previous, pull, remote, switchTo, webURL } from "../git.ts";
+import { top } from "../review.ts";
 
 before(() => {
   // The user's own git settings (signing, hooks, a default branch name) stay out of it.
@@ -101,4 +102,12 @@ test("remote gives the web page for the usual remote spellings", async () => {
 test("anything else keeps git's first line without its prefix", () => {
   assert.equal(friendly("fatal: something odd\nmore detail"), "something odd");
   assert.equal(friendly("fatal: invalid reference: nope"), "There's no branch called nope.");
+});
+
+test("a folder without git is told so in one line, whatever asks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "oricode-plain-"));
+  await assert.rejects(branch(dir), { message: notARepository });
+  await assert.rejects(branches(dir), { message: notARepository });
+  await assert.rejects(addWorktree(dir, "t-1"), { message: notARepository });
+  await assert.rejects(top(dir), { message: notARepository });
 });
