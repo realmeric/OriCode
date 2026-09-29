@@ -116,3 +116,38 @@ test("a turn running, or no CLI at all, needs no look until the turn ends", asyn
   assert.deepEqual(released, []);
   assert.equal(next, undefined);
 });
+
+/// A session whose agent keeps it less than the engine's 90 seconds, as OpenCode's is: idle since
+/// `since`, or running.
+function brief(limit: number, since: number | undefined, running = false) {
+  const log = { closed: 0 };
+  const session = {
+    isRunning: running,
+    idleRelease: limit,
+    onIdle: undefined,
+    releaseIfIdle: (idleMs: number, now: number) => {
+      if (running || since === undefined || now - since < idleMs) return false;
+      log.closed += 1;
+      return true;
+    },
+    idleLeft: (idleMs: number, now: number) => (running || since === undefined ? undefined : Math.max(0, since + idleMs - now)),
+  };
+  return { session: session as never, log };
+}
+
+test("an agent that asks for less is let go at its own limit, and one running or not idle isn't", () => {
+  const now = 1_000_000;
+  const idle = brief(30_000, now - 30_000);
+  const soon = brief(30_000, now - 10_000);
+  const running = brief(30_000, undefined, true);
+  const threads = new Map([
+    ["idle", idle.session],
+    ["soon", soon.session],
+    ["running", running.session],
+  ]);
+  const { released, next } = releaseIdle(threads, { threadId: "idle", visible: true }, now);
+  assert.deepEqual(released, ["idle"]);
+  assert.equal(next, 20_000);
+  assert.equal(soon.log.closed + running.log.closed, 0);
+  assert.equal(idle.log.closed, 1);
+});

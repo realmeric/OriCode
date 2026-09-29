@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { diffHunks, diffOf, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
+import { within } from "./child.ts";
 import { asks as registry, toolsServer } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
@@ -44,6 +45,8 @@ export type AcpAgent = {
   textErrors?: boolean;
   /// The modes session/set_mode takes from an agent that doesn't list them, as Grok's doesn't.
   unlistedModes?: string[];
+  /// How long its idle process is kept after a turn, when that isn't the engine's 90 seconds.
+  idleRelease?: number;
 };
 
 /// A mode as the agent takes it: its own mode id, and what its process is started with, variables
@@ -263,6 +266,10 @@ export class AcpSession {
     return this.running;
   }
 
+  get idleRelease(): number | undefined {
+    return this.agent.idleRelease;
+  }
+
   /// A turn always starts a new one here: ACP has no way into a running turn, so the app queues
   /// what's sent meanwhile. The reply doesn't wait for the agent, which can take seconds to
   /// open a session; what happens comes as events.
@@ -385,8 +392,7 @@ export class AcpSession {
   /// Returns the session's id, since some agents keep every session they open.
   async peek(cwd: string): Promise<string | undefined> {
     try {
-      await this.start(cwd);
-      await this.open({ threadId: this.id, cwd, text: "" });
+      await within(this.start(cwd).then(() => this.open({ threadId: this.id, cwd, text: "" })), 60_000, this.agent.name);
       return this.sessionId;
     } finally {
       this.stop();
@@ -430,14 +436,19 @@ export class AcpSession {
     child.on("error", (error) => this.exited(child, `Couldn't start ${this.agent.name}: ${error.message}`));
     // Once its pipes have closed, so the last of its stderr has been read.
     child.on("close", (code, signal) => this.exited(child, `${this.agent.name} stopped${lastLine(this.stderr) ? `: ${lastLine(this.stderr)}` : signal ? ` (${signal}).` : ` (exit code ${code}).`}`));
+    const asked = this.request("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientInfo: { name: "oricode", title: "OriCode", version },
+    });
+    // An agent that never says hello would hold the turn, or the check, and its process for good.
     const init: {
       protocolVersion?: number;
       agentCapabilities?: Capabilities;
       authMethods?: AuthMethod[];
-    } = await this.request("initialize", {
-      protocolVersion: 1,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-      clientInfo: { name: "oricode", title: "OriCode", version },
+    } = await within(asked, 30_000, this.agent.name).catch((error) => {
+      this.stop();
+      throw error;
     });
     if (init.protocolVersion !== 1) throw new Error(`${this.agent.name} speaks version ${init.protocolVersion} of the Agent Client Protocol, and OriCode speaks 1.`);
     this.capabilities = init.agentCapabilities ?? {};

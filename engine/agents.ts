@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { agentEnvironment } from "./acp.ts";
+import { run } from "./child.ts";
 import type { Availability } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { log } from "./wire.ts";
@@ -12,8 +11,6 @@ import { log } from "./wire.ts";
 // what the engine knows of the ones turned on: where their CLI is, whether a key is kept for them,
 // and which of the logins their makers forbid the user has turned on. An agent that isn't turned
 // on is never looked for and never asked anything.
-
-const run = promisify(execFile);
 
 /// A login an agent offers that its maker keeps to its own apps. It stays off until the user
 /// turns it on under the maker's sentence.

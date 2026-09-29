@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -6,6 +6,7 @@ import { basename, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, toolView, type Hunk, type View } from "./acp-map.ts";
+import { runSettled } from "./child.ts";
 import { lastLine } from "./shell.ts";
 import { event, log } from "./wire.ts";
 
@@ -524,11 +525,11 @@ export type AntigravityCheck = { state: "ready" | "signedOut" | "missing" | "unk
 /// Models listed is ready; an error is its words; nothing either way is unknown.
 export async function check(binary: AntigravityBinary, env: Record<string, string>): Promise<AntigravityCheck> {
   const ask = (args: string[], timeout: number) =>
-    new Promise<{ stdout: string; missing: boolean; failed: boolean }>((done) =>
-      execFile(binary.command, [...(binary.args ?? []), ...args], { env: agentEnvironment({ ...binary.env, ...env }), timeout }, (error, stdout) =>
-        done({ stdout: stdout ?? "", missing: (error as NodeJS.ErrnoException | null)?.code === "ENOENT", failed: error !== null }),
-      ),
-    );
+    runSettled(binary.command, [...(binary.args ?? []), ...args], { env: agentEnvironment({ ...binary.env, ...env }), timeout }).then(({ stdout, error }) => ({
+      stdout,
+      missing: error?.code === "ENOENT",
+      failed: error !== null,
+    }));
   const [version, listed] = await Promise.all([ask(["--version"], 5000), ask(["models"], 20_000)]);
   if (version.missing) return { state: "missing", version: null, hint: install, models: [] };
   const said = version.failed ? null : version.stdout.trim().split("\n")[0] || null;

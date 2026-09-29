@@ -52,7 +52,10 @@ enum NodeLocator {
                 try process.run()
             } catch {
                 continuation.resume(returning: nil)
+                return
             }
+            // A `node` that never answers doesn't hold the engine's start, or outlive the app.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 10) { if process.isRunning { process.terminate() } }
         }
     }
 }

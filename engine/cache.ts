@@ -50,8 +50,14 @@ export function cachedModels(cache: Cache | undefined, version: string | null, n
   return { models: cache.models, stale: now - cache.at >= cacheLife };
 }
 
-/// The defaults follow the list they were read for and the user's settings, whose effortLevel,
-/// maxEffortLevel and enableWorkflows the probes read.
+/// The defaults follow the list they were read for and the three of the user's settings the probes
+/// read, effortLevel, maxEffortLevel and enableWorkflows, so an edit to any other setting starts no
+/// probe. Settings that don't parse name none of them.
 export function defaultsKey(list: Model[], settings: string): string {
-  return createHash("sha256").update(JSON.stringify(list)).update("\0").update(settings).digest("hex");
+  let read: Record<string, unknown> = {};
+  try {
+    read = JSON.parse(settings) ?? {};
+  } catch {}
+  const probed = [read.effortLevel, read.maxEffortLevel, read.enableWorkflows];
+  return createHash("sha256").update(JSON.stringify(list)).update("\0").update(JSON.stringify(probed)).digest("hex");
 }

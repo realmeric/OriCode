@@ -10,7 +10,7 @@ import { acpProvider } from "../acp-provider.ts";
 import { availability, copilot, noPlan } from "../copilot.ts";
 import { auto, cursor, named as cursorNamed, onPlan, sessionFolder } from "../cursor.ts";
 import type { Model } from "../models.ts";
-import { reach } from "../opencode.ts";
+import { listed, preferred, reach } from "../opencode.ts";
 import { answer as answerThroughRegistry, asks } from "../provider.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
@@ -409,6 +409,20 @@ test("OpenCode's permissions for each of a thread's modes", () => {
   assert.deepEqual(permission("auto"), ["build", undefined]);
   assert.deepEqual(permission("plan"), ["plan", undefined]);
   assert.deepEqual(permission("bypassPermissions"), ["build", { "*": "allow" }]);
+});
+
+test("OpenCode starts on its own pick among its first provider's models", () => {
+  const models = listed(
+    ["zen/aa-free", "zen/big-pickle", "zen/zz-free", "router/gpt-5"].map((id) => `${id}\n{\n  "providerID": "${id.split("/")[0]}",\n  "name": "${id}"\n}`).join("\n") + "\nbroken\n{\n  nope\n}\n",
+  );
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["zen/aa-free", "zen/big-pickle", "zen/zz-free", "router/gpt-5"],
+  );
+  // Its favourites rank first, and only the first provider's count; then ids from the end.
+  assert.equal(preferred(models), "zen/big-pickle");
+  assert.equal(preferred(models.filter((model) => model.id !== "zen/big-pickle")), "zen/zz-free");
+  assert.equal(preferred([]), undefined);
 });
 
 test("a diff becomes git's hunks, three lines of context around each change", () => {

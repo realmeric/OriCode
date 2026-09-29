@@ -135,8 +135,9 @@ test("a Devin thread through the engine: checked ready, its models, a turn with 
 
   const sent = await logged(log);
   const starts = sent.filter((message) => message.argv);
-  // The models event and models.list each start one; then a process for the first engine's turns and one after the quit.
-  assert.equal(starts.length, 4);
+  // One to read the models, which the models event and models.list share; then a process for the
+  // first engine's turns and one after the quit.
+  assert.equal(starts.length, 3);
   assert.ok(starts.every((start) => start.argv.join(" ") === "acp" && start.claude.length === 0));
   assert.ok(sent.filter((message) => message.method === "initialize").every((message) => message.params.clientInfo.name === "oricode"));
   assert.deepEqual(sent.filter((message) => message.method === "authenticate"), []);

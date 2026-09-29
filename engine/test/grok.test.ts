@@ -139,7 +139,8 @@ test("a Grok Build thread through the engine: checked ready, its models, a turn 
 
   const sent = await logged(log);
   const starts = sent.filter((message) => message.argv);
-  // The check, the models event and models.list each start one to read; then the three turns.
+  // The check starts one to read its sign-ins and the models event one, which models.list shares;
+  // then the three turns.
   assert.deepEqual(
     starts.slice(-3).map((start) => start.argv),
     [

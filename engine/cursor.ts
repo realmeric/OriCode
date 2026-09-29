@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { agentEnvironment } from "./acp.ts";
 import { acpProvider } from "./acp-provider.ts";
+import { run } from "./child.ts";
 import type { Model } from "./models.ts";
 import { log } from "./wire.ts";
 
@@ -12,8 +11,6 @@ import { log } from "./wire.ts";
 // it, which ends with the last of the folder's sessions. Effort, thinking and fast mode are part
 // of its model ids, `gpt-5.5[context=272k,reasoning=medium,fast=false]`, so its models carry no
 // levels of OriCode's. On the Free plan only Auto runs, though the list shows every model.
-
-const run = promisify(execFile);
 
 /// Auto's id, the one model the Free plan runs.
 export const auto = "default[]";

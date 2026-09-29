@@ -52,6 +52,8 @@ export type Command = { name: string; description: string; argumentHint: string 
 /// by the first after a release.
 export type Session = {
   readonly isRunning: boolean;
+  /// How long its CLI is kept idle, for an agent that shouldn't be kept the engine's 90 seconds.
+  readonly idleRelease?: number;
   /// Called once a turn has ended and the CLI sits idle.
   onIdle: (() => void) | undefined;
   /// Returns whether the message waits for the running turn to take it up.

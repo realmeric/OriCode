@@ -1,12 +1,18 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { run } from "./child.ts";
 
-const run = promisify(execFile);
+/// What can wait on the network or on the user's hooks, a pre-commit running its tests.
+const slow = new Set(["commit", "pull", "push", "merge", "switch", "worktree"]);
+
+/// How long a git may take: ten minutes for those, and a minute for the rest, enough for `status`
+/// in a huge repository and still an answer.
+export function gitDeadline(args: string[]): number {
+  return args.some((arg) => slow.has(arg)) ? 600_000 : 60_000;
+}
 
 /// Git for the app, which has no shell of its own. Every call runs in the thread's cwd.
 export async function git(cwd: string, args: string[]): Promise<string> {
   try {
-    const { stdout } = await run("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+    const { stdout } = await run("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, timeout: gitDeadline(args) });
     return stdout;
   } catch (error) {
     const stderr = (error as { stderr?: string }).stderr?.trim();

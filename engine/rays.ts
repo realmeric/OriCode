@@ -34,6 +34,8 @@ export function rayOf(ref: string): Ray {
 export type Seam = {
   provider(id: string): Provider | undefined;
   cli(agent: Provider): Promise<string>;
+  /// The agent's models, listed once for the engine.
+  models(agent: Provider): Promise<Model[]>;
   adopt(threadId: string, session: Session): void;
   forget(threadId: string): void;
 };
@@ -149,8 +151,6 @@ export function brief(rays: Ray[]): string {
 /// Heads with workers allowed, by thread and by the path of their tools.
 const heads = new Map<string, Rays>();
 const byPath = new Map<string, Rays>();
-/// Each agent's models, read once for list_agents.
-const modelLists = new Map<string, Promise<Model[]>>();
 let listening: Promise<number> | undefined;
 
 /// The thread's head, made with its tools' server the first time the thread allows workers.
@@ -301,7 +301,7 @@ export class Rays {
         if (!agent) return [];
         const picked = this.rays.filter((ray) => ray.agent === id).map((ray) => ray.model);
         return [
-          modelsOf(agent, this.seam).then(
+          this.seam.models(agent).then(
             (models) => ({
               id,
               name: agent.name,
@@ -337,7 +337,7 @@ export class Rays {
     const inherited =
       named || !level
         ? undefined
-        : await modelsOf(agent, this.seam).then(
+        : await this.seam.models(agent).then(
             (models) => (models.find((known) => known.id === model)?.efforts.includes(level) ? level : undefined),
             () => undefined,
           );
@@ -690,17 +690,6 @@ export class Rays {
     this.told = told;
     emit({ event: "heads", threadId: this.threadId, heads: listed });
   }
-}
-
-function modelsOf(agent: Provider, seam: Seam): Promise<Model[]> {
-  let found = modelLists.get(agent.id);
-  if (!found) {
-    found = (async () => (agent.listModels ? agent.listModels(await seam.cli(agent)) : agent.models(await agent.availability(), () => {})))();
-    // A failure is asked again next time rather than kept.
-    found.catch(() => modelLists.delete(agent.id));
-    modelLists.set(agent.id, found);
-  }
-  return found;
 }
 
 function counted(hunks: { lines: string[] }[]): { added: number; deleted: number } {

@@ -1,10 +1,11 @@
-import { execFile, spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
+import { run, runSettled } from "./child.ts";
 import { lastLine } from "./shell.ts";
 import { event, log } from "./wire.ts";
 
@@ -439,20 +440,17 @@ export type CommandCodeAvailability = { state: "ready" | "signedOut" | "missing"
 /// Whether the user's cmd is there and has a key, as `cmd status --json` says, which reads only
 /// cmd's own env and login and reaches no server. A key in the env counts without being checked.
 export async function availability(binary: CommandCodeBinary = { command: "cmd" }): Promise<CommandCodeAvailability> {
-  return new Promise((resolve) => {
-    execFile(binary.command, [...(binary.args ?? []), "status", "--json"], { env: agentEnvironment(binary.env), timeout: 10_000 }, (error, stdout) => {
-      if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") return resolve({ state: "missing", version: null, hint: install });
-      let status: { authenticated?: boolean; version?: string; error?: string } = {};
-      try {
-        status = JSON.parse(stdout);
-      } catch {
-        log(`cmd status wrote what isn't JSON: ${stdout.slice(0, 200)}`);
-      }
-      const version = status.version ?? null;
-      if (status.authenticated && !status.error) return resolve({ state: "ready", version, hint: null });
-      resolve({ state: "signedOut", version, hint: status.error ?? noKey });
-    });
-  });
+  const { stdout, error } = await runSettled(binary.command, [...(binary.args ?? []), "status", "--json"], { env: agentEnvironment(binary.env), timeout: 10_000 });
+  if (error?.code === "ENOENT") return { state: "missing", version: null, hint: install };
+  let status: { authenticated?: boolean; version?: string; error?: string } = {};
+  try {
+    status = JSON.parse(stdout);
+  } catch {
+    log(`cmd status wrote what isn't JSON: ${stdout.slice(0, 200)}`);
+  }
+  const version = status.version ?? null;
+  if (status.authenticated && !status.error) return { state: "ready", version, hint: null };
+  return { state: "signedOut", version, hint: status.error ?? noKey };
 }
 
 export type CommandCodeModel = { id: string; description: string; group: string; isDefault: boolean };
@@ -461,11 +459,7 @@ export type CommandCodeModel = { id: string; description: string; group: string;
 /// for each maker, then a line for each model, its id and two or more spaces before what it's
 /// for. The decision models listed after them answer only typed questions, and are left out.
 export async function listModels(binary: CommandCodeBinary = { command: "cmd" }): Promise<CommandCodeModel[]> {
-  const stdout = await new Promise<string>((resolve, reject) => {
-    execFile(binary.command, [...(binary.args ?? []), "--list-models"], { env: agentEnvironment({ NO_COLOR: "1", ...binary.env }), timeout: 20_000 }, (error, stdout) =>
-      error ? reject(error) : resolve(stdout),
-    );
-  });
+  const { stdout } = await run(binary.command, [...(binary.args ?? []), "--list-models"], { env: agentEnvironment({ NO_COLOR: "1", ...binary.env }), timeout: 20_000 });
   return parseModels(stdout);
 }
 

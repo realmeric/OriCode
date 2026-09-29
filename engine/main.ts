@@ -44,9 +44,11 @@ const providers = new Map<string, Provider>([
 const sessions = new Map<string, Session>();
 /// Agents whose models were read while they could run; hello's list for one signed out is a fallback.
 const listed = new Set<string>();
-/// Each agent's models as it last listed them, with OriCode's Ultracode where it's on Rays, for
-/// what a send at Ultracode runs. Claude Code's aren't kept: its Ultracode is always its own.
-const lists = new Map<string, Model[]>();
+/// Each agent's models as it last listed them, with OriCode's Ultracode where it's on Rays, kept
+/// until Settings › Agents changes the agent or a check finds its login made or gone: a check
+/// and the menu after it, Rays and a send at Ultracode all read one listing, which for OpenCode or
+/// Cursor is a second or more and several hundred MB.
+const lists = new Map<string, Promise<Model[]>>();
 /// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
 const watched = new Set<string>();
 
@@ -84,6 +86,7 @@ function kept(threadId: string, found: Session): void {
 const seam: Seam = {
   provider: (id) => providers.get(id),
   cli,
+  models: listOf,
   adopt: kept,
   forget: (threadId) => sessions.delete(threadId),
 };
@@ -100,37 +103,46 @@ async function headTools(params: SendParams & { rays?: string[] }, agent: Provid
   return rays.length && head ? { tools: head.url, instructions } : {};
 }
 
-/// An agent's models as the app gets them, kept for its sends with workflows on.
-function remember(agent: Provider, models: Model[]): Model[] {
-  if (agent.id === claude.id) return models;
-  const marked = onRays(agent, models);
-  lists.set(agent.id, marked);
-  return marked;
+/// An agent's models as the app gets them, from its CLI the first time and kept after, with
+/// OriCode's Ultracode where it's on Rays; Claude Code's Ultracode is always its own.
+function listOf(agent: Provider, path?: string): Promise<Model[]> {
+  let found = lists.get(agent.id);
+  if (!found) {
+    found = (async () => {
+      const models = agent.listModels ? await agent.listModels(path ?? (await cli(agent))) : await agent.models(await agent.availability(), () => {});
+      return agent.id === claude.id ? models : onRays(agent, models);
+    })();
+    // A failure is asked again next time rather than kept.
+    found.catch(() => lists.delete(agent.id));
+    lists.set(agent.id, found);
+  }
+  return found;
 }
 
-/// The model a send with workflows on runs, from the agent's list, asked once if this engine
-/// hasn't read it: one that can run them, on an agent that can be a head other than Claude Code,
-/// whose workflows are its own.
+/// The model a send with workflows on runs, from the agent's list: one that can run them, on an
+/// agent that can be a head other than Claude Code, whose workflows are its own.
 async function workflowsModel(agent: Provider, path: string, id: string | undefined): Promise<Model | undefined> {
-  if (agent.id === claude.id || !agent.capabilities.workers) return undefined;
-  if (!lists.has(agent.id) && agent.listModels) remember(agent, await agent.listModels(path));
-  const models = lists.get(agent.id) ?? [];
+  if (agent.id === claude.id || !agent.capabilities.workers || !agent.listModels) return undefined;
+  const models = await listOf(agent, path);
   const model = id ? models.find((model) => model.id === id) : models[0];
   return model?.ultra ? model : undefined;
 }
 
 /// An agent's models, read once a check finds it signed in after hello didn't, as `models`
-/// events: the list, unless its defaults came with it, and then the defaults.
+/// events: the list, unless its defaults came with it, and then the defaults. Claude Code's go
+/// unnamed, as they always have, and come with their defaults.
 async function listAfterLogin(agent: Provider, found: Availability): Promise<void> {
+  if (agent.id !== claude.id) {
+    event("models", { models: await listOf(agent, found.cli ?? undefined), settingsEffort: null, ultraKnown: false, provider: agent.id });
+    return;
+  }
   let told = false;
   const listedFirst = Promise.withResolvers<void>();
-  // Claude Code's go unnamed, as they always have.
-  const named = agent.id === claude.id ? {} : { provider: agent.id };
   const models = await agent.models(found, (fields) => {
     told = true;
-    void listedFirst.promise.then(() => event("models", { ...fields, models: remember(agent, fields.models), ...named }));
+    void listedFirst.promise.then(() => event("models", fields));
   });
-  if (!told) event("models", { models: remember(agent, models), settingsEffort: null, ultraKnown: false, ...named });
+  if (!told) event("models", { models, settingsEffort: null, ultraKnown: false });
   listedFirst.resolve();
 }
 
@@ -181,8 +193,13 @@ async function checked(id: string) {
   const found = await wired.availability();
   if (found.state === "ready" && !listed.has(id)) {
     listed.add(id);
+    // A login made since: what was listed before it may not be what it runs now.
+    lists.delete(id);
     // After the reply, as hello's are.
     setImmediate(() => void listAfterLogin(wired, found).catch((error) => log(`models not read after a login: ${describe(error)}`)));
+  } else if (found.state !== "ready") {
+    listed.delete(id);
+    lists.delete(id);
   }
   return described(id, found);
 }
@@ -216,6 +233,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "agent.set"({ provider: id, on, ...setting }: { provider: string; on: boolean } & Setting) {
     if (!agent(id)) throw new Error(`Unknown provider ${id}`);
     change(id, on, setting);
+    // Another CLI, key or login lists other models.
+    lists.delete(id);
     if (!isOn(id)) return { provider: null };
     lookUp([id]);
     return { provider: await checked(id) };
@@ -231,8 +250,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "models.list"({ provider: id = claude.id }: { provider?: string }) {
     const wired = providers.get(id);
     if (!wired) throw new Error(agent(id) ? `${agent(id)!.name} can't list its models yet.` : `Unknown provider ${id}`);
-    const models = wired.listModels ? await wired.listModels(await cli(wired)) : await wired.models(await wired.availability(), () => {});
-    return { models: remember(wired, models) };
+    if (id === claude.id) return { models: await wired.models(await wired.availability(), () => {}) };
+    return { models: await listOf(wired) };
   },
 
   /// `rays` are the models, as `agent/model`, the thread's workers may run on, which makes its

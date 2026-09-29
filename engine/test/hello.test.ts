@@ -400,23 +400,29 @@ test("with no Claude Code, Z.ai says it needs it", async () => {
   assert.deepEqual(hello.result.providers[1], compatibleEntry("zai", "Z.ai", "missing", null, "Z.ai runs in Claude Code, which isn't installed. Install Claude Code to use it.", []));
 });
 
-/// What `opencode models --verbose` prints for the stand-in's two models: one with no variants, and
-/// one with three.
-const variantsOutput = `small\n{\n  "id": "small",\n  "variants": {}\n}\nlarge\n{\n  "id": "large",\n  "variants": {\n    "low": {},\n    "medium": {},\n    "high": {}\n  }\n}\n`;
+/// What `opencode models --verbose` prints for the stand-in's three models: two of its Zen's, one
+/// with no variants and one with three, and one of a provider models.dev doesn't name.
+const verboseOutput =
+  `zen/small\n{\n  "id": "small",\n  "providerID": "zen",\n  "name": "Small",\n  "variants": {}\n}\n` +
+  `zen/large\n{\n  "id": "large",\n  "providerID": "zen",\n  "name": "Large",\n  "variants": {\n    "low": {},\n    "medium": {},\n    "high": {}\n  }\n}\n` +
+  `router/tiny\n{\n  "id": "tiny",\n  "providerID": "router",\n  "name": "Tiny",\n  "variants": {}\n}\n`;
 
-test("OpenCode turned on is found at hello, reads ready once checked, and lists its models through ACP with their variants, deleting the session that read them", async () => {
+test("OpenCode turned on is found at hello, reads ready once checked, and lists its models once from its model cache, as its sessions name them, with no session", async () => {
   const claude = await standIn(false);
   const home = await mkdtemp(join(tmpdir(), "oricode-home-"));
   const bin = join(home, "bin");
   await mkdir(bin);
   const ran = join(home, "ran");
+  // OpenCode's copy of the models.dev catalog.
+  await mkdir(join(home, ".cache", "opencode"), { recursive: true });
+  await writeFile(join(home, ".cache", "opencode", "models.json"), JSON.stringify({ zen: { id: "zen", name: "OpenCode Zen" } }));
   const agent = new URL("./fixtures/acp-agent.ts", import.meta.url).pathname;
   await writeFile(
     join(bin, "opencode"),
-    `#!/bin/sh\necho "opencode $*" >> "${ran}"\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${agent}" ;;\n  models) printf '${variantsOutput}' ;;\nesac\n`,
+    `#!/bin/sh\necho "opencode $*" >> "${ran}"\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${agent}" ;;\n  models) printf '${verboseOutput}' ;;\nesac\n`,
   );
   await chmod(join(bin, "opencode"), 0o755);
-  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, PATH: `${bin}:/usr/bin:/bin` };
+  const env = { ORICODE_CLAUDE: claude.path, HOME: home, ZDOTDIR: undefined, XDG_CACHE_HOME: undefined, PATH: `${bin}:/usr/bin:/bin` };
   const [hello, checked, listed] = await replies(env, [
     { method: "hello", params: { agents: { opencode: { path: join(bin, "opencode") } } } },
     { method: "provider.check", params: { provider: "opencode" } },
@@ -449,23 +455,20 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
   };
   assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown" });
-  // Each model's variants are its levels, and a model with levels takes OriCode's Ultracode.
+  // Its own pick first, the last id of its first provider; each model's variants are its levels,
+  // and a model with levels takes OriCode's Ultracode.
   assert.deepEqual(
     listed.result.models.map((model: Model) => [model.id, model.name, model.efforts, model.ultra, model.ultraRays]),
     [
-      ["small", "Small", [], false, undefined],
-      ["large", "Large", ["low", "medium", "high"], true, true],
+      ["zen/small", "OpenCode Zen/Small", [], false, undefined],
+      ["zen/large", "OpenCode Zen/Large", ["low", "medium", "high"], true, true],
+      ["router/tiny", "router/Tiny", [], false, undefined],
     ],
   );
   assert.deepEqual(checked.result, { ...entry, version: "1.18.32" });
-  // The check found it ready and read its models, as models.list did; each session opened to read
-  // them is gone from OpenCode's history once they're read.
-  let asked: string[] = [];
-  for (let tries = 0; tries < 40 && asked.filter((line) => line === "opencode session delete s-1").length < 2; tries += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    asked = (await readFile(ran, "utf8")).trim().split("\n");
-  }
-  assert.deepEqual(asked.sort(), ["opencode --version", "opencode acp", "opencode acp", "opencode models --verbose", "opencode models --verbose", "opencode session delete s-1", "opencode session delete s-1"]);
+  // The check found it ready and read its models, which models.list had from it: one listing, and
+  // no session to open or delete.
+  assert.deepEqual((await readFile(ran, "utf8")).trim().split("\n").sort(), ["opencode --version", "opencode models --verbose"]);
 });
 
 test("Cursor on the Free plan reads ready and lists only Auto, as Cursor names it, deleting the session that listed it", async () => {

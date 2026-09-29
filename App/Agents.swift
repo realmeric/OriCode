@@ -170,6 +170,8 @@ struct Keychain: Sendable {
             }
             if let input { stdin.fileHandleForWriting.write(Data(input.utf8)) }
             try? stdin.fileHandleForWriting.close()
+            // A Keychain that never answers, a prompt nobody sees, doesn't hold Settings up for good.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 30) { if process.isRunning { process.terminate() } }
         }
         guard status == 0 else { throw Refused() }
     }

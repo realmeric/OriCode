@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -6,6 +6,7 @@ import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
+import { runSettled, within } from "./child.ts";
 import { asks as registry, toolsServer, toolsTimeout, type Session } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import type { Usage } from "./usage.ts";
@@ -868,12 +869,8 @@ export type CodexAvailability = { state: "ready" | "signedOut" | "missing"; plan
 /// Whether the user's codex is there and signed in, asked the way Terminal would, with the plan
 /// its account read gives. Nothing that holds the login is read.
 export async function availability(binary: CodexBinary = { command: "codex" }): Promise<CodexAvailability> {
-  const status = await new Promise<number | "missing">((resolve) => {
-    execFile(binary.command, [...(binary.args ?? []), "login", "status"], { env: agentEnvironment(binary.env), timeout: 10_000 }, (error) => {
-      if (!error) return resolve(0);
-      resolve((error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : typeof error.code === "number" ? error.code : 1);
-    });
-  });
+  const { error } = await runSettled(binary.command, [...(binary.args ?? []), "login", "status"], { env: agentEnvironment(binary.env), timeout: 10_000 });
+  const status = !error ? 0 : error.code === "ENOENT" ? "missing" : typeof error.code === "number" ? error.code : 1;
   if (status === "missing") return { state: "missing", plan: null, hint: "Codex isn't installed. Install it with `npm install -g @openai/codex`, then run `codex login`." };
   if (status !== 0) return { state: "signedOut", plan: null, hint: "Run `codex login` in Terminal and log in." };
   const account = await withServer(binary, (server) => server.request("account/read", {})).catch((error) => {
@@ -886,8 +883,8 @@ export async function availability(binary: CodexBinary = { command: "codex" }): 
 async function withServer<T>(binary: CodexBinary, use: (server: AppServer) => Promise<T>): Promise<T> {
   const server = new AppServer(binary, homedir());
   try {
-    await server.initialize();
-    return await use(server);
+    // A short-lived app-server that never answers would otherwise hold its request, and itself, for good.
+    return await within(server.initialize().then(() => use(server)), 30_000, "Codex");
   } finally {
     server.close();
   }

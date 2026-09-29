@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { within } from "./child.ts";
 import { cleanEnvironment } from "./claude.ts";
 
 export type UsageWindow = { id: string; label: string; used: number | null; resetsAt: string | null };
@@ -27,7 +28,7 @@ export function usage(claude: string): Promise<Usage> {
   inFlight ??= (async () => {
     const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment() } });
     try {
-      const answer = await probe.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+      const answer = await within(probe.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }), 20_000, "Claude Code's usage");
       const limits = (answer.rate_limits ?? {}) as Record<string, unknown>;
       const windows: UsageWindow[] = [];
       for (const [id, label] of named) {

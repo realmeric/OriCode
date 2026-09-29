@@ -30,9 +30,9 @@ export type AcpEntry = {
   handoff: string | null;
   /// The values of its thought_level option, for an agent that has one.
   levels?: string[];
-  /// Each model's levels, by id, for an agent whose session names them only for the model it's on:
-  /// OpenCode's variants. Asked while the session that lists the models opens.
-  variants?: (cli: string) => Promise<Map<string, string[]>>;
+  /// Its models read without opening a session, for an agent that can say them another way, as
+  /// OpenCode does from its model cache: a session costs it a process and a session to delete.
+  models?: (cli: string) => Promise<Model[]>;
   /// The permission modes a thread on it picks from, the SDK's ids, which `permissions` turns
   /// into its own.
   modes: string[];
@@ -43,6 +43,8 @@ export type AcpEntry = {
   /// Deletes a session the engine opened only to read the models, for an agent that keeps every
   /// session it opens.
   forget?: (cli: string, sessionId: string) => Promise<unknown>;
+  /// How long a thread's idle process is kept, when the engine's 90 seconds is too long for it.
+  idleRelease?: number;
   /// Which of the models listed the user's plan runs, and how the agent names them, for an agent
   /// whose list shows more than the plan allows. Asked while the session that lists them opens.
   runs?: (cli: string) => Promise<(models: Model[]) => Model[]>;
@@ -62,19 +64,16 @@ export function acpProvider(entry: AcpEntry): Provider {
     strays: entry.strays,
     textErrors: entry.textErrors,
     unlistedModes: entry.unlistedModes,
+    idleRelease: entry.idleRelease,
   });
   /// The models a session offers, from one opened for nothing else.
   async function offered(cli: string): Promise<Model[]> {
+    if (entry.models) return entry.models(cli);
     const plan = entry.runs?.(cli);
-    const variants = entry.variants?.(cli).catch((error) => {
-      log(`${known.name} didn't say its models' levels: ${describe(error)}`);
-      return undefined;
-    });
     const session = new AcpSession(`${entry.id}-models`, started(cli));
     const sessionId = await session.peek(tmpdir());
     if (sessionId && entry.forget) void entry.forget(cli, sessionId).catch((error) => log(`${known.name} kept session ${sessionId}: ${describe(error)}`));
     const { current, models } = listModels(session);
-    const levels = await variants;
     // The agent's own default first, which a thread on it with no model runs.
     const ordered = [...models.filter((model) => model.id === current), ...models.filter((model) => model.id !== current)];
     const listed = ordered.map(
@@ -83,11 +82,7 @@ export function acpProvider(entry: AcpEntry): Provider {
         name: model.name,
         description: model.description ?? "",
         // Only the levels the model has, where the agent says.
-        efforts: (entry.levels ?? []).filter((level) => {
-          // An agent that names them apart names none when it couldn't be asked.
-          const known = entry.variants ? (levels?.get(model.id) ?? []) : model.levels;
-          return !known || known.includes(level);
-        }),
+        efforts: (entry.levels ?? []).filter((level) => !model.levels || model.levels.includes(level)),
         fast: false,
         defaultEffort: null,
         ultra: false,

@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
 import { homedir } from "node:os";
-import { promisify } from "node:util";
 import { query, type FastModeDisabledReason, type FastModeState, type ModelInfo, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { agent, binary } from "./agents.ts";
 import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./cache.ts";
+import { run, within } from "./child.ts";
 import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
 import { fallback, helloList, withDefaults, type Model } from "./models.ts";
 import type { Availability, ModelsEvent, Provider } from "./provider.ts";
@@ -11,8 +10,6 @@ import { describe, Thread } from "./thread.ts";
 import { usage } from "./usage.ts";
 import { version } from "./version.ts";
 import { log } from "./wire.ts";
-
-const run = promisify(execFile);
 
 /// The `claude` the user installed and logged into, found with every other agent turned on in the
 /// one login shell agents.ts runs. The SDK's own bundled CLI is left out of the app on purpose,
@@ -113,7 +110,7 @@ function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
         options: { cwd, pathToClaudeCodeExecutable: claude, settingSources: ["user", "project", "local"], env: cleanEnvironment() },
       });
       try {
-        return await probe.supportedCommands();
+        return await within(probe.supportedCommands(), 30_000, "Claude Code's commands");
       } finally {
         probe.close();
       }
@@ -132,8 +129,7 @@ async function supportedModels(claude: string): Promise<ModelInfo[]> {
   const env = { ...cleanEnvironment(), CLAUDE_CODE_MODEL_CATALOG: "0" };
   const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env, stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
-    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), 20000));
-    return await Promise.race([probe.supportedModels(), timeout]);
+    return await within(probe.supportedModels(), 20_000, "Claude Code's models");
   } finally {
     probe.close();
   }
@@ -203,7 +199,7 @@ async function learnDefaults(claude: string, base: Model[], tell: (models: Model
     options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true, ultracode: true }, env: cleanEnvironment() },
   });
   try {
-    const learned = await withDefaults(probe, ultraProbe, base);
+    const learned = await within(withDefaults(probe, ultraProbe, base), 60_000, "Claude Code's model defaults");
     for (const miss of learned.missed) {
       log(`model defaults: the ${miss.ultracode ? "Ultracode " : ""}probe missed ${miss.id}: ${describe(miss.error)}`);
     }
@@ -231,7 +227,7 @@ async function fastCheck(claude: string, model: string | undefined): Promise<{ s
     options: { cwd: homedir(), model, pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), settings: { fastMode: true } },
   });
   try {
-    const init = await probe.initializationResult();
+    const init = await within(probe.initializationResult(), 20_000, "Claude Code's fast mode");
     return { state: init.fast_mode_state ?? "off", reason: init.fast_mode_disabled_reason ?? null };
   } finally {
     probe.close();

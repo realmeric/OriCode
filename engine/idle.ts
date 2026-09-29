@@ -8,14 +8,14 @@ export const idleRelease = 90_000;
 /// What the app last said about its window: the thread open in it, and whether it can be seen.
 export type Shown = { threadId: string | null; visible: boolean };
 
-/// Ends each CLI idle past its limit: 90 seconds, or none at all for a thread that isn't open
-/// while the window can't be seen, since nobody is about to write to it. Returns the threads let
-/// go, and how long until the next one could be.
+/// Ends each CLI idle past its limit: 90 seconds, or its agent's own when that's shorter, or none
+/// at all for a thread that isn't open while the window can't be seen, since nobody is about to
+/// write to it. Returns the threads let go, and how long until the next one could be.
 export function releaseIdle(threads: Map<string, Session>, shown: Shown, now = Date.now()): { released: string[]; next: number | undefined } {
   const released: string[] = [];
   let next: number | undefined;
   for (const [threadId, thread] of threads) {
-    const limit = shown.visible || threadId === shown.threadId ? idleRelease : 0;
+    const limit = shown.visible || threadId === shown.threadId ? (thread.idleRelease ?? idleRelease) : 0;
     if (thread.releaseIfIdle(limit, now)) {
       released.push(threadId);
       continue;

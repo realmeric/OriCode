@@ -1,9 +1,10 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, toolView, type Hunk, type View } from "./acp-map.ts";
+import { runSettled } from "./child.ts";
 import { unifiedHunks } from "./codex.ts";
 import type { Availability, Capabilities } from "./provider.ts";
 import { lastLine } from "./shell.ts";
@@ -605,12 +606,9 @@ export async function availability(binary: PiBinary = { command: "pi" }): Promis
   return { state: "ready", cli: binary.command, version, hint: null };
 }
 
-function run(binary: PiBinary, args: string[]): Promise<{ stdout: string; stderr: string; missing: boolean }> {
-  return new Promise((resolve) => {
-    execFile(binary.command, [...(binary.args ?? []), ...args], { env: agentEnvironment(binary.env), timeout: 10_000 }, (error, stdout, stderr) => {
-      resolve({ stdout, stderr, missing: (error as NodeJS.ErrnoException | null)?.code === "ENOENT" });
-    });
-  });
+async function run(binary: PiBinary, args: string[]): Promise<{ stdout: string; stderr: string; missing: boolean }> {
+  const { stdout, stderr, error } = await runSettled(binary.command, [...(binary.args ?? []), ...args], { env: agentEnvironment(binary.env), timeout: 10_000 });
+  return { stdout, stderr, missing: error?.code === "ENOENT" };
 }
 
 async function withRpc<T>(binary: PiBinary, use: (rpc: Rpc) => Promise<T>): Promise<T> {

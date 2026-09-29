@@ -40,4 +40,11 @@ test("the defaults are kept for the list and the settings they were read under",
   assert.equal(defaultsKey(fallback, '{"effortLevel":"high"}'), key);
   assert.notEqual(defaultsKey(fallback, '{"effortLevel":"low"}'), key);
   assert.notEqual(defaultsKey(fallback.slice(1), '{"effortLevel":"high"}'), key);
+  assert.notEqual(defaultsKey(fallback, '{"effortLevel":"high","enableWorkflows":true}'), key);
+});
+
+test("an edit to a setting the probes don't read leaves the defaults where they were", () => {
+  const key = defaultsKey(fallback, '{"effortLevel":"high","theme":"dark"}');
+  assert.equal(defaultsKey(fallback, '{"theme":"light","effortLevel":"high","hooks":{}}'), key);
+  assert.equal(defaultsKey(fallback, "not json"), defaultsKey(fallback, "{}"));
 });

@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { run, type RunError } from "./child.ts";
+import { gitDeadline } from "./git.ts";
 
 // Review: what the working tree changes against HEAD, as hunks, and the git the Review surface
 // does with them. Every path is from the repository's top, whichever folder the thread is in.
@@ -45,31 +46,15 @@ const untrackedBytes = 1024 * 1024;
 type Options = { input?: string; env?: Record<string, string> };
 
 /// git with what git.ts's helper can't do: standard input, and an index of its own.
-export function gitRun(cwd: string, args: string[], options: Options = {}): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("git", args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...options.env } });
-    const out: Buffer[] = [];
-    const err: Buffer[] = [];
-    let size = 0;
-    child.stdout.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > 96 * 1024 * 1024) {
-        child.kill();
-        reject(new Error("This diff is too large to show."));
-      } else {
-        out.push(chunk);
-      }
-    });
-    child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
-      else reject(new Error(Buffer.concat(err).toString("utf8").trim() || `git ${args.find((arg) => !arg.startsWith("-")) ?? ""} failed`));
-    });
-    // git can exit before it has read everything it was given.
-    child.stdin.on("error", () => {});
-    child.stdin.end(options.input ?? "");
-  });
+export async function gitRun(cwd: string, args: string[], options: Options = {}): Promise<string> {
+  try {
+    const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", ...options.env };
+    return (await run("git", args, { cwd, env, input: options.input, timeout: gitDeadline(args), maxBuffer: 96 * 1024 * 1024 })).stdout;
+  } catch (error) {
+    const { code, stderr, message } = error as RunError;
+    if (code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") throw new Error("This diff is too large to show.");
+    throw new Error(stderr?.trim() || (typeof code === "number" ? `git ${args.find((arg) => !arg.startsWith("-")) ?? ""} failed` : message));
+  }
 }
 
 export async function top(cwd: string): Promise<string> {

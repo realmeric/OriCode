@@ -33,7 +33,7 @@ async function agents(bin: string, logs: string): Promise<void> {
   const codex = new URL("./fixtures/codex-app-server.ts", import.meta.url).pathname;
   const acp = new URL("./fixtures/acp-agent.ts", import.meta.url).pathname;
   await writeFile(join(bin, "codex"), `#!/bin/sh\nexport CODEX_LOG='${join(logs, "codex.log")}'\ncase "$*" in\n  --version) echo "codex-cli 9.9.9" ;;\n  *) exec "${process.execPath}" "${codex}" "$@" ;;\nesac\n`);
-  await writeFile(join(bin, "opencode"), `#!/bin/sh\nexport ACP_LOG='${join(logs, "acp.log")}'\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${acp}" ;;\n  session) exit 0 ;;\nesac\n`);
+  await writeFile(join(bin, "opencode"), `#!/bin/sh\nexport ACP_LOG='${join(logs, "acp.log")}'\ncase "$1" in\n  --version) echo "1.18.32" ;;\n  acp) exec "${process.execPath}" "${acp}" ;;\n  models) printf 'small\\n{\\n  "id": "small",\\n  "name": "Small",\\n  "variants": {}\\n}\\n' ;;\nesac\n`);
   await chmod(join(bin, "codex"), 0o755);
   await chmod(join(bin, "opencode"), 0o755);
 }
