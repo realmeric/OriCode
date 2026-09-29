@@ -2,6 +2,89 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.2.0 "In company" - 2026-09-29
+
+### Agents
+
+- OriCode runs more than Claude Code now. Codex, Cursor, GitHub Copilot, OpenCode, Grok Build, Devin, Pi and Antigravity come in through their own CLIs and the logins you made for them in Terminal, which OriCode never reads. Z.ai, DeepSeek, OpenRouter and Meta run inside Claude Code on a key you keep in the Keychain, and Command Code runs its own `cmd` on a key or on `cmd login`.
+- Settings › Agents lists every agent. Turn one on and its CLI is found the way Node is, or you choose the binary, and its row says it's signed in or gives the one Terminal line that would sign it in. A key goes from a secure field into your login Keychain and is handed only to the process that calls that API.
+- Logins a maker keeps to its own apps, Antigravity with a Google account and Pi signed into claude.ai, xAI or Meta, are off until you turn them on under the maker's own sentence.
+- Each agent shows its maker's own logo in its maker's own colour: Claude's orange, Copilot's purple, DeepSeek's blue, and white for the makers whose marks are black or white, like OpenAI and Cursor.
+- The model menu folds each agent into one row that opens on a click, the agent you're on open. It shows only the models you've turned on in Settings › Agents, which has a search field and a switch for each model, and out of the box each agent's default and a few more, so OpenCode's and OpenRouter's hundreds wait there until you pick them.
+- The model menu lists each agent's models under its name and mark, with favourites from all of them first. A new thread moves to another agent when you pick one of its models, and once it has begun it stays on its agent. Settings › New threads picks the agent new threads start on.
+- Every agent whose CLI takes a reasoning level gets the effort rail with the levels it really has, OpenCode's variants among them.
+- A thread can change agent whenever it isn't working: pick another agent's model and the thread moves, the new agent picking up with the conversation so far handed over, and a faint line in the transcript saying where it changed.
+- A thread offers only what its agent can do. The effort rail, the permission tiles, fast mode, the usage glass and sending mid-turn go where the agent has no such thing, and Pi and Command Code say they run unsupervised.
+- Codex's 30-day window fills the usage glass and the limit card. Continue in opens a thread's session in its own CLI in a block, for every agent that has a resume line, and the thread waits while it runs.
+- A signed-out Claude Code no longer turns off the review, branches or ⌘K's git rows, and Retry after a login in Terminal doesn't restart the engine.
+- Codex, Cursor and OpenCode have run real threads. The other agents and the model APIs are built to their makers' protocols and tested against stand-ins, and haven't had a real turn yet.
+
+### Writing while it works, and the queue
+
+- Return while a thread works sends what you typed into the running turn. It shows at once as your bubble, dimmed, with "Waiting for the next step" under it, and brightens when the agent takes it up after the step it's on. On an agent that can't take a message mid-turn, Return queues it instead.
+- ⌥Return puts a message in the thread's queue for after the turn. Queued messages sit inside the composer above the field, a line each; a click or ↑ takes one back to edit, and its cross removes it. When a turn ends by itself the first goes out, and the rest follow a turn at a time.
+- Stop sends nothing more. What was sent into the turn and what was queued come back into the field, oldest first, ahead of what's typed.
+
+### Heads and Rays
+
+- While a thread works, its mark sits at the title's left end. A click on it, or ⌘I, opens the heads: the main loop and what it's on, each agent with its step, time, tokens and tool calls, each workflow, and each background command with its last line, and Stop on the row under the pointer. A ray lights for each agent at work, never for a command.
+- Each head is drawn in its agent's colour on the mark, the dot for the thread's own agent and a ray for each worker. Colour stays off everything else.
+- Rays: a thread's head can send out workers on other agents, through tools OriCode serves it over MCP. Tap the mark in the picker, or press ↑ from the effort rail, and pick the models the head may hand work to, Opus as the head with GPT-6-Luna as its ray, say; each lights a ray on the mark in its agent's colour, and the head is told to use them without a word in your message. A worker that edits works in a worktree of its own, and the head merges what it keeps, which arrives staged in the review, credited to that worker's ray. Stop on the head stops them. Claude Code, Codex and the ACP agents that take MCP can be heads; Pi, Command Code, Antigravity and Grok Build can only be workers.
+- Workflows are a switch of their own beside Fast, so any model runs them at any level: Sonnet at Medium fans a task out to agents that all run at Medium. On Claude Code, Extra high with workflows is its Ultracode; other agents fan out through Rays. Ultracode is no longer a stop on the rail, and a thread left at Ultracode comes back at Extra high with workflows on.
+- A workflow a thread starts gets a card of its own: its phases, a bead for each agent, lit while it runs and red if it failed, and a click lists the agents.
+
+### The plan card, and limits
+
+- A plan the agent writes is a checklist card where it was first written: "3 of 7 done", the item in progress lit and saying what it's doing, done ones ticked and faint. Each update changes the card in place and leaves no line of its own.
+- A thread a usage limit stopped shows a card with the limit's name, when it resets and a countdown, and a Go on when it resets switch. With it on, the thread goes on by itself after the reset. Settings › Conversation sets the default, on for the session limit.
+- Near a limit, one faint line says so: "90% of the session used · resets in 1 hr 10 min". The usage glass follows the turn as it runs instead of waiting for it to end.
+- A thread still working when OriCode quits picks up by itself at the next launch, with a line in the transcript saying why. One that was waiting on your answer comes back still waiting.
+
+### The shell prompt and terminal blocks
+
+- `!` at the start of the composer, or ⌘J, turns it into a shell prompt for the thread's folder: the `$` grows out of the composer's left end and the text turns to SF Mono. Return runs the command in a terminal of its own, and its block lands in the transcript in the terminal's colours, following the output, with Stop.
+- The agent reads what your blocks printed since it last read them with your next message, so an error reaches it without pasting.
+- A command still running once the transcript has scrolled past it is named under the composer, with Show and Stop.
+- vim, less or anything else that takes the whole screen opens its block into a full terminal over the conversation and gives it back when it quits, and Open does the same for any running block. The old ⌘J terminal is gone.
+- Tab completes what your own zsh would, `git che` and `npm run` included, listing several matches above the composer; with bash or fish it completes commands and paths. ↑ and ↓ bring back earlier commands.
+
+### Search, links and the review
+
+- ⌘K, ⌘P, the review and the heads grow out of the title capsule and fold back into it.
+- ⌘K finds what was said. With two characters typed, a Messages section lists the messages and replies that hold every word, and Return opens the thread at that message.
+- A file link in a reply opens the file in the viewer, at its line when the link names one.
+- In the review an open file is one card with its hunks inside, and a click on its header folds it. The first look opens only the first file to review. Marking a hunk moves on to the next, opening the next file and folding the finished one, and a file's own circle marks all its hunks at once. ← and → fold and open, and ⌥-click on a chevron does it to every file.
+
+### Shortcuts
+
+- Settings › Shortcuts lists every shortcut and gives each another key, the menus' and the composer's Return, ⌥Return and ⇧Return included. A key that's taken is refused with what holds it, macOS keeps its own, and ⌘/ and the menus show your keys.
+
+### Speed and size
+
+- A long thread is as quick as an empty one. With 100 turns behind, a streaming reply costs 4.6ms a delta where it cost 26 and dropped most frames, switching to it takes 75 to 99ms instead of a quarter of a second, and it holds 77MB instead of 171.
+- A key in the composer costs about 3ms whatever it holds, where 4,000 characters made it 20ms: the field is AppKit's own text view now.
+- The engine is ready about 390ms after launch instead of 550.
+- The picker, the rays' page, ⌘K, the drawer, the review and Settings open without skipping frames at the start, and Settings appears in about 60ms instead of 115.
+- OpenCode lists its models with 5 processes and about 430MB instead of 17 and 1.75GB, model lists are kept, a git or probe that hangs is killed at a deadline instead of outliving the app, and a thread you only looked at lets go of its memory three minutes after you leave it.
+
+- Launch starts one CLI where it started five, peaking under 125MB instead of over 900MB, and the engine is ready in 0.5 to 1.1 seconds where it took 1.1 to 1.5. A thread's CLI is let go 90 seconds after its turn instead of five or six minutes, and at once for a thread that isn't open while the window is hidden.
+- In a folder with changes the app starts at 37MB instead of 57MB. The review is coloured only while it's shown and reads git with three processes instead of six.
+- A running block with 10,000 lines redraws in 3ms instead of 19ms, and a finished block lets go of its terminal: twenty long commands cost 81MB instead of 660MB.
+- The Release app is 11.0MB instead of 13.8MB, without the parts of Sparkle and Highlightr it never used.
+- A streaming reply reaches the screen at most once a frame, about 5ms a delta where it was about 15 by the end of a long reply. ⌘K over 10,000 messages answers a key in 14ms instead of 1.5 seconds, and opening a long thread no longer holds up the window.
+- The model page draws only the rows in view, so OpenCode's 397 models open in about 30ms instead of 0.9 seconds.
+
+### Fixes
+
+- On a question, the picked option is lit with a checkmark, the card's buttons light under the pointer, and Other is a field on the glass instead of a black box.
+- Tab never takes the keyboard out of the composer, the next command can be typed straight after Return, and ⌫ in an empty prompt turns it back into the composer.
+- A command that prints and exits at once keeps its last lines, on screen and in what the agent reads.
+- An open block stays with its thread, and Return answers a waiting card after ⌘K or ⌘P.
+- A block that ends while it's open puts itself back in the thread, and Close, ⌘J, a click on the transcript or one Esc each put an open block away.
+- Settings' selected pane, dialogs' default buttons and switches that are on read with white words, and the review's buttons light under the pointer.
+- Continue in can't open a second copy of a session already open in a block, and ⌘K and ⌘P draw over an open file.
+- ⇧Return puts its new line where the cursor is.
+
 ## v0.1.0 "In the open" - 2026-09-24
 
 - The first public release, and the first you can download. OriCode is a native macOS app for coding agents, and the agent it runs is Claude Code, the one you're already logged into; it never sees a key or a token.
