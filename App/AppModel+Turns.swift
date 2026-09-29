@@ -10,6 +10,30 @@ extension AppModel {
         selectedChatID.flatMap { conversations[$0] }
     }
 
+    /// A conversation not open, not running, not waiting on you and holding no messages is dropped
+    /// from memory; reopening it reads it back off the main thread.
+    func letGo(_ id: UUID) {
+        guard id != selectedChatID, let conversation = conversations[id], !conversation.working, conversation.waitingAsk == nil,
+              !conversation.waitingAfterQuit, !conversation.holdsMessages
+        else { return }
+        conversation.flush()
+        conversations[id] = nil
+    }
+
+    /// Lets the thread just left go once it has been away `awayLimit`, so memory stays flat however
+    /// many threads are browsed. One that's running then goes on its `released` event instead.
+    func letGoSoon(_ id: UUID) {
+        guard conversations[id] != nil else { return }
+        leaving[id]?.cancel()
+        // Weakly, so a model that's gone isn't kept alive by the wait.
+        leaving[id] = Task { [weak self, awayLimit] in
+            try? await Task.sleep(for: awayLimit)
+            guard !Task.isCancelled, let self else { return }
+            leaving[id] = nil
+            letGo(id)
+        }
+    }
+
     func conversation(for chat: Chat) -> Conversation {
         if let existing = conversations[chat.id] { return existing }
         let created = Conversation(chat: chat, context: context, said: said)
@@ -227,10 +251,7 @@ extension AppModel {
         }
         // The engine let an idle thread's CLI go; its transcript can go too unless it's open.
         if event.name == "released" {
-            if id != selectedChatID, let conversation = conversations[id], !conversation.running, !conversation.holdsMessages {
-                conversation.flush()
-                conversations[id] = nil
-            }
+            letGo(id)
             return
         }
         guard let chat = chat(withID: id) else { return }

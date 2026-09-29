@@ -106,6 +106,10 @@ final class AppModel {
     var modelsByAgent: [String: [ModelOption]] = [:]
     /// The agents whose models have been asked for since the engine started.
     @ObservationIgnored var modelsAsked: Set<String> = []
+    /// How long a thread only looked at stays in memory once another is open, and the timers that
+    /// count it, one per thread left.
+    @ObservationIgnored var awayLimit: Duration = .seconds(180)
+    @ObservationIgnored var leaving: [UUID: Task<Void, Never>] = [:]
     /// The effortLevel in the user's Claude Code settings, which is where Default lands when set.
     var settingsEffort: String?
     /// Bumped whenever the app's defaults change, so what reads them there (a new thread's
@@ -256,6 +260,8 @@ final class AppModel {
 
     var selectedChatID: UUID? {
         didSet {
+            if let oldValue, oldValue != selectedChatID { letGoSoon(oldValue) }
+            if let selectedChatID { leaving[selectedChatID]?.cancel() }
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
             // A ⌘digit peek ends when another thread is opened, however it's opened.
             if peekedChatID != selectedChatID { peekedChatID = nil }
