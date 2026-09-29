@@ -183,6 +183,8 @@ final class ComposerTextView: NSTextView {
         isVerticallyResizable = true
         isHorizontallyResizable = false
         minSize = .zero
+        // The system's caret is a dim grey on the dark glass, which reads as a field without focus.
+        insertionPointColor = NSColor(white: 1, alpha: 0.92)
         maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         dress(font: Self.body, ink: 0.92)
     }
@@ -299,6 +301,31 @@ final class ComposerTextView: NSTextView {
             wantsKeyboard = false
             window.makeFirstResponder(self)
         }
+    }
+
+    // MARK: Cursor
+
+    /// The I-beam is the text view's over its own frame; where the pointer goes next is left the
+    /// arrow, since SwiftUI's views around it set no cursor of their own to take the I-beam back.
+    override func cursorUpdate(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) {
+            super.cursorUpdate(with: event)
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        NSCursor.arrow.set()
+    }
+
+    /// A field that goes, under the pointer, takes its I-beam with it.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if let window, newWindow == nil, bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)) {
+            NSCursor.arrow.set()
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     // MARK: Drop
