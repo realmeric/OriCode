@@ -97,6 +97,14 @@ actor Engine {
         }
         // Where the engine keeps what it learned from Claude Code between launches.
         environment["ORICODE_CACHE"] = Build.support.appending(path: "Engine").path
+        // Node keeps what it compiled of the engine and the Agent SDK there, so the next start
+        // reads it instead of compiling it again: 50ms of the engine's start. One folder for each
+        // build, the others removed, so an update leaves nothing behind. The engine takes the
+        // variable out of the environment its own children get.
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        let compiled = Build.support.appending(path: "Engine/compile-cache-\(build)")
+        environment["NODE_COMPILE_CACHE"] = compiled.path
+        Self.removeOtherCompileCaches(keeping: compiled)
         process.environment = environment
         // Its CLIs inherit it, idle ones and probes too, and none of them is what the user waits
         // on the way a click is. A turn's CPU work measured as fast at utility as at
@@ -146,6 +154,17 @@ actor Engine {
         _ = try? log?.seekToEnd()
         Self.lines(from: errors.fileHandleForReading, onEnd: {}) { line in
             try? log?.write(contentsOf: Data((line + "\n").utf8))
+        }
+    }
+
+    private nonisolated static func removeOtherCompileCaches(keeping kept: URL) {
+        let engine = kept.deletingLastPathComponent()
+        DispatchQueue.global(qos: .utility).async {
+            let files = FileManager.default
+            for old in (try? files.contentsOfDirectory(at: engine, includingPropertiesForKeys: nil)) ?? []
+            where old.lastPathComponent.hasPrefix("compile-cache-") && old.lastPathComponent != kept.lastPathComponent {
+                try? files.removeItem(at: old)
+            }
         }
     }
 

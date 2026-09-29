@@ -2,7 +2,7 @@
 // version and its login, so nothing starts a real CLI or reaches Claude.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -185,6 +185,64 @@ test("a check of a Claude that was ready at hello doesn't send its models again"
   const { folder, config } = await cachedDefaults();
   const lines = await helloThenCheck({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, async () => {}, 3);
   assert.deepEqual(lines.slice(2), [{ id: 2, result: claudeEntry("ready", claude.path, cli, null) }]);
+});
+
+/// What a check leaves in the cache folder for the CLI at `path`, as the engine writes it.
+async function login(folder: string, path: string, stamp?: string): Promise<string> {
+  const real = await realpath(path);
+  const { mtimeMs, size } = await stat(real);
+  const file = join(folder, "login.json");
+  await mkdir(folder, { recursive: true });
+  await writeFile(file, JSON.stringify({ cli: path, stamp: stamp ?? `${real}:${mtimeMs}:${size}`, version: cli }));
+  return file;
+}
+
+/// The engine's first `count` lines for one hello, with stdin closed after them.
+async function helloUntil(env: Record<string, string | undefined>, count: number): Promise<any[]> {
+  const engine = startEngine(env);
+  const lines: any[] = [];
+  let arrived = () => {};
+  createInterface({ input: engine.stdout }).on("line", (line) => {
+    lines.push(JSON.parse(line));
+    arrived();
+  });
+  const waiting = new Promise<void>((done) => (arrived = () => void (lines.length >= count && done())));
+  engine.stdin.write(JSON.stringify({ id: 1, method: "hello" }) + "\n");
+  await waiting;
+  engine.stdin.end();
+  await new Promise((done) => engine.on("close", done));
+  return lines;
+}
+
+test("hello answers from the login it remembered without asking for the version or the login, and asks the login again behind the reply", async () => {
+  const claude = await standIn(true);
+  const { folder, config, known } = await cachedDefaults();
+  const file = await login(folder, claude.path);
+  const lines = await helloUntil({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, 2);
+  assert.deepEqual(lines[0], { id: 1, result: { version, models: known, claude: claude.path, loggedIn: true, providers: [claudeEntry("ready", claude.path, cli, null)] } });
+  // Still signed in: nothing more is said, and what it remembers stays.
+  assert.deepEqual(await claude.ran(), ["auth status"]);
+  assert.ok(existsSync(file));
+});
+
+test("a login made and lost since: the reply says ready, a provider event says signed out, and it's forgotten", async () => {
+  const claude = await standIn(false);
+  const { folder, config } = await cachedDefaults();
+  const file = await login(folder, claude.path);
+  const lines = await helloUntil({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, 3);
+  assert.equal(lines[0].result.providers[0].state, "ready");
+  assert.deepEqual(lines[2], { event: "provider", ...claudeEntry("signedOut", claude.path, cli, "Run `claude` in Terminal and log in.") });
+  assert.ok(!existsSync(file));
+});
+
+test("a CLI that isn't the one it remembered is asked in full, and remembered", async () => {
+  const claude = await standIn(true);
+  const { folder, config } = await cachedDefaults();
+  const file = await login(folder, claude.path, "an older claude");
+  const lines = await helloUntil({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, 2);
+  assert.equal(lines[0].result.providers[0].state, "ready");
+  assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
+  assert.notEqual(JSON.parse(await readFile(file, "utf8")).stamp, "an older claude");
 });
 
 /// Each request in turn, the next sent once the last has its reply, and every reply by its id.

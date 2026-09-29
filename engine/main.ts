@@ -25,6 +25,9 @@ import { run, stopAll } from "./shell.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
+// The compile cache is for this engine's own modules; the CLIs and servers it starts don't inherit it.
+delete process.env.NODE_COMPILE_CACHE;
+
 const providers = new Map<string, Provider>([
   [claude.id, claude],
   [codex.id, codex],
@@ -204,6 +207,17 @@ async function checked(id: string) {
   return described(id, found);
 }
 
+/// Claude Code asked again after hello answered from what it remembered: a `provider` event only
+/// if it's no longer signed in, after the reply, which would undo it before.
+async function confirmed(): Promise<void> {
+  try {
+    const found = await checked(claude.id);
+    if (found.state !== "ready") event("provider", found);
+  } catch (error) {
+    log(`Claude Code's login not asked again: ${describe(error)}`);
+  }
+}
+
 const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// `agents` are the ones turned on in Settings › Agents beside Claude Code, all looked for in
   /// one login shell; none of their CLIs is asked anything until a check.
@@ -211,13 +225,16 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     turnOn(on);
     const others = turnedOn().filter((entry) => entry.id !== claude.id);
     lookUp([claude.id, ...others.map((entry) => entry.id)]);
-    const [found, ...theirs] = await Promise.all([claude.availability(), ...others.map(unasked)]);
+    // Signed in when last asked and the same CLI: hello answers with that, and asks again behind it.
+    const known = await claude.remembered?.();
+    const [found, ...theirs] = await Promise.all([known ?? claude.availability(), ...others.map(unasked)]);
     if (found.state === "ready") listed.add(claude.id);
     const replied = Promise.withResolvers<void>();
     const models = await claude.models(found, (fields) => void replied.promise.then(() => event("models", fields)));
     // Nothing awaits after this, so it runs once the reply is written: a `models` event
     // arriving first would be undone by the reply.
     setImmediate(replied.resolve);
+    if (known) setImmediate(() => void confirmed());
     const providers = [described(claude.id, found), ...others.map((entry, index) => described(entry.id, theirs[index]))];
     return { version, models, claude: found.cli, loggedIn: found.state === "ready", providers };
   },

@@ -121,6 +121,26 @@ struct ProviderTests {
         #expect(model.usageLoading)
     }
 
+    /// The `provider` event the engine sends when hello answered from a login it remembered and asking again found none.
+    private static func providerEvent(_ info: ProviderInfo) throws -> EngineEvent {
+        let body = try JSONDecoder().decode(JSON.self, from: JSONEncoder().encode(info))
+        return EngineEvent(name: "provider", threadId: nil, body: body)
+    }
+
+    @Test func aProviderEventAfterHelloTakesTheLoginBackAndOneBeforeItWaitsForHello() throws {
+        let model = opened()
+        model.providers = [Self.claude(.ready)]
+        model.route(try Self.providerEvent(Self.signedOut))
+        #expect(model.providers.first?.state == .signedOut)
+        #expect(model.agentDown?.hint == "Run `claude` in Terminal and log in.")
+
+        let early = opened()
+        early.engineState = .starting
+        early.route(try Self.providerEvent(Self.signedOut))
+        #expect(early.providers.first?.state == .ready)
+        #expect(early.earlyProviders.count == 1)
+    }
+
     @Test func aThreadCutOffByAQuitWaitsForItsAgentAndGoesOnOnceACheckFindsItReady() {
         chat.sessionId = "s"
         chat.quitMidTurn = true

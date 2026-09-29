@@ -261,6 +261,8 @@ final class AppModel {
     /// The wait for the soonest session limit to reset, when a thread it stopped goes on.
     var resumeTask: Task<Void, Never>?
     private var booted = false
+    /// A `provider` event that came before hello's list did, applied once it has.
+    @ObservationIgnored var earlyProviders: [ProviderInfo] = []
     private var noteTask: Task<Void, Never>?
 
     var selectedProjectID: UUID? {
@@ -460,6 +462,8 @@ final class AppModel {
             // Which models run workflows comes a moment later, in the models event.
             models = hello.models.map(\.assumingWorkflows)
             providers = hello.providers
+            for found in earlyProviders { checked(found) }
+            earlyProviders = []
             modelsAsked = []
             engineState = .ready
             Task { await loadAgents() }

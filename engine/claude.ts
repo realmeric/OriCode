@@ -1,4 +1,6 @@
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { query, type FastModeDisabledReason, type FastModeState, type ModelInfo, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { agent, binary } from "./agents.ts";
 import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./cache.ts";
@@ -78,7 +80,52 @@ async function availability(): Promise<Availability> {
   let version = versions.get(claude);
   if (!version) versions.set(claude, (version = claudeVersion(claude)));
   const [login, cli] = await Promise.all([loggedIn(claude), version]);
+  void remember(claude, cli, login);
   return { state: login ? "ready" : "signedOut", cli: claude, version: cli, hint: login ? null : entry.login };
+}
+
+/// What the last check found when Claude Code was signed in, for hello to answer with while
+/// `claude auth status` is asked again behind it. It names the CLI's file, so an update or a
+/// different `claude` is asked in full, and holds no login: the CLI said it has one, that's all.
+type Remembered = { cli: string; stamp: string; version: string | null };
+
+async function stampOf(cli: string): Promise<string | undefined> {
+  try {
+    const real = await realpath(cli);
+    const { mtimeMs, size } = await stat(real);
+    return `${real}:${mtimeMs}:${size}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function remember(cli: string, version: string | null, signedIn: boolean): Promise<void> {
+  if (!cacheFolder) return;
+  const file = join(cacheFolder, "login.json");
+  try {
+    if (!signedIn) return await rm(file, { force: true });
+    const stamp = await stampOf(cli);
+    if (!stamp) return;
+    await mkdir(cacheFolder, { recursive: true });
+    await writeFile(file, JSON.stringify({ cli, stamp, version } satisfies Remembered));
+  } catch (error) {
+    log(`login not remembered: ${describe(error)}`);
+  }
+}
+
+/// Claude Code as the last check found it, or undefined when it found none, found it signed out,
+/// or the CLI has changed since.
+async function remembered(): Promise<Availability | undefined> {
+  if (!cacheFolder) return undefined;
+  try {
+    const [cli, text] = await Promise.all([findClaude(), readFile(join(cacheFolder, "login.json"), "utf8")]);
+    const known = JSON.parse(text) as Remembered;
+    if (!cli || known.cli !== cli || known.stamp !== (await stampOf(cli))) return undefined;
+    versions.set(cli, Promise.resolve(known.version));
+    return { state: "ready", cli, version: known.version, hint: null };
+  } catch {
+    return undefined;
+  }
 }
 
 let models: Model[] | undefined;
@@ -276,6 +323,7 @@ export const claude: Provider = {
   missing,
   found: findClaude,
   availability,
+  remembered,
   models: list,
   session: (threadId, cli) => new Thread(threadId, cli),
   fastCheck,

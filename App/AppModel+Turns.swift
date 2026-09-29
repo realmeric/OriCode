@@ -234,6 +234,10 @@ extension AppModel {
             if event.name == "error", let message = event.body["message"]?.string {
                 say(message)
             }
+            // Hello answered from the login it remembered, and asking the CLI again found none.
+            if event.name == "provider", let found = try? event.body.decode(ProviderInfo.self) {
+                if engineState == .ready { checked(found) } else { earlyProviders.append(found) }
+            }
             // The same models as hello's, now with each one's default effort and workflows; or
             // another agent's, which names it.
             if event.name == "models", let list = try? event.body["models"]?.decode([ModelOption].self), !list.isEmpty {

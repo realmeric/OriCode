@@ -128,6 +128,8 @@ export type Provider = {
   /// Asked at hello and again by provider.check, so after the first it asks the CLI only what a
   /// login in Terminal changes.
   availability(): Promise<Availability>;
+  /// What the last check found, for hello to answer with before it asks again; undefined asks in full.
+  remembered?(): Promise<Availability | undefined>;
   /// Hello's list, read once `ready` says the CLI can be asked; `tell` sends the `models`
   /// events that follow it.
   models(ready: Availability, tell: (models: ModelsEvent) => void): Promise<Model[]>;
