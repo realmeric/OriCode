@@ -2,6 +2,11 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.2.1 "Any folder" - 2026-09-29
+
+- Any folder is a project now, git or not. Add Project used to refuse a folder without a `.git` and say so; it takes it, and the threads there run as anywhere else. The review, branches and worktree threads need git, so in a plain folder they answer "This folder isn't a git repository." in place of git's own error.
+- Opening a new thread while the pointer rests on a reply's text no longer leaves the I-beam on the empty window. The arrow comes back once the old transcript has gone, and whatever is under the pointer then, another thread's text or nothing, sets its own cursor.
+
 ## v0.2.0 "In company" - 2026-09-29
 
 ### Agents
