@@ -6,7 +6,6 @@ struct RootView: View {
     /// Whether the last layout had a transcript in it: one arriving where there wasn't one comes
     /// up behind the travelling composer, and one taking another thread's place only fades in.
     @State private var hadTranscript = false
-    @State private var pointerTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { window in
@@ -72,8 +71,6 @@ struct RootView: View {
                 .animation(started ? Motion.glide : Motion.glide.delay(0.1), value: started)
                 .onAppear { hadTranscript = started }
                 .onChange(of: started) { _, now in hadTranscript = now }
-                .onChange(of: model.selectedChatID) { refreshPointer() }
-                .onChange(of: started) { refreshPointer() }
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
                 .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                 .simultaneousGesture(TapGesture().onEnded {
@@ -88,6 +85,10 @@ struct RootView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
+        // SwiftUI keeps the I-beam of selectable text that goes from under a resting pointer, a
+        // transcript left for a new thread say, and sets it again on every move until that text
+        // comes back. A style of the window's own under everything is what it falls back to.
+        .pointerStyle(.default)
         // The picker rises out of the composer into the terminal's place, and can't draw over it.
         .onChange(of: model.modelPickerShown) { _, shown in
             if shown {
@@ -251,16 +252,6 @@ struct RootView: View {
     private static func clearing(width: CGFloat) -> CGFloat {
         let left = (width - min(Column.width, width - Column.margin * 2)) / 2
         return max(0, Drawer.width + Drawer.inset * 2 + Column.margin - left)
-    }
-
-    /// Once the old views are gone, the pointer's cursor is asked for again.
-    private func refreshPointer() {
-        pointerTask?.cancel()
-        pointerTask = Task {
-            try? await Task.sleep(for: PointerCursor.settle)
-            guard !Task.isCancelled else { return }
-            PointerCursor.refresh()
-        }
     }
 
     /// The first message's transcript rises in behind the composer once it has mostly gone past,
