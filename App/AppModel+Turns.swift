@@ -349,7 +349,7 @@ extension AppModel {
         lastEffort = effort
         guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.effort = effort
-        save()
+        keep()
     }
 
     /// On when the thread asks for them and its model can run them; a switch to a model that
@@ -364,7 +364,7 @@ extension AppModel {
     func setWorkflows(_ on: Bool, for chat: Chat?) {
         guard let chat = chat ?? (on ? newChat() : nil) else { return }
         chat.workflows = on
-        save()
+        keep()
     }
 
     /// Threads stored at Ultracode, from when it was a level, at Extra high with workflows on,
@@ -396,7 +396,7 @@ extension AppModel {
         lastFast = on
         guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.fastMode = on
-        save()
+        keep()
         let fast = fastMode(of: chat)
         Task { _ = try? await engine.request("setFast", ["threadId": .string(chat.id.uuidString), "fast": .bool(fast)]) }
         if fast { checkFast(chat) }
@@ -425,7 +425,7 @@ extension AppModel {
         lastPermissionMode = mode
         guard let chat = chat ?? (unchanged ? nil : newChat()) else { return }
         chat.permissionMode = mode
-        save()
+        keep()
         let running = conversation(for: chat).running
         Task {
             let reply = try? await engine.request("setMode", ["threadId": .string(chat.id.uuidString), "permissionMode": .string(mode)])

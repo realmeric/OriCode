@@ -157,6 +157,26 @@ struct RaysPageTests {
         #expect(model.raySlots(for: chat)[refs[6]] == 5)
     }
 
+    /// With workflows on, the arcs the rays leave light in the head's own colour: orange on
+    /// Claude, where white would read as Codex's rays, and white on Codex.
+    @Test func workflowsLightTheFreeArcsInTheHeadsColour() {
+        let orange = MarkPalette.color(for: ProviderInfo.claudeID)
+        let white = MarkPalette.color(for: "codex")
+        let head = { MarkPalette.color(for: self.model.providerID(for: self.chat)) }
+        #expect(RaysMark.fanned(model.rayColors(for: chat), head: head()) == Dictionary(uniqueKeysWithValues: (0..<6).map { ($0, orange) }))
+        model.setRay(ModelRef(provider: "codex", id: "gpt-1"), true, for: chat)
+        let claude = RaysMark.fanned(model.rayColors(for: chat), head: head())
+        #expect(claude[0] == white)
+        #expect((1..<6).allSatisfy { claude[$0] == orange })
+        // A Codex head lights its own arcs white, and a Claude ray keeps its orange.
+        chat.provider = "codex"
+        chat.model = "gpt-1"
+        chat.rays = ["sonnet"]
+        let codex = RaysMark.fanned(model.rayColors(for: chat), head: head())
+        #expect(codex[0] == orange)
+        #expect((1..<6).allSatisfy { codex[$0] == white })
+    }
+
     @Test func aThreadKeepsItsRaysInTheStore() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "rays-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

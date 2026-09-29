@@ -71,11 +71,15 @@ extension AppModel {
     /// or with none every agent but the head's, which is where rays most often go.
     func showRays(_ shown: Bool, for chat: Chat?) {
         guard !shown || offersWorkers(chat) else { return }
-        if shown {
-            let picked = Set(rays(for: chat).map(\.provider))
-            raysOpen = picked.isEmpty ? Set(rayChoices(for: chat).map(\.agent.id)).subtracting([providerID(for: chat)]) : picked
-        }
+        if shown { openRays(for: chat) }
         raysShown = shown
+    }
+
+    /// Opens the agents the rays' page starts on, before the page is built.
+    func openRays(for chat: Chat?) {
+        let picked = Set(rays(for: chat).map(\.provider))
+        let open = picked.isEmpty ? Set(rayChoices(for: chat).map(\.agent.id)).subtracting([providerID(for: chat)]) : picked
+        if open != raysOpen { raysOpen = open }
     }
 
     /// The rays by their short names, "GPT-6-Luna".

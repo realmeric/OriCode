@@ -28,6 +28,8 @@ struct Composer: View {
     @State private var attachHovered = false
     /// An image or file held over the composer, about to land in it.
     @State private var dropTarget = false
+    /// The picker in the tree, which leaves a turn after model.modelPickerShown does.
+    @State private var cardShown = false
     /// Whether the queue's lines are scrolled to the last, which leaves nothing below to fade into.
     @State private var queueAtEnd = true
 
@@ -73,26 +75,43 @@ struct Composer: View {
             top = $0
             model.composerTop = $0
         }
+        // Before the picker and the menus: every change inside the view a drop target is on
+        // gathers its drop preferences again, which the picker's page turns paid on every frame.
+        .onDrop(of: offers.attachments ? [.image, .fileURL] : [], isTargeted: $dropTarget) { providers in
+            accept(providers)
+        }
+        // The finger is on the trackpad for the whole drag, so this says "let go here".
+        .onChange(of: dropTarget) { _, over in
+            if over { Haptics.detent() }
+        }
         // The model button's picker rises out of the composer's right end, the way the slash
         // menu rises out of its left; with the composer in the middle of an empty thread there
         // isn't room above it under the title bar, so it drops below instead.
         .overlay(alignment: top < Self.pickerRoom ? .topTrailing : .bottomTrailing) {
-            if model.modelPickerShown {
+            if cardShown {
                 let below = top < Self.pickerRoom
                 let anchor: UnitPoint = below ? .topTrailing : .bottomTrailing
                 // The Rays page grows past the effort page's height, so the card is held to the
                 // room the window has on its side of the composer, and the list scrolls in it.
                 let room = below ? windowHeight - top - height - 10 - Self.pickerFoot : top - 10 - Self.pickerTop
-                PickerCard(chat: model.chat, room: room)
+                PickerCard(chat: model.chat, room: room, below: below)
                     .padding(below ? .top : .bottom, height + 10)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.92, anchor: anchor).combined(with: .opacity).combined(with: .offset(y: below ? -8 : 8))
-                            .animation(Motion.glide),
-                        removal: .scale(scale: 0.97, anchor: anchor).combined(with: .opacity).animation(Motion.fade)))
+                    // It rises by itself, a turn after it's built.
+                    .transition(.asymmetric(insertion: .identity,
+                                            removal: .scale(scale: 0.97, anchor: anchor).combined(with: .opacity).animation(Motion.fade)))
             }
         }
         .onChange(of: model.modelPickerShown) { _, shown in
-            if !shown { draft.keyboard(model.composerTakesKeyboard) }
+            guard !shown else {
+                cardShown = true
+                return
+            }
+            // The field takes the keyboard back while the card still stands, and the card fades
+            // from the next turn, so the fade's first frame isn't the one that moves the keyboard.
+            draft.keyboard(model.composerTakesKeyboard)
+            DispatchQueue.main.async {
+                if !model.modelPickerShown { cardShown = false }
+            }
         }
         .overlay(alignment: .bottomLeading) {
             // Reads only what a key seldom changes, so typing redraws nothing here.
@@ -137,14 +156,10 @@ struct Composer: View {
             // Tab at the prompt wants the shell's commands; asked once, as the prompt opens.
             if prompt { model.loadShellCommands() }
         }
-        .onDrop(of: offers.attachments ? [.image, .fileURL] : [], isTargeted: $dropTarget) { providers in
-            accept(providers)
+        .onAppear {
+            draft.keyboard(model.composerTakesKeyboard)
+            cardShown = model.modelPickerShown
         }
-        // The finger is on the trackpad for the whole drag, so this says "let go here".
-        .onChange(of: dropTarget) { _, over in
-            if over { Haptics.detent() }
-        }
-        .onAppear { draft.keyboard(model.composerTakesKeyboard) }
         // Not while a block is open, which has the keyboard until it goes.
         .onChange(of: model.composerFocus) {
             if model.openShell == nil { draft.keyboard(true) }

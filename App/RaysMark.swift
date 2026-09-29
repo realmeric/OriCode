@@ -45,6 +45,12 @@ struct RaysMark: View {
     /// layered mark only, which is the picker's.
     var glow = false
 
+    /// Every arc: the picked rays in their agents' colours, the rest in the head's, as workflows
+    /// light them.
+    static func fanned(_ rays: [Int: Color], head: Color) -> [Int: Color] {
+        Dictionary(uniqueKeysWithValues: (0..<Self.rays).map { ($0, rays[$0] ?? head) })
+    }
+
     enum Focus: Hashable {
         case dot
         case rays(Set<Int>)
@@ -313,6 +319,9 @@ private struct MovingRays: NSViewRepresentable {
                 ray.shadowRadius = side * 0.06
                 ray.shadowOffset = .zero
                 ray.path = Ray(index: index, count: RaysMark.rays).path(in: circle).cgPath
+                // The glow's outline given, so the render server doesn't find it in the ray's
+                // pixels on every frame the mark turns.
+                ray.shadowPath = ray.path?.copy(strokingWithWidth: width, lineCap: .round, lineJoin: .round, miterLimit: 1)
             }
             let dotSide = side * 0.3
             dot.frame = CGRect(x: bounds.midX - dotSide / 2, y: bounds.midY - dotSide / 2, width: dotSide, height: dotSide)

@@ -1,29 +1,49 @@
+import AppKit
 import SwiftUI
 
 /// A model as a ray: the head's mark small, with the arc this model stands on lit in its agent's
 /// colour, or the mark at rest when it isn't one of the rays.
 struct RayGlyph: View {
     let slot: Int?
-    let color: Color
+    let agent: String
 
-    /// Heavier than the mark's own proportion, which at this size draws hairlines. One Canvas, since
-    /// seven shapes a row were most of what the rays' page cost to turn to.
     var body: some View {
-        Canvas { context, size in
-            let circle = CGRect(origin: .zero, size: size).insetBy(dx: 1.2, dy: 1.2)
-            var resting = Path()
+        Image(nsImage: Self.image(slot: slot, agent: agent))
+            .frame(width: 16, height: 16)
+    }
+
+    /// Each arc lit in each agent's colour, drawn the first time a row asks for it. An image is a
+    /// layer's contents; a Canvas was a surface of its own, which the list waited on the render
+    /// server to allocate as its rows came in.
+    @MainActor private static var drawn: [String: NSImage] = [:]
+
+    /// Heavier than the mark's own proportion, which at this size draws hairlines.
+    @MainActor static func image(slot: Int?, agent: String) -> NSImage {
+        let key = "\(slot ?? -1) \(slot == nil ? "" : agent)"
+        if let image = drawn[key] { return image }
+        let color = NSColor(MarkPalette.color(for: agent)).cgColor
+        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: true) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            let circle = rect.insetBy(dx: 1.2, dy: 1.2)
+            context.setLineCap(.round)
             for index in 0..<RaysMark.rays where index != slot {
-                resting.addPath(Ray(index: index, count: RaysMark.rays, gap: 26).path(in: circle))
+                context.addPath(Ray(index: index, count: RaysMark.rays, gap: 26).path(in: circle).cgPath)
             }
-            context.stroke(resting, with: .color(.white.opacity(slot == nil ? 0.4 : 0.2)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            context.setLineWidth(1.6)
+            context.setStrokeColor(NSColor.white.withAlphaComponent(slot == nil ? 0.4 : 0.2).cgColor)
+            context.strokePath()
             if let slot {
-                context.stroke(Ray(index: slot, count: RaysMark.rays, gap: 26).path(in: circle), with: .color(color),
-                               style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                context.addPath(Ray(index: slot, count: RaysMark.rays, gap: 26).path(in: circle).cgPath)
+                context.setLineWidth(2.4)
+                context.setStrokeColor(color)
+                context.strokePath()
             }
-            let dot = CGRect(x: size.width / 2 - 2.25, y: size.height / 2 - 2.25, width: 4.5, height: 4.5)
-            context.fill(Path(ellipseIn: dot), with: .color(.white.opacity(slot == nil ? 0.4 : 0.7)))
+            context.setFillColor(NSColor.white.withAlphaComponent(slot == nil ? 0.4 : 0.7).cgColor)
+            context.fillEllipse(in: CGRect(x: rect.midX - 2.25, y: rect.midY - 2.25, width: 4.5, height: 4.5))
+            return true
         }
-        .frame(width: 16, height: 16)
+        drawn[key] = image
+        return image
     }
 }
 
@@ -78,7 +98,10 @@ struct RayRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(option.name)
                         .font(Type.body)
-                        .foregroundStyle(lit ? Ink.primary : Ink.primary.opacity(0.8))
+                        .foregroundStyle(Ink.primary)
+                        // Dimmed by opacity, not a paler colour: a colour that animates draws
+                        // the glyphs again on every frame.
+                        .opacity(lit ? 1 : 0.8)
                     if !option.description.isEmpty {
                         Text(option.description)
                             .font(Type.secondary)
@@ -87,7 +110,7 @@ struct RayRow: View {
                     }
                 }
                 Spacer(minLength: 4)
-                RayGlyph(slot: slot, color: MarkPalette.color(for: agent))
+                RayGlyph(slot: slot, agent: agent)
                     .opacity(lit || hovering || keyed ? 1 : 0.5)
             }
             .padding(.leading, 10)
@@ -106,6 +129,14 @@ struct RayRow: View {
         .accessibilityValue(lit ? "Ray" : "Not a ray")
         .accessibilityHint(full ? "The mark has six rays; let one go first" : lit ? "Puts the ray out" : "Lights it as a ray")
         .accessibilityAddTraits(lit ? .isSelected : [])
+    }
+}
+
+/// Equal when what it draws is: its action is a closure made anew each time the list draws, so
+/// without this lighting one ray drew every row again.
+extension RayRow: @MainActor Equatable {
+    static func == (a: RayRow, b: RayRow) -> Bool {
+        a.option == b.option && a.agent == b.agent && a.slot == b.slot && a.keyed == b.keyed && a.full == b.full
     }
 }
 
@@ -133,7 +164,10 @@ struct RayList: View {
         let slots = model.raySlots(for: chat)
         ScrollViewReader { reader in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
+                // Not lazy: the rays' page lists only the models the menu shows, a few an agent,
+                // so every row is built with the page, in the turn before it moves, and none as
+                // the card grows or the list scrolls.
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(model.rayChoices(for: chat), id: \.agent.id) { entry in
                         let open = model.raysOpen.contains(entry.agent.id)
                         AgentSection(agent: entry.agent.id, title: entry.agent.name, open: open, keyed: keyed == "agent:" + entry.agent.id) {
@@ -146,6 +180,7 @@ struct RayList: View {
                                 let ref = ModelRef(provider: entry.agent.id, id: option.id)
                                 RayRow(option: option, agent: entry.agent.id, slot: slots[ref], keyed: keyed == ref.stored,
                                        full: slots[ref] == nil && slots.count >= RaysMark.rays) { toggle(ref) }
+                                    .equatable()
                                     .id(ref.stored)
                             }
                         }
@@ -196,25 +231,6 @@ struct RayList: View {
         guard ids.indices.contains(at + by) else { return .ignored }
         keyed = ids[at + by]
         return .handled
-    }
-}
-
-/// The list, built a frame after the page turns rather than in the turn's own frame, where it was
-/// most of the work. It's still clear then: what's under the mark rises in 0.1s after the turn.
-struct DeferredRayList: View {
-    let chat: Chat?
-    let back: () -> Void
-    @State private var ready = false
-
-    var body: some View {
-        if ready {
-            RayList(chat: chat, back: back)
-        } else {
-            // The main queue's next turn, after this frame is laid out and committed; a task
-            // started here runs inside the same pass.
-            Color.clear
-                .onAppear { DispatchQueue.main.async { ready = true } }
-        }
     }
 }
 

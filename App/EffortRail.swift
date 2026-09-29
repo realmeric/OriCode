@@ -80,6 +80,8 @@ struct EffortRail: View {
     var compact = false
     /// Where Back to Defaults would put the thumb, while the pointer is on it.
     var ghost: String?
+    /// Bumped when a page that had the keyboard hands it back to the rail.
+    var refocus = 0
     /// Return, which closes the picker.
     var onReturn: () -> Void = {}
 
@@ -237,6 +239,7 @@ struct EffortRail: View {
                 wake()
             }
         }
+        .onChange(of: refocus) { focused = true }
         .onChange(of: effort) { old, new in
             wake()
             let from = (old ?? home).flatMap(stops.firstIndex(of:))
@@ -468,5 +471,14 @@ struct EffortRail: View {
         }
         withAnimation(Motion.move) { choose(stop) }
         return .handled
+    }
+}
+
+/// Equal when everything it draws from is. Its bindings and actions are closures made anew each
+/// time the page draws, so without this every change of rays ran the hidden rail's body again.
+extension EffortRail: @MainActor Equatable {
+    static func == (a: EffortRail, b: EffortRail) -> Bool {
+        a.stops == b.stops && a.home == b.home && a.ink == b.ink && a.effort == b.effort && a.held == b.held
+            && a.hovered == b.hovered && a.compact == b.compact && a.ghost == b.ghost && a.refocus == b.refocus
     }
 }

@@ -226,4 +226,16 @@ extension AppModel {
             Engine.logger.error("save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
+
+    /// Stores a change to one of a stored thread's own settings, a level, a mode, fast or
+    /// workflows, which views read from the thread itself. Moving the revision as save() does
+    /// made every view that reads the open thread or the projects draw and fetch again, the
+    /// whole window, in the frame a click in the picker starts its animation.
+    func keep() {
+        do {
+            try context.save()
+        } catch {
+            Engine.logger.error("save failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 }

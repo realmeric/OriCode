@@ -419,7 +419,10 @@ struct AgentSection: View {
                     .frame(width: 14, height: 14)
                 Text(title)
                     .font(Type.body)
-                    .foregroundStyle(open ? Ink.primary : Ink.primary.opacity(0.8))
+                    .foregroundStyle(Ink.primary)
+                    // Dimmed by opacity, not a paler colour: a colour that animates draws the
+                    // glyphs again on every frame.
+                    .opacity(open ? 1 : 0.8)
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .semibold))

@@ -11,29 +11,31 @@ struct MarkPicker: View {
     /// The window's room for the card; a page taller than this scrolls.
     var room: CGFloat = .infinity
     @State private var page = Page.effort
+    /// The model page in the tree: from a turn before it's turned to until the turn back is over.
+    @State private var modelsMounted = false
+    /// Bumped to give the rail the keyboard back.
+    @State private var railFocus = 0
 
     enum Page { case effort, models }
 
     static let effortHeight: CGFloat = 308
 
     var body: some View {
-        ZStack {
-            switch page {
-            case .effort:
-                MarkPage(chat: chat) {
-                    // The agent of the model in use opens with the page, the rest folded.
-                    model.modelsOpen = [model.providerID(for: chat)]
-                    page = .models
-                }
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: -24)).animation(Motion.move),
-                                            removal: .opacity.combined(with: .offset(x: -24)).animation(Motion.fade)))
-            case .models:
-                ModelsPage(chat: chat) { page = .effort }
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 24)).animation(Motion.move),
-                                            removal: .opacity.combined(with: .offset(x: 24)).animation(Motion.fade)))
+        let raysHeight = raysHeight
+        let height = height(raysHeight)
+        // The effort page stays while the model page shows, so the turn back doesn't build it
+        // again. Each page is laid out at its own height at once and only the card glides.
+        ZStack(alignment: .top) {
+            MarkPage(chat: chat, raysHeight: raysHeight, refocus: railFocus, openModels: openModels)
+                .animation(nil) { $0.frame(height: model.raysShown ? raysHeight : Self.effortHeight, alignment: .top) }
+                .modifier(SideTurn(shown: page == .effort, side: -24))
+            if modelsMounted {
+                ModelsPage(chat: chat, back: closeModels)
+                    .animation(nil) { $0.frame(height: ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen)), alignment: .top) }
+                    .modifier(SideTurn(shown: page == .models, side: 24))
             }
         }
-        .frame(width: 320, height: height)
+        .frame(width: 320, height: height, alignment: .top)
         .animation(Motion.glide, value: page)
         .animation(Motion.glide, value: model.raysShown)
         .onAppear {
@@ -47,25 +49,85 @@ struct MarkPicker: View {
         }
     }
 
-    /// The effort page's height, or with its rays shown the mark's part of it and the list under
-    /// it, scrolling past 470 or past the window's room, with the mark and a row or two kept.
-    private var height: CGFloat {
+    /// The rays' page's height: the mark's part of the page and the list under it, scrolling past
+    /// 470 or past the window's room, with the mark and a row or two kept.
+    private var raysHeight: CGFloat {
+        min(Self.raysTop + RayList.height(model, chat: chat), 470, max(room, Self.effortHeight))
+    }
+
+    private func height(_ raysHeight: CGFloat) -> CGFloat {
         switch page {
-        case .effort where model.raysShown:
-            min(Self.raysTop + RayList.height(model, chat: chat), 470, max(room, Self.effortHeight))
+        case .effort where model.raysShown: raysHeight
         case .effort: Self.effortHeight
         case .models: ModelsPage.height(for: model.modelGroups(for: chat, open: model.modelsOpen))
         }
     }
 
+    /// The model page is built in this turn, with nothing moving, and turned to from the next.
+    private func openModels() {
+        // The agent of the model in use opens with the page, the rest folded.
+        model.modelsOpen = [model.providerID(for: chat)]
+        modelsMounted = true
+        DispatchQueue.main.async {
+            withAnimation(Motion.glide) { page = .models }
+        }
+    }
+
+    /// The rail takes the keyboard back in this turn and the page turns from the next; the model
+    /// page goes once it has faded.
+    private func closeModels() {
+        railFocus += 1
+        DispatchQueue.main.async {
+            withAnimation(Motion.glide, completionCriteria: .removed) { page = .effort } completion: {
+                if page == .effort { modelsMounted = false }
+            }
+        }
+    }
+
     /// The rays' page above its list: the header, the mark and the title under it.
     static let raysTop: CGFloat = 12 + 30 + 96 + 44 + 6
+    /// The page above what's under the mark: the padding, the header and the mark.
+    static let markTop: CGFloat = 12 + 30 + 96 + 12
+}
+
+/// A page turning sideways: in from its side over the move's spring, out to it over a fade.
+private struct SideTurn: ViewModifier {
+    let shown: Bool
+    let side: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .animation(shown ? Motion.move : Motion.fade) { $0.opacity(shown ? 1 : 0).offset(x: shown ? 0 : side) }
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
+    }
+}
+
+/// What's under the mark as the page turns: the old part goes in 0.1s and the new one rises in
+/// after it, so the two never show over each other.
+private struct PageTurn: ViewModifier {
+    let shown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            // Down to where it rises from only once it has faded, not while it fades.
+            .animation(shown ? Motion.move.delay(0.1) : .linear(duration: 0.01).delay(0.1)) { $0.offset(y: shown ? 0 : 12) }
+            .animation(shown ? Motion.move.delay(0.1) : .easeOut(duration: 0.1)) { $0.opacity(shown ? 1 : 0) }
+            .allowsHitTesting(shown)
+            .accessibilityHidden(!shown)
+    }
 }
 
 private struct MarkPage: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
+    let raysHeight: CGFloat
+    /// Bumped to give the rail the keyboard back.
+    let refocus: Int
     let openModels: () -> Void
+    /// The rays' page in the tree: from a turn before it's turned to until the turn back is over.
+    @State private var raysMounted = false
+    @State private var raysBack = 0
     /// The level under the slider's thumb while it's held, and the stop under the pointer.
     @State private var held: String?
     @State private var hovered: String?
@@ -127,19 +189,22 @@ private struct MarkPage: View {
                 .accessibilityAction { showRays(!raysShown) }
                 .accessibilityHidden(!heads)
                 .padding(.top, 4)
+            // The effort controls stay while the rays show, so the turn back doesn't build the rail
+            // again or pour its fill in a second time; each part keeps its own height.
             ZStack(alignment: .top) {
-                if raysShown {
+                effortControls(state, level: level, shown: shown, stops: stops, ink: ink)
+                    .frame(height: MarkPicker.effortHeight - MarkPicker.markTop, alignment: .top)
+                    .modifier(PageTurn(shown: !raysShown))
+                if raysMounted {
                     VStack(spacing: 0) {
                         RaysTitle(chat: chat)
                             .padding(.bottom, 6)
-                        DeferredRayList(chat: chat) { showRays(false) }
+                        RayList(chat: chat) { showRays(false) }
                             .padding(.horizontal, -16)
                             .padding(.bottom, -12)
                     }
-                    .transition(Self.turn)
-                } else {
-                    effortControls(state, level: level, shown: shown, stops: stops, ink: ink)
-                        .transition(Self.turn)
+                    .frame(height: raysHeight - MarkPicker.markTop, alignment: .top)
+                    .modifier(PageTurn(shown: raysShown))
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
@@ -176,18 +241,30 @@ private struct MarkPage: View {
         .onDisappear { calming?.cancel() }
     }
 
-    /// What's under the mark as the page turns: the old part goes in 0.1s and the new one rises in
-    /// after it, so the two never show over each other.
-    private static let turn = AnyTransition.asymmetric(
-        insertion: .opacity.combined(with: .offset(y: 12)).animation(Motion.move.delay(0.1)),
-        removal: .opacity.animation(.easeOut(duration: 0.1)))
     /// The header's, which stays in place.
     private static let swap = AnyTransition.asymmetric(
         insertion: .opacity.animation(Motion.fade.delay(0.1)),
         removal: .opacity.animation(.easeOut(duration: 0.1)))
 
+    /// Turns to the rays' page and back in two turns of the main thread: what's costly, building
+    /// the list and moving the keyboard, happens in the first with nothing moving, and the page
+    /// turns from the next, so the turn's first frame isn't the one that pays for it.
     private func showRays(_ shown: Bool) {
-        withAnimation(Motion.move) { model.showRays(shown, for: chat) }
+        if shown {
+            guard model.offersWorkers(chat), !model.raysShown else { return }
+            model.openRays(for: chat)
+            raysMounted = true
+            DispatchQueue.main.async {
+                withAnimation(Motion.glide) { model.showRays(true, for: chat) }
+            }
+        } else {
+            raysBack += 1
+            DispatchQueue.main.async {
+                withAnimation(Motion.glide, completionCriteria: .removed) { model.showRays(false, for: chat) } completion: {
+                    if !model.raysShown { raysMounted = false }
+                }
+            }
+        }
     }
 
     /// The rays' page's header: back to the effort at the left, the head in the middle, and No Rays
@@ -230,8 +307,9 @@ private struct MarkPage: View {
                 EffortRail(stops: option.efforts, home: state.home, ink: ink,
                            effort: Binding(get: { state.effort }, set: { model.setEffort($0, for: chat) }),
                            held: $held, hovered: $hovered, compact: true,
-                           ghost: previewingReset ? resetTarget(state) : nil,
+                           ghost: previewingReset ? resetTarget(state) : nil, refocus: refocus + raysBack,
                            onReturn: { model.modelPickerShown = false })
+                    .equatable()
                     .padding(.top, 10)
             }
             Spacer(minLength: 0)
@@ -469,9 +547,8 @@ private struct HeadMark: View {
         .animation(Motion.move, value: head)
     }
 
-    /// Every arc: the picked rays in their agents' colours, the rest in the head's.
     private var freeArcs: [Int: Color] {
-        Dictionary(uniqueKeysWithValues: (0..<RaysMark.rays).map { ($0, rays[$0] ?? headColor) })
+        RaysMark.fanned(rays, head: headColor)
     }
 
     private func dot(_ heat: Heat) -> some View {

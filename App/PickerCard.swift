@@ -9,25 +9,46 @@ struct PickerCard: View {
     let chat: Chat?
     /// The height the window has for the card on its side of the composer.
     var room: CGFloat = .infinity
+    /// Hung below the composer, where it drops from its top rather than rising from its foot.
+    var below = false
     @State private var watch = ClickWatch()
+    /// False for the card's first turn, while it's built with nothing on screen moving.
+    @State private var risen = false
 
     static let radius: CGFloat = 20
+    /// How far down the edge's light reaches before it has faded: a third of the effort page.
+    private static let edge = MarkPicker.effortHeight * 0.35
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
         MarkPicker(chat: chat, room: room)
+            // A page is laid out at its own height at once while the card glides to it, so what
+            // hangs past the card's edge meanwhile is cut there.
+            .clipShape(shape)
             .background(Surface.composer, in: shape)
             .background(.ultraThinMaterial, in: shape)
-            .overlay {
-                // The composer's raised-glass edge along the top, fading before the sides.
-                shape
-                    .strokeBorder(LinearGradient(colors: [Surface.composerEdge, .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
-                                  lineWidth: 1)
+            .overlay(alignment: .top) {
+                // The composer's raised-glass edge along the top, fading before the sides. Drawn
+                // at the effort page's height whatever the page, so a page turn only moves it: drawn
+                // on the card's whole height, it was drawn again on every frame of the card's glide.
+                UnevenRoundedRectangle(topLeadingRadius: Self.radius, topTrailingRadius: Self.radius, style: .continuous)
+                    .strokeBorder(LinearGradient(colors: [Surface.composerEdge, .clear], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                    .frame(maxHeight: Self.edge)
                     .allowsHitTesting(false)
             }
             .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+            .scaleEffect(risen ? 1 : 0.92, anchor: below ? .topTrailing : .bottomTrailing)
+            .offset(y: risen ? 0 : below ? -8 : 8)
+            .opacity(risen ? 1 : 0)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { watch.card = $0 }
-            .onAppear { watch.start(model) }
+            .onAppear {
+                watch.start(model)
+                // Built in this turn and risen from the next, so the glide's first frame isn't the
+                // one that builds the card and hands it the keyboard.
+                DispatchQueue.main.async {
+                    withAnimation(Motion.glide) { risen = true }
+                }
+            }
             .onDisappear { watch.stop() }
     }
 }
