@@ -50,7 +50,7 @@ struct ModelMenuTests {
 
     /// A pick writes the last picks, a star the favorites, and Settings' keys are read from the
     /// host's defaults, so each test that touches them puts them back as they were.
-    private static func keepingDefaults() -> () -> Void {
+    static func keepingDefaults() -> () -> Void {
         let defaults = UserDefaults.standard
         let keys = [NewThreads.model, NewThreads.provider, "lastModel", "lastProvider", "lastEffort", "lastPermissionMode", "favoriteModels", "menuModels"]
         let kept = keys.map { defaults.object(forKey: $0) }
@@ -170,7 +170,7 @@ struct ModelMenuTests {
         #expect(model.paletteSearchable().first { $0.id == "model.pi/zai/glm-5.3" }?.unavailable == nil)
     }
 
-    @Test func aDraftMovesToAnotherAgentsModelAndABegunThreadStaysOnItsOwn() throws {
+    @Test func aDraftMovesToAnotherAgentsModelAndSoDoesABegunThreadBetweenTurns() throws {
         let restore = Self.keepingDefaults()
         defer { restore() }
         let draft = try thread(on: nil, started: false)
@@ -186,21 +186,20 @@ struct ModelMenuTests {
         #expect(model.lastModel == ModelRef(provider: "codex", id: "gpt-6-luna"))
         #expect(model.startingProvider == "codex")
 
+        // Begun, it's still offered every agent (K-214, HandoverTests), and Claude's model moves it back.
         draft.started = true
-        #expect(model.agentsListed(for: draft).map(\.id) == ["codex"])
-        #expect(model.modelGroups(for: draft).flatMap(\.rows).allSatisfy { $0.agent == "codex" })
+        #expect(model.agentsListed(for: draft).map(\.id) == ["claude", "codex", "pi"])
         model.setModel(ModelRef(provider: "claude", id: "default"), for: draft)
-        #expect(draft.providerID == "codex" && draft.model == "gpt-6-luna")
+        #expect(draft.providerID == "claude" && draft.model == "default")
         model.setModel(ModelRef(provider: "codex", id: "haiku"), for: draft)
-        #expect(draft.model == "haiku")
+        #expect(draft.providerID == "codex" && draft.model == "haiku")
 
-        // An older Claude thread is offered Claude's alone, a codex favorite included.
+        // An older Claude thread is offered a codex favorite as well.
         let older = try thread(on: nil, started: true)
         model.favoriteModels = ["codex/gpt-6-luna", "haiku"]
-        model.showInMenu(ModelRef(provider: "claude", id: "claude-opus-4-1"), true)
         let groups = model.modelGroups(for: older)
-        #expect(groups.map(\.title) == ["Favorites", "Models", "More models"])
-        #expect(groups.flatMap(\.rows).allSatisfy { $0.agent == "claude" })
+        #expect(groups.first?.title == "Favorites")
+        #expect(groups.first?.rows.map(\.id) == ["codex/gpt-6-luna", "haiku"])
     }
 
     @Test func settingsPicksTheAgentAndModelNewThreadsStartOn() throws {
@@ -274,7 +273,7 @@ struct ModelMenuTests {
         #expect(model.modelGroups(for: draft).flatMap(\.rows).contains { $0.id == "codex/gpt-6-luna" })
         let begun = try thread(on: "codex", started: true)
         begun.model = "gpt-6-luna"
-        #expect(model.modelGroups(for: begun).flatMap(\.rows).map(\.id) == ["codex/gpt-6-luna", "codex/haiku"])
+        #expect(model.modelGroups(for: begun).flatMap(\.rows).map(\.id).filter { $0.hasPrefix("codex/") } == ["codex/gpt-6-luna", "codex/haiku"])
         // Turned back on, the choice is forgotten and the model follows its agent's picks again.
         model.showInMenu(luna, true)
         #expect(model.menuModels == ["pi/vendor/m200": true])
@@ -307,8 +306,9 @@ struct ModelMenuTests {
         // Opened, an agent lists its models; without `open` the native menus list them all.
         #expect(model.modelGroups(for: nil, open: ["claude", "codex"]).flatMap(\.rows).count == 4)
         #expect(model.modelGroups(for: nil).allSatisfy { $0.open == nil })
-        // One agent alone, as a thread that has begun has, doesn't fold.
+        // One agent alone, as a thread with a turn running has, doesn't fold.
         let begun = try thread(on: "codex", started: true)
+        model.conversation(for: begun).userSent("go")
         #expect(model.modelGroups(for: begun, open: []).map(\.open) == [nil])
         #expect(model.modelGroups(for: begun, open: []).flatMap(\.rows).count == 2)
     }

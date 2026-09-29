@@ -105,6 +105,7 @@ extension AppModel {
         // The commands run from the shell prompt since Claude last read them go first.
         let (text, readShells) = withShells(text, in: chat)
         var params = sendParams(in: chat, text: text, images: images)
+        if let handover = handover(for: chat) { params["handover"] = .string(handover) }
         if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
         Task {
             do {
@@ -118,6 +119,15 @@ extension AppModel {
                 if isAway(chat) { notifier.post(title: chat.title, body: error.localizedDescription, chatID: chat.id) }
             }
         }
+    }
+
+    /// The thread so far, for the session a change of agent starts: everything before the message
+    /// just sent, until a turn on the new agent has begun.
+    func handover(for chat: Chat) -> String? {
+        guard chat.handover, chat.sessionId == nil else { return nil }
+        let items = conversation(for: chat).items
+        let text = Handover.text(from: Array(items[..<(items.lastIndex(where: \.startsTurn) ?? items.endIndex)]), cwd: chat.cwd)
+        return text.isEmpty ? nil : text
     }
 
     /// A message for the running turn, which Claude takes up at its next step. The engine sends
@@ -354,7 +364,8 @@ extension AppModel {
         lastProvider = ref.provider
         lastModel = ref
         guard let chat = chat ?? (ref.provider == startingProvider && ref.id == startingModel ? nil : newChat()) else { return }
-        if chat.providerID != ref.provider {
+        let moved = chat.providerID != ref.provider
+        if moved {
             chat.provider = ref.provider
             let modes = agent(for: chat).permissionModes
             if let first = modes.first, !modes.contains(where: { $0.rawValue == chat.permissionMode }) {
@@ -365,8 +376,26 @@ extension AppModel {
         if let levels = option(ref)?.efforts, let effort = chat.effort, !levels.contains(effort) {
             chat.effort = nil
         }
+        if moved, chat.started { changedAgent(chat, to: ref) }
         save()
         if fastMode(of: chat) { checkFast(chat) }
+    }
+
+    /// A thread that has begun took another agent's model: the old agent's session is let go, the
+    /// next send starts one on the new agent that opens with the thread so far, and the transcript
+    /// says where it changed.
+    private func changedAgent(_ chat: Chat, to ref: ModelRef) {
+        let conversation = conversation(for: chat)
+        chat.sessionId = nil
+        chat.handover = conversation.items.contains(where: \.startsTurn)
+        conversation.note(Self.nowOn(agent: providerInfo(ref.provider).agent, model: option(ref)?.name ?? ref.id))
+        let thread = chat.id.uuidString
+        Task { _ = try? await engine.request("leave", ["threadId": .string(thread)]) }
+    }
+
+    /// The quiet line where a thread changed agent.
+    static func nowOn(agent: String, model: String) -> String {
+        "Now on \(agent) · \(model)"
     }
 
     func setEffort(_ effort: String?, for chat: Chat?) {

@@ -26,8 +26,9 @@ final class Chat {
     var project: Project?
     var title: String
     var sessionId: String?
-    /// The agent it runs on, set as it's made and never after, since a session doesn't move
-    /// between agents. Nil on a thread from before there were others, which is Claude Code's.
+    /// The agent it runs on, chosen with its model. A session doesn't move between agents, so a
+    /// thread that changes one starts a new session, which opens with `handover`. Nil on a thread
+    /// from before there were others, which is Claude Code's.
     var provider: String?
     var model: String?
     var effort: String?
@@ -66,6 +67,9 @@ final class Chat {
     /// workflows, as Ultracode at Extra high, and another agent's on its rays. Never carried to a
     /// new thread, since it spends a plan much faster.
     var workflows: Bool = false
+    /// It changed agent, and its next send starts a session of the new agent's own that opens with
+    /// the thread so far. Cleared when that session's turn starts.
+    var handover: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

@@ -13,6 +13,7 @@ import { grok } from "./grok.ts";
 import { opencode } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
+import { handed } from "./handover.ts";
 import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
@@ -45,6 +46,8 @@ const providers = new Map<string, Provider>([
   [devin.id, devin],
 ]);
 const sessions = new Map<string, Session>();
+/// The agent each thread's session runs, so a send for another agent lets the old one go.
+const agentOf = new WeakMap<Session, string>();
 /// Agents whose models were read while they could run; hello's list for one signed out is a fallback.
 const listed = new Set<string>();
 /// Each agent's models as it last listed them, with OriCode's Ultracode where it's on Rays, kept
@@ -73,10 +76,21 @@ function session(threadId: string, agent: Provider, path: string): Session {
   let found = sessions.get(threadId);
   if (!found) {
     found = agent.session(threadId, path);
+    agentOf.set(found, agent.id);
     found.watchHeads(watched.has(threadId));
     kept(threadId, found);
   }
   return found;
+}
+
+/// A thread that changed agent: the old agent's session ends, and its workers with it, so the send
+/// that follows starts a session of the new agent's own. The thread's heads watch stays.
+function leave(threadId: string, agent?: Provider): void {
+  const found = sessions.get(threadId);
+  if (!found || (agent && agentOf.get(found) === agent.id)) return;
+  raysOf(threadId)?.close();
+  found.close();
+  sessions.delete(threadId);
 }
 
 /// A thread's session or a worker's, let go when idle like every other.
@@ -276,16 +290,20 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// for with each message below it; Codex its own ultra at Max on a model that has it; and any
   /// other head OriCode's, told to fan each task out to workers on its rays, with the message too.
   /// Every one of them at the thread's own level.
-  async send({ rays, ...params }: SendParams & { provider?: string; rays?: string[] }) {
+  async send({ rays, handover, ...params }: SendParams & { provider?: string; rays?: string[]; handover?: string }) {
     const agent = provider(params.provider);
     const path = await cli(agent);
+    leave(params.threadId, agent);
     const model = params.workflows ? await workflowsModel(agent, path, params.model) : undefined;
     const own = agent.id === claude.id ? params.workflows === true : model !== undefined && !model.ultraRays && params.effort === "max";
     const fans = own ? undefined : model;
     const head = await headTools({ ...params, rays }, agent, fans);
     const told = agent.id === claude.id && own && params.effort !== "xhigh" ? claudeLead : fans ? lead : undefined;
     // A message into a running turn joins one that was told already.
-    const text = told && !sessions.get(params.threadId)?.isRunning ? `${told}\n\n${params.text}` : params.text;
+    const running = sessions.get(params.threadId)?.isRunning;
+    // A handover goes ahead of the first message of a session made for it, and never into a turn.
+    const opening = handover && !sessions.has(params.threadId) ? `${handed(handover)}\n\n` : "";
+    const text = `${opening}${told && !running ? `${told}\n\n` : ""}${params.text}`;
     const waiting = await session(params.threadId, agent, path).send({ ...params, text, workflows: own, ...head });
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },
@@ -444,6 +462,13 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const found = sessions.get(threadId);
     if (!found) throw new Error("That has already stopped.");
     await found.stopTask(taskId);
+    return { ok: true };
+  },
+
+  /// The thread's agent changed: its session and workers end, and its next send starts on the new
+  /// agent. `send`'s own check does the same when this is late.
+  async leave({ threadId }: { threadId: string }) {
+    leave(threadId);
     return { ok: true };
   },
 

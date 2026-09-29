@@ -587,6 +587,8 @@ final class Conversation {
             running = true
             // A turn nobody sent, a background agent reporting back, doesn't carry the last one's error.
             failed = false
+            // A session of the new agent's own is up, and has been handed the thread.
+            if chat.handover { chat.handover = false }
             if let sessionId = event.body["sessionId"]?.string, chat.sessionId != sessionId {
                 chat.sessionId = sessionId
                 unsaved = true

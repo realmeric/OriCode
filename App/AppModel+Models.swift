@@ -16,14 +16,16 @@ extension AppModel {
         providers.first { $0.id == id } ?? .unlisted(id)
     }
 
-    /// A thread moves to another agent's model only while it's a draft: a session doesn't move
-    /// between agents, and its first message starts one.
+    /// A thread moves to another agent's model between turns: a draft, or one that has begun and
+    /// has nothing running, out or waiting on you. Its session doesn't move; the next send starts
+    /// one on the new agent that opens with the thread so far (`Handover`).
     func canMoveAgent(_ chat: Chat?) -> Bool {
-        chat?.started != true
+        guard let chat, let conversation = conversations[chat.id] else { return true }
+        return !conversation.working && conversation.waitingAsk == nil && !conversation.waitingAfterQuit
     }
 
-    /// The agents whose models a thread's menus list: its own alone once it has begun, and
-    /// before that Claude Code and every agent hello found ready, in hello's order.
+    /// The agents whose models a thread's menus list: Claude Code and every agent hello found
+    /// ready, in hello's order, and the thread's own alone while it works.
     func agentsListed(for chat: Chat?) -> [ProviderInfo] {
         guard canMoveAgent(chat) else { return [agent(for: chat)] }
         let own = providerID(for: chat)
@@ -70,10 +72,11 @@ extension AppModel {
     }
 
     /// The model Back to Defaults takes a thread to: the one Settings › New threads fixes when the
-    /// thread can be on its agent, or else its own agent's first, which for Claude Code is Default.
+    /// thread is on that agent or is still a draft, or else its own agent's first, which for Claude
+    /// Code is Default. Back to Defaults doesn't move a begun thread to another agent.
     func defaultModel(for chat: Chat?) -> ModelRef {
         let own = providerID(for: chat)
-        if let fixed = Self.storedModel(NewThreads.model), fixed.provider == own || canMoveAgent(chat) && providers.contains(where: { $0.id == fixed.provider }) {
+        if let fixed = Self.storedModel(NewThreads.model), fixed.provider == own || chat?.started != true && providers.contains(where: { $0.id == fixed.provider }) {
             return fixed
         }
         let first = own == ProviderInfo.claudeID ? nil : models(of: own).first?.id
