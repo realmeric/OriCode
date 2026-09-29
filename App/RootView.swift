@@ -184,7 +184,10 @@ struct RootView: View {
                             .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
                     }
                 }
-                .transition(.scale(scale: 0.96, anchor: .bottom).combined(with: .opacity))
+                .opacity(model.stagingBlock == block.id ? 0 : 1)
+                .scaleEffect(model.stagingBlock == block.id ? 0.96 : 1, anchor: .bottom)
+                // In already, and unseen, when it rises; only its going is a transition.
+                .transition(.asymmetric(insertion: .identity, removal: .scale(scale: 0.96, anchor: .bottom).combined(with: .opacity)))
             }
         }
         .overlay(alignment: .top) {
@@ -214,8 +217,12 @@ struct RootView: View {
             Drawer()
                 .padding(Drawer.inset)
                 .offset(x: model.drawerShown ? 0 : -(Drawer.width + Drawer.inset * 3))
-                .opacity(model.drawerShown ? 1 : 0)
-                .allowsHitTesting(model.drawerShown)
+                // Never quite gone once made: at nothing SwiftUI takes the thread list's table out
+                // of the window and makes it again on the next open, which was most of that frame.
+                // And no allowsHitTesting, which wraps the table in a view of its own that it
+                // moves into and out of on each change; out of the window, there's nothing to hit.
+                .opacity(model.drawerShown ? 0.999 : model.drawerBuilt ? 0.02 : 0)
+                .accessibilityHidden(!model.drawerShown)
                 .ignoresSafeArea()
         }
         // A toolbar item, so AppKit sets it beside the traffic lights and on their line; the

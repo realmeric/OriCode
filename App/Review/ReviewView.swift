@@ -9,12 +9,19 @@ struct ReviewPanel: View {
     @Environment(AppModel.self) private var model
     @Environment(\.undoManager) private var undoManager
     @FocusState private var focused: Bool
+    /// What has been made since it opened: nothing but the glass, then its top row, its bottom
+    /// row and the middle. SwiftUI takes the better part of a second to lay out a screen of selectable
+    /// code, so it comes in a part to a frame, behind the glass, which shows none of it until it
+    /// has begun to grow.
+    @State private var stage = 0
 
     var body: some View {
         let review = model.review
         VStack(spacing: 0) {
-            ReviewHeader()
-            if let problem = review.problem, review.diff == nil {
+            if stage >= 1 { ReviewHeader() }
+            if stage < 3 {
+                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let problem = review.problem, review.diff == nil {
                 Text(problem)
                     .font(Type.secondary)
                     .foregroundStyle(Ink.secondary)
@@ -29,7 +36,7 @@ struct ReviewPanel: View {
             } else {
                 ReviewScroll()
             }
-            ReviewFooter()
+            if stage >= 2 { ReviewFooter() }
         }
         .focusable()
         .focused($focused)
@@ -50,7 +57,11 @@ struct ReviewPanel: View {
             focused = true
         }
         .task {
-            try? await Task.sleep(for: .milliseconds(60))
+            for next in 1...3 {
+                try? await Task.sleep(for: .milliseconds(17))
+                stage = next
+            }
+            try? await Task.sleep(for: .milliseconds(9))
             focused = true
         }
     }
@@ -130,6 +141,10 @@ private struct ReviewHeader: View {
 /// The chapters, flattened into rows so a long review only lays out what's on screen.
 private struct ReviewScroll: View {
     @Environment(AppModel.self) private var model
+    /// How many rows are made. A hunk is a row, and each costs a frame or more of text layout, so
+    /// the first two, the chapter and its file, come with the panel and the rest one to a frame after; a row asked for
+    /// by the keyboard is made at once.
+    @State private var made = 2
 
     private enum Row: Identifiable {
         case chapter(ReviewChapter)
@@ -171,7 +186,7 @@ private struct ReviewScroll: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(rows) { row in
+                    ForEach(Array(rows.prefix(made))) { row in
                         switch row {
                         case .chapter(let chapter):
                             ChapterHeader(chapter: chapter)
@@ -194,7 +209,14 @@ private struct ReviewScroll: View {
             .scrollIndicators(.automatic)
             .onChange(of: model.review.selected) { _, selected in
                 guard let selected else { return }
+                made = .max
                 withAnimation(Motion.move) { proxy.scrollTo(selected) }
+            }
+            .task {
+                while made < rows.count {
+                    try? await Task.sleep(for: .milliseconds(17))
+                    made += 1
+                }
             }
         }
     }

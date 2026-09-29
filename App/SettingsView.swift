@@ -8,6 +8,9 @@ struct SettingsView: View {
     /// The pane on show, kept so ⌘K can open Settings on one.
     @AppStorage(SettingsPane.key) private var paneName = SettingsPane.general.rawValue
     @State private var query = ""
+    /// The pane's settings are made a frame after the window is up, so the window doesn't wait
+    /// on the several dozen controls in them.
+    @State private var paneMade = false
 
     private var pane: SettingsPane? {
         get { SettingsPane(rawValue: paneName) }
@@ -37,14 +40,16 @@ struct SettingsView: View {
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    switch pane ?? .general {
-                    case .general: GeneralPane()
-                    case .agents: AgentsPane()
-                    case .conversation: ConversationPane()
-                    case .notifications: NotificationsPane()
-                    case .actions: ActionsPane()
-                    case .shortcuts: ShortcutsPane()
-                    case .about: AboutPane()
+                    if paneMade {
+                        switch pane ?? .general {
+                        case .general: GeneralPane()
+                        case .agents: AgentsPane()
+                        case .conversation: ConversationPane()
+                        case .notifications: NotificationsPane()
+                        case .actions: ActionsPane()
+                        case .shortcuts: ShortcutsPane()
+                        case .about: AboutPane()
+                        }
                     }
                 }
                 .padding(.horizontal, 28)
@@ -66,6 +71,10 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            try? await Task.sleep(for: .milliseconds(17))
+            paneMade = true
+        }
     }
 }
 

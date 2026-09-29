@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The thread list: a drawer over the glass, never a sidebar.
@@ -48,6 +49,7 @@ struct Drawer: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 34)
+            .background(KeyLoopGate(open: model.drawerShown))
             HStack(spacing: 4) {
                 Button {
                     model.openNewThread()
@@ -212,6 +214,50 @@ struct Drawer: View {
             Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
             Button("Rename") { model.startRename(chat) }
             Button("Delete…") { model.askToDelete(chat) }
+        }
+    }
+}
+
+/// Keeps the thread list out of the window's key loop while the drawer is away. The list stays in
+/// the window once it's made, so opening the drawer moves it and doesn't make it again, and left
+/// alone, Tab from the composer would land in it, unseen.
+private struct KeyLoopGate: NSViewRepresentable {
+    let open: Bool
+
+    func makeNSView(context: Context) -> Gate {
+        Gate()
+    }
+
+    func updateNSView(_ gate: Gate, context: Context) {
+        gate.open = open
+        gate.apply()
+    }
+
+    final class Gate: NSView {
+        var open = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+        }
+
+        /// The drawer's table is the only one in the window, the width of the drawer; the list is
+        /// made a moment after this view, so it's looked for on the next turn too.
+        func apply() {
+            look()
+            DispatchQueue.main.async { [weak self] in self?.look() }
+        }
+
+        private func look() {
+            guard let content = window?.contentView else { return }
+            var queue = [content]
+            while let view = queue.popLast() {
+                if let table = view as? NSTableView, abs(table.bounds.width - Drawer.width) < 40 {
+                    table.refusesFirstResponder = !open
+                    return
+                }
+                queue += view.subviews
+            }
         }
     }
 }

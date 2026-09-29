@@ -11,7 +11,7 @@ extension AppModel {
         }
         if fileFinderShown {
             toggleFileFinder()
-            returnKeyboard()
+            returnKeyboardSoon()
             return true
         }
         if headsShown {
@@ -22,7 +22,7 @@ extension AppModel {
             // Back one level, and at the top, away.
             if !palette.pop() {
                 closeCommandCenter()
-                returnKeyboard()
+                returnKeyboardSoon()
             }
             return true
         }
@@ -37,7 +37,7 @@ extension AppModel {
         // Under ⌘K, ⌘P and the review, which open over it.
         if openFile != nil {
             closeFile()
-            returnKeyboard()
+            returnKeyboardSoon()
             return true
         }
         // The drawer's rename field sits over an open block.

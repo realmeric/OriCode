@@ -31,7 +31,14 @@ extension AppModel {
         }
         if reviewShown { closeReview() }
         modelPickerShown = false
-        withAnimation(Motion.move) { openBlocks[block.chatID] = block.id }
+        // The terminal coming into the window is most of what opening costs, so it comes in
+        // first, unseen and still, and the panel rises out of the thread in the next turn.
+        stagingBlock = block.id
+        openBlocks[block.chatID] = block.id
+        DispatchQueue.main.async { [weak self] in
+            guard self?.stagingBlock == block.id else { return }
+            withAnimation(Motion.move) { self?.stagingBlock = nil }
+        }
     }
 
     /// Puts the open thread's block back in the thread.
@@ -42,6 +49,7 @@ extension AppModel {
     /// Puts a block back in its thread, handing the keyboard on if that thread is on screen.
     func close(_ block: ShellBlock) {
         guard openBlocks[block.chatID] == block.id else { return }
+        if stagingBlock == block.id { stagingBlock = nil }
         withAnimation(Motion.move) { openBlocks[block.chatID] = nil }
         if block.chatID == chat?.id { returnKeyboard() }
     }
@@ -70,6 +78,20 @@ extension AppModel {
     func returnKeyboard() {
         guard !keyboardTaken else { return }
         if openShell != nil { focusOpenBlock() } else if composerTakesKeyboard { composerFocus += 1 }
+    }
+
+    /// The same a frame later, once whatever closed has had its own: a key that closes a surface
+    /// returns from its handler first, and the focus change runs a graph update of its own, which
+    /// a turn of the run loop on wasn't far enough, the main queue running it before the frame
+    /// was drawn. Asked twice in that frame, it's done once.
+    func returnKeyboardSoon() {
+        let me = ObjectIdentifier(self)
+        guard KeyboardReturn.pending.insert(me).inserted else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(20))
+            KeyboardReturn.pending.remove(me)
+            self?.returnKeyboard()
+        }
     }
 
     private static let shellHistoryKey = "shellHistory"
@@ -160,4 +182,10 @@ enum ShellNames {
         // zsh's own completion functions start with an underscore; nobody types those.
         return Array(Set(names.filter { !$0.isEmpty && !$0.hasPrefix("_") && !$0.contains(" ") })).sorted()
     }
+}
+
+@MainActor
+enum KeyboardReturn {
+    /// The models with a return to the composer on its way.
+    static var pending: Set<ObjectIdentifier> = []
 }

@@ -18,6 +18,7 @@ extension AppModel {
             return
         }
         guard !drawerShown else { return }
+        drawerBuilt = true
         drawerTask = Task {
             try? await Task.sleep(for: DrawerTiming.hotZoneDelay)
             guard !Task.isCancelled else { return }

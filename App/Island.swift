@@ -60,7 +60,7 @@ struct Island: View {
         // block, takes it back once the surface has gone.
         .onChange(of: shown == .capsule) { _, folded in
             guard folded else { return }
-            DispatchQueue.main.async { model.returnKeyboard() }
+            model.returnKeyboardSoon()
         }
     }
 

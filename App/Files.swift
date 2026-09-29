@@ -118,76 +118,106 @@ extension LinkedFile {
 /// ⌘P: find a file in the project by a few of its letters.
 struct FileFinder: View {
     static let width: CGFloat = 560
+    private static let row: CGFloat = 28
+    /// The field's row, so what stands in for it is as tall.
+    private static let header: CGFloat = 41
     @Environment(AppModel.self) private var model
     @State private var query = ""
     @State private var selected = 0
     @FocusState private var focused: Bool
+    /// What has been made since it opened: nothing but the glass, then the field, then the rows a
+    /// part to a frame, all behind the glass, which shows none of it until it has begun to grow.
+    @State private var stage = 0
+    private static let last = 4
+    /// How many rows each stage shows.
+    private static let rows = [0, 0, 5, 10]
 
     private var results: [String] {
         Array(Fuzzy.rank(model.projectFiles, by: query) { $0 }.prefix(14))
     }
 
     var body: some View {
-        let results = results
+        let results = stage >= 2 ? results : []
+        let shown = stage >= Self.last ? results : Array(results.prefix(Self.rows[stage]))
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Find a file", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 16))
-                .foregroundStyle(Ink.primary)
-                .focused($focused)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .onKeyPress(.downArrow) {
-                    selected = min(selected + 1, max(results.count - 1, 0))
-                    return .handled
-                }
-                .onKeyPress(.upArrow) {
-                    selected = max(selected - 1, 0)
-                    return .handled
-                }
-                .onSubmit { if results.indices.contains(selected) { model.openFile(results[selected]) } }
-                // Tab moves down the list rather than take the keyboard out of the field.
-                .onKeyPress(.tab) {
-                    selected = min(selected + 1, max(results.count - 1, 0))
-                    return .handled
-                }
-                .onChange(of: query) { selected = 0 }
-            if !results.isEmpty {
-                List(Array(results.enumerated()), id: \.element) { index, path in
-                    Button {
-                        model.openFile(path)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text((path as NSString).lastPathComponent)
-                                .font(Type.body)
-                                .foregroundStyle(Ink.primary)
-                            Text((path as NSString).deletingLastPathComponent)
-                                .font(Type.secondary)
-                                .foregroundStyle(Ink.faint)
-                                .lineLimit(1)
-                                .truncationMode(.head)
-                            Spacer(minLength: 0)
+            if stage < 1 {
+                Color.clear.frame(height: Self.header)
+            } else {
+                field(results)
+            }
+            if stage < 2 {
+                // Where the rows will be, from the files it already knows.
+                Color.clear.frame(height: CGFloat(min(model.projectFiles.count, 14)) * Self.row + 8)
+            } else if !results.isEmpty {
+                // At most fourteen, and as tall as they are: nothing here scrolls.
+                VStack(spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.element) { index, path in
+                        Button {
+                            model.openFile(path)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text((path as NSString).lastPathComponent)
+                                    .font(Type.body)
+                                    .foregroundStyle(Ink.primary)
+                                Text((path as NSString).deletingLastPathComponent)
+                                    .font(Type.secondary)
+                                    .foregroundStyle(Ink.faint)
+                                    .lineLimit(1)
+                                    .truncationMode(.head)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 8)
+                            .frame(height: Self.row)
+                            .background(index == selected ? Surface.selected : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+                            .contentShape(.rect)
                         }
-                        .padding(.horizontal, 8)
-                        .frame(height: 28)
-                        .background(index == selected ? Surface.selected : .clear, in: .rect(cornerRadius: 8, style: .continuous))
-                        .contentShape(.rect)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+                    Spacer(minLength: 0)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .frame(height: CGFloat(results.count) * 28 + 8)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+                .frame(height: CGFloat(results.count) * Self.row + 8, alignment: .top)
             }
         }
-        .padding(.bottom, results.isEmpty ? 0 : 6)
+        .padding(.bottom, stage >= 2 && results.isEmpty ? 0 : 6)
         .task {
-            try? await Task.sleep(for: .milliseconds(60))
+            for next in 1..<Self.last {
+                try? await Task.sleep(for: .milliseconds(17))
+                stage = next
+            }
+            try? await Task.sleep(for: .milliseconds(9))
             focused = true
+            try? await Task.sleep(for: .milliseconds(300))
+            stage = Self.last
         }
+    }
+
+    private func field(_ results: [String]) -> some View {
+        TextField("Find a file", text: $query)
+            .textFieldStyle(.plain)
+            .font(.system(size: 16))
+            .foregroundStyle(Ink.primary)
+            .focused($focused)
+            .padding(.horizontal, 14)
+            .frame(height: Self.header)
+            // One handler for the keys: each modifier is a node SwiftUI makes on open.
+            .onKeyPress(phases: [.down, .repeat]) { press in
+                switch press.key {
+                case .downArrow, .tab:
+                    // Tab moves down the list rather than take the keyboard out of the field.
+                    stage = Self.last
+                    selected = min(selected + 1, max(results.count - 1, 0))
+                case .upArrow:
+                    stage = Self.last
+                    selected = max(selected - 1, 0)
+                default:
+                    return .ignored
+                }
+                return .handled
+            }
+            .onSubmit { if results.indices.contains(selected) { model.openFile(results[selected]) } }
+            .onChange(of: query) { selected = 0 }
     }
 }
 

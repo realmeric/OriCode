@@ -65,7 +65,7 @@ struct KeyboardTests {
         #expect(model.openShell == nil)
     }
 
-    @Test func aBlockGoingByItselfLeavesTheKeyboardWithCommandK() throws {
+    @Test func aBlockGoingByItselfLeavesTheKeyboardWithCommandK() async throws {
         let block = try #require(model.runCommand("sleep 5"))
         defer { block.stop() }
         model.open(block)
@@ -75,6 +75,9 @@ struct KeyboardTests {
         #expect(model.openShell == nil)
         #expect(model.composerFocus == focus)
         #expect(model.escape())
+        // Handed back a turn of the run loop after the key, not inside it.
+        #expect(model.composerFocus == focus)
+        try await Task.sleep(for: .milliseconds(50))
         #expect(model.composerFocus == focus + 1)
     }
 
@@ -116,5 +119,37 @@ struct KeyboardTests {
         #expect(!model.reviewShown && model.composerMenu)
         #expect(model.escape())
         #expect(!model.composerMenu)
+    }
+
+    @Test func theKeyboardComesBackOnceALaterFrame() async throws {
+        let focus = model.composerFocus
+        model.returnKeyboardSoon()
+        model.returnKeyboardSoon()
+        #expect(model.composerFocus == focus)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(model.composerFocus == focus + 1)
+    }
+
+    @Test func theThreadListIsMadeByTheHotZoneOrTheFirstOpen() {
+        #expect(!model.drawerBuilt)
+        model.hotZone(true)
+        #expect(model.drawerBuilt)
+        model.hotZone(false)
+        model.drawerBuilt = false
+        model.showDrawer()
+        #expect(model.drawerBuilt)
+    }
+
+    @Test func aBlockOpensUnseenAndRisesTheNextTurn() async throws {
+        let block = try #require(model.runCommand("sleep 5"))
+        defer { block.stop() }
+        model.open(block)
+        #expect(model.openShell === block)
+        #expect(model.stagingBlock == block.id)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.stagingBlock == nil)
+        model.open(block)
+        model.close(block)
+        #expect(model.stagingBlock == nil)
     }
 }

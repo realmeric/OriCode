@@ -191,6 +191,9 @@ final class AppModel {
     /// The block drawn full over each thread's conversation, by thread: another thread keeps its
     /// own keyboard and asks, and coming back finds its block where it was.
     var openBlocks: [UUID: UUID] = [:]
+    /// The block whose panel is in the window but not yet showing: its terminal comes into the
+    /// window in a turn with nothing moving, and the panel rises in the next.
+    var stagingBlock: UUID?
     /// Whether the composer is a shell prompt for the thread's folder, after a `!` at its start.
     var shellPrompt = false
     /// The commands run from it in this launch, by their block's id, running or ended.
@@ -235,7 +238,13 @@ final class AppModel {
     var openFile: OpenFile?
     /// Slash commands by agent, then by folder; an empty list means they're being fetched.
     var slashCommands: [String: [String: [SlashCommandInfo]]] = [:]
-    var drawerShown = false
+    var drawerShown = false {
+        didSet { if drawerShown { drawerBuilt = true } }
+    }
+    /// Whether the thread list has been made: from the pointer reaching the hot zone, or the first
+    /// time it opens. After that it stays in the window, out of sight, so opening it moves it
+    /// rather than makes it.
+    var drawerBuilt = false
     var drawerPinned = UserDefaults.standard.bool(forKey: "drawerPinned") {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
     }

@@ -6,12 +6,26 @@ import SwiftUI
 struct CommandCenter: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
+    /// What has been built since it opened: nothing but the glass, then the field, then some rows,
+    /// a screenful, and the rest. SwiftUI takes some 40ms to make all of it, so it comes in a part
+    /// to a frame, behind the glass, which shows none of it until it has begun to grow. The arrows
+    /// go straight to the last.
+    @State private var stage = 0
+    /// The level's rows, made by `remake` and not by the body: they read the threads, the
+    /// commands and the model's own state, and the body ran them all again for any change once it
+    /// had gone, on the frame that closes it.
+    @State private var made: [Line] = []
+    private static let last = 6
+    /// How many lines each stage shows.
+    private static let lines = [0, 0, 4, 8, 12, 16]
 
     static let width: CGFloat = 560
     private static let row: CGFloat = 30
     private static let heading: CGFloat = 26
     /// About twelve rows, and past that it scrolls.
     private static let tallest: CGFloat = 380
+    /// The field's row, so what stands in for it is as tall.
+    private static let header: CGFloat = 41
 
     private enum Line: Identifiable {
         case heading(String)
@@ -28,50 +42,18 @@ struct CommandCenter: View {
     var body: some View {
         let palette = model.palette
         let level = palette.level
-        let lines = lines(for: level)
-        let items = lines.compactMap { line -> PaletteItem? in
+        let all = stage >= 2 ? made : []
+        let lines = stage >= Self.last ? all : Array(all.prefix(Self.lines[stage]))
+        let items = all.compactMap { line -> PaletteItem? in
             if case .item(let item, _) = line { return item }
             return nil
         }
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                if let title = title(of: level) {
-                    Text(title + " ›")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Ink.secondary)
-                        .fixedSize()
-                }
-                TextField(placeholder(of: level), text: query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Ink.primary)
-                    .focused($focused)
-                    .onKeyPress(.downArrow) {
-                        move(1, in: items)
-                        return .handled
-                    }
-                    .onKeyPress(.upArrow) {
-                        move(-1, in: items)
-                        return .handled
-                    }
-                    // Tab opens a row's level, and otherwise stays put rather than take the keyboard
-                    // out of the field.
-                    .onKeyPress(.tab) {
-                        if items.indices.contains(level.selected), items[level.selected].opensLevel {
-                            model.activate(items[level.selected])
-                        }
-                        return .handled
-                    }
-                    // The Backspace key sends DEL, 0x7F, which isn't SwiftUI's .delete, 0x08.
-                    .onKeyPress(keys: [.delete, KeyEquivalent("\u{7F}")]) { _ in
-                        guard level.query.isEmpty, palette.stack.count > 1 else { return .ignored }
-                        _ = palette.pop()
-                        return .handled
-                    }
-                    .onSubmit { run(level, items) }
+            if stage < 1 {
+                Color.clear.frame(height: Self.header)
+            } else {
+                field(level, palette: palette, items: items)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
             if let status = status(of: level) {
                 HStack(spacing: 6) {
                     if palette.busy != nil { ProgressView().controlSize(.mini) }
@@ -84,50 +66,118 @@ struct CommandCenter: View {
                 .padding(.bottom, 8)
                 .transition(.opacity)
             }
-            if !lines.isEmpty {
-                list(lines, selected: level.selected)
+            if stage < 2 {
+                Color.clear.frame(height: Self.tallest)
+            } else if !lines.isEmpty {
+                list(lines, height: height(of: all), selected: level.selected)
             }
         }
-        .padding(.bottom, lines.isEmpty ? 0 : 6)
+        .padding(.bottom, lines.isEmpty && stage >= 2 ? 0 : 6)
         .animation(Motion.fade, value: status(of: level))
         // The field isn't in the window until the slide-in starts, so focus it a beat later.
         .task {
-            try? await Task.sleep(for: .milliseconds(60))
+            for next in 1..<Self.last {
+                try? await Task.sleep(for: .milliseconds(17))
+                stage = next
+                if next == 2 { remake() }
+            }
+            try? await Task.sleep(for: .milliseconds(9))
             focused = true
+            try? await Task.sleep(for: .milliseconds(300))
+            stage = Self.last
         }
     }
 
-    private func list(_ lines: [Line], selected: Int) -> some View {
-        let height = lines.reduce(CGFloat(8)) { total, line in
+    /// Makes the rows for the level being shown, and again when anything they read changes while
+    /// it's up.
+    private func remake() {
+        let model = model
+        made = withObservationTracking {
+            lines(for: model.palette.level)
+        } onChange: {
+            DispatchQueue.main.async { if model.commandCenterShown { remake() } }
+        }
+    }
+
+    /// The field, and the level's title before it when it's a level down.
+    private func field(_ level: PaletteState.Level, palette: PaletteState, items: [PaletteItem]) -> some View {
+        HStack(spacing: 6) {
+            if let title = title(of: level) {
+                Text(title + " ›")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Ink.secondary)
+                    .fixedSize()
+            }
+            TextField(placeholder(of: level), text: query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16))
+                .foregroundStyle(Ink.primary)
+                .focused($focused)
+                // One handler for the four keys: each modifier is a node SwiftUI makes on open.
+                .onKeyPress(phases: [.down, .repeat]) { press in
+                    switch press.key {
+                    case .downArrow:
+                        stage = Self.last
+                        move(1, in: items)
+                    case .upArrow:
+                        stage = Self.last
+                        move(-1, in: items)
+                    case .tab:
+                        // Opens a row's level, and otherwise stays put rather than take the
+                        // keyboard out of the field.
+                        if items.indices.contains(level.selected), items[level.selected].opensLevel {
+                            model.activate(items[level.selected])
+                        }
+                    // The Backspace key sends DEL, 0x7F, which isn't SwiftUI's .delete, 0x08.
+                    case .delete, KeyEquivalent("\u{7F}"):
+                        guard level.query.isEmpty, palette.stack.count > 1 else { return .ignored }
+                        _ = palette.pop()
+                    default:
+                        return .ignored
+                    }
+                    return .handled
+                }
+                .onSubmit { run(level, items) }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: Self.header)
+    }
+
+    /// A scroll view of lazy rows rather than a List: a List makes an outline view with its own
+    /// scroll view and reads every row's identity as it opens, which was most of ⌘K's first
+    /// frame. The rows draw their own selection and are all one height, so it gives up nothing.
+    private func height(of lines: [Line]) -> CGFloat {
+        lines.reduce(CGFloat(8)) { total, line in
             if case .heading = line { return total + Self.heading }
             return total + Self.row
         }
-        return ScrollViewReader { proxy in
-            List(lines) { line in
-                switch line {
-                case .heading(let title):
-                    Text(title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Ink.faint)
-                        .padding(.horizontal, 8)
-                        .frame(height: Self.heading, alignment: .bottomLeading)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                case .item(let item, let index):
-                    row(item, selected: index == selected) {
-                        model.palette.level.selected = index
-                        model.activate(item)
+    }
+
+    private func list(_ lines: [Line], height: CGFloat, selected: Int) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(lines) { line in
+                        switch line {
+                        case .heading(let title):
+                            Text(title)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Ink.faint)
+                                .padding(.horizontal, 8)
+                                .frame(height: Self.heading, alignment: .bottomLeading)
+                        case .item(let item, let index):
+                            row(item, selected: index == selected) {
+                                model.palette.level.selected = index
+                                model.activate(item)
+                            }
+                            .id(item.id)
+                        }
                     }
-                    .id(item.id)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
                 }
+                .padding(.horizontal, 14)
+                .padding(.top, 3)
+                .padding(.bottom, 5)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 0)
             .frame(height: min(height, Self.tallest))
             .onChange(of: selected) { _, index in
                 let items = lines.compactMap { line -> PaletteItem? in
