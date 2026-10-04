@@ -117,7 +117,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
-        case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
+        case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
@@ -478,9 +478,20 @@ private struct ConversationPane: View {
     @AppStorage(TranscriptSettings.showCost) private var showCost = false
     @Environment(AppModel.self) private var model
     @AppStorage(Limit.goOnKey) private var goOn = true
+    @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
+    @AppStorage(TranscriptSettings.concise) private var concise = false
 
     var body: some View {
         PaneTitle(text: "Conversation")
+        SectionHeading("Replies")
+        SettingsCard {
+            SettingsRow(title: "Show thinking", detail: "A line in the thread where the agent thought, which opens onto what it thought. Off, the thread leaves it out.") {
+                Toggle("Show thinking", isOn: $showThinking).labelsHidden().toggleStyle(.switch)
+            }
+            SettingsRow(title: "Concise replies", detail: "Asks the agent for shorter replies, fewer code comments and changes kept to what you asked. It holds from a thread's next message, on Claude Code and Codex.") {
+                Toggle("Concise replies", isOn: $concise).labelsHidden().toggleStyle(.switch)
+            }
+        }
         SectionHeading("Under each turn")
         SettingsCard {
             SettingsRow(title: "How long it took", detail: "Beside the files the turn changed, which always show.") {

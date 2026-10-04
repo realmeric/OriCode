@@ -172,6 +172,7 @@ extension AppModel {
         // Only a level the model has now, the way the picker shows it.
         if let effort = chat.effort, option(for: chat)?.efforts.contains(effort) ?? true { params["effort"] = .string(effort) }
         params["fast"] = .bool(fastMode(of: chat))
+        if UserDefaults.standard.bool(forKey: TranscriptSettings.concise) { params["concise"] = true }
         if workflows(of: chat) { params["workflows"] = true }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {

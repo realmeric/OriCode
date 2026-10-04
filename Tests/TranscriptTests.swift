@@ -60,4 +60,12 @@ struct ToolRunTests {
         ]
         #expect(ToolSummary.run(calls) == "Edited 2 files, searched the web, used 1 tool")
     }
+
+    @Test func thinkingIsLeftOutWhenSettingsSaySo() {
+        let items: [Item] = [.thinking(id: UUID(), text: "Hm."), .text(id: UUID(), text: "Done.")]
+        #expect(TranscriptEntry.fold(items).count == 2)
+        let shown = TranscriptEntry.fold(items, thinking: false)
+        #expect(shown.count == 1)
+        if case .item(.text) = shown[0] {} else { Issue.record("the reply should be what's left") }
+    }
 }

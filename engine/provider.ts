@@ -49,6 +49,11 @@ export const drawing =
   "It is drawn over dark glass, up to 720 points wide: give it a viewBox and no background, draw text and lines in white, with opacity for quieter ink (currentColor is white), " +
   "fill shapes with white at 6 to 10% opacity, set text at 13px in the default font, and use colour only where it means something.";
 
+/// What a session is told when Settings › Conversation asks for concise replies.
+export const brevity =
+  "The user asked for concise replies. Answer first, in as few words as the answer needs: no preamble, no recap of what you did, no offer of more. " +
+  "Write a code comment only where it says what the code can't, and change only what was asked.";
+
 /// The engine's own words for a session: the window's, then what a head is told of its rays.
 export function told(instructions?: string): string {
   return instructions ? `${drawing}\n\n${instructions}` : drawing;

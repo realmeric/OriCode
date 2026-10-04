@@ -12,6 +12,7 @@ struct TranscriptView: View {
     @State private var lit: UUID?
     /// How tall the laid-out thread is, kept where reading it draws nothing.
     @State private var content = ContentHeight()
+    @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
 
     private final class ContentHeight {
         var height: CGFloat = 0
@@ -37,7 +38,7 @@ struct TranscriptView: View {
                 }
                 // Messages waiting for Claude to take them up come last, as the bubbles they'll be,
                 // with the ids they'll keep: taken up, one becomes the transcript's item in place.
-                let entries = TranscriptEntry.fold(shown) + conversation.waiting.map {
+                let entries = TranscriptEntry.fold(shown, thinking: showThinking) + conversation.waiting.map {
                     TranscriptEntry.item(.user(id: $0.id, text: $0.text, images: $0.previews))
                 }
                 // Not while a block is open: Return typed there mustn't answer the card.
@@ -116,7 +117,7 @@ struct TranscriptView: View {
             try? await Task.sleep(for: .milliseconds(80))
             // The lazy stack finds an item only once what's around it has been laid out, so the
             // scroll goes first to where the item should be by its place in the thread.
-            let entries = TranscriptEntry.fold(shown)
+            let entries = TranscriptEntry.fold(shown, thinking: showThinking)
             if let index = entries.firstIndex(where: { $0.id == id }) {
                 position.scrollTo(y: content.height * CGFloat(index) / CGFloat(entries.count))
                 try? await Task.sleep(for: .milliseconds(50))
@@ -198,7 +199,7 @@ enum TranscriptEntry: Identifiable {
     /// into a run, as the Claude Code app does. Anything else ends a run, an ask, a workflow's
     /// card or a plan's included, and a run with one call in it stays as its items. A TodoWrite
     /// that carries a plan on shows only on the plan's card, so it leaves the run as it was.
-    static func fold(_ items: some Collection<Item>) -> [TranscriptEntry] {
+    static func fold(_ items: some Collection<Item>, thinking: Bool = true) -> [TranscriptEntry] {
         var entries: [TranscriptEntry] = []
         var run: [Item] = []
         func close() {
@@ -216,6 +217,9 @@ enum TranscriptEntry: Identifiable {
                 close()
                 entries.append(.item(item))
             case .tool(_, let call) where call.kind == .plan:
+                continue
+            // Settings › Conversation leaves thinking out.
+            case .thinking where !thinking:
                 continue
             case .tool, .thinking:
                 run.append(item)
@@ -515,6 +519,9 @@ struct FooterLine: View {
 enum TranscriptSettings {
     static let showTime = "showTurnTime"
     static let showCost = "showTurnCost"
+    static let showThinking = "showThinking"
+    /// Replies asked to be short, which the engine tells the agent.
+    static let concise = "conciseReplies"
 }
 
 extension TurnFooter {

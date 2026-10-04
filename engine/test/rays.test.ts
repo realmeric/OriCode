@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
-import { drawing, told } from "../provider.ts";
+import { brevity, drawing, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
 import { lead } from "../ultracode.ts";
 import { engineWith, sandbox } from "./engine.ts";
@@ -276,6 +276,24 @@ test("workflows on a Codex model without ultra are OriCode's: the head is told t
   await call(url, "worker_result", { worker: told.worker, wait: true });
   const workers = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "turn/start").slice(1).map((message) => message.params);
   assert.deepEqual(workers.map((worker) => [worker.effort, worker.input[0].text]), [["medium", "hello"], ["low", "again"]]);
+  await engine.end();
+});
+
+test("concise replies are asked for in the engine's words, ahead of a head's rays, and only when Settings asks", async (t) => {
+  const { bin, env } = await sandbox();
+  const logs = await mkdtemp(join(tmpdir(), "oricode-concise-logs-"));
+  await agents(bin, logs);
+  const cwd = await repository();
+  const engine = engineWith(env);
+  t.after(engine.kill);
+  await engine.request("hello", { agents: { codex: { path: join(bin, "codex") } } });
+  const send = { threadId: "k222", cwd, text: "hello", permissionMode: "bypassPermissions", provider: "codex" };
+  await engine.request("send", { ...send, concise: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k222");
+  await engine.request("send", send);
+  await engine.until((line, ) => line.event === "turn.done" && line.threadId === "k222", engine.lines.length);
+  const opened = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "thread/start" || message.method === "thread/resume").map((message) => message.params.developerInstructions);
+  assert.deepEqual(opened, [told(brevity), drawing]);
   await engine.end();
 });
 
