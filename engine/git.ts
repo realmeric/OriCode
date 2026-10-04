@@ -195,7 +195,32 @@ export async function addWorktree(root: string, slug: string): Promise<{ path: s
   const path = `${root}/.worktrees/${slug}`;
   const branchName = `oricode/${slug}`;
   await git(root, ["worktree", "add", "-b", branchName, path]);
+  // A fresh checkout runs without them; one that can't be copied doesn't undo the worktree.
+  await copyIncluded(root, path).catch(() => {});
   return { path, branch: branchName };
+}
+
+/// Copies into a new worktree the files `.worktreeinclude` names, in .gitignore's patterns, that
+/// git ignores, an .env say, which a fresh checkout hasn't got: the file the Claude Code app
+/// reads. Only ignored files go, so a pattern can't bring along what the checkout already has,
+/// and nothing from `.worktrees` itself.
+export async function copyIncluded(root: string, path: string): Promise<string[]> {
+  const { access, cp } = await import("node:fs/promises");
+  try {
+    await access(`${root}/.worktreeinclude`);
+  } catch {
+    return [];
+  }
+  const named = (await git(root, ["ls-files", "--others", "--ignored", "--exclude-from=.worktreeinclude", "-z"]))
+    .split("\0")
+    .filter((file) => file && !file.startsWith(".worktrees/"));
+  if (!named.length) return [];
+  // check-ignore exits 1 when none of them is ignored.
+  const ignored = await run("git", ["check-ignore", "-z", "--stdin"], { cwd: root, input: named.join("\0") + "\0", maxBuffer: 32 * 1024 * 1024, timeout: 60_000 })
+    .then(({ stdout }) => stdout.split("\0").filter(Boolean))
+    .catch(() => [] as string[]);
+  for (const file of ignored) await cp(`${root}/${file}`, `${path}/${file}`, { recursive: true, force: false });
+  return ignored;
 }
 
 /// What removing a worktree would throw away: uncommitted files, and commits that no other

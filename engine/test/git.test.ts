@@ -1,7 +1,8 @@
 // Branches as ⌘K works them, on scratch repositories: nothing here touches Claude or a real repo.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addWorktree, branch, branches, create, friendly, git, notARepository, previous, pull, remote, switchTo, webURL } from "../git.ts";
@@ -110,4 +111,25 @@ test("a folder without git is told so in one line, whatever asks", async () => {
   await assert.rejects(branches(dir), { message: notARepository });
   await assert.rejects(addWorktree(dir, "t-1"), { message: notARepository });
   await assert.rejects(top(dir), { message: notARepository });
+});
+
+test("a new worktree gets the ignored files .worktreeinclude names, and nothing else git ignores", async () => {
+  const dir = await repo();
+  await writeFile(join(dir, ".gitignore"), ".env\nsecrets/\nbuild/\n");
+  await writeFile(join(dir, ".worktreeinclude"), ".env\nsecrets/\nf\nnotes.txt\n");
+  await writeFile(join(dir, ".env"), "KEY=1\n");
+  await mkdir(join(dir, "secrets"));
+  await writeFile(join(dir, "secrets", "token"), "t\n");
+  await mkdir(join(dir, "build"));
+  await writeFile(join(dir, "build", "out"), "o\n");
+  // Named, but not ignored: it's the checkout's to have or not.
+  await writeFile(join(dir, "notes.txt"), "n\n");
+  const made = await addWorktree(dir, "inc");
+  assert.equal(await readFile(join(made.path, ".env"), "utf8"), "KEY=1\n");
+  assert.equal(await readFile(join(made.path, "secrets", "token"), "utf8"), "t\n");
+  assert.equal(existsSync(join(made.path, "build")), false);
+  assert.equal(existsSync(join(made.path, "notes.txt")), false);
+  // A second worktree doesn't pick up the first one's copies.
+  const again = await addWorktree(dir, "inc2");
+  assert.equal(existsSync(join(again.path, ".worktrees")), false);
 });
