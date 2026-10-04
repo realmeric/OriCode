@@ -21,6 +21,7 @@ import { answer, brevity, type Answer, type Availability, type Capabilities, typ
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
+import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
 import { sessionEvents, sessionsIn } from "./sessions.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
@@ -438,6 +439,28 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "sessions.read"({ cwd, sessionId }: { cwd: string; sessionId: string }) {
     return { events: await sessionEvents(cwd, sessionId) };
+  },
+
+  /// The MCP servers Claude Code loads for a folder, for Settings › MCP: listed, switched on or
+  /// off, added and removed, each through the user's own CLI.
+  async "mcp.list"({ cwd }: { cwd: string }) {
+    return { servers: await mcpServers(await cli(claude), cwd) };
+  },
+
+  async "mcp.toggle"({ cwd, name, on }: { cwd: string; name: string; on: boolean }) {
+    return { servers: await mcpServers(await cli(claude), cwd, { name, on }) };
+  },
+
+  async "mcp.add"({ cwd, name, target, scope }: { cwd: string; name: string; target: string; scope: string }) {
+    const path = await cli(claude);
+    await addMcpServer(path, cwd, name, target, scope);
+    return { servers: await mcpServers(path, cwd) };
+  },
+
+  async "mcp.remove"({ cwd, name, scope }: { cwd: string; name: string; scope: string }) {
+    const path = await cli(claude);
+    await removeMcpServer(path, cwd, name, scope);
+    return { servers: await mcpServers(path, cwd) };
   },
 
   async "worktree.add"({ cwd, slug, prefix }: { cwd: string; slug: string; prefix?: string }) {

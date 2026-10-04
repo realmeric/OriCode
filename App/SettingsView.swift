@@ -44,6 +44,7 @@ struct SettingsView: View {
                         switch pane ?? .general {
                         case .general: GeneralPane()
                         case .agents: AgentsPane()
+                        case .mcp: MCPPane()
                         case .conversation: ConversationPane()
                         case .sourceControl: SourceControlPane()
                         case .archive: ArchivePane()
@@ -81,7 +82,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, agents, conversation, sourceControl, archive, notifications, actions, shortcuts, about
+    case general, agents, mcp, conversation, sourceControl, archive, notifications, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -91,6 +92,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .agents: "Agents"
+        case .mcp: "MCP"
         case .conversation: "Conversation"
         case .sourceControl: "Source control"
         case .archive: "Archive"
@@ -105,6 +107,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .agents: "terminal"
+        case .mcp: "puzzlepiece.extension"
         case .conversation: "text.bubble"
         case .sourceControl: "arrow.triangle.branch"
         case .archive: "archivebox"
@@ -120,6 +123,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
+        case .mcp: ["mcp", "server", "servers", "connector", "tools", "linear"]
         case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .archive: ["archived", "threads", "restore", "delete"]
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
