@@ -2,12 +2,17 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.3.1 "Hands on" - 2026-10-04
+
+- ⌘S saves in the file editor. The editor takes the key itself now; in 0.3.0 the menu's Save was still off when the key arrived, so it did nothing.
+- The side question is ⌘⇧A. ⌘; isn't a key of its own on every keyboard: on a Turkish one the semicolon is a Shift away, so it never fired. If you gave it another key in Settings › Shortcuts, yours stays.
+
 ## v0.3.0 "Hands on" - 2026-10-04
 
 ### In the conversation
 
 - Diagrams and charts are drawn. An agent that answers with a fenced `svg` block gets it drawn in place of its code, on a card, clear so the glass shows through; while it streams the thread says "Drawing…", and a right click copies the image or the SVG. Claude Code and Codex are told the window draws, so asking for a diagram is enough.
-- ⌘; asks a side question. The answer comes from everything the thread knows and neither the question nor the answer joins it: the engine asks a copy of the thread's session that it never saves. It works while the thread is busy. Claude Code only, for now.
+- ⌘⇧A (⌘; in 0.3.0) asks a side question. The answer comes from everything the thread knows and neither the question nor the answer joins it: the engine asks a copy of the thread's session that it never saves. It works while the thread is busy. Claude Code only, for now.
 - Typing `@` lists the project's files as you go, ranked as ⌘P ranks them. Return or Tab puts the path in the message.
 - The paperclip and a drop take any file now, on every agent. A picture still goes among the thumbnails; anything else, a PDF, a source file, a folder, is named in the message for the agent to open with its own tools.
 - Settings › Conversation has Show thinking, which leaves the thinking lines out when it's off, and Concise replies, which asks Claude Code and Codex for shorter answers, fewer comments and changes kept to what you asked.
