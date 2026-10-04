@@ -80,7 +80,7 @@ struct Composer: View {
         }
         // Before the picker and the menus: every change inside the view a drop target is on
         // gathers its drop preferences again, which the picker's page turns paid on every frame.
-        .onDrop(of: offers.attachments ? [.image, .fileURL] : [], isTargeted: $dropTarget) { providers in
+        .onDrop(of: [.image, .fileURL], isTargeted: $dropTarget) { providers in
             accept(providers)
         }
         // The finger is on the trackpad for the whole drag, so this says "let go here".
@@ -289,9 +289,9 @@ struct Composer: View {
                 took = true
                 _ = provider.loadObject(ofClass: NSURL.self) { url, _ in
                     guard let url = url as? URL else { return }
-                    Task { @MainActor in _ = model.attach(fileAt: url) }
+                    Task { @MainActor in attach(url) }
                 }
-            } else if provider.canLoadObject(ofClass: NSImage.self) {
+            } else if offers.attachments, provider.canLoadObject(ofClass: NSImage.self) {
                 took = true
                 _ = provider.loadObject(ofClass: NSImage.self) { image, _ in
                     guard let image = image as? NSImage else { return }
@@ -302,12 +302,35 @@ struct Composer: View {
         return took
     }
 
+    /// A picture goes among the attachments when the agent takes pictures; any other file, a folder
+    /// or a PDF, is named in the message, for the agent to open with its own tools.
+    private func attach(_ url: URL) {
+        if !model.shellPrompt, offers.attachments, model.attach(fileAt: url) { return }
+        guard url.isFileURL, let folder = model.chat?.cwd ?? model.project?.path else { return }
+        text = Self.naming(url, from: folder, in: text, shell: model.shellPrompt)
+    }
+
+    /// The file's path at the end of the message as a mention, from the thread's folder when it's
+    /// inside it; at the prompt, as a word the shell reads whole.
+    nonisolated static func naming(_ url: URL, from folder: String, in text: String, shell: Bool = false) -> String {
+        let path = url.standardizedFileURL.path(percentEncoded: false)
+        let root = folder.hasSuffix("/") ? folder : folder + "/"
+        let shown = path.hasPrefix(root) ? String(path.dropFirst(root.count)) : path
+        let gap = text.isEmpty || text.last?.isWhitespace == true ? "" : " "
+        if shell {
+            let plain = shown.allSatisfy { $0.isLetter || $0.isNumber || "/._-+~".contains($0) }
+            return text + gap + (plain ? shown : "'" + shown.replacing("'", with: "'\\''") + "'") + " "
+        }
+        return text + gap + (shown.contains(where: \.isWhitespace) ? "@\"\(shown)\"" : "@" + shown) + " "
+    }
+
     /// Images and files dropped on the field's text.
     private func accept(_ board: NSPasteboard) -> Bool {
         if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            return urls.map { model.attach(fileAt: $0) }.contains(true)
+            urls.forEach(attach)
+            return true
         }
-        guard let images = board.readObjects(forClasses: [NSImage.self]) as? [NSImage], !images.isEmpty else { return false }
+        guard offers.attachments, let images = board.readObjects(forClasses: [NSImage.self]) as? [NSImage], !images.isEmpty else { return false }
         model.attach(images)
         return true
     }
@@ -355,7 +378,7 @@ struct Composer: View {
             .padding(.vertical, 9)
             .padding(.leading, model.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
-                if offers.attachments { attachButton }
+                attachButton
                 ModelMenu(chat: model.chat)
                 if offers.usage { UsageGlass(chat: model.chat) }
             }
@@ -412,7 +435,7 @@ struct Composer: View {
                 model.shellPrompt = false
                 return true
             },
-            drop: offers.attachments ? { accept($0) } : nil,
+            drop: { accept($0) },
             dropping: { dropTarget = $0 })
     }
 
@@ -450,15 +473,16 @@ struct Composer: View {
             .accessibilityHidden(true)
     }
 
-    /// The native panel for images; they go in the way a paste or a drop does.
+    /// The native panel for files; they go in the way a paste or a drop does.
     private var attachButton: some View {
         Button {
             let panel = NSOpenPanel()
-            panel.allowedContentTypes = [.image]
+            panel.canChooseDirectories = true
             panel.allowsMultipleSelection = true
+            if let folder = model.chat?.cwd ?? model.project?.path { panel.directoryURL = URL(filePath: folder) }
             panel.prompt = "Attach"
             guard panel.runModal() == .OK else { return }
-            for url in panel.urls { _ = model.attach(fileAt: url) }
+            panel.urls.forEach(attach)
         } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: 14))
@@ -469,8 +493,8 @@ struct Composer: View {
         }
         .buttonStyle(.plain)
         .onHover { attachHovered = $0 }
-        .help("Attach an image")
-        .accessibilityLabel("Attach an image")
+        .help("Attach a file")
+        .accessibilityLabel("Attach a file")
     }
 
     private var maxHeight: CGFloat { windowHeight * 0.4 }

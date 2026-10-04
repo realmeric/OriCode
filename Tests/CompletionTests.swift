@@ -175,4 +175,13 @@ struct CompletionTests {
         #expect(Composer.mentioning("App/Composer.swift", in: "look at @Comp") == "look at @App/Composer.swift ")
         #expect(Composer.mentioning("My Notes/todo.txt", in: "@todo") == "@\"My Notes/todo.txt\" ")
     }
+
+    @Test func aFileThatIsNotAPictureIsNamedInTheMessage() {
+        let folder = "/Users/meric/alpha"
+        #expect(Composer.naming(URL(filePath: "/Users/meric/alpha/docs/spec.pdf"), from: folder, in: "") == "@docs/spec.pdf ")
+        #expect(Composer.naming(URL(filePath: "/Users/meric/Downloads/a b.pdf"), from: folder, in: "read") == "read @\"/Users/meric/Downloads/a b.pdf\" ")
+        #expect(Composer.naming(URL(filePath: "/Users/meric/alphabet/x.txt"), from: folder, in: "see ") == "see @/Users/meric/alphabet/x.txt ")
+        #expect(Composer.naming(URL(filePath: "/tmp/it's here.log"), from: folder, in: "cat", shell: true) == "cat '/tmp/it'\\''s here.log' ")
+        #expect(Composer.naming(URL(filePath: "/Users/meric/alpha/Makefile"), from: folder, in: "wc -l ", shell: true) == "wc -l Makefile ")
+    }
 }
