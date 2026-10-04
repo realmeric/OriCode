@@ -65,6 +65,37 @@ struct ReviewTests {
         #expect(found.isEmpty)
     }
 
+    @Test func theAgentsCommentsLandOnTheirLinesToKeepOrDismiss() throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let model = AppModel(container: container)
+        let diff = WorkingDiff(root: Self.root, head: nil, files: [
+            file("a.swift", [hunk(["+let one = 1"], at: 1), hunk(["+let forty = 40", "+let more = 41"], at: 40)]),
+            file("b.swift", [hunk(["+let b = 1"])]),
+        ])
+        model.review.book = ReviewBook(diff: diff, provenance: Provenance()).marked(with: [:])
+        let units = model.review.book.units
+        let placed = model.place([
+            ReviewComment(path: "a.swift", line: 41, text: "Off by one."),
+            ReviewComment(path: "b.swift", line: 900, text: "Unused."),
+            ReviewComment(path: "gone.swift", line: 1, text: "Nowhere."),
+        ])
+        #expect(placed == 2)
+        let notes = model.review.notes
+        #expect(notes.map(\.unit) == [units[1].id, units[2].id])
+        #expect(notes[0].place == "a.swift:41" && notes[0].quote == ["+let more = 41"])
+        #expect(notes[1].place == "b.swift" && notes.allSatisfy(\.suggested))
+        #expect(model.review.openFiles.contains(units[1].section))
+        // Nothing of the agent's goes back until it's kept.
+        #expect(model.ownNotes.isEmpty)
+        model.keepNote(notes[0])
+        #expect(model.ownNotes.map(\.text) == ["Off by one."])
+        #expect(model.notesMessage.contains("a.swift:41") && !model.notesMessage.contains("Unused."))
+        // A second asking replaces what wasn't kept.
+        model.place([ReviewComment(path: "b.swift", line: 1, text: "Name it.")])
+        #expect(model.review.notes.map(\.text) == ["Off by one.", "Name it."])
+    }
+
     @Test func theBookTellsTurnsInOrderAndWhatNoEditMadeLast() {
         let found = provenance([
             user("First"), edit("b.swift", ["+let b = 1"]),

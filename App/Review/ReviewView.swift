@@ -122,8 +122,14 @@ private struct ReviewHeader: View {
                     .foregroundStyle(left == 0 ? Ink.secondary : Ink.faint)
             }
             Spacer()
-            if review.loading {
+            if review.loading || review.asking {
                 ProgressView().controlSize(.mini)
+            }
+            if let diff = review.diff, !diff.files.isEmpty {
+                Button("Ask for a Review") { model.askForReview() }
+                    .buttonStyle(.action(small: true))
+                    .disabled(review.asking)
+                    .help("The thread's agent reads the diff and comments on its lines. It joins no turn.")
             }
             if book.toReview > 0 {
                 Button("Mark All Reviewed") { model.setReviewed(book.units.filter { !$0.reviewed }, true) }
@@ -719,11 +725,17 @@ private struct NoteCard: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "text.bubble").foregroundStyle(Ink.faint)
+            Image(systemName: note.suggested ? "sparkle" : "text.bubble").foregroundStyle(Ink.faint)
             Text(note.text)
-                .foregroundStyle(Ink.primary)
+                .foregroundStyle(note.suggested ? Ink.secondary : Ink.primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if note.suggested {
+                Button("Keep") { model.keepNote(note) }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Ink.primary)
+                    .help("Keep it as a note of yours, to send back with the rest")
+            }
             Button {
                 model.removeNote(note)
             } label: {
@@ -731,7 +743,7 @@ private struct NoteCard: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Ink.faint)
-            .help("Remove this note")
+            .help(note.suggested ? "Dismiss this comment" : "Remove this note")
         }
         .font(Type.secondary)
         .padding(.horizontal, 12)
@@ -791,12 +803,13 @@ private struct ReviewFooter: View {
         let reviewedOnly = Self.reviewedOnly(book)
         let running = model.currentConversation?.running ?? false
         VStack(alignment: .leading, spacing: 8) {
-            if !review.notes.isEmpty {
+            let notes = model.ownNotes
+            if !notes.isEmpty {
                 HStack(spacing: 10) {
-                    Text("\(review.notes.count) \(review.notes.count == 1 ? "note" : "notes") to send")
+                    Text("\(notes.count) \(notes.count == 1 ? "note" : "notes") to send")
                         .foregroundStyle(Ink.primary)
                     Spacer()
-                    Button("Discard") { withAnimation(Motion.move) { review.notes.removeAll() } }
+                    Button("Discard") { withAnimation(Motion.move) { review.notes.removeAll { !$0.suggested } } }
                     Button("Send") { model.sendNotes() }
                         .disabled(running)
                         .help(running ? "The thread is still working; send when it's done." : "Send the notes as your next message")

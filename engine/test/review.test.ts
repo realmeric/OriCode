@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../git.ts";
-import { applyPatch, commitAll, commitReviewed, parsePatch, restore, unquote, unrestore, workingDiff, type FileDiff, type Hunk } from "../review.ts";
+import { applyPatch, commentsIn, commitAll, commitReviewed, parsePatch, restore, unquote, unrestore, workingDiff, type FileDiff, type Hunk } from "../review.ts";
 
 before(() => {
   Object.assign(process.env, {
@@ -313,3 +313,14 @@ test("a hunk whose function line holds a carriage return is still a hunk", () =>
   assert.equal(parsePatch(patch)[0].hunks.length, 1);
 });
 
+
+test("an agent's review is the JSON array in its answer, without what isn't a comment on a file", () => {
+  const answer = 'Here you go:\n```json\n[{"path": "b/App/Foo.swift", "line": 12, "comment": " This drops the last item. "}, {"path": "x", "comment": ""}, {"line": 3, "comment": "no path"}, {"path": "README.md", "line": "seven", "comment": "Says 0.2."}]\n```';
+  assert.deepEqual(commentsIn(answer), [
+    { path: "App/Foo.swift", line: 12, text: "This drops the last item." },
+    { path: "README.md", line: 0, text: "Says 0.2." },
+  ]);
+  assert.deepEqual(commentsIn("[]"), []);
+  assert.deepEqual(commentsIn("Nothing to say."), []);
+  assert.deepEqual(commentsIn("[not json]"), []);
+});

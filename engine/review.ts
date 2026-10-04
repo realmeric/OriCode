@@ -500,3 +500,32 @@ export async function commitAll(cwd: string, paths: string[], message: string): 
   await gitRun(root, ["commit", "-q", "-m", message, "--", ...paths.map(literal)]);
   return (await gitRun(root, ["rev-parse", "--short", "HEAD"])).trim();
 }
+
+/// What an agent asked to review a diff is told, ahead of the diff.
+export const reviewLead =
+  "Review this diff of the working tree as a careful colleague would: bugs, mistakes, things left half done, and anything that goes against what was asked for. " +
+  "No praise, no style, nothing a linter would say. Reply with a JSON array and nothing else, each item " +
+  '{"path": the file\'s path as the diff has it, "line": the line\'s number in the new file, "comment": one or two plain sentences}. ' +
+  "Reply [] when nothing needs saying.";
+
+export type ReviewComment = { path: string; line: number; text: string };
+
+/// The comments in an agent's answer: the JSON array in it, whatever it wrote around it, with
+/// anything that isn't a comment on a line of a file left out.
+export function commentsIn(answer: string): ReviewComment[] {
+  const start = answer.indexOf("[");
+  const end = answer.lastIndexOf("]");
+  if (start < 0 || end <= start) return [];
+  let items: unknown;
+  try {
+    items = JSON.parse(answer.slice(start, end + 1));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item) => {
+    const { path, line, comment } = (item ?? {}) as { path?: unknown; line?: unknown; comment?: unknown };
+    if (typeof path !== "string" || typeof comment !== "string" || !comment.trim()) return [];
+    return [{ path: path.replace(/^[ab]\//, ""), line: Number.isInteger(line) ? (line as number) : 0, text: comment.trim() }];
+  });
+}

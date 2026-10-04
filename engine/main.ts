@@ -20,7 +20,7 @@ import type { Model } from "./models.ts";
 import { answer, brevity, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
-import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
+import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
 import { failureLog, openPull, pullOf } from "./pr.ts";
 import { sessionEvents, sessionsIn } from "./sessions.ts";
@@ -476,6 +476,21 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "pr.log"({ cwd, link }: { cwd: string; link: string | null }) {
     return { log: await failureLog(cwd, link) };
+  },
+
+  /// The thread's agent reads a diff and comments on its lines: from a copy of the thread's
+  /// session where the agent has side questions and the thread a session, so it knows what was
+  /// asked for, and else in one small call that knows only the diff.
+  async "review.ask"({ threadId, sessionId, cwd, diff, model, provider: id }: { threadId: string; sessionId?: string; cwd: string; diff: string; model?: string; provider?: string }) {
+    if (!diff?.trim()) throw new Error("Nothing to review.");
+    const agent = provider(id);
+    const prompt = `${reviewLead}\n\n<diff>\n${diff.slice(0, 120_000)}\n</diff>`;
+    if (agent.aside && sessionId) {
+      const stop = new AbortController();
+      return { comments: commentsIn(await agent.aside(await cli(agent), { cwd, sessionId, model, text: prompt }, () => {}, stop.signal)) };
+    }
+    if (!agent.oneShot) throw new Error(`${agent.name} can't review a diff here.`);
+    return { comments: commentsIn(await agent.oneShot(await cli(agent), cwd, prompt)) };
   },
 
   async "worktree.add"({ cwd, slug, prefix }: { cwd: string; slug: string; prefix?: string }) {

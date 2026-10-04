@@ -10,6 +10,15 @@ struct ReviewNote: Identifiable, Hashable {
     let quote: [String]
     let place: String
     var text: String
+    /// The agent's, from Ask for a Review: yours to keep as a note of your own, or to dismiss.
+    var suggested = false
+}
+
+/// A comment the agent made on a line of the diff, as the engine reads it out of its answer.
+struct ReviewComment: Decodable, Equatable {
+    let path: String
+    let line: Int
+    let text: String
 }
 
 /// A path's entry in git's index, as it was before a take-back put HEAD's in its place.
@@ -89,6 +98,8 @@ final class ReviewState {
     var busy: String?
     /// Haiku writing a commit message, which touches no file and waits for nothing.
     var writing = false
+    /// The agent is reading the diff for Ask for a Review.
+    var asking = false
     /// What the last take-back did, for as long as it can be undone from here.
     var lastTakeback: Takeback?
     /// Syntax colours per hunk, by what its lines say, once they're ready.
@@ -741,13 +752,74 @@ extension AppModel {
         }
     }
 
+    /// Ask for a Review: the thread's agent reads the diff and its comments land on the lines they
+    /// name, each to keep as a note of your own or dismiss. It joins no turn: a thread with a
+    /// session is asked on the side, where the agent can be, and knows what was asked for.
+    func askForReview() {
+        guard let folder = review.folder, !review.asking else { return }
+        let text = commitPlan(reviewedOnly: false).text
+        guard !text.isEmpty else { return }
+        var params: [String: JSON] = ["threadId": .string(chat?.id.uuidString ?? ""), "cwd": .string(folder), "diff": .string(text)]
+        if let chat, let session = chat.sessionId, chat.cwd == folder {
+            params["sessionId"] = .string(session)
+            if let model = modelSent(in: chat) { params["model"] = .string(model) }
+        }
+        let agent = providerID(for: chat)
+        review.asking = true
+        review.problem = nil
+        Task {
+            do {
+                let reply = try await engine.request("review.ask", .object(params.naming(agent)))
+                let comments = try reply["comments"]?.decode([ReviewComment].self) ?? []
+                let placed = place(comments)
+                if placed == 0 { say(comments.isEmpty ? "Nothing to remark on" : "Its comments named no line of this diff") }
+            } catch {
+                review.problem = error.localizedDescription
+            }
+            review.asking = false
+        }
+    }
+
+    /// Puts each comment on the hunk that holds its line, or its file's first hunk when none
+    /// does, opens that file, and says how many found a place. An earlier asking's comments that
+    /// weren't kept make way.
+    @discardableResult
+    func place(_ comments: [ReviewComment]) -> Int {
+        var placed = 0
+        withAnimation(Motion.move) {
+            review.notes.removeAll(where: \.suggested)
+            for comment in comments {
+                let inFile = review.book.units.filter { $0.file.path == comment.path }
+                guard let unit = inFile.first(where: { $0.lines.contains { $0.new == comment.line } }) ?? inFile.first else { continue }
+                let line = unit.lines.first { $0.new == comment.line }
+                review.notes.append(ReviewNote(
+                    unit: unit.id, path: comment.path, quote: line.map { [$0.signed] } ?? [],
+                    place: line == nil ? comment.path : "\(comment.path):\(comment.line)", text: comment.text, suggested: true))
+                review.openFiles.insert(unit.section)
+                placed += 1
+            }
+        }
+        return placed
+    }
+
+    /// A comment of the agent's kept: now a note of yours, sent with the rest.
+    func keepNote(_ note: ReviewNote) {
+        guard let index = review.notes.firstIndex(where: { $0.id == note.id }) else { return }
+        withAnimation(Motion.fade) { review.notes[index].suggested = false }
+    }
+
+    /// The notes that are yours to send.
+    var ownNotes: [ReviewNote] {
+        review.notes.filter { !$0.suggested }
+    }
+
     func removeNote(_ note: ReviewNote) {
         withAnimation(Motion.move) { review.notes.removeAll { $0.id == note.id } }
     }
 
     /// The notes as one message: each place, the lines it's about, and what you said.
     var notesMessage: String {
-        let parts = review.notes.map { note in
+        let parts = ownNotes.map { note in
             "\(note.place)\n" + note.quote.map { "    " + $0 }.joined(separator: "\n") + "\n" + note.text
         }
         return "Notes from reviewing your changes:\n\n" + parts.joined(separator: "\n\n")
@@ -755,9 +827,9 @@ extension AppModel {
 
     /// Sends the notes as the next message, and keeps the review open to watch what comes back.
     func sendNotes() {
-        guard !review.notes.isEmpty, !(currentConversation?.running ?? false) else { return }
+        guard !ownNotes.isEmpty, !(currentConversation?.running ?? false) else { return }
         if send(notesMessage) {
-            withAnimation(Motion.move) { review.notes.removeAll() }
+            withAnimation(Motion.move) { review.notes.removeAll { !$0.suggested } }
         }
     }
 }
