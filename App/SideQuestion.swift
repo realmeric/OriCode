@@ -19,7 +19,7 @@ extension AppModel {
         return chat.sessionId == nil ? "Send it a message first" : nil
     }
 
-    /// ⌘;: the side question grows out of the capsule, and folds back with what it was asked.
+    /// ⌘⇧A: the side question grows out of the capsule, and folds back with what it was asked.
     func toggleSide() {
         if sideShown {
             closeSide()

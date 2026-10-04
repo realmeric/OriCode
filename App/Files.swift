@@ -415,7 +415,7 @@ private struct FileEditor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
+        let scroll = FileTextView.scrollableTextView()
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
@@ -444,6 +444,7 @@ private struct FileEditor: NSViewRepresentable {
             .foregroundColor: CodeHighlighter.color(.plain),
         ]
         view.delegate = context.coordinator
+        (view as? FileTextView)?.save = { [model] in model.saveFile() }
         model.fileEditor = view
         DispatchQueue.main.async {
             view.window?.makeFirstResponder(view)
@@ -465,5 +466,21 @@ private struct FileEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             if model.openFile?.dirty == false { model.openFile?.dirty = true }
         }
+    }
+}
+
+/// The editor's text view, which takes ⌘S itself: a key goes to the view with the keyboard before
+/// the menu bar, and the menu's Save, switched on by a change the menu hadn't heard of yet, let
+/// the key go by.
+final class FileTextView: NSTextView {
+    var save: () -> Void = {}
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "s" {
+            save()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }

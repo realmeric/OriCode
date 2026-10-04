@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The title capsule and what it opens into. ⌘K's command center, ⌘I's heads, ⌘P's file finder,
-/// ⌘;'s side question and ⌘⇧D's review each stretch down out of the capsule, the way the Dynamic Island grows into what it's
+/// ⌘⇧A's side question and ⌘⇧D's review each stretch down out of the capsule, the way the Dynamic Island grows into what it's
 /// showing, and fold back up into it as they go: one at a time, in the capsule's lane, with its
 /// top where the capsule's is. The glass is one piece that follows whichever of them is up. With
 /// Reduce Motion each has glass of its own, and they fade in and out instead.

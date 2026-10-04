@@ -25,7 +25,7 @@ struct OriCodeCommands: Commands {
         CommandGroup(replacing: .saveItem) {
             Button("Save") { model.saveFile() }
                 .keyboardShortcut("s")
-                .disabled(model.openFile?.dirty != true)
+                .disabled(model.openFile?.editing != true)
             Button(model.closesThread ? "Close Thread" : "Close") { model.close() }
                 .keyboardShortcut(shortcuts.key(.close))
         }

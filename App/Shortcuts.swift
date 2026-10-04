@@ -141,7 +141,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .shellPrompt: KeyCombo("j")
         case .heads: KeyCombo("i")
         case .findFile: KeyCombo("p")
-        case .sideQuestion: KeyCombo(";")
+        // A letter, where every keyboard has it: ; and ' are a Shift away on a Turkish one.
+        case .sideQuestion: KeyCombo("a", [.command, .shift])
         case .review: KeyCombo("d", [.command, .shift])
         case .stop: KeyCombo(".")
         case .switchBranch: KeyCombo("b", [.command, .shift])
