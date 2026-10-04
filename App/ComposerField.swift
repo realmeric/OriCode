@@ -26,6 +26,8 @@ final class Draft {
             if bang != self.bang { self.bang = bang }
             let slash = newValue.hasPrefix("/") && !newValue.contains(where: \.isWhitespace) ? String(newValue.dropFirst()) : nil
             if slash != self.slash { self.slash = slash }
+            let at = Draft.mention(in: newValue)
+            if at != self.at { self.at = at }
             if !typing { field?.show(newValue) }
         }
     }
@@ -40,6 +42,17 @@ final class Draft {
     private(set) var bang = false
     /// The word after a leading "/", while it's still being typed.
     private(set) var slash: String?
+    /// What follows an `@` that starts the last word, while it's still being typed: a file's name.
+    private(set) var at: String?
+
+    /// Read from the end, so a long draft costs a key no more than its last word.
+    nonisolated static func mention(in text: String) -> String? {
+        let start = text.lastIndex(where: \.isWhitespace).map(text.index(after:)) ?? text.startIndex
+        guard start < text.endIndex, text[start] == "@" else { return nil }
+        let word = text[text.index(after: start)...]
+        // A quoted mention is a path with spaces in it, which Tab completes.
+        return word.hasPrefix("\"") ? nil : String(word)
+    }
     /// The field's height: its text's, up to the lines the composer may grow to.
     var height = ComposerTextView.lineHeight(ComposerTextView.body)
     @ObservationIgnored weak var field: ComposerTextView? {

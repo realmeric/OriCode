@@ -19,9 +19,18 @@ extension AppModel {
             if fileFinderShown { fileFinderShown = false } else { openInIsland(.files) }
         }
         guard fileFinderShown else { return }
-        let cwd = chat.cwd
+        loadProjectFiles(in: chat.cwd)
+    }
+
+    /// The folder's files as git lists them, read again each time something is about to search them.
+    func loadProjectFiles(in cwd: String) {
+        if projectFilesFolder != cwd {
+            projectFilesFolder = cwd
+            projectFiles = []
+        }
         Task {
             let reply = try? await engine.request("files.list", ["cwd": .string(cwd)])
+            guard projectFilesFolder == cwd else { return }
             projectFiles = reply?["files"]?.array?.compactMap(\.string) ?? []
         }
     }

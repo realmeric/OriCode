@@ -160,4 +160,19 @@ struct CompletionTests {
         #expect(ShellCompletion.split("cat My\\ No").word == "My\\ No")
         #expect(ShellCompletion.split("ls ").word == "")
     }
+
+    @Test func anAtStartingTheLastWordAsksForAFile() {
+        #expect(Draft.mention(in: "look at @Comp") == "Comp")
+        #expect(Draft.mention(in: "@") == "")
+        #expect(Draft.mention(in: "look at\n@App/Rep") == "App/Rep")
+        #expect(Draft.mention(in: "mail me@example") == nil)
+        #expect(Draft.mention(in: "look at @Comp ") == nil)
+        #expect(Draft.mention(in: "see @\"My No") == nil)
+        #expect(Draft.mention(in: "") == nil)
+    }
+
+    @Test func aPickedFileTakesTheWordsPlace() {
+        #expect(Composer.mentioning("App/Composer.swift", in: "look at @Comp") == "look at @App/Composer.swift ")
+        #expect(Composer.mentioning("My Notes/todo.txt", in: "@todo") == "@\"My Notes/todo.txt\" ")
+    }
 }

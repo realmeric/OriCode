@@ -235,6 +235,8 @@ final class AppModel {
     var usageLoading = false
     var fileFinderShown = false
     var projectFiles: [String] = []
+    /// The folder those files are in.
+    @ObservationIgnored var projectFilesFolder: String?
     var openFile: OpenFile?
     /// Slash commands by agent, then by folder; an empty list means they're being fetched.
     var slashCommands: [String: [String: [SlashCommandInfo]]] = [:]

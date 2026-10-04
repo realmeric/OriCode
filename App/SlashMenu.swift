@@ -69,6 +69,46 @@ struct SlashMenu: View {
     }
 }
 
+/// The list above the capsule while the last word starts with "@": the project's files that match
+/// what follows it, as the file finder ranks them.
+struct MentionMenu: View {
+    let paths: [String]
+    let selected: Int
+    let pick: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(paths.enumerated()), id: \.element) { index, path in
+                Button {
+                    pick(path)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text((path as NSString).lastPathComponent)
+                            .font(Type.mono)
+                            .foregroundStyle(Ink.primary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Text((path as NSString).deletingLastPathComponent)
+                            .font(Type.secondary)
+                            .foregroundStyle(Ink.faint)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(index == selected ? Surface.selected : .clear, in: .rect(cornerRadius: 8, style: .continuous))
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(Surface.drawer, in: .rect(cornerRadius: 14, style: .continuous))
+    }
+}
+
 /// Tab's matches when there's more than one, above the capsule the way the slash menu is: the
 /// first twelve, each with what zsh says of it, and how many more.
 struct CompletionMenu: View {

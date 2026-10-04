@@ -10,6 +10,9 @@ struct Composer: View {
     /// few views below that do.
     @State private var draft = Draft()
     @State private var slashSelected = 0
+    @State private var mentionSelected = 0
+    /// Esc put the files away, until the word they were for is done with.
+    @State private var mentionOff = false
     /// What Tab found when several things match, as the last word would read with each, and the
     /// one the text holds while Tab cycles through them.
     @State private var completions: [String] = []
@@ -127,8 +130,23 @@ struct Composer: View {
                             .frame(maxWidth: 520, alignment: .leading)
                             .padding(.bottom, height + 8)
                             .transition(.opacity)
+                    } else if !mentionMatches.isEmpty {
+                        MentionMenu(paths: mentionMatches, selected: min(mentionSelected, mentionMatches.count - 1)) { mention($0) }
+                            .frame(maxWidth: 520, alignment: .leading)
+                            .padding(.bottom, height + 8)
+                            .transition(.opacity)
                     }
                 }
+                // An `@` starting the last word lists the project's files, read as it's typed.
+                .onChange(of: draft.at) { _, word in
+                    mentionSelected = 0
+                    if word == nil { mentionOff = false }
+                    if word == "", !model.shellPrompt, let folder = model.chat?.cwd ?? model.project?.path {
+                        model.loadProjectFiles(in: folder)
+                    }
+                }
+                // Esc puts the files away as it does Tab's list.
+                .onChange(of: completions.isEmpty && mentionMatches.isEmpty) { _, none in model.composerMenu = !none }
                 // Typing anything but what Tab left puts its list away; only watched while there is one.
                 .onChange(of: completions.isEmpty ? 0 : draft.edits) {
                     if !completions.isEmpty, text != completed { completions = [] }
@@ -146,9 +164,10 @@ struct Composer: View {
             }
         }
         // Esc puts the list away before anything else hears it.
-        .onChange(of: completions.isEmpty) { _, empty in model.composerMenu = !empty }
         .onChange(of: model.composerMenu) { _, shown in
-            if !shown { completions = [] }
+            guard !shown else { return }
+            completions = []
+            if draft.at != nil { mentionOff = true }
         }
         .onChange(of: model.shellPrompt) { _, prompt in
             completions = []
@@ -360,6 +379,10 @@ struct Composer: View {
                     tab(backward: true)
                     return true
                 }
+                if !mentionMatches.isEmpty {
+                    mentionSelected = max(min(mentionSelected, mentionMatches.count - 1) - 1, 0)
+                    return true
+                }
                 // The last message queued comes back to be edited before any sent before it.
                 if text.isEmpty, !model.shellPrompt, let last = queue.last {
                     takeBack(last)
@@ -374,6 +397,10 @@ struct Composer: View {
                 }
                 if !completions.isEmpty {
                     tab(backward: false)
+                    return true
+                }
+                if !mentionMatches.isEmpty {
+                    mentionSelected = min(mentionSelected + 1, mentionMatches.count - 1)
                     return true
                 }
                 return recall(older: false)
@@ -403,6 +430,8 @@ struct Composer: View {
             runCommand()
         } else if let command = selectedSlash, text != "/" + command.name {
             complete(command)
+        } else if let path = selectedMention, draft.at != path {
+            mention(path)
         } else if !canSend, let ask = waitingPermission {
             model.answer(ask, allow: true)
         } else {
@@ -524,6 +553,10 @@ struct Composer: View {
             pick(next)
             return
         }
+        if let path = selectedMention {
+            mention(path)
+            return
+        }
         // With no thread open, the project's folder.
         guard let folder = model.chat?.cwd ?? model.project?.path else { return }
         guard model.shellPrompt else {
@@ -608,6 +641,28 @@ struct Composer: View {
 
     private func complete(_ command: SlashCommandInfo) {
         text = "/" + command.name + ((command.hint ?? "").isEmpty ? "" : " ")
+    }
+
+    /// The project's files that match the word after an `@`, best first; a path from the root or
+    /// from home isn't the project's, and Tab completes it.
+    private var mentionMatches: [String] {
+        guard !model.shellPrompt, !mentionOff, let word = draft.at, !word.hasPrefix("/"), !word.hasPrefix("~") else { return [] }
+        return Array(Fuzzy.rank(model.projectFiles, by: word) { $0 }.prefix(8))
+    }
+
+    private var selectedMention: String? {
+        let matches = mentionMatches
+        return matches.isEmpty ? nil : matches[min(mentionSelected, matches.count - 1)]
+    }
+
+    /// The file's path in place of the word being typed, as the agent reads a mention.
+    private func mention(_ path: String) {
+        text = Self.mentioning(path, in: text)
+    }
+
+    nonisolated static func mentioning(_ path: String, in text: String) -> String {
+        let start = text.lastIndex(where: \.isWhitespace).map(text.index(after:)) ?? text.startIndex
+        return text[..<start] + (path.contains(where: \.isWhitespace) ? "@\"\(path)\"" : "@" + path) + " "
     }
 
     private var waitingAsk: PendingAsk? {
