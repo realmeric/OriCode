@@ -60,4 +60,29 @@ struct ProjectsTests {
         #expect(model.chats.contains { $0.id == first.id })
         #expect(model.selectedChatID == first.id && model.archivedChats.isEmpty)
     }
+
+    @Test func aSessionFromTerminalOpensAsAThreadWithItsTranscript() throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let project = Project(name: "alpha", path: "/tmp/alpha")
+        container.mainContext.insert(project)
+        try container.mainContext.save()
+        let model = AppModel(container: container)
+        let events: [JSON] = [
+            ["event": "user", "text": "Read the Makefile"],
+            ["event": "text", "delta": "Reading it."],
+            ["event": "tool.use", "toolUseId": "t1", "name": "Read", "input": ["file_path": "Makefile"]],
+            ["event": "tool.result", "toolUseId": "t1", "content": "all:", "isError": false],
+            ["event": "user", "text": "And the tests?"],
+            ["event": "text", "delta": "They pass."],
+        ]
+        let chat = model.adopt(CLISession(id: "s-9", title: "Read the Makefile", modified: 0, branch: nil), events: events, in: project)
+        #expect(chat.sessionId == "s-9" && chat.started && chat.cwd == "/tmp/alpha")
+        #expect(model.chats.map(\.id) == [chat.id])
+        let conversation = model.conversation(for: chat)
+        #expect(conversation.items.count == 5)
+        #expect(!conversation.running)
+        if case .tool(_, let call) = conversation.items[2] { #expect(call.result == "all:") } else { Issue.record("the call should be third") }
+        #expect(Set(chat.events.map(\.turn)) == [1, 2])
+    }
 }

@@ -230,6 +230,8 @@ extension AppModel {
         items.append(command("thread.branch", startsOnBranch ? "New thread in the project's folder" : "New thread on its own branch",
                              icon: startsOnBranch ? "folder" : "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
                              keywords: ["worktree", "branch", "local"], unavailable: noProject) { [weak self] in self?.openOtherThread() })
+        items.append(PaletteItem(id: "thread.session", kind: .command, title: "Open a Claude Code session…", keywords: ["cli", "terminal", "resume", "import", "claude"],
+                                 icon: "terminal", unavailable: noProject ?? (engineState == .ready ? nil : "The engine isn't running"), action: .list(sessionList)))
         items.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
                              unavailable: running ? nil : "Nothing is running") { [weak self] in self?.stop() })
         if agent.capabilities.compact {

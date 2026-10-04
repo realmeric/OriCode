@@ -21,6 +21,7 @@ import { answer, brevity, type Answer, type Availability, type Capabilities, typ
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
+import { sessionEvents, sessionsIn } from "./sessions.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
 import { version } from "./version.ts";
@@ -427,6 +428,16 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   async "side.stop"({ threadId }: { threadId: string }) {
     asides.get(threadId)?.abort();
     return { ok: true };
+  },
+
+  /// Claude Code's own sessions for a folder, started with `claude` in Terminal, and one of them
+  /// as the events a thread stores.
+  async "sessions.list"({ cwd }: { cwd: string }) {
+    return { sessions: await sessionsIn(cwd) };
+  },
+
+  async "sessions.read"({ cwd, sessionId }: { cwd: string; sessionId: string }) {
+    return { events: await sessionEvents(cwd, sessionId) };
   },
 
   async "worktree.add"({ cwd, slug, prefix }: { cwd: string; slug: string; prefix?: string }) {
