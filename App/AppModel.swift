@@ -244,6 +244,8 @@ final class AppModel {
     var pulls: [String: PullRequest] = [:]
     /// The next look at a pull request whose checks still run.
     @ObservationIgnored var pullWatches: [String: Task<Void, Never>] = [:]
+    /// How many times an open pull request has been found with no checks yet.
+    @ObservationIgnored var pullLooks: [String: Int] = [:]
     /// Which threads the drawer lists; not kept, so a launch shows them all.
     var drawerFilter: DrawerFilter = .all
     var sideShown = false

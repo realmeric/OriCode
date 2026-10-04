@@ -56,6 +56,11 @@ extension AppModel {
         readPull(in: chat.cwd, for: chat.id)
     }
 
+    /// A turn may have pushed: an open pull request without checks is worth its looks again.
+    func pushedMaybe(in folder: String) {
+        pullLooks[folder] = nil
+    }
+
     private func readPull(in folder: String, for chatID: UUID?) {
         Task {
             guard let reply = try? await engine.request("pr.status", ["cwd": .string(folder)]) else { return }
@@ -75,7 +80,17 @@ extension AppModel {
         }
         pullWatches[folder]?.cancel()
         pullWatches[folder] = nil
-        guard let pull, pull.state == "OPEN", pull.pending > 0 else { return }
+        guard let pull, pull.state == "OPEN" else { return }
+        // A push's checks take GitHub a moment to list: an open pull request with none is looked
+        // at again, three times at most, since a repository may have no checks at all.
+        if pull.checks.isEmpty {
+            let looks = (pullLooks[folder] ?? 0) + 1
+            pullLooks[folder] = looks
+            guard looks <= 3 else { return }
+        } else {
+            pullLooks[folder] = nil
+            guard pull.pending > 0 else { return }
+        }
         pullWatches[folder] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(30))
             guard !Task.isCancelled else { return }

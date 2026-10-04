@@ -293,7 +293,10 @@ extension AppModel {
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
         if event.name == "limits" { takeLimits(event.body, for: chat.providerID) }
-        if event.name == "turn.done" { refreshBranch(for: chat) }
+        if event.name == "turn.done" {
+            pushedMaybe(in: chat.cwd)
+            refreshBranch(for: chat)
+        }
         // The count at the top right follows every turn in the open folder, and an open review
         // follows every edit.
         if chat.cwd == self.chat?.cwd, event.name == "turn.done" || (reviewShown && event.name == "tool.result") {

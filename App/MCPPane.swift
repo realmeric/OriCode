@@ -115,7 +115,7 @@ struct MCPPane: View {
                         .autocorrectionDisabled()
                 }
                 SettingsRow(title: "URL or command", detail: "A URL is an HTTP server; anything else is the command that starts one.") {
-                    TextField("URL or command", text: $target, prompt: Text("https://mcp.linear.app/mcp"))
+                    TextField("URL or command", text: $target, prompt: Text(verbatim: "https://mcp.linear.app/mcp"))
                         .textFieldStyle(.roundedBorder)
                         .font(Type.mono)
                         .frame(width: 260)

@@ -101,8 +101,14 @@ export async function failureLog(cwd: string, link: string | null): Promise<stri
 }
 
 export function tail(log: string, limit: number): string {
-  // gh prefixes each line with the job, the step and a timestamp.
-  const plain = log.replace(/^[^\t\n]*\t[^\t\n]*\t\d{4}-\d\d-\d\dT[\d:.]+Z ?/gm, "").trimEnd();
+  // gh prefixes each line with the job, the step and a timestamp, the first behind a byte-order
+  // mark; Actions colours its lines and brackets a step's commands in group markers.
+  const plain = log
+    .replace(/^[^\t\n]*\t[^\t\n]*\t\uFEFF?\d{4}-\d\d-\d\dT[\d:.]+Z ?/gm, "")
+    .replace(/\x1b\[[0-9;]*m/g, "")
+    .replace(/^##\[(?:group|endgroup)\].*\n?/gm, "")
+    .replace(/^##\[error\]/gm, "")
+    .trimEnd();
   if (plain.length <= limit) return plain;
   const cut = plain.slice(plain.length - limit);
   return "…\n" + cut.slice(cut.indexOf("\n") + 1);

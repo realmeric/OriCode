@@ -30,6 +30,16 @@ struct PullTests {
         model.took(pull(["pass"]), in: "/tmp/alpha", for: nil)
         #expect(model.pulls["/tmp/alpha"]?.words == "its check passed")
         #expect(model.pullWatches["/tmp/alpha"] == nil)
+        // Open with no checks listed yet: looked at again three times, and then left alone.
+        for _ in 0..<3 {
+            model.took(pull([]), in: "/tmp/alpha", for: nil)
+            #expect(model.pullWatches["/tmp/alpha"] != nil)
+        }
+        model.took(pull([]), in: "/tmp/alpha", for: nil)
+        #expect(model.pullWatches["/tmp/alpha"] == nil)
+        model.pushedMaybe(in: "/tmp/alpha")
+        model.took(pull([]), in: "/tmp/alpha", for: nil)
+        #expect(model.pullWatches["/tmp/alpha"] != nil)
         model.took(nil, in: "/tmp/alpha", for: nil)
         #expect(model.pulls["/tmp/alpha"] == nil)
     }

@@ -24,4 +24,12 @@ test("a failing log loses gh's prefixes and keeps its end", () => {
   const log = "test\tRun make test\t2026-10-04T10:00:00.0000000Z one\ntest\tRun make test\t2026-10-04T10:00:01.0000000Z two\ntest\tRun make test\t2026-10-04T10:00:02.0000000Z three\n";
   assert.equal(tail(log, 1000), "one\ntwo\nthree");
   assert.equal(tail(log, 9), "…\nthree");
+  // As GitHub sent a real one: a byte-order mark, a group around the command, colour, an error marker.
+  const real =
+    "test\tRun the tests\t\uFEFF2026-10-04T17:12:34.4474559Z ##[group]Run sh test.sh\n" +
+    "test\tRun the tests\t2026-10-04T17:12:34.4480000Z \x1b[36;1msh test.sh\x1b[0m\n" +
+    "test\tRun the tests\t2026-10-04T17:12:34.4490000Z ##[endgroup]\n" +
+    "test\tRun the tests\t2026-10-04T17:12:34.4600000Z FAIL: sum.txt should hold 4, it holds 5\n" +
+    "test\tRun the tests\t2026-10-04T17:12:34.4700000Z ##[error]Process completed with exit code 1.\n";
+  assert.equal(tail(real, 1000), "sh test.sh\nFAIL: sum.txt should hold 4, it holds 5\nProcess completed with exit code 1.");
 });

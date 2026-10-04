@@ -473,6 +473,7 @@ private struct ArchivePane: View {
             Text("Nothing archived. Archive a thread from its row in the thread list, or from ⌘K, and it waits here with its transcript and its session.")
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
+                .padding(.top, 12)
         } else {
             SettingsCard {
                 ForEach(archived) { chat in
@@ -486,6 +487,7 @@ private struct ArchivePane: View {
                     }
                 }
             }
+            .padding(.top, 14)
         }
     }
 }

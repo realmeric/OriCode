@@ -138,10 +138,11 @@ struct Composer: View {
                     }
                 }
                 // An `@` starting the last word lists the project's files, read as it's typed.
-                .onChange(of: draft.at) { _, word in
+                .onChange(of: draft.at) { before, word in
                     mentionSelected = 0
                     if word == nil { mentionOff = false }
-                    if word == "", !model.shellPrompt, let folder = model.chat?.cwd ?? model.project?.path {
+                    // As the word begins, typed or pasted whole.
+                    if before == nil, word != nil, !model.shellPrompt, let folder = model.chat?.cwd ?? model.project?.path {
                         model.loadProjectFiles(in: folder)
                     }
                 }
