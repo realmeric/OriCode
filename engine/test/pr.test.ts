@@ -1,15 +1,15 @@
 // A pull request's checks as gh reports them, read without gh.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkOf, runOf, tail } from "../pr.ts";
+import { checkOf, pullFrom, runOf, tail } from "../pr.ts";
 
 test("a check run and a commit status come down to pass, fail, pending or skipped", () => {
   const link = "https://github.com/o/r/actions/runs/123/job/456";
-  assert.deepEqual(checkOf({ __typename: "CheckRun", workflowName: "CI", name: "test", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: link }), { name: "CI / test", state: "pass", link });
+  assert.deepEqual(checkOf({ __typename: "CheckRun", workflowName: "CI", name: "test", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: link }), { name: "CI / test", state: "pass", link, seconds: null });
   assert.equal(checkOf({ __typename: "CheckRun", name: "test", status: "IN_PROGRESS" }).state, "pending");
   assert.equal(checkOf({ __typename: "CheckRun", name: "test", status: "COMPLETED", conclusion: "CANCELLED" }).state, "fail");
   assert.equal(checkOf({ __typename: "CheckRun", name: "docs", status: "COMPLETED", conclusion: "SKIPPED" }).state, "skipped");
-  assert.deepEqual(checkOf({ __typename: "StatusContext", context: "deploy/preview", state: "PENDING", targetUrl: "https://x" }), { name: "deploy/preview", state: "pending", link: "https://x" });
+  assert.deepEqual(checkOf({ __typename: "StatusContext", context: "deploy/preview", state: "PENDING", targetUrl: "https://x" }), { name: "deploy/preview", state: "pending", link: "https://x", seconds: null });
   assert.equal(checkOf({ __typename: "StatusContext", context: "deploy", state: "ERROR" }).state, "fail");
 });
 
@@ -32,4 +32,14 @@ test("a failing log loses gh's prefixes and keeps its end", () => {
     "test\tRun the tests\t2026-10-04T17:12:34.4600000Z FAIL: sum.txt should hold 4, it holds 5\n" +
     "test\tRun the tests\t2026-10-04T17:12:34.4700000Z ##[error]Process completed with exit code 1.\n";
   assert.equal(tail(real, 1000), "sh test.sh\nFAIL: sum.txt should hold 4, it holds 5\nProcess completed with exit code 1.");
+});
+
+test("a pull request carries its branches, whether it can merge, and how long each finished check ran", () => {
+  const pull = pullFrom({
+    number: 7, title: "Sum is five", url: "https://github.com/o/r/pull/7", state: "OPEN", headRefName: "check/t-1", baseRefName: "main", isDraft: false, mergeable: "CONFLICTING",
+    statusCheckRollup: [{ __typename: "CheckRun", workflowName: "CI", name: "test", status: "COMPLETED", conclusion: "FAILURE", startedAt: "2026-10-04T17:12:20Z", completedAt: "2026-10-04T17:12:34Z" }],
+  });
+  assert.deepEqual([pull.head, pull.base, pull.draft, pull.mergeable], ["check/t-1", "main", false, "CONFLICTING"]);
+  assert.deepEqual(pull.checks, [{ name: "CI / test", state: "fail", link: null, seconds: 14 }]);
+  assert.equal(pullFrom({ number: 1, title: "t", url: "u", state: "OPEN" }).mergeable, "UNKNOWN");
 });

@@ -9,6 +9,12 @@ export type Pull = {
   url: string;
   /// OPEN, MERGED or CLOSED.
   state: string;
+  /// The branch it's from and the one it goes into.
+  head: string;
+  base: string;
+  draft: boolean;
+  /// MERGEABLE, CONFLICTING or UNKNOWN, as GitHub has worked it out so far.
+  mergeable: string;
   checks: Check[];
 };
 
@@ -17,6 +23,8 @@ export type Check = {
   /// pass, fail, pending or skipped.
   state: string;
   link: string | null;
+  /// How long it ran, once it has finished and GitHub says when it began.
+  seconds: number | null;
 };
 
 let found: Promise<string> | undefined;
@@ -49,31 +57,60 @@ async function call(cwd: string, args: string[], timeout = 60_000): Promise<stri
   }
 }
 
-type Rolled = { __typename?: string; name?: string; workflowName?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string };
+type Rolled = { __typename?: string; name?: string; workflowName?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string; startedAt?: string; completedAt?: string };
+
+function ran(rolled: Rolled): number | null {
+  const from = Date.parse(rolled.startedAt ?? "");
+  const to = Date.parse(rolled.completedAt ?? "");
+  return from > 0 && to >= from ? Math.round((to - from) / 1000) : null;
+}
 
 /// One check from gh's rollup, a check run or a commit status, in the four states the app shows.
 export function checkOf(rolled: Rolled): Check {
   if (rolled.__typename === "StatusContext") {
     const state = rolled.state === "SUCCESS" ? "pass" : rolled.state === "PENDING" || rolled.state === "EXPECTED" ? "pending" : "fail";
-    return { name: rolled.context ?? "status", state, link: rolled.targetUrl ?? null };
+    return { name: rolled.context ?? "status", state, link: rolled.targetUrl ?? null, seconds: null };
   }
   const name = [rolled.workflowName, rolled.name].filter(Boolean).join(" / ") || "check";
-  if (rolled.status !== "COMPLETED") return { name, state: "pending", link: rolled.detailsUrl ?? null };
+  if (rolled.status !== "COMPLETED") return { name, state: "pending", link: rolled.detailsUrl ?? null, seconds: null };
   const state = rolled.conclusion === "SUCCESS" ? "pass" : rolled.conclusion === "SKIPPED" || rolled.conclusion === "NEUTRAL" ? "skipped" : "fail";
-  return { name, state, link: rolled.detailsUrl ?? null };
+  return { name, state, link: rolled.detailsUrl ?? null, seconds: ran(rolled) };
 }
 
 /// The pull request of the folder's branch, or null when it has none.
 export async function pullOf(cwd: string): Promise<Pull | null> {
   let out: string;
   try {
-    out = await call(cwd, ["pr", "view", "--json", "number,title,url,state,statusCheckRollup"]);
+    out = await call(cwd, ["pr", "view", "--json", "number,title,url,state,headRefName,baseRefName,isDraft,mergeable,statusCheckRollup"]);
   } catch (error) {
     if (/no pull requests found|no open pull requests/i.test((error as Error).message)) return null;
     throw error;
   }
-  const pr = JSON.parse(out) as { number: number; title: string; url: string; state: string; statusCheckRollup?: Rolled[] };
-  return { number: pr.number, title: pr.title, url: pr.url, state: pr.state, checks: (pr.statusCheckRollup ?? []).map(checkOf) };
+  return pullFrom(JSON.parse(out));
+}
+
+type Viewed = { number: number; title: string; url: string; state: string; headRefName?: string; baseRefName?: string; isDraft?: boolean; mergeable?: string; statusCheckRollup?: Rolled[] };
+
+/// gh's answer as the app's pull request.
+export function pullFrom(pr: Viewed): Pull {
+  return {
+    number: pr.number,
+    title: pr.title,
+    url: pr.url,
+    state: pr.state,
+    head: pr.headRefName ?? "",
+    base: pr.baseRefName ?? "",
+    draft: pr.isDraft === true,
+    mergeable: pr.mergeable ?? "UNKNOWN",
+    checks: (pr.statusCheckRollup ?? []).map(checkOf),
+  };
+}
+
+/// Merges the folder's branch's pull request as one commit, the way GitHub's Squash and merge
+/// does. Its branch stays: a thread's worktree is on it.
+export async function mergePull(cwd: string): Promise<Pull | null> {
+  await call(cwd, ["pr", "merge", "--squash"], 120_000);
+  return pullOf(cwd);
 }
 
 /// Pushes the branch and opens its pull request, title and body from its commits.

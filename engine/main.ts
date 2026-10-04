@@ -22,7 +22,7 @@ import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
-import { failureLog, openPull, pullOf } from "./pr.ts";
+import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
 import { sessionEvents, sessionsIn } from "./sessions.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
@@ -472,6 +472,10 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "pr.create"({ cwd }: { cwd: string }) {
     return { pr: await openPull(cwd) };
+  },
+
+  async "pr.merge"({ cwd }: { cwd: string }) {
+    return { pr: await mergePull(cwd) };
   },
 
   async "pr.log"({ cwd, link }: { cwd: string; link: string | null }) {

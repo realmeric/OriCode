@@ -10,14 +10,33 @@ struct PullTests {
                     checks: states.enumerated().map { PullCheck(name: "check \($0.offset + 1)", state: $0.element, link: nil) })
     }
 
-    @Test func thePullRequestsLineSaysWhereItsChecksHaveGot() {
+    @Test func thePullRequestsLineSaysTheOneThingWorthKnowing() {
         #expect(pull([]).words == "no checks")
-        #expect(pull(["pass", "pass", "skipped"]).words == "all 2 checks passed")
-        #expect(pull(["pass"]).words == "its check passed")
-        #expect(pull(["pass", "pending", "pending"]).words == "1 of 3 checks passed, 2 running")
+        #expect(pull(["pass", "pass", "skipped"]).words == "ready to merge")
+        #expect(pull(["pending", "pending"]).words == "2 checks running")
+        #expect(pull(["pass", "pending", "pending"]).words == "1 of 3 checks passed")
         #expect(pull(["pass", "fail"]).words == "check 2 failed")
-        #expect(pull(["fail", "fail", "pending"]).words == "0 of 3 checks passed, 2 checks failed, 1 running")
+        #expect(pull(["fail", "fail", "pending"]).words == "2 checks failed")
         #expect(pull(["pass"], state: "MERGED").words == "merged")
+        var conflicted = pull(["pass"])
+        conflicted.mergeable = "CONFLICTING"
+        conflicted.base = "main"
+        #expect(conflicted.words == "conflicts with main" && conflicted.troubled)
+        #expect(conflicted.blocked == "It conflicts with main")
+        #expect(pull(["pass"]).blocked == nil && !pull(["pass"]).troubled)
+        #expect(pull(["pending"]).blocked == "A check is still running")
+        var draft = pull(["pass"])
+        draft.draft = true
+        #expect(draft.words == "draft" && draft.blocked == "It's a draft")
+    }
+
+    @Test func aCheckSaysHowItWent() {
+        #expect(PullCheck(name: "CI / test", state: "fail", link: nil, seconds: 64).outcome == "failed after 1m 4s")
+        #expect(PullCheck(name: "CI / lint", state: "pass", link: nil, seconds: 6).outcome == "passed in 6s")
+        #expect(PullCheck(name: "CI / lint", state: "pending", link: nil).outcome == "running")
+        #expect(PullCheck(name: "CI / test", state: "fail", link: nil).short == "test")
+        let decoded = try? JSONDecoder().decode(PullRequest.self, from: Data(#"{"number":1,"title":"t","url":"u","state":"OPEN","checks":[{"name":"a","state":"pass","link":null}]}"#.utf8))
+        #expect(decoded?.mergeable == "UNKNOWN" && decoded?.checks.first?.seconds == nil)
     }
 
     @Test func aReadingIsKeptAndWatchedOnlyWhileChecksRun() throws {
@@ -28,7 +47,7 @@ struct PullTests {
         #expect(model.pulls["/tmp/alpha"]?.pending == 1)
         #expect(model.pullWatches["/tmp/alpha"] != nil)
         model.took(pull(["pass"]), in: "/tmp/alpha", for: nil)
-        #expect(model.pulls["/tmp/alpha"]?.words == "its check passed")
+        #expect(model.pulls["/tmp/alpha"]?.words == "ready to merge")
         #expect(model.pullWatches["/tmp/alpha"] == nil)
         // Open with no checks listed yet: looked at again three times, and then left alone.
         for _ in 0..<3 {

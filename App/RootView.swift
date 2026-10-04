@@ -79,6 +79,7 @@ struct RootView: View {
                     if model.headsShown { model.closeHeads() }
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.sideShown { model.closeSide() }
+                    if model.pullShown { model.closePull() }
                     if model.openFile != nil { model.closeFile() }
                     if model.reviewShown { model.closeReview() }
                     if model.openShell != nil { model.closeBlock() }

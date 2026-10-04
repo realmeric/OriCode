@@ -12,7 +12,7 @@ struct Island: View {
     @State private var capsuleHovered = false
 
     enum Piece: Hashable {
-        case capsule, command, heads, files, side, review
+        case capsule, command, heads, files, side, pull, review
     }
 
     /// Where the capsule's top sits in the toolbar's row, and every surface's with it.
@@ -69,6 +69,7 @@ struct Island: View {
         if model.headsShown { return .heads }
         if model.fileFinderShown { return .files }
         if model.sideShown { return .side }
+        if model.pullShown, model.pull != nil { return .pull }
         if model.reviewShown { return .review }
         return .capsule
     }
@@ -98,6 +99,11 @@ struct Island: View {
             SideQuestion()
                 .frame(width: min(SideQuestion.width, room.width))
                 .surface(.side, in: island, glass: reduceMotion)
+                .transition(arrival)
+        case .pull:
+            PullSurface()
+                .frame(width: min(PullSurface.width, room.width))
+                .surface(.pull, in: island, glass: reduceMotion)
                 .transition(arrival)
         case .review:
             ReviewPanel()
@@ -155,6 +161,7 @@ extension AppModel {
         fileFinderShown = piece == .files
         if piece != .side, sideShown { stopSide() }
         sideShown = piece == .side
+        pullShown = piece == .pull
         if piece != .review { review.noting = nil }
         reviewShown = piece == .review
     }
