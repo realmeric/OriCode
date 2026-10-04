@@ -184,7 +184,7 @@ export async function push(cwd: string): Promise<void> {
 
 /// A new branch checked out in `.worktrees/<slug>` inside the project, kept out of the
 /// project's status through .git/info/exclude rather than its .gitignore.
-export async function addWorktree(root: string, slug: string): Promise<{ path: string; branch: string }> {
+export async function addWorktree(root: string, slug: string, prefix = "oricode/"): Promise<{ path: string; branch: string }> {
   const { appendFile, readFile } = await import("node:fs/promises");
   const gitDir = (await git(root, ["rev-parse", "--git-common-dir"])).trim();
   const exclude = `${gitDir.startsWith("/") ? gitDir : `${root}/${gitDir}`}/info/exclude`;
@@ -193,7 +193,11 @@ export async function addWorktree(root: string, slug: string): Promise<{ path: s
     await appendFile(exclude, `${current.endsWith("\n") || !current ? "" : "\n"}/.worktrees/\n`);
   }
   const path = `${root}/.worktrees/${slug}`;
-  const branchName = `oricode/${slug}`;
+  const branchName = `${prefix}${slug}`;
+  // Before the worktree: git names a bad branch only after it has made the folder.
+  await git(root, ["check-ref-format", "--branch", branchName]).catch(() => {
+    throw new Error(`"${branchName}" isn't a name git takes for a branch. Change the prefix in Settings › Source control.`);
+  });
   await git(root, ["worktree", "add", "-b", branchName, path]);
   // A fresh checkout runs without them; one that can't be copied doesn't undo the worktree.
   await copyIncluded(root, path).catch(() => {});

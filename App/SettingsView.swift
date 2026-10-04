@@ -45,6 +45,7 @@ struct SettingsView: View {
                         case .general: GeneralPane()
                         case .agents: AgentsPane()
                         case .conversation: ConversationPane()
+                        case .sourceControl: SourceControlPane()
                         case .notifications: NotificationsPane()
                         case .actions: ActionsPane()
                         case .shortcuts: ShortcutsPane()
@@ -79,7 +80,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, agents, conversation, notifications, actions, shortcuts, about
+    case general, agents, conversation, sourceControl, notifications, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -90,6 +91,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "General"
         case .agents: "Agents"
         case .conversation: "Conversation"
+        case .sourceControl: "Source control"
         case .notifications: "Notifications"
         case .actions: "Actions"
         case .shortcuts: "Shortcuts"
@@ -102,6 +104,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .agents: "terminal"
         case .conversation: "text.bubble"
+        case .sourceControl: "arrow.triangle.branch"
         case .notifications: "bell"
         case .actions: "bolt"
         case .shortcuts: "command"
@@ -112,9 +115,10 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// The words a search can find a pane by: its title and what its settings are called.
     private var words: [String] {
         switch self {
-        case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto"]
+        case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
         case .conversation: ["turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
+        case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.title) }
@@ -288,6 +292,7 @@ private struct GeneralPane: View {
     @AppStorage(NewThreads.effort) private var newEffort = ""
     @AppStorage(NewThreads.fast) private var newFast = ""
     @AppStorage(NewThreads.permissionMode) private var newMode = ""
+    @AppStorage(NewThreads.workspace) private var newWorkspace = ""
     @AppStorage("lastModel") private var lastModel = ""
     @AppStorage("lastEffort") private var lastEffort = ""
     @AppStorage("lastFast") private var lastFast = false
@@ -372,6 +377,15 @@ private struct GeneralPane: View {
                     .menuRow()
                 }
             }
+            SettingsRow(title: "Workspace", detail: newWorkspace.isEmpty
+                ? "\(model.shortcuts.label(.newThread)) starts a thread in the project's folder, and \(model.shortcuts.label(.newThreadOnBranch)) one on a branch of its own."
+                : "\(model.shortcuts.label(.newThread)) starts a thread on a branch of its own, in its own worktree, and \(model.shortcuts.label(.newThreadOnBranch)) one in the project's folder.") {
+                Picker("Workspace", selection: $newWorkspace) {
+                    Label("Project's folder", systemImage: "folder").tag("")
+                    Label("Its own branch", systemImage: "arrow.triangle.branch").tag(NewThreads.worktree)
+                }
+                .menuRow()
+            }
         }
         SectionHeading("Engine")
         SettingsCard {
@@ -438,6 +452,24 @@ private struct GeneralPane: View {
     private func use(_ path: String) {
         nodePath = path
         Task { await model.startEngine() }
+    }
+}
+
+private struct SourceControlPane: View {
+    @AppStorage(NewThreads.branchPrefix) private var prefix = NewThreads.defaultBranchPrefix
+
+    var body: some View {
+        PaneTitle(text: "Source control")
+        SectionHeading("Threads on their own branch")
+        SettingsCard {
+            SettingsRow(title: "Branch prefix", detail: "The next such thread's branch is \(prefix)t-1a2b3c, in .worktrees inside the project.") {
+                TextField("Branch prefix", text: $prefix, prompt: Text("None"))
+                    .textFieldStyle(.roundedBorder)
+                    .font(Type.mono)
+                    .frame(width: 180)
+                    .autocorrectionDisabled()
+            }
+        }
     }
 }
 

@@ -403,8 +403,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { message: await agent.oneShot(await cli(agent), cwd, prompt) };
   },
 
-  async "worktree.add"({ cwd, slug }: { cwd: string; slug: string }) {
-    return addWorktree(cwd, slug);
+  async "worktree.add"({ cwd, slug, prefix }: { cwd: string; slug: string; prefix?: string }) {
+    return addWorktree(cwd, slug, prefix);
   },
 
   async "worktree.loss"({ path, branch: branchName }: { path: string; branch: string }) {

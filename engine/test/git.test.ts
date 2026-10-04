@@ -133,3 +133,11 @@ test("a new worktree gets the ignored files .worktreeinclude names, and nothing 
   const again = await addWorktree(dir, "inc2");
   assert.equal(existsSync(join(again.path, ".worktrees")), false);
 });
+
+test("a worktree's branch takes the prefix it's given, and a prefix git wouldn't take is refused before anything is made", async () => {
+  const dir = await repo();
+  assert.equal((await addWorktree(dir, "a", "meric/")).branch, "meric/a");
+  assert.equal((await addWorktree(dir, "b", "")).branch, "b");
+  await assert.rejects(addWorktree(dir, "c", "no good/"), /isn't a name git takes for a branch\. Change the prefix in Settings › Source control\./);
+  assert.equal(existsSync(join(dir, ".worktrees", "c")), false);
+});

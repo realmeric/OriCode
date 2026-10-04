@@ -126,7 +126,11 @@ struct KeyboardTests {
         model.returnKeyboardSoon()
         model.returnKeyboardSoon()
         #expect(model.composerFocus == focus)
-        try await Task.sleep(for: .milliseconds(80))
+        // A later frame, however long the main actor is held by another suite's test, a drawing's
+        // web view starting among them.
+        for _ in 0..<50 where model.composerFocus == focus {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(model.composerFocus == focus + 1)
     }
 

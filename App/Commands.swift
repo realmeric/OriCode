@@ -14,7 +14,7 @@ struct OriCodeCommands: Commands {
             Button("New Thread") { model.openNewThread() }
                 .keyboardShortcut(shortcuts.key(.newThread))
                 .disabled(model.project == nil)
-            Button("New Thread on Its Own Branch") { model.newWorktreeChat() }
+            Button(model.otherThreadTitle) { model.openOtherThread() }
                 .keyboardShortcut(shortcuts.key(.newThreadOnBranch))
                 .disabled(model.project == nil)
             Button("Add Project…") { model.addProject() }

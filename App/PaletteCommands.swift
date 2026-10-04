@@ -227,8 +227,9 @@ extension AppModel {
         items.append(command("thread.new", "New thread", icon: "square.and.pencil", shortcut: shortcuts.label(.newThread), unavailable: noProject) { [weak self] in
             self?.openNewThread()
         })
-        items.append(command("thread.branch", "New thread on its own branch", icon: "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
-                             keywords: ["worktree"], unavailable: noProject) { [weak self] in self?.newWorktreeChat() })
+        items.append(command("thread.branch", startsOnBranch ? "New thread in the project's folder" : "New thread on its own branch",
+                             icon: startsOnBranch ? "folder" : "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
+                             keywords: ["worktree", "branch", "local"], unavailable: noProject) { [weak self] in self?.openOtherThread() })
         items.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
                              unavailable: running ? nil : "Nothing is running") { [weak self] in self?.stop() })
         if agent.capabilities.compact {

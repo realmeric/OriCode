@@ -54,6 +54,12 @@ enum NewThreads {
     static let effort = "newThreadEffort"
     static let fast = "newThreadFast"
     static let permissionMode = "newThreadPermissionMode"
+    /// Where a new thread works: empty for the project's folder, or `worktree` for a branch of its own.
+    static let workspace = "newThreadWorkspace"
+    static let worktree = "worktree"
+    /// What a worktree thread's branch is called before its own name.
+    static let branchPrefix = "branchPrefix"
+    static let defaultBranchPrefix = "oricode/"
     /// The effort setting's value for Claude Code's own default: the thread picks no level.
     static let claudeDefault = "default"
     static let on = "on"

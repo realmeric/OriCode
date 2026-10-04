@@ -41,13 +41,46 @@ struct WorktreeLoss: Codable, Hashable, Sendable {
 }
 
 extension AppModel {
-    /// ⌘⇧N: a thread on a new branch in its own worktree, so parallel threads can't see each other's edits.
-    func newWorktreeChat() {
+    /// Settings › New threads has new threads start on a branch of their own.
+    var startsOnBranch: Bool {
+        UserDefaults.standard.string(forKey: NewThreads.workspace) == NewThreads.worktree
+    }
+
+    /// ⌘N and New thread: the kind Settings › New threads says.
+    func openNewThread() {
+        if startsOnBranch { openBranchThread() } else { openLocalThread() }
+    }
+
+    /// ⌘⇧N: the other kind.
+    func openOtherThread() {
+        if startsOnBranch { openLocalThread() } else { newWorktreeChat() }
+    }
+
+    /// What ⌘⇧N makes, for the menu and ⌘K.
+    var otherThreadTitle: String {
+        startsOnBranch ? "New Thread in the Project's Folder" : "New Thread on Its Own Branch"
+    }
+
+    /// A thread on its own branch that nothing has been sent to yet, before another is made, so
+    /// pressing ⌘N again and again doesn't pile up worktrees; and in a folder git can't branch,
+    /// a thread in the folder.
+    private func openBranchThread() {
+        if let unsent = project?.chats.first(where: { $0.worktreeBranch != nil && $0.events.isEmpty }) {
+            selectedChatID = unsent.id
+            composerFocus += 1
+        } else {
+            newWorktreeChat(orLocal: true)
+        }
+    }
+
+    /// A thread on a new branch in its own worktree, so parallel threads can't see each other's edits.
+    func newWorktreeChat(orLocal: Bool = false) {
         guard let project else { return }
         let slug = "t-" + UUID().uuidString.prefix(6).lowercased()
+        let prefix = UserDefaults.standard.string(forKey: NewThreads.branchPrefix) ?? NewThreads.defaultBranchPrefix
         Task {
             do {
-                let reply = try await engine.request("worktree.add", ["cwd": .string(project.path), "slug": .string(slug)])
+                let reply = try await engine.request("worktree.add", ["cwd": .string(project.path), "slug": .string(slug), "prefix": .string(prefix)])
                 guard let path = reply["path"]?.string, let branch = reply["branch"]?.string else { return }
                 guard let chat = newChat() else { return }
                 chat.cwd = path
@@ -56,8 +89,13 @@ extension AppModel {
                 chat.started = true
                 save()
                 refreshBranch(for: chat)
+                composerFocus += 1
             } catch {
-                say(error.localizedDescription)
+                if orLocal, error.localizedDescription.contains("isn't a git repository") {
+                    openLocalThread()
+                } else {
+                    say(error.localizedDescription)
+                }
             }
         }
     }

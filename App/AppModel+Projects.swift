@@ -149,9 +149,9 @@ extension AppModel {
         save()
     }
 
-    /// ⌘N and New thread: the project's draft when it has one, so pressing it again and again
+    /// A thread in the project's folder: the project's draft when it has one, so pressing it again and again
     /// doesn't pile up empty threads.
-    func openNewThread() {
+    func openLocalThread() {
         if let draft = project?.chats.first(where: { !$0.started }) {
             selectedChatID = draft.id
         } else {
