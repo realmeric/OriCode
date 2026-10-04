@@ -3,37 +3,14 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.3.0</title>
-      <pubDate>Sun, 04 Oct 2026 22:01:04 +0300</pubDate>
-      <sparkle:version>340</sparkle:version>
-      <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+      <title>0.3.1</title>
+      <pubDate>Sun, 04 Oct 2026 22:08:22 +0300</pubDate>
+      <sparkle:version>343</sparkle:version>
+      <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[### In the conversation
-
-• Diagrams and charts are drawn. An agent that answers with a fenced `svg` block gets it drawn in place of its code, on a card, clear so the glass shows through; while it streams the thread says "Drawing…", and a right click copies the image or the SVG. Claude Code and Codex are told the window draws, so asking for a diagram is enough.
-• ⌘; asks a side question. The answer comes from everything the thread knows and neither the question nor the answer joins it: the engine asks a copy of the thread's session that it never saves. It works while the thread is busy. Claude Code only, for now.
-• Typing `@` lists the project's files as you go, ranked as ⌘P ranks them. Return or Tab puts the path in the message.
-• The paperclip and a drop take any file now, on every agent. A picture still goes among the thumbnails; anything else, a PDF, a source file, a folder, is named in the message for the agent to open with its own tools.
-• Settings › Conversation has Show thinking, which leaves the thinking lines out when it's off, and Concise replies, which asks Claude Code and Codex for shorter answers, fewer comments and changes kept to what you asked.
-
-### Files, review and pull requests
-
-• The file viewer edits. Edit puts the file in a native text view, ⌘S saves it, and a file an agent changed since you opened it is refused rather than overwritten. Closing with edits unsaved asks first.
-• Ask for a Review, in the review's header, has the thread's agent read the diff and puts its comments on the lines they name. Keep one and it's a note of yours to send back; dismiss the rest. It joins no turn.
-• Pull requests, through GitHub's own `gh` and the login you made for it. ⌘K's Open a pull request pushes the thread's branch and opens one from its commits. The line under the composer says where its checks have got, Send to the thread hands a failing check's log to the agent as the next message, and a notification says when the checks finish.
-
-### Threads
-
-• Archive, from a thread's row or ⌘K, takes a thread out of the list and keeps everything of it. Settings › Archive restores it or deletes it for good.
-• The thread list has a filter at its head: one project's threads, the ones at work, or the ones waiting on you.
-• ⌘K's Open a Claude Code session lists the sessions you started with `claude` in Terminal in the project's folder, and opens one as a thread with its transcript that carries on from where it stopped.
-• Settings › General › New threads has Workspace: ⌘N can start every thread on a branch of its own, with ⌘⇧N making one in the project's folder instead. Settings › Source control names the prefix those branches take.
-• A thread on its own branch gets the ignored files `.worktreeinclude` names, an `.env` say, copied into its worktree, as the Claude Code app does.
-
-### Settings
-
-• Settings › MCP lists the servers Claude Code loads for a project, each with where it has got, a switch, and Remove, and adds one by its URL or its command. It all goes through your own `claude`, which keeps its own configuration; a server that wants a sign-in gets it in Terminal with `/mcp`.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.3.0/OriCode-0.3.0.zip" sparkle:edSignature="fB/gi79pHOXoxLB6lMk2oJ5aFMsiEXxuHkGHAcM/5jNvO+m3U9XWLjw/Ba3BnjCQxWnMEd2uTIvV1X5aDYWJCg==" length="5753011" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• ⌘S saves in the file editor. The editor takes the key itself now; in 0.3.0 the menu's Save was still off when the key arrived, so it did nothing.
+• The side question is ⌘⇧A. ⌘; isn't a key of its own on every keyboard: on a Turkish one the semicolon is a Shift away, so it never fired. If you gave it another key in Settings › Shortcuts, yours stays.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.3.1/OriCode-0.3.1.zip" sparkle:edSignature="ql9ZAqKb4Ls4Qb6KGRKOu4Ncj5g/jvP2c8EesfEVQm8eXDZsPoErGohy0gvj1l3ecON8lGGi95BsptupsEwRCA==" length="5753934" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
