@@ -23,6 +23,9 @@ struct OriCodeCommands: Commands {
         // One ⌘W for both: the open thread first, then the window. A disabled Close Thread
         // beside the system's Close held on to ⌘W, so the window never closed.
         CommandGroup(replacing: .saveItem) {
+            Button("Save") { model.saveFile() }
+                .keyboardShortcut("s")
+                .disabled(model.openFile?.dirty != true)
             Button(model.closesThread ? "Close Thread" : "Close") { model.close() }
                 .keyboardShortcut(shortcuts.key(.close))
         }

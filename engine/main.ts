@@ -21,7 +21,7 @@ import { answer, brevity, type Answer, type Availability, type Capabilities, typ
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
-import { listFiles, readProjectFile } from "./files.ts";
+import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
@@ -444,6 +444,10 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "files.read"({ cwd, path }: { cwd: string; path: string }) {
     return readProjectFile(cwd, path);
+  },
+
+  async "files.write"({ cwd, path, content, stamp }: { cwd: string; path: string; content: string; stamp: string }) {
+    return writeProjectFile(cwd, path, content, stamp);
   },
 
   async "heads.watch"({ threadId, on }: { threadId: string; on: boolean }) {

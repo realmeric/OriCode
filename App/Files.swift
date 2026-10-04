@@ -1,9 +1,17 @@
 import SwiftUI
 
-/// A file open read-only over the transcript.
+/// A file open over the transcript, to read and, once Edit is pressed, to edit.
 struct OpenFile: Identifiable {
     let id = UUID()
     let path: String
+    /// The folder it was opened from, which a save goes back to.
+    var cwd = ""
+    /// What the engine read it as, which a save has to find unchanged on disk.
+    var stamp: String?
+    /// The editor is up in place of the read-only lines.
+    var editing = false
+    /// Edited since it was read or saved.
+    var dirty = false
     /// The line a link pointed at, scrolled to and lit once the file is in.
     var line: Int?
     var code: AttributedString?
@@ -42,10 +50,11 @@ extension AppModel {
         let relative = ToolSummary.relative(path, to: cwd)
         // The viewer is under what grows out of the capsule, so the finder, or the review it was
         // opened from, makes way.
+        guard settleFile() else { return }
         if reviewShown { closeReview() }
         withAnimation(Motion.move) {
             fileFinderShown = false
-            openFile = OpenFile(path: relative, line: line)
+            openFile = OpenFile(path: relative, cwd: cwd, line: line)
         }
         let id = openFile?.id
         Task {
@@ -57,6 +66,7 @@ extension AppModel {
                 openFile?.code = code
                 openFile?.lines = content.split(separator: "\n", omittingEmptySubsequences: false).count
                 openFile?.truncated = reply["truncated"]?.bool ?? false
+                openFile?.stamp = reply["stamp"]?.string
             } catch {
                 guard openFile?.id == id else { return }
                 openFile?.problem = error.localizedDescription
@@ -65,7 +75,63 @@ extension AppModel {
     }
 
     func closeFile() {
+        guard settleFile() else { return }
         withAnimation(Motion.move) { openFile = nil }
+    }
+
+    /// Whether the open file can go: one with edits not yet saved asks first, in the system's own
+    /// words, and Save closes it once it's saved.
+    func settleFile() -> Bool {
+        guard let file = openFile, file.dirty else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Do you want to save the changes you made to \((file.path as NSString).lastPathComponent)?"
+        alert.informativeText = "Your changes will be lost if you don't save them."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Don't Save")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            saveFile(thenClose: true)
+            return false
+        case .alertThirdButtonReturn:
+            openFile?.dirty = false
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Edit, on a file that was read whole: the same text in a text view that takes typing.
+    func editFile() {
+        guard let file = openFile, file.code != nil, file.stamp != nil, !file.truncated else { return }
+        openFile?.editing = true
+    }
+
+    /// ⌘S: the editor's text written through the engine, which refuses a file that changed on disk
+    /// since it was read. The review reads the working tree again the next time it's looked at.
+    func saveFile(thenClose: Bool = false) {
+        guard let file = openFile, file.editing, let stamp = file.stamp, let text = fileEditor?.string else { return }
+        Task {
+            do {
+                let params: [String: JSON] = ["cwd": .string(file.cwd), "path": .string(file.path), "content": .string(text), "stamp": .string(stamp)]
+                let reply = try await engine.request("files.write", .object(params))
+                guard openFile?.id == file.id else { return }
+                openFile?.stamp = reply["stamp"]?.string
+                // Typed on while it saved: those edits are still to save.
+                openFile?.dirty = fileEditor?.string != text
+                if thenClose, openFile?.dirty == false {
+                    closeFile()
+                    returnKeyboardSoon()
+                    return
+                }
+                let code = await CodeHighlighter.shared.highlight(text, language: CodeHighlighter.language(forPath: file.path))
+                guard openFile?.id == file.id else { return }
+                openFile?.code = code
+                openFile?.lines = text.split(separator: "\n", omittingEmptySubsequences: false).count
+            } catch {
+                say(error.localizedDescription)
+            }
+        }
     }
 
     /// A link clicked in a reply or a plan. A file in the thread's folder opens in the viewer at
@@ -230,7 +296,7 @@ struct FileFinder: View {
     }
 }
 
-/// The file, read-only, with line numbers and muted colours.
+/// The file with line numbers and muted colours, and, once Edit is pressed, in a text view to edit.
 struct FileViewer: View {
     @Environment(AppModel.self) private var model
     let file: OpenFile
@@ -246,7 +312,19 @@ struct FileViewer: View {
                 if file.truncated {
                     Text("first 1 MB").font(Type.secondary).foregroundStyle(Ink.faint)
                 }
+                if file.dirty {
+                    Text("Edited").font(Type.secondary).foregroundStyle(Ink.faint)
+                }
                 Spacer()
+                if file.editing {
+                    Button("Save") { model.saveFile() }
+                        .buttonStyle(.action(small: true))
+                        .disabled(!file.dirty)
+                        .help("Save (⌘S)")
+                } else if file.code != nil, file.stamp != nil, !file.truncated {
+                    Button("Edit") { model.editFile() }
+                        .buttonStyle(.action(small: true))
+                }
                 Button("Close") { model.closeFile() }
                     .buttonStyle(.action(small: true))
             }
@@ -257,6 +335,9 @@ struct FileViewer: View {
                     .font(Type.secondary)
                     .foregroundStyle(Ink.secondary)
                     .padding(16)
+            } else if file.editing, let code = file.code {
+                FileEditor(code: code)
+                    .padding(.bottom, 8)
             } else if let code = file.code {
                 FileCode(code: code, lines: file.lines, line: file.line)
             } else {
@@ -319,5 +400,70 @@ private struct FileCode: View {
 
     private func top(of line: Int) -> CGFloat {
         CGFloat(min(line, max(lines, 1)) - 1) * lineHeight
+    }
+}
+
+/// The file's text in AppKit's text view, in the colours it was read in: what's typed is plain
+/// until a save colours it again. It takes the keyboard as it comes up, keeps its own undo, and
+/// corrects nothing, being code.
+private struct FileEditor: NSViewRepresentable {
+    @Environment(AppModel.self) private var model
+    let code: AttributedString
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(model: model)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = false
+        scroll.hasHorizontalScroller = true
+        scroll.autohidesScrollers = true
+        guard let view = scroll.documentView as? NSTextView else { return scroll }
+        view.drawsBackground = false
+        view.isRichText = false
+        view.allowsUndo = true
+        view.usesFindBar = true
+        view.isIncrementalSearchingEnabled = true
+        view.isAutomaticQuoteSubstitutionEnabled = false
+        view.isAutomaticDashSubstitutionEnabled = false
+        view.isAutomaticTextReplacementEnabled = false
+        view.isAutomaticSpellingCorrectionEnabled = false
+        view.isContinuousSpellCheckingEnabled = false
+        view.isGrammarCheckingEnabled = false
+        view.isAutomaticLinkDetectionEnabled = false
+        view.textContainerInset = NSSize(width: 12, height: 4)
+        // Lines run on rather than wrap, as they do in the read-only view.
+        view.isHorizontallyResizable = true
+        view.textContainer?.widthTracksTextView = false
+        view.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        view.insertionPointColor = .white
+        view.textStorage?.setAttributedString(NSAttributedString(code))
+        view.typingAttributes = [
+            .font: NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular),
+            .foregroundColor: CodeHighlighter.color(.plain),
+        ]
+        view.delegate = context.coordinator
+        model.fileEditor = view
+        DispatchQueue.main.async {
+            view.window?.makeFirstResponder(view)
+            view.setSelectedRange(NSRange(location: 0, length: 0))
+            view.scrollToBeginningOfDocument(nil)
+        }
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {}
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        let model: AppModel
+
+        init(model: AppModel) {
+            self.model = model
+        }
+
+        func textDidChange(_ notification: Notification) {
+            if model.openFile?.dirty == false { model.openFile?.dirty = true }
+        }
     }
 }

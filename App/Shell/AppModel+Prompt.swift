@@ -85,11 +85,11 @@ extension AppModel {
     /// a turn of the run loop on wasn't far enough, the main queue running it before the frame
     /// was drawn. Asked twice in that frame, it's done once.
     func returnKeyboardSoon() {
-        let me = ObjectIdentifier(self)
-        guard KeyboardReturn.pending.insert(me).inserted else { return }
+        guard !keyboardReturning else { return }
+        keyboardReturning = true
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(20))
-            KeyboardReturn.pending.remove(me)
+            self?.keyboardReturning = false
             self?.returnKeyboard()
         }
     }
@@ -184,8 +184,3 @@ enum ShellNames {
     }
 }
 
-@MainActor
-enum KeyboardReturn {
-    /// The models with a return to the composer on its way.
-    static var pending: Set<ObjectIdentifier> = []
-}

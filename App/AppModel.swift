@@ -244,6 +244,11 @@ final class AppModel {
     /// The folder those files are in.
     @ObservationIgnored var projectFilesFolder: String?
     var openFile: OpenFile?
+    /// A return of the keyboard to the composer is on its way. The model's own: kept by its
+    /// address in a set, a model made where one had just been freed found the old one's still there.
+    @ObservationIgnored var keyboardReturning = false
+    /// The open file's editor, whose text a save reads.
+    @ObservationIgnored weak var fileEditor: NSTextView?
     /// Slash commands by agent, then by folder; an empty list means they're being fetched.
     var slashCommands: [String: [String: [SlashCommandInfo]]] = [:]
     var drawerShown = false {

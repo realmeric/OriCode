@@ -247,7 +247,7 @@ extension AppModel {
     }
 
     func openReview() {
-        guard let folder = workingFolder else { return }
+        guard let folder = workingFolder, settleFile() else { return }
         closeBlock()
         withAnimation(Motion.move) {
             openFile = nil
