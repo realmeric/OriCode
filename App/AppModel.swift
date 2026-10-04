@@ -240,6 +240,8 @@ final class AppModel {
     var usageStale = false
     var usageLoading = false
     var fileFinderShown = false
+    /// Which threads the drawer lists; not kept, so a launch shows them all.
+    var drawerFilter: DrawerFilter = .all
     var sideShown = false
     var side = SideAnswer()
     var projectFiles: [String] = []

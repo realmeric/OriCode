@@ -46,6 +46,7 @@ struct SettingsView: View {
                         case .agents: AgentsPane()
                         case .conversation: ConversationPane()
                         case .sourceControl: SourceControlPane()
+                        case .archive: ArchivePane()
                         case .notifications: NotificationsPane()
                         case .actions: ActionsPane()
                         case .shortcuts: ShortcutsPane()
@@ -80,7 +81,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, agents, conversation, sourceControl, notifications, actions, shortcuts, about
+    case general, agents, conversation, sourceControl, archive, notifications, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -92,6 +93,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .agents: "Agents"
         case .conversation: "Conversation"
         case .sourceControl: "Source control"
+        case .archive: "Archive"
         case .notifications: "Notifications"
         case .actions: "Actions"
         case .shortcuts: "Shortcuts"
@@ -105,6 +107,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .agents: "terminal"
         case .conversation: "text.bubble"
         case .sourceControl: "arrow.triangle.branch"
+        case .archive: "archivebox"
         case .notifications: "bell"
         case .actions: "bolt"
         case .shortcuts: "command"
@@ -118,6 +121,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
         case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
+        case .archive: ["archived", "threads", "restore", "delete"]
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
@@ -452,6 +456,33 @@ private struct GeneralPane: View {
     private func use(_ path: String) {
         nodePath = path
         Task { await model.startEngine() }
+    }
+}
+
+private struct ArchivePane: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        PaneTitle(text: "Archive")
+        let archived = model.archivedChats
+        if archived.isEmpty {
+            Text("Nothing archived. Archive a thread from its row in the thread list, or from ⌘K, and it waits here with its transcript and its session.")
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+        } else {
+            SettingsCard {
+                ForEach(archived) { chat in
+                    SettingsRow(title: chat.title, detail: [chat.project?.name, chat.updatedAt.formatted(date: .abbreviated, time: .omitted)].compactMap { $0 }.joined(separator: " · ")) {
+                        HStack(spacing: 8) {
+                            Button("Restore") { model.restore(chat) }
+                                .buttonStyle(.action(small: true))
+                            Button("Delete…") { model.askToDelete(chat) }
+                                .buttonStyle(.action(small: true))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -65,7 +65,7 @@ extension AppModel {
     /// pressing ⌘N again and again doesn't pile up worktrees; and in a folder git can't branch,
     /// a thread in the folder.
     private func openBranchThread() {
-        if let unsent = project?.chats.first(where: { $0.worktreeBranch != nil && $0.events.isEmpty }) {
+        if let unsent = project?.chats.first(where: { $0.worktreeBranch != nil && !$0.archived && $0.events.isEmpty }) {
             selectedChatID = unsent.id
             composerFocus += 1
         } else {

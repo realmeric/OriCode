@@ -19,8 +19,52 @@ extension AppModel {
 
     /// Every project's threads in one list, in the drawer's order: the drawer, ⌘1–9 and the
     /// Thread menu. A draft isn't one of them until its first message.
+    /// Under the drawer's filter, when it has one.
     var chats: [Chat] {
-        projects.flatMap(\.chats).filter(\.started).sorted(by: Chat.drawerOrder)
+        let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }.sorted(by: Chat.drawerOrder)
+        switch drawerFilter {
+        case .all: return all
+        case .project(let id): return all.filter { $0.project?.id == id }
+        case .working: return all.filter { conversations[$0.id]?.working == true }
+        case .waiting: return all.filter { conversations[$0.id]?.waitingAsk != nil }
+        }
+    }
+
+    /// The archived threads, the latest worked on first, for Settings › Archive.
+    var archivedChats: [Chat] {
+        projects.flatMap(\.chats).filter(\.archived).sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Takes a thread out of the drawer and keeps everything of it: its transcript, its session,
+    /// its worktree. Its CLI is let go, and a thread at work is stopped first by hand.
+    func archive(_ chat: Chat) {
+        guard conversations[chat.id]?.running != true else {
+            say("Stop the thread before archiving it")
+            return
+        }
+        let archived = chat.id
+        let wasSelected = archived == selectedChatID
+        endShells(of: chat)
+        Task { _ = try? await engine.request("close", ["threadId": .string(archived.uuidString)]) }
+        conversations[archived] = nil
+        chat.archived = true
+        chat.pinned = false
+        chat.position = nil
+        save()
+        guard wasSelected else { return }
+        if let next = chats.first(where: { $0.project?.id == selectedProjectID }) ?? chats.first {
+            select(next)
+        } else {
+            selectedChatID = nil
+        }
+    }
+
+    /// Back into the drawer, on top of the threads that aren't pinned, and open.
+    func restore(_ chat: Chat) {
+        chat.archived = false
+        save()
+        drawerFilter = .all
+        select(chat)
     }
 
     /// Pinning puts a thread after the pinned ones; unpinning puts it back on top of the rest.
@@ -40,6 +84,8 @@ extension AppModel {
     /// isn't pinned any more. Both groups then keep the order the drag left.
     func moveThreads(from source: IndexSet, to destination: Int) {
         var list = chats
+        // A filtered list shows some of the threads, and an order among those isn't one among all.
+        guard drawerFilter == .all else { return }
         guard let first = source.first, list.indices.contains(first) else { return }
         let moving = list[first]
         let pinnedCount = list.filter(\.pinned).count

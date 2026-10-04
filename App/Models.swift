@@ -49,6 +49,9 @@ final class Chat {
     /// Whether it has had its first message. Until then it's a draft: out of the drawer, and the
     /// thread ⌘N comes back to instead of making another.
     var started: Bool = false
+    /// Archived: out of the drawer with its transcript and its session kept, until Settings ›
+    /// Archive restores it or deletes it for good.
+    var archived: Bool = false
     /// Pinned threads stay at the top of the drawer.
     var pinned: Bool = false
     /// Where it was put among the pinned threads, or among the rest once one of them was dragged;

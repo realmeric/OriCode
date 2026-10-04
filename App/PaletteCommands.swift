@@ -262,6 +262,9 @@ extension AppModel {
         items.append(command("thread.rename", "Rename thread", icon: "pencil", shortcut: shortcuts.label(.rename), unavailable: unsent) { [weak self] in
             if let chat { self?.startRename(chat) }
         })
+        items.append(command("thread.archive", "Archive thread", icon: "archivebox", keywords: ["hide", "put away"], unavailable: unsent ?? busy) { [weak self] in
+            if let chat { self?.archive(chat) }
+        })
         items.append(command("thread.delete", "Delete thread…", icon: "trash", shortcut: shortcuts.label(.delete), unavailable: noThread) { [weak self] in
             self?.askToDelete(chat)
         })

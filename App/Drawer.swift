@@ -28,6 +28,7 @@ struct Drawer: View {
             HStack(spacing: 8) {
                 projectMenu
                 Spacer(minLength: 0)
+                filterMenu
                 addProjectButton
             }
             .padding(.leading, 12)
@@ -45,6 +46,18 @@ struct Drawer: View {
                         .listRowBackground(Color.clear)
                 }
                 .onMove { model.moveThreads(from: $0, to: $1) }
+                .moveDisabled(model.drawerFilter != .all)
+                if chats.isEmpty, model.drawerFilter != .all {
+                    Button("No threads here. Show all") { model.drawerFilter = .all }
+                        .buttonStyle(.plain)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.faint)
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -106,6 +119,36 @@ struct Drawer: View {
         .onHover { addHovered = $0 }
         .help("Add project (\(model.shortcuts.label(.addProject)))")
         .accessibilityLabel("Add project")
+    }
+
+    /// Which threads the list shows: all, one project's, the ones at work or the ones waiting on you.
+    private var filterMenu: some View {
+        Menu {
+            Picker("Show", selection: Bindable(model).drawerFilter) {
+                Text("All threads").tag(DrawerFilter.all)
+                Divider()
+                ForEach(model.projects) { project in
+                    Text(project.name).tag(DrawerFilter.project(project.id))
+                }
+                Divider()
+                Text("Working").tag(DrawerFilter.working)
+                Text("Waiting on you").tag(DrawerFilter.waiting)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Image(systemName: model.drawerFilter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(model.drawerFilter == .all ? Ink.secondary : Ink.primary)
+                .frame(width: 28, height: 24)
+                .contentShape(.rect)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(model.drawerFilter == .all ? "Filter threads" : "Showing \(model.drawerFilter.title(in: model.projects))")
+        .accessibilityLabel("Filter threads")
     }
 
     private var projectMenu: some View {
@@ -213,6 +256,7 @@ struct Drawer: View {
         .contextMenu {
             Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
             Button("Rename") { model.startRename(chat) }
+            Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }
             Button("Delete…") { model.askToDelete(chat) }
         }
     }
@@ -258,6 +302,21 @@ private struct KeyLoopGate: NSViewRepresentable {
                 }
                 queue += view.subviews
             }
+        }
+    }
+}
+
+/// Which threads the drawer lists.
+enum DrawerFilter: Hashable {
+    case all, working, waiting
+    case project(UUID)
+
+    func title(in projects: [Project]) -> String {
+        switch self {
+        case .all: "all threads"
+        case .working: "threads at work"
+        case .waiting: "threads waiting on you"
+        case .project(let id): projects.first { $0.id == id }?.name ?? "one project"
         }
     }
 }
