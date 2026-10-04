@@ -7,7 +7,7 @@ import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
 import { runSettled, within } from "./child.ts";
-import { asks as registry, toolsServer, toolsTimeout, type Session } from "./provider.ts";
+import { asks as registry, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import type { Usage } from "./usage.ts";
 import { version } from "./version.ts";
@@ -361,7 +361,7 @@ export class CodexSession implements Session {
       model: params.model ?? null,
       ...policy(mode),
       ...(params.tools ? { config: toolsConfig(params.tools) } : {}),
-      ...(params.instructions ? { developerInstructions: params.instructions } : {}),
+      developerInstructions: told(params.instructions),
     };
     let opened = false;
     if (earlier) {

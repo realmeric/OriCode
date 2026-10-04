@@ -41,6 +41,19 @@ export type SendParams = {
 
 export type Grant = { tool: string; input: Record<string, unknown> };
 
+/// What every session is told of the window it's shown in, where its agent has somewhere to hear
+/// it: the transcript draws an `svg` block (K-217), and nothing says so but this.
+export const drawing =
+  "Your replies are shown in OriCode, a window that draws a fenced ```svg block in a reply as a picture, where you put it. " +
+  "When a diagram or a chart would say it better than words, or the user asks for one, write the SVG in such a block, on its own between paragraphs, instead of ASCII art or Mermaid, which the window doesn't draw. " +
+  "It is drawn over dark glass, up to 720 points wide: give it a viewBox and no background, draw text and lines in white, with opacity for quieter ink (currentColor is white), " +
+  "fill shapes with white at 6 to 10% opacity, set text at 13px in the default font, and use colour only where it means something.";
+
+/// The engine's own words for a session: the window's, then what a head is told of its rays.
+export function told(instructions?: string): string {
+  return instructions ? `${drawing}\n\n${instructions}` : drawing;
+}
+
 /// The name OriCode's own tools go by among a head's MCP servers, and how long one call may take:
 /// worker_result waits up to five minutes for a worker, and this leaves it room.
 export const toolsServer = "oricode";

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { drawing } from "../provider.ts";
 import { CodexSession, answer, availability, choiceOf, limitsOf, listModels, policy, unifiedHunks, unwrap, type CodexBinary } from "../codex.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
@@ -84,7 +85,7 @@ test("the handshake: initialize names OriCode, the account is read, a thread sta
   assert.equal(initialize.params.clientInfo.name, "oricode");
   assert.equal(initialize.params.capabilities.experimentalApi, false);
   assert.ok(initialize.params.capabilities.optOutNotificationMethods.includes("item/commandExecution/outputDelta"));
-  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write" });
+  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: drawing });
   const start = log.find((message) => message.method === "turn/start").params;
   assert.deepEqual(start.input, [{ type: "text", text: "hello", text_elements: [] }]);
   assert.equal(start.threadId, "t-1");
@@ -185,7 +186,7 @@ test("a turn: reasoning, text, a read, a command asked and approved, a plan, a f
   assert.deepEqual(done.usage, { input: 400, output: 50, cacheRead: 1800, cacheWrite: 0 });
   assert.deepEqual(done.context, { used: 1230, window: 258400 });
   const log = await sent();
-  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "on-request", sandbox: "workspace-write" });
+  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "on-request", sandbox: "workspace-write", developerInstructions: drawing });
   const start = log.find((message) => message.method === "turn/start").params;
   assert.equal(start.model, "gpt-large");
   assert.equal(start.effort, "low");
@@ -248,8 +249,8 @@ test("an idle app-server is let go, the next send resumes the thread without its
   assert.deepEqual(
     log.filter((message) => message.method === "thread/resume").map((message) => message.params),
     [
-      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write" },
-      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "never", sandbox: "read-only" },
+      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: drawing },
+      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "never", sandbox: "read-only", developerInstructions: drawing },
     ],
   );
   assert.equal(log.filter((message) => message.env).length, 3);

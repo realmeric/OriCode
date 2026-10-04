@@ -16,7 +16,7 @@ import {
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { Heads } from "./heads.ts";
-import { asks, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
+import { asks, told, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
 import { workflowShape, type WorkflowShape } from "./workflow.ts";
 
@@ -382,9 +382,10 @@ export class Thread implements Session {
         resume,
         includePartialMessages: true,
         settingSources: ["user", "project", "local"],
-        // A head's rays, in its system prompt as well as its tools' MCP instructions: the CLI
-        // connects MCP servers without holding up the first request, which could go without them.
-        systemPrompt: { type: "preset", preset: "claude_code", ...(params.instructions ? { append: params.instructions } : {}) },
+        // That the window draws, and a head's rays, in its system prompt as well as its tools' MCP
+        // instructions: the CLI connects MCP servers without holding up the first request, which
+        // could go without them.
+        systemPrompt: { type: "preset", preset: "claude_code", append: told(params.instructions) },
         pathToClaudeCodeExecutable: this.claude,
         env,
         stderr: (data) => process.stderr.write(data),

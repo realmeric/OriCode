@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { defaultsKey, writeCache } from "../cache.ts";
 import { fallback, helloList, type Model } from "../models.ts";
+import { drawing } from "../provider.ts";
 import { version } from "../version.ts";
 
 const cli = "9.9.9 (Claude Code)";
@@ -672,7 +673,7 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
   const start = sent.find((message) => message.method === "turn/start").params;
   assert.equal(start.model, "gpt-large");
   assert.equal(start.effort, "ultra");
-  assert.deepEqual(sent.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write" });
+  assert.deepEqual(sent.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: drawing });
   const decisions = sent.filter((message) => message.method === undefined && message.result?.decision).map((message) => message.result.decision);
   assert.deepEqual(decisions, [{ acceptWithExecpolicyAmendment: { execpolicy_amendment: ["make", "test"] } }, "decline"]);
 });

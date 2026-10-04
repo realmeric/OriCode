@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
+import { drawing, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
 import { lead } from "../ultracode.ts";
 import { engineWith, sandbox } from "./engine.ts";
@@ -86,8 +87,9 @@ test("a head is told its rays in its own instructions, and lists and starts only
   const rays = "codex gpt-small, opencode small, codex gpt-large";
   const init = await mcp(url, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "codex", version: "9" } });
   assert.match(init.instructions, new RegExp(`^You are this thread's head\\. The user picked these rays for it, as start_worker's agent and model: ${rays}\\. Use them: `));
-  // Codex hears it as developer instructions too, and the user's prompt is left as it was.
-  assert.equal(started.params.developerInstructions, init.instructions);
+  // Codex hears it as developer instructions too, after what every session is told of the
+  // window, and the user's prompt is left as it was.
+  assert.equal(started.params.developerInstructions, told(init.instructions));
   const turn = (await logged(join(logs, "codex.log"))).find((message) => message.method === "turn/start");
   assert.equal(JSON.stringify(turn.params.input).includes("rays"), false);
   const listed = await call(url, "list_agents");
@@ -262,7 +264,7 @@ test("workflows on a Codex model without ultra are OriCode's: the head is told t
   const opened = sent.find((message) => message.method === "thread/start").params;
   const url: string = opened.config["mcp_servers.oricode"].url;
   assert.match(opened.developerInstructions, /workflows are on: .*start_worker on these rays, as its agent and model: codex gpt-small\./);
-  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, opened.developerInstructions);
+  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, opened.developerInstructions.slice(drawing.length + 2));
   assert.deepEqual((await call(url, "list_agents")).agents.map((agent: any) => [agent.id, agent.models.map((model: { id: string }) => model.id)]), [["codex", ["gpt-small"]]]);
   const start = sent.find((message) => message.method === "turn/start").params;
   assert.equal(start.effort, "medium");
@@ -294,14 +296,14 @@ test("a Claude head gets the tools as an HTTP server loaded with its prompt, all
   const thread = new Thread("k193-claude", "claude", launch);
   await thread.send({ threadId: "k193-claude", cwd, text: "Go", permissionMode: "default", tools: "http://127.0.0.1:1/head", instructions: "Your rays." });
   assert.deepEqual(launched[0].mcpServers, { oricode: { type: "http", url: "http://127.0.0.1:1/head", alwaysLoad: true, timeout: 600_000 } });
-  // Told its rays in its system prompt, after Claude Code's own.
-  assert.deepEqual(launched[0].systemPrompt, { type: "preset", preset: "claude_code", append: "Your rays." });
+  // Told that the window draws, and its rays, in its system prompt, after Claude Code's own.
+  assert.deepEqual(launched[0].systemPrompt, { type: "preset", preset: "claude_code", append: `${drawing}\n\nYour rays.` });
   const allowed = await launched[0].canUseTool("mcp__oricode__start_worker", { agent: "codex" }, { signal: new AbortController().signal, toolUseID: "c1" });
   assert.deepEqual(allowed, { behavior: "allow", updatedInput: { agent: "codex" } });
   thread.close();
   await thread.send({ threadId: "k193-claude", cwd, text: "Again", permissionMode: "default" });
   assert.equal(launched.length, 2);
   assert.equal(launched[1].mcpServers, undefined);
-  assert.deepEqual(launched[1].systemPrompt, { type: "preset", preset: "claude_code" });
+  assert.deepEqual(launched[1].systemPrompt, { type: "preset", preset: "claude_code", append: drawing });
   thread.close();
 });

@@ -129,6 +129,17 @@ private struct ReplyBlock: View, Equatable {
     let open: Bool
 
     var body: some View {
+        // An `svg` block is its drawing once its fence has closed, and says one is coming while it
+        // streams; one the reply ended inside stays code.
+        if let drawing = Drawing.source(of: source), drawing.closed || open {
+            DrawingBlock(svg: drawing.svg, closed: drawing.closed) { code }
+                .id(drawing.closed ? drawing.svg : "")
+        } else {
+            code
+        }
+    }
+
+    private var code: some View {
         Markdown(source)
             .markdownCodeSyntaxHighlighter(open ? StreamingCodeHighlighter(text: source) as CodeSyntaxHighlighter : TranscriptCodeHighlighter.shared)
     }
