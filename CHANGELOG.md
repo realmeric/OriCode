@@ -16,7 +16,7 @@ Before 0.1.0, the first public release, a version was 0.0.N, where N was the num
 
 - The file viewer edits. Edit puts the file in a native text view, ⌘S saves it, and a file an agent changed since you opened it is refused rather than overwritten. Closing with edits unsaved asks first.
 - Ask for a Review, in the review's header, has the thread's agent read the diff and puts its comments on the lines they name. Keep one and it's a note of yours to send back; dismiss the rest. It joins no turn.
-- Pull requests, through GitHub's own `gh` and the login you made for it. ⌘K's Open a pull request pushes the thread's branch and opens one from its commits. The line under the composer says where its checks have got, Send to the thread hands a failing check's log to the agent as the next message, and a notification says when the checks finish. This hasn't met a real pull request yet.
+- Pull requests, through GitHub's own `gh` and the login you made for it. ⌘K's Open a pull request pushes the thread's branch and opens one from its commits. The line under the composer says where its checks have got, Send to the thread hands a failing check's log to the agent as the next message, and a notification says when the checks finish.
 
 ### Threads
 
