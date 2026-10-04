@@ -342,6 +342,8 @@ extension AppModel {
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: shortcuts.label(.findFile), unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })
+        items.append(command("side", "Ask a side question", icon: "bubble.left.and.bubble.right", shortcut: shortcuts.label(.sideQuestion),
+                             keywords: ["aside", "btw", "quick"], unavailable: sideUnavailable) { [weak self] in self?.toggleSide() })
         items.append(command("changes", "Review changes", icon: "plus.forwardslash.minus", shortcut: shortcuts.label(.review),
                              keywords: ["commit", "diff", "changes", "stage", "git", "revert"],
                              unavailable: noProject) { [weak self] in self?.openReview() })

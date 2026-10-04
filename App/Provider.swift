@@ -34,6 +34,8 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
         var unsupervised: Bool? = nil
         /// It takes OriCode's worker tools, so a thread on it can be a head with workers.
         var workers: Bool? = nil
+        /// A question can be asked beside a thread on it.
+        var aside: Bool? = nil
 
         /// What an agent hello doesn't list can do: nothing.
         static let none = Capabilities(

@@ -264,6 +264,10 @@ extension AppModel {
             }
             return
         }
+        if event.name == "side" {
+            if let delta = event.body["delta"]?.string { sideStreamed(delta, thread: id) }
+            return
+        }
         // The engine let an idle thread's CLI go; its transcript can go too unless it's open.
         if event.name == "released" {
             letGo(id)

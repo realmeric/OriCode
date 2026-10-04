@@ -45,6 +45,9 @@ struct OriCodeCommands: Commands {
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut(shortcuts.key(.findFile))
                 .disabled(model.chat == nil)
+            Button("Side Question…") { model.toggleSide() }
+                .keyboardShortcut(shortcuts.key(.sideQuestion))
+                .disabled(model.sideUnavailable != nil && !model.sideShown)
             Button(model.reviewShown ? "Hide Review" : "Review Changes") { model.toggleReview() }
                 .keyboardShortcut(shortcuts.key(.review))
                 .disabled(model.project == nil)

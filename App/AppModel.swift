@@ -240,6 +240,8 @@ final class AppModel {
     var usageStale = false
     var usageLoading = false
     var fileFinderShown = false
+    var sideShown = false
+    var side = SideAnswer()
     var projectFiles: [String] = []
     /// The folder those files are in.
     @ObservationIgnored var projectFilesFolder: String?

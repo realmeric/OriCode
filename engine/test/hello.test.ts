@@ -42,6 +42,7 @@ function claudeEntry(state: string, path: string | null, cliVersion: string | nu
       commitMessage: true,
       handoff: "claude --resume {session}",
       workers: true,
+      aside: true,
     },
     levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],

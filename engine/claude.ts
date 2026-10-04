@@ -7,7 +7,7 @@ import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./
 import { run, within } from "./child.ts";
 import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
 import { fallback, helloList, withDefaults, type Model } from "./models.ts";
-import type { Availability, ModelsEvent, Provider } from "./provider.ts";
+import { told, type Availability, type ModelsEvent, type Provider } from "./provider.ts";
 import { describe, Thread } from "./thread.ts";
 import { usage } from "./usage.ts";
 import { version } from "./version.ts";
@@ -298,6 +298,58 @@ export async function oneShot(claude: string, cwd: string, prompt: string, env =
   return text.trim();
 }
 
+/// What a side question is asked under, ahead of the user's words.
+export const asideLead =
+  "[Side question] The user is asking this beside the conversation: answer it from what the conversation already holds, briefly, without using a tool or changing anything. " +
+  "It and your answer won't be part of the conversation afterwards.";
+
+/// A question beside a thread. Its session is resumed as a fork that's never saved, with the
+/// thread's own model, settings and system prompt, so the request reads the thread's cached
+/// prompt; every tool is refused and one turn is all it gets.
+export async function aside(
+  claude: string,
+  asked: { cwd: string; sessionId: string; model?: string; text: string },
+  tell: (delta: string) => void,
+  stop: AbortSignal,
+  env = cleanEnvironment(),
+  launch: typeof query = query,
+): Promise<string> {
+  const call = launch({
+    prompt: `${asideLead}\n\n${asked.text}`,
+    options: {
+      cwd: asked.cwd,
+      model: asked.model,
+      resume: asked.sessionId,
+      forkSession: true,
+      persistSession: false,
+      maxTurns: 1,
+      includePartialMessages: true,
+      settingSources: ["user", "project", "local"],
+      systemPrompt: { type: "preset", preset: "claude_code", append: told() },
+      canUseTool: async () => ({ behavior: "deny", message: "A side question is answered without tools." }),
+      pathToClaudeCodeExecutable: claude,
+      env,
+    },
+  });
+  const ended = () => void call.interrupt().catch(() => {});
+  stop.addEventListener("abort", ended, { once: true });
+  let text = "";
+  let streamed = "";
+  try {
+    for await (const message of call) {
+      if (message.type === "stream_event" && !message.parent_tool_use_id && message.event.type === "content_block_delta" && message.event.delta.type === "text_delta") {
+        streamed += message.event.delta.text;
+        tell(message.event.delta.text);
+      }
+      if (message.type === "result") text = message.subtype === "success" ? message.result : streamed;
+    }
+  } finally {
+    stop.removeEventListener("abort", ended);
+  }
+  if (!text.trim() && !stop.aborted) throw new Error("No answer came back. Ask it in the thread instead.");
+  return text.trim();
+}
+
 /// Claude Code, through the Agent SDK and the user's own CLI.
 export const claude: Provider = {
   id: "claude",
@@ -317,6 +369,7 @@ export const claude: Provider = {
     commitMessage: true,
     handoff: "claude --resume {session}",
     workers: true,
+    aside: true,
   },
   levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
   modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
@@ -330,4 +383,5 @@ export const claude: Provider = {
   folderCommands,
   usage,
   oneShot,
+  aside,
 };

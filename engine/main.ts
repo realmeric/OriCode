@@ -100,6 +100,9 @@ function kept(threadId: string, found: Session): void {
   sessions.set(threadId, found);
 }
 
+/// The side questions being answered, by thread, for `side.stop`.
+const asides = new Map<string, AbortController>();
+
 const seam: Seam = {
   provider: (id) => providers.get(id),
   cli,
@@ -403,6 +406,27 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
       "then a short body only if the why isn't obvious from the diff. Reply with the message and nothing else.\n\n" +
       diff.slice(0, 60_000);
     return { message: await agent.oneShot(await cli(agent), cwd, prompt) };
+  },
+
+  /// A question beside a thread, answered from a copy of its session that's never saved. The
+  /// answer streams as `side` events and comes whole in the reply; `side.stop` ends it.
+  async side({ threadId, sessionId, cwd, text, model, provider: id }: { threadId: string; sessionId: string; cwd: string; text: string; model?: string; provider?: string }) {
+    const agent = provider(id);
+    if (!agent.aside) throw new Error(`${agent.name} can't answer a side question.`);
+    asides.get(threadId)?.abort();
+    const stop = new AbortController();
+    asides.set(threadId, stop);
+    try {
+      const answer = await agent.aside(await cli(agent), { cwd, sessionId, model, text }, (delta) => event("side", { threadId, delta }), stop.signal);
+      return { text: answer, stopped: stop.signal.aborted };
+    } finally {
+      if (asides.get(threadId) === stop) asides.delete(threadId);
+    }
+  },
+
+  async "side.stop"({ threadId }: { threadId: string }) {
+    asides.get(threadId)?.abort();
+    return { ok: true };
   },
 
   async "worktree.add"({ cwd, slug, prefix }: { cwd: string; slug: string; prefix?: string }) {

@@ -96,7 +96,7 @@ extension EventModifiers {
 /// Everything a key can be given to: the menu items and the composer's Return.
 enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case newThread, newThreadOnBranch, addProject, close
-    case toggleThreads, commandCenter, shellPrompt, heads, findFile, review
+    case toggleThreads, commandCenter, shellPrompt, heads, findFile, sideQuestion, review
     case stop, switchBranch, nextThread, previousThread, modelPicker, rename, delete
     case shortcuts
     case send, queue, newLine
@@ -114,6 +114,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .shellPrompt: "Shell Prompt"
         case .heads: "Show or Hide Heads"
         case .findFile: "Find File"
+        case .sideQuestion: "Side Question"
         case .review: "Review Changes"
         case .stop: "Stop"
         case .switchBranch: "Switch Branch"
@@ -140,6 +141,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .shellPrompt: KeyCombo("j")
         case .heads: KeyCombo("i")
         case .findFile: KeyCombo("p")
+        case .sideQuestion: KeyCombo(";")
         case .review: KeyCombo("d", [.command, .shift])
         case .stop: KeyCombo(".")
         case .switchBranch: KeyCombo("b", [.command, .shift])

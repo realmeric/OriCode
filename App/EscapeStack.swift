@@ -14,6 +14,11 @@ extension AppModel {
             returnKeyboardSoon()
             return true
         }
+        if sideShown {
+            closeSide()
+            returnKeyboardSoon()
+            return true
+        }
         if headsShown {
             closeHeads()
             return true

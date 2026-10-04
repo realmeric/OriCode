@@ -115,6 +115,8 @@ export type Capabilities = {
   unsupervised?: boolean;
   /// It takes OriCode's worker tools over MCP, so a thread on it can be a head with workers.
   workers?: boolean;
+  /// A question can be asked beside a thread on it, of a copy of its session that isn't kept.
+  aside?: boolean;
 };
 
 /// Whether the agent can run: its CLI, what that CLI says its version is, and, when it can't
@@ -159,6 +161,10 @@ export type Provider = {
   /// Commands for a folder when no thread there has a CLI running.
   folderCommands?(cli: string, cwd: string): Promise<Command[]>;
   usage?(cli: string): Promise<Usage>;
+  /// A question asked beside a thread: answered from a copy of its session, which is never
+  /// saved, so neither the question nor the answer joins the thread. `tell` gets the answer as
+  /// it streams, and `stop` ends it early.
+  aside?(cli: string, asked: { cwd: string; sessionId: string; model?: string; text: string }, tell: (delta: string) => void, stop: AbortSignal): Promise<string>;
   /// One small tool-less answer to a prompt, for git.message.
   oneShot?(cli: string, cwd: string, prompt: string): Promise<string>;
 };

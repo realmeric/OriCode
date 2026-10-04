@@ -43,6 +43,7 @@ enum ShortcutList {
             .action(.shellPrompt),
             .action(.heads),
             .action(.findFile),
+            .action(.sideQuestion),
             .action(.review),
         ]),
         Group(title: "Thread", rows: [

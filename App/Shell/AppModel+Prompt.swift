@@ -63,7 +63,7 @@ extension AppModel {
     /// Whether something over the thread has the keyboard on purpose, which a block opening or
     /// closing by itself leaves alone: ⌘K, ⌘P, a rename, the picker, a file.
     var keyboardTaken: Bool {
-        commandCenterShown || fileFinderShown || renamingChatID != nil || modelPickerShown || openFile != nil
+        commandCenterShown || fileFinderShown || sideShown || renamingChatID != nil || modelPickerShown || openFile != nil
     }
 
     /// Whether the composer takes the keyboard when nothing else asks for it: not under an open
