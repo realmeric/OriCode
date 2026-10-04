@@ -2,6 +2,34 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.3.0 "Hands on" - 2026-10-04
+
+### In the conversation
+
+- Diagrams and charts are drawn. An agent that answers with a fenced `svg` block gets it drawn in place of its code, on a card, clear so the glass shows through; while it streams the thread says "Drawing…", and a right click copies the image or the SVG. Claude Code and Codex are told the window draws, so asking for a diagram is enough.
+- ⌘; asks a side question. The answer comes from everything the thread knows and neither the question nor the answer joins it: the engine asks a copy of the thread's session that it never saves. It works while the thread is busy. Claude Code only, for now.
+- Typing `@` lists the project's files as you go, ranked as ⌘P ranks them. Return or Tab puts the path in the message.
+- The paperclip and a drop take any file now, on every agent. A picture still goes among the thumbnails; anything else, a PDF, a source file, a folder, is named in the message for the agent to open with its own tools.
+- Settings › Conversation has Show thinking, which leaves the thinking lines out when it's off, and Concise replies, which asks Claude Code and Codex for shorter answers, fewer comments and changes kept to what you asked.
+
+### Files, review and pull requests
+
+- The file viewer edits. Edit puts the file in a native text view, ⌘S saves it, and a file an agent changed since you opened it is refused rather than overwritten. Closing with edits unsaved asks first.
+- Ask for a Review, in the review's header, has the thread's agent read the diff and puts its comments on the lines they name. Keep one and it's a note of yours to send back; dismiss the rest. It joins no turn.
+- Pull requests, through GitHub's own `gh` and the login you made for it. ⌘K's Open a pull request pushes the thread's branch and opens one from its commits. The line under the composer says where its checks have got, Send to the thread hands a failing check's log to the agent as the next message, and a notification says when the checks finish. This hasn't met a real pull request yet.
+
+### Threads
+
+- Archive, from a thread's row or ⌘K, takes a thread out of the list and keeps everything of it. Settings › Archive restores it or deletes it for good.
+- The thread list has a filter at its head: one project's threads, the ones at work, or the ones waiting on you.
+- ⌘K's Open a Claude Code session lists the sessions you started with `claude` in Terminal in the project's folder, and opens one as a thread with its transcript that carries on from where it stopped.
+- Settings › General › New threads has Workspace: ⌘N can start every thread on a branch of its own, with ⌘⇧N making one in the project's folder instead. Settings › Source control names the prefix those branches take.
+- A thread on its own branch gets the ignored files `.worktreeinclude` names, an `.env` say, copied into its worktree, as the Claude Code app does.
+
+### Settings
+
+- Settings › MCP lists the servers Claude Code loads for a project, each with where it has got, a switch, and Remove, and adds one by its URL or its command. It all goes through your own `claude`, which keeps its own configuration; a server that wants a sign-in gets it in Terminal with `/mcp`.
+
 ## v0.2.1 "Any folder" - 2026-09-29
 
 - Any folder is a project now, git or not. Add Project used to refuse a folder without a `.git` and say so; it takes it, and the threads there run as anywhere else. The review, branches and worktree threads need git, so in a plain folder they answer "This folder isn't a git repository." in place of git's own error.

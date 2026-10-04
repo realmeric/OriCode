@@ -10,6 +10,7 @@ OriCode isn't made or endorsed by Anthropic or by any other agent's maker. Claud
 - macOS 26 or newer on Apple silicon
 - Claude Code, installed and logged in: run `claude` in Terminal once. Every other agent is optional and turned on in Settings › Agents.
 - Node 24 or newer, which runs the app's engine
+- For pull requests, GitHub's CLI, signed in: `brew install gh`, then `gh auth login`. Everything else works without it.
 - To build it: Xcode 26 or newer with its Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`), and XcodeGen (`brew install xcodegen`)
 
 ## Installing
