@@ -21,6 +21,8 @@ extension AppModel {
                   chat.cwd == cwd
             else { return }
             if branches[id] != info { branches[id] = info }
+            // A branch that's pushed may have a pull request, the agent's own doing included.
+            refreshPull(for: chat)
         }
     }
 }

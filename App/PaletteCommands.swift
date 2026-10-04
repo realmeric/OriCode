@@ -330,6 +330,7 @@ extension AppModel {
 
         // Git, in the thread's folder
         items += gitCommands
+        items += pullCommands
 
         // The terminal, and your own actions
         items += terminalCommands

@@ -240,6 +240,10 @@ final class AppModel {
     var usageStale = false
     var usageLoading = false
     var fileFinderShown = false
+    /// Each folder's branch's pull request, for the folders that have one.
+    var pulls: [String: PullRequest] = [:]
+    /// The next look at a pull request whose checks still run.
+    @ObservationIgnored var pullWatches: [String: Task<Void, Never>] = [:]
     /// Which threads the drawer lists; not kept, so a launch shows them all.
     var drawerFilter: DrawerFilter = .all
     var sideShown = false
@@ -389,7 +393,10 @@ final class AppModel {
         }
         // Files change outside the app too: an editor, a terminal, another tool.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.readReview() }
+            MainActor.assumeIsolated {
+                self?.readReview()
+                self?.refreshPull(for: self?.chat)
+            }
         }
         // Titled windows only: text input puts borderless helper windows in the key spot too.
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in

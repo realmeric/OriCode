@@ -331,6 +331,8 @@ struct EngineNote: View {
             } else if model.engineState == .ready || model.engineState == .starting, model.agentDown == nil,
                       let away = model.runningOutOfView {
                 RunningLine(block: away.block, more: away.more)
+            } else if model.engineState == .ready, model.agentDown == nil, let pull = model.pull {
+                PullLine(pull: pull)
             } else {
                 engineLine
             }
