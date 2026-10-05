@@ -6,6 +6,9 @@ Before 0.1.0, the first public release, a version was 0.0.N, where N was the num
 
 - The pull request is drawn now. The line under the composer is a bead for each check, lit while it runs and red if it failed, then the number and the one thing worth knowing: "2 checks running", "test failed", "conflicts with main", "ready to merge". Click it and it opens out of the title: every check with how long it took, Log and Send to the thread on the row under the pointer, Open on GitHub, and Merge, which asks first and squashes.
 - Settings › Activity shows the tokens that went through OriCode's threads over the last 26 weeks: a grid of days, the same by week, or adding up.
+- Archived threads are within reach. The thread list's filter has Archived, whose rows restore from their menu, ⌘K has Archived threads…, and a message sent in an archived thread brings it back.
+- ⌘K gained what it was missing: Filter threads…, Restore thread, Ask for a review of the changes, Edit and Save for an open file, Show or Hide thinking, and Concise replies on or off.
+- Actions of your own can do more than run a shell line. In Settings › Actions an action can be one of OriCode's own commands, picked by name, and any action can have a key of its own. So a command you wish had a shortcut, or a second name, is something you add yourself; actions.json can still be edited by hand.
 - Settings › Source control › Write message with lets the review's Write Message use the thread's own model instead of the small one.
 - The keyboard shortcuts sheet is ⌘⇧K. ⌘/ is a Shift away on a Turkish keyboard, as ⌘; was.
 - Delete in Settings › Archive asks in Settings, not in the main window behind it.
