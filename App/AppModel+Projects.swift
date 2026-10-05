@@ -21,12 +21,15 @@ extension AppModel {
     /// Thread menu. A draft isn't one of them until its first message.
     /// Under the drawer's filter, when it has one.
     var chats: [Chat] {
+        // The archived ones, when they're what's asked for, the latest worked on first.
+        if drawerFilter == .archived { return archivedChats }
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }.sorted(by: Chat.drawerOrder)
         switch drawerFilter {
         case .all: return all
         case .project(let id): return all.filter { $0.project?.id == id }
         case .working: return all.filter { conversations[$0.id]?.working == true }
         case .waiting: return all.filter { conversations[$0.id]?.waitingAsk != nil }
+        case .archived: return []
         }
     }
 

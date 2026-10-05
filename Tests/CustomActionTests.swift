@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import OriCode
 
@@ -77,6 +78,12 @@ struct CustomActionTests {
         #expect(decoded.first?.asks == false)
         #expect(decoded.first?.project == nil)
         #expect(CustomAction(name: "x", command: "echo {input}").wantsInput)
+        // One of OriCode's own commands with a key, written by hand, and back out again.
+        let own = try JSONDecoder().decode([CustomAction].self, from: Data(#"[{"name":"Open archive","command":"threads.archived","runs":"builtIn","keys":{"key":"a","flags":\#(EventModifiers([.command, .control]).rawValue)}}]"#.utf8))
+        #expect(own.first?.runs == .builtIn && own.first?.keys == KeyCombo("a", [.command, .control]))
+        let again = try JSONDecoder().decode([CustomAction].self, from: JSONEncoder().encode(own))
+        #expect(again == own)
+        #expect(decoded.first?.keys == nil)
     }
 
     @Test func theFirstRunWritesTheExamplesAndABadFileIsLeftAlone() throws {

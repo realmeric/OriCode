@@ -483,6 +483,7 @@ final class AppModel {
         booted = true
         installEscapeMonitor()
         installPasteMonitor()
+        installActionKeys()
         Task { await listen() }
         await startEngine()
     }

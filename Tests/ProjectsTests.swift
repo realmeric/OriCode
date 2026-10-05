@@ -85,4 +85,66 @@ struct ProjectsTests {
         if case .tool(_, let call) = conversation.items[2] { #expect(call.result == "all:") } else { Issue.record("the call should be third") }
         #expect(Set(chat.events.map(\.turn)) == [1, 2])
     }
+
+    @Test func theArchivedFilterListsWhatIsPutAwayAndAMessageBringsAThreadBack() throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let project = Project(name: "alpha", path: "/tmp/alpha")
+        container.mainContext.insert(project)
+        let kept = Chat(project: project, title: "Kept")
+        let old = Chat(project: project, title: "Old")
+        for chat in [kept, old] {
+            chat.started = true
+            container.mainContext.insert(chat)
+        }
+        old.archived = true
+        try container.mainContext.save()
+        let model = AppModel(container: container)
+        #expect(model.chats.map(\.title) == ["Kept"])
+        model.drawerFilter = .archived
+        #expect(model.chats.map(\.title) == ["Old"])
+        #expect(DrawerFilter.archived.title(in: []) == "archived threads")
+        // Written to again, it's a thread in use.
+        model.conversation(for: old).userSent("Still there?")
+        #expect(!old.archived)
+        model.save()
+        #expect(model.chats.isEmpty)
+        model.drawerFilter = .all
+        #expect(Set(model.chats.map(\.id)) == [kept.id, old.id])
+    }
+
+    @Test func aCommandRunsByItsIdAsAnActionOfYourOwnWouldRunIt() throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let model = AppModel(container: container)
+        let defaults = UserDefaults.standard
+        let before = defaults.object(forKey: TranscriptSettings.showThinking)
+        defer { defaults.set(before, forKey: TranscriptSettings.showThinking) }
+        defaults.set(true, forKey: TranscriptSettings.showThinking)
+        model.runPaletteCommand("transcript.thinking")
+        #expect(defaults.bool(forKey: TranscriptSettings.showThinking) == false)
+        // One that opens a list opens ⌘K on it.
+        #expect(!model.commandCenterShown)
+        model.runPaletteCommand("threads.filter")
+        #expect(model.commandCenterShown)
+        model.closeCommandCenter()
+        model.runPaletteCommand("no.such.command")
+        #expect(model.note == "There's no command called no.such.command")
+        // Every command an action can stand for has a name, and the new ones are among them.
+        let ids = Set(model.commandChoices.map(\.id))
+        #expect(ids.isSuperset(of: ["threads.archived", "threads.filter", "review.ask", "transcript.thinking", "replies.concise", "settings.archive"]))
+        #expect(!ids.contains { $0.hasPrefix("action.") })
+    }
+
+    @Test func anActionsKeyIsRefusedWhenSomethingElseHasIt() throws {
+        let container = try ModelContainer(
+            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let model = AppModel(container: container)
+        let action = CustomAction(name: "Open archive", command: "threads.archived", runs: .builtIn)
+        #expect(model.refusal(KeyCombo("a", []), for: action) == "A key of your own needs ⌘ or ⌃")
+        #expect(model.refusal(KeyCombo("q"), for: action) == "⌘Q is Quit")
+        #expect(model.refusal(model.shortcuts[.commandCenter], for: action)?.hasSuffix("is Command Center") == true)
+        #expect(model.refusal(KeyCombo("3"), for: action) == "⌘3 goes to a thread")
+        #expect(model.refusal(KeyCombo("a", [.command, .control]), for: action) == nil)
+    }
 }

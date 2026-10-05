@@ -267,6 +267,15 @@ extension AppModel {
         items.append(command("thread.archive", "Archive thread", icon: "archivebox", keywords: ["hide", "put away"], unavailable: unsent ?? busy) { [weak self] in
             if let chat { self?.archive(chat) }
         })
+        if chat?.archived == true {
+            items.append(command("thread.restore", "Restore thread", icon: "tray.and.arrow.up", keywords: ["unarchive"]) { [weak self] in
+                if let chat { self?.restore(chat) }
+            })
+        }
+        items.append(PaletteItem(id: "threads.archived", kind: .command, title: "Archived threads…", keywords: ["archive", "restore", "unarchive", "old"],
+                                 icon: "archivebox", unavailable: archivedChats.isEmpty ? "Nothing is archived" : nil, action: .list(archivedList)))
+        items.append(PaletteItem(id: "threads.filter", kind: .command, title: "Filter threads…", subtitle: drawerFilter == .all ? nil : drawerFilter.title(in: projects),
+                                 keywords: ["drawer", "sidebar", "show", "working", "waiting", "archived"], icon: "line.3.horizontal.decrease", action: .list(filterList)))
         items.append(command("thread.delete", "Delete thread…", icon: "trash", shortcut: shortcuts.label(.delete), unavailable: noThread) { [weak self] in
             self?.askToDelete(chat)
         })
@@ -354,6 +363,29 @@ extension AppModel {
                              keywords: ["commit", "diff", "changes", "stage", "git", "revert"],
                              unavailable: noProject) { [weak self] in self?.openReview() })
 
+        items.append(command("review.ask", "Ask for a review of the changes", icon: "sparkle", keywords: ["review", "comments", "diff"],
+                             unavailable: noProject) { [weak self] in
+            self?.openReview()
+            self?.askForReviewOnceRead()
+        })
+        if let file = openFile {
+            if file.editing {
+                items.append(command("file.save", "Save \((file.path as NSString).lastPathComponent)", icon: "square.and.arrow.down", shortcut: "⌘S",
+                                     unavailable: file.dirty ? nil : "Nothing to save") { [weak self] in self?.saveFile() })
+            } else {
+                items.append(command("file.edit", "Edit \((file.path as NSString).lastPathComponent)", icon: "pencil.line",
+                                     unavailable: file.truncated ? "Too large to edit here" : nil) { [weak self] in self?.editFile() })
+            }
+        }
+        let thinking = UserDefaults.standard.object(forKey: TranscriptSettings.showThinking) as? Bool ?? true
+        items.append(command("transcript.thinking", thinking ? "Hide thinking" : "Show thinking", icon: "brain", keywords: ["thought", "reasoning"]) {
+            UserDefaults.standard.set(!thinking, forKey: TranscriptSettings.showThinking)
+        })
+        let concise = UserDefaults.standard.bool(forKey: TranscriptSettings.concise)
+        items.append(command("replies.concise", concise ? "Concise replies off" : "Concise replies on", icon: "text.alignleft", keywords: ["short", "brief"]) {
+            UserDefaults.standard.set(!concise, forKey: TranscriptSettings.concise)
+        })
+
         // Quality of life
         items += qualityCommands
 
@@ -363,6 +395,70 @@ extension AppModel {
             self?.showingShortcuts = true
         })
         return items
+    }
+
+    /// The archived threads, each a row that restores it and opens it.
+    private var archivedList: PaletteList {
+        PaletteList(title: "Archived threads", placeholder: "Search archived threads") { [weak self] in
+            (self?.archivedChats ?? []).map { chat in
+                PaletteItem(id: "archived." + chat.id.uuidString, kind: .thread, title: chat.title,
+                            subtitle: [chat.project?.name, chat.updatedAt.formatted(date: .abbreviated, time: .omitted)].compactMap { $0 }.joined(separator: " · "),
+                            icon: "archivebox", project: chat.project, action: .run { [weak self] in self?.restore(chat) })
+            }
+        }
+    }
+
+    /// What the thread list shows, as the drawer's own filter has it.
+    private var filterList: PaletteList {
+        PaletteList(title: "Filter threads", placeholder: "Which threads the list shows") { [weak self] in
+            guard let self else { return [] }
+            let choices: [(DrawerFilter, String, String)] = [(.all, "All threads", "tray.full")]
+                + projects.map { (.project($0.id), $0.name, "folder") }
+                + [(.working, "Working", "circle.dotted"), (.waiting, "Waiting on you", "hand.raised"), (.archived, "Archived", "archivebox")]
+            return choices.map { filter, title, icon in
+                PaletteItem(id: "filter." + title, kind: .choice, title: title, icon: icon, checked: filter == self.drawerFilter,
+                            action: .run { [weak self] in
+                                self?.drawerFilter = filter
+                                // Pinned open, or else just long enough to see what it shows now.
+                                if self?.drawerPinned == false {
+                                    self?.showDrawer()
+                                    self?.scheduleHide(after: .seconds(2))
+                                }
+                            })
+            }
+        }
+    }
+
+    /// A ⌘K command by its id, as an action of the user's own or its key runs it: one that opens
+    /// a list or asks for input opens ⌘K there.
+    func runPaletteCommand(_ id: String) {
+        guard let item = paletteSearchable().first(where: { $0.id == id }) else {
+            say("There's no command called \(id)")
+            return
+        }
+        if let reason = item.unavailable {
+            say(reason)
+            return
+        }
+        switch item.action {
+        case .run(let run):
+            if commandCenterShown { closeCommandCenter() }
+            run()
+        case .task, .list, .input:
+            if !commandCenterShown {
+                palette.reset()
+                withAnimation(Motion.move) { openInIsland(.command) }
+            }
+            activate(item)
+        }
+    }
+
+    /// Every command an action can point at, by id, for the action's form.
+    var commandChoices: [(id: String, title: String)] {
+        paletteSearchable()
+            .filter { ($0.kind == .command || $0.id.hasPrefix("settings.")) && !$0.id.hasPrefix("action.") }
+            .map { ($0.id, $0.title) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     func command(_ id: String, _ title: String, icon: String, shortcut: String? = nil, subtitle: String? = nil,

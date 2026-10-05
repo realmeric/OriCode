@@ -805,6 +805,16 @@ extension AppModel {
         return placed
     }
 
+    /// From ⌘K: asks once the review, just opened, has read the working tree.
+    func askForReviewOnceRead() {
+        Task {
+            for _ in 0..<50 where review.diff == nil || review.loading {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            askForReview()
+        }
+    }
+
     /// A comment of the agent's kept: now a note of yours, sent with the rest.
     func keepNote(_ note: ReviewNote) {
         guard let index = review.notes.firstIndex(where: { $0.id == note.id }) else { return }

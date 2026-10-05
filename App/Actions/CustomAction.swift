@@ -4,7 +4,9 @@ import Foundation
 /// quietly by the engine.
 struct CustomAction: Codable, Identifiable, Equatable, Sendable {
     enum Runs: String, Codable, CaseIterable, Sendable {
-        case terminal, quietly
+        /// `command` is a line for the shell, run in the thread or quietly; or, for `builtIn`,
+        /// the id of one of ⌘K's own commands, `threads.archived` say.
+        case terminal, quietly, builtIn
     }
 
     var id = UUID()
@@ -15,6 +17,8 @@ struct CustomAction: Codable, Identifiable, Equatable, Sendable {
     var asks = false
     /// Only in this project's threads; in every project when nil.
     var project: UUID?
+    /// A key of its own, pressed in the main window.
+    var keys: KeyCombo?
 
     var wantsInput: Bool { command.contains("{input}") }
 
@@ -35,6 +39,7 @@ struct CustomAction: Codable, Identifiable, Equatable, Sendable {
         runs = try container.decodeIfPresent(Runs.self, forKey: .runs) ?? .terminal
         asks = try container.decodeIfPresent(Bool.self, forKey: .asks) ?? false
         project = try container.decodeIfPresent(UUID.self, forKey: .project)
+        keys = try container.decodeIfPresent(KeyCombo.self, forKey: .keys)
     }
 
     /// What the first run writes, to show what an action can be.

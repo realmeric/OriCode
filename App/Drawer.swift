@@ -133,6 +133,8 @@ struct Drawer: View {
                 Divider()
                 Text("Working").tag(DrawerFilter.working)
                 Text("Waiting on you").tag(DrawerFilter.waiting)
+                Divider()
+                Text("Archived").tag(DrawerFilter.archived)
             }
             .pickerStyle(.inline)
             .labelsHidden()
@@ -254,9 +256,13 @@ struct Drawer: View {
         .help(chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : "")
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
-            Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
-            Button("Rename") { model.startRename(chat) }
-            Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }
+            if chat.archived {
+                Button("Restore") { withAnimation(Motion.move) { model.restore(chat) } }
+            } else {
+                Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
+                Button("Rename") { model.startRename(chat) }
+                Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }
+            }
             Button("Delete…") { model.askToDelete(chat) }
         }
     }
@@ -308,7 +314,7 @@ private struct KeyLoopGate: NSViewRepresentable {
 
 /// Which threads the drawer lists.
 enum DrawerFilter: Hashable {
-    case all, working, waiting
+    case all, working, waiting, archived
     case project(UUID)
 
     func title(in projects: [Project]) -> String {
@@ -316,6 +322,7 @@ enum DrawerFilter: Hashable {
         case .all: "all threads"
         case .working: "threads at work"
         case .waiting: "threads waiting on you"
+        case .archived: "archived threads"
         case .project(let id): projects.first { $0.id == id }?.name ?? "one project"
         }
     }
