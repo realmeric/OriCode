@@ -2,6 +2,14 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.3.2 "Hands on" - 2026-10-05
+
+- The pull request is drawn now. The line under the composer is a bead for each check, lit while it runs and red if it failed, then the number and the one thing worth knowing: "2 checks running", "test failed", "conflicts with main", "ready to merge". Click it and it opens out of the title: every check with how long it took, Log and Send to the thread on the row under the pointer, Open on GitHub, and Merge, which asks first and squashes.
+- Settings › Activity shows the tokens that went through OriCode's threads over the last 26 weeks: a grid of days, the same by week, or adding up.
+- Settings › Source control › Write message with lets the review's Write Message use the thread's own model instead of the small one.
+- The keyboard shortcuts sheet is ⌘⇧K. ⌘/ is a Shift away on a Turkish keyboard, as ⌘; was.
+- Delete in Settings › Archive asks in Settings, not in the main window behind it.
+
 ## v0.3.1 "Hands on" - 2026-10-04
 
 - ⌘S saves in the file editor. The editor takes the key itself now; in 0.3.0 the menu's Save was still off when the key arrived, so it did nothing.
