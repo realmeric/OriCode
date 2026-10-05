@@ -48,6 +48,7 @@ struct SettingsView: View {
                         case .conversation: ConversationPane()
                         case .sourceControl: SourceControlPane()
                         case .archive: ArchivePane()
+                        case .activity: ActivityPane()
                         case .notifications: NotificationsPane()
                         case .actions: ActionsPane()
                         case .shortcuts: ShortcutsPane()
@@ -82,7 +83,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, agents, mcp, conversation, sourceControl, archive, notifications, actions, shortcuts, about
+    case general, agents, mcp, conversation, sourceControl, archive, activity, notifications, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -96,6 +97,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .conversation: "Conversation"
         case .sourceControl: "Source control"
         case .archive: "Archive"
+        case .activity: "Activity"
         case .notifications: "Notifications"
         case .actions: "Actions"
         case .shortcuts: "Shortcuts"
@@ -111,6 +113,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .conversation: "text.bubble"
         case .sourceControl: "arrow.triangle.branch"
         case .archive: "archivebox"
+        case .activity: "chart.bar"
         case .notifications: "bell"
         case .actions: "bolt"
         case .shortcuts: "command"
@@ -125,6 +128,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
         case .mcp: ["mcp", "server", "servers", "connector", "tools", "linear"]
         case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
+        case .activity: ["tokens", "usage", "activity", "daily", "weekly", "cumulative", "chart"]
         case .archive: ["archived", "threads", "restore", "delete"]
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
@@ -465,6 +469,8 @@ private struct GeneralPane: View {
 
 private struct ArchivePane: View {
     @Environment(AppModel.self) private var model
+    /// The thread Delete was pressed on, asked about here rather than in the main window behind.
+    @State private var deleting: Chat?
 
     var body: some View {
         PaneTitle(text: "Archive")
@@ -481,19 +487,32 @@ private struct ArchivePane: View {
                         HStack(spacing: 8) {
                             Button("Restore") { model.restore(chat) }
                                 .buttonStyle(.action(small: true))
-                            Button("Delete…") { model.askToDelete(chat) }
+                            Button("Delete…") { deleting = chat }
                                 .buttonStyle(.action(small: true))
                         }
                     }
                 }
             }
             .padding(.top, 14)
+            .confirmationDialog(
+                "Delete “\(deleting?.title ?? "")”?",
+                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                presenting: deleting
+            ) { chat in
+                Button("Delete", role: .destructive) { model.delete(chat) }
+                Button("Cancel", role: .cancel) {}
+            } message: { chat in
+                Text(chat.worktreeBranch == nil
+                    ? "Its transcript goes for good. Its session stays in Claude Code's own history."
+                    : "Its transcript goes for good. Its worktree and its branch, \(chat.worktreeBranch ?? ""), stay where they are.")
+            }
         }
     }
 }
 
 private struct SourceControlPane: View {
     @AppStorage(NewThreads.branchPrefix) private var prefix = NewThreads.defaultBranchPrefix
+    @AppStorage(NewThreads.messageModel) private var messageModel = ""
 
     var body: some View {
         PaneTitle(text: "Source control")
@@ -505,6 +524,18 @@ private struct SourceControlPane: View {
                     .font(Type.mono)
                     .frame(width: 180)
                     .autocorrectionDisabled()
+            }
+        }
+        SectionHeading("Commits")
+        SettingsCard {
+            SettingsRow(title: "Write message with", detail: messageModel.isEmpty
+                ? "The review's Write Message asks the agent's small model, which is quick and reads only the diff."
+                : "The review's Write Message asks the model the thread is on. Slower, and it spends that model's usage.") {
+                Picker("Write message with", selection: $messageModel) {
+                    Text("A small model").tag("")
+                    Text("The thread's model").tag(NewThreads.threadModel)
+                }
+                .menuRow()
             }
         }
     }

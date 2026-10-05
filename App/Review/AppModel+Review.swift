@@ -659,7 +659,10 @@ extension AppModel {
     func writeReviewMessage(reviewedOnly: Bool) {
         guard let folder = review.folder, !review.writing else { return }
         let text = commitPlan(reviewedOnly: reviewedOnly).text
-        let params: [String: JSON] = ["cwd": .string(folder), "diff": .string(text)]
+        var params: [String: JSON] = ["cwd": .string(folder), "diff": .string(text)]
+        if UserDefaults.standard.string(forKey: NewThreads.messageModel) == NewThreads.threadModel, let chat, let model = modelSent(in: chat) {
+            params["model"] = .string(model)
+        }
         let agent = providerID(for: chat)
         review.writing = true
         review.problem = nil

@@ -60,6 +60,9 @@ enum NewThreads {
     /// What a worktree thread's branch is called before its own name.
     static let branchPrefix = "branchPrefix"
     static let defaultBranchPrefix = "oricode/"
+    /// Which model writes a commit message: empty for the agent's small one, or the thread's own.
+    static let messageModel = "commitMessageModel"
+    static let threadModel = "thread"
     /// The effort setting's value for Claude Code's own default: the thread picks no level.
     static let claudeDefault = "default"
     static let on = "on"
@@ -168,6 +171,9 @@ final class AppModel {
     let engine = Engine()
     let notifier = Notifier()
     let context: ModelContext
+    /// Kept, so the context never outlives its store: an observer that fired on a model whose
+    /// container had gone trapped inside SwiftData.
+    private let store: ModelContainer
     /// Bumped on every save so views reading fetched lists redraw.
     private(set) var revision = 0
     /// The projects as of a revision, and the open thread as of a revision and a selection.
@@ -377,6 +383,7 @@ final class AppModel {
     }
 
     init(container: ModelContainer) {
+        store = container
         context = container.mainContext
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)

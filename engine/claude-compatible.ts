@@ -156,7 +156,7 @@ export function claudeCompatible(maker: Maker, { security, launch }: { security?
     listModels: () => models(maker),
     session: (threadId, cli) => new Thread(threadId, cli, launch, { agent: entry.agent, environment: (model) => environment(maker, entry.name, security, model) }),
     folderCommands: claude.folderCommands,
-    oneShot: async (cli, cwd, prompt) => oneShot(cli, cwd, prompt, await environment(maker, entry.name, security)),
+    oneShot: async (cli, cwd, prompt, model) => oneShot(cli, cwd, prompt, await environment(maker, entry.name, security, model), model),
   };
 }
 

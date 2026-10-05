@@ -151,7 +151,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .modelPicker: KeyCombo("m", [.command, .shift])
         case .rename: KeyCombo("r")
         case .delete: KeyCombo("delete")
-        case .shortcuts: KeyCombo("/")
+        // A letter again: / is Shift and 7 on a Turkish keyboard.
+        case .shortcuts: KeyCombo("k", [.command, .shift])
         case .send: KeyCombo("return", [])
         case .queue: KeyCombo("return", .option)
         case .newLine: KeyCombo("return", .shift)

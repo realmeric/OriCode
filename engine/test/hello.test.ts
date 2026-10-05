@@ -200,7 +200,7 @@ async function login(folder: string, path: string, stamp?: string): Promise<stri
 }
 
 /// The engine's first `count` lines for one hello, with stdin closed after them.
-async function helloUntil(env: Record<string, string | undefined>, count: number): Promise<any[]> {
+async function helloUntil(env: Record<string, string | undefined>, count: number, before: () => Promise<void> = async () => {}): Promise<any[]> {
   const engine = startEngine(env);
   const lines: any[] = [];
   let arrived = () => {};
@@ -211,6 +211,8 @@ async function helloUntil(env: Record<string, string | undefined>, count: number
   const waiting = new Promise<void>((done) => (arrived = () => void (lines.length >= count && done())));
   engine.stdin.write(JSON.stringify({ id: 1, method: "hello" }) + "\n");
   await waiting;
+  // What the engine does behind its reply ends with the engine: a test that looks for it waits here.
+  await before();
   engine.stdin.end();
   await new Promise((done) => engine.on("close", done));
   return lines;
@@ -220,10 +222,19 @@ test("hello answers from the login it remembered without asking for the version 
   const claude = await standIn(true);
   const { folder, config, known } = await cachedDefaults();
   const file = await login(folder, claude.path);
-  const lines = await helloUntil({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, 2);
+  // The login is asked again behind the reply, which stdin closing would cut short: on a fast
+  // disk the models event beat it every time.
+  let ran: string[] = [];
+  const asked = async () => {
+    for (let look = 0; look < 60 && !ran.length; look++) {
+      ran = await claude.ran().catch(() => []);
+      if (!ran.length) await new Promise((done) => setTimeout(done, 50));
+    }
+  };
+  const lines = await helloUntil({ ORICODE_CLAUDE: claude.path, ORICODE_CACHE: folder, CLAUDE_CONFIG_DIR: config }, 2, asked);
   assert.deepEqual(lines[0], { id: 1, result: { version, models: known, claude: claude.path, loggedIn: true, providers: [claudeEntry("ready", claude.path, cli, null)] } });
   // Still signed in: nothing more is said, and what it remembers stays.
-  assert.deepEqual(await claude.ran(), ["auth status"]);
+  assert.deepEqual(ran, ["auth status"]);
   assert.ok(existsSync(file));
 });
 

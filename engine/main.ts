@@ -400,7 +400,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   /// The app sends the diff it's about to commit, cut to keep the Haiku call small.
-  async "git.message"({ cwd, diff, provider: id }: { cwd: string; diff: string; provider?: string }) {
+  async "git.message"({ cwd, diff, model, provider: id }: { cwd: string; diff: string; model?: string; provider?: string }) {
     if (!diff?.trim()) throw new Error("Nothing to describe.");
     const agent = provider(id);
     if (!agent.oneShot) throw new Error(`${agent.name} can't write a commit message.`);
@@ -408,7 +408,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
       "Write a git commit message for this diff. Imperative subject under 60 characters, no prefix, " +
       "then a short body only if the why isn't obvious from the diff. Reply with the message and nothing else.\n\n" +
       diff.slice(0, 60_000);
-    return { message: await agent.oneShot(await cli(agent), cwd, prompt) };
+    return { message: await agent.oneShot(await cli(agent), cwd, prompt, model) };
   },
 
   /// A question beside a thread, answered from a copy of its session that's never saved. The

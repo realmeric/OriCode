@@ -166,7 +166,8 @@ export type Provider = {
   /// it streams, and `stop` ends it early.
   aside?(cli: string, asked: { cwd: string; sessionId: string; model?: string; text: string }, tell: (delta: string) => void, stop: AbortSignal): Promise<string>;
   /// One small tool-less answer to a prompt, for git.message.
-  oneShot?(cli: string, cwd: string, prompt: string): Promise<string>;
+  /// On `model` when one is named, else on the agent's small model.
+  oneShot?(cli: string, cwd: string, prompt: string, model?: string): Promise<string>;
 };
 
 export type Answer = {
