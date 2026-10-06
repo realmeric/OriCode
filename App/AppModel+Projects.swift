@@ -251,6 +251,7 @@ extension AppModel {
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         // Its events can't find it through the conversation any more.
         conversations[deleted] = nil
+        SentPictures.standard.forget(thread: deleted)
         context.delete(chat)
         save()
         guard wasSelected else { return }

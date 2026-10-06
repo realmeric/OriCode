@@ -1,4 +1,5 @@
 import AppKit
+import QuickLook
 import SwiftUI
 
 struct TranscriptView: View {
@@ -148,7 +149,7 @@ struct TranscriptView: View {
         switch entry {
         case .item(let item):
             ItemView(
-                item: item, cwd: cwd, listening: listening,
+                item: item, cwd: cwd, thread: conversation.chat.id, listening: listening,
                 live: conversation.running && item.id == conversation.items.last?.id,
                 limitCard: item.id == lastLimit,
                 resumes: conversation.resumeAt != nil && item.id == lastLimit,
@@ -249,6 +250,8 @@ enum TranscriptEntry: Identifiable {
 struct ItemView: View {
     let item: Item
     let cwd: String
+    /// The thread a message of yours is in, which is where its pictures are kept.
+    var thread: UUID?
     let listening: String?
     let live: Bool
     /// The thread's latest limit, which gets the card.
@@ -259,6 +262,9 @@ struct ItemView: View {
     var waiting = false
     /// The text streaming into this item, which it reads in place of its own.
     var stream: LiveText?
+    /// The picture Quick Look shows, and the message's others to step through.
+    @State private var shown: URL?
+    @State private var files: [URL] = []
 
     /// Your messages' pictures, decoded once by the message rather than on every render.
     private static let decoded = NSCache<NSUUID, NSArray>()
@@ -271,20 +277,40 @@ struct ItemView: View {
         return pictures
     }
 
+    /// A picture in full, from the file its send kept. The disk is read off the main thread, and
+    /// only for a click.
+    private func open(_ index: Int, of images: [Data]) {
+        let message = item.id
+        let kept = thread
+        Task {
+            let urls = await SentPictures.standard.opened(thread: kept, message: message, previews: images)
+            guard urls.indices.contains(index), let url = urls[index] else { return }
+            files = urls.compactMap { $0 }
+            shown = url
+        }
+    }
+
     var body: some View {
         switch item {
         case .user(_, let text, let images, _):
             VStack(alignment: .trailing, spacing: 6) {
                 if !images.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(Array(pictures(images).enumerated()), id: \.offset) { _, image in
-                            Image(nsImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 96, height: 72)
-                                .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                        ForEach(Array(pictures(images).enumerated()), id: \.offset) { index, image in
+                            Button { open(index, of: images) } label: {
+                                Image(nsImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 96, height: 72)
+                                    .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open image")
+                            .help("Open")
                         }
                     }
+                    .quickLookPreview($shown, in: files)
                 }
                 Text(text)
                     .font(Type.body)

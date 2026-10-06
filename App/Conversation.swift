@@ -330,6 +330,8 @@ final class Conversation {
     private var unsaved = false
     /// ⌘K's index of what was said, kept up as messages and replies are written.
     private let said: MessageIndex?
+    /// Where the pictures you send are kept in full. Nil keeps nothing, as in a test.
+    let pictures: SentPictures?
     /// Each command's event, updated when it ends and when Claude reads it.
     private var shellEvents: [UUID: Event] = [:]
     /// Each workflow's one event, by its task, written again as it moves.
@@ -338,14 +340,15 @@ final class Conversation {
     private(set) var plan: Plan?
     private var planCard: UUID?
 
-    convenience init(chat: Chat, context: ModelContext, said: MessageIndex? = nil) {
-        self.init(chat: chat, context: context, stored: StoredEvent.read(chat.id, from: context), said: said)
+    convenience init(chat: Chat, context: ModelContext, said: MessageIndex? = nil, pictures: SentPictures? = nil) {
+        self.init(chat: chat, context: context, stored: StoredEvent.read(chat.id, from: context), said: said, pictures: pictures)
     }
 
-    init(chat: Chat, context: ModelContext, stored: [StoredEvent], said: MessageIndex? = nil) {
+    init(chat: Chat, context: ModelContext, stored: [StoredEvent], said: MessageIndex? = nil, pictures: SentPictures? = nil) {
         self.chat = chat
         self.context = context
         self.said = said
+        self.pictures = pictures
         for event in stored {
             seq = max(seq, event.seq + 1)
             turn = max(turn, event.turn)
@@ -474,7 +477,9 @@ final class Conversation {
     /// A message sent while a turn runs. It shows under the transcript, waiting, until Claude
     /// takes it up.
     func sentIntoTurn(_ text: String, typed: String? = nil, images: [ImageAttachment]) -> WaitingMessage {
-        let message = WaitingMessage(id: UUID(), text: text, typed: typed ?? text, images: images, previews: images.compactMap(\.preview))
+        // Only the pictures with a preview show, so only they are kept, and in the bubble's order.
+        let shown = images.compactMap { image in image.preview.map { (image: image, preview: $0) } }
+        let message = WaitingMessage(id: UUID(), text: text, typed: typed ?? text, images: images, previews: shown.map { $0.preview })
         waiting.append(message)
         return message
     }
@@ -485,6 +490,10 @@ final class Conversation {
     func taken(_ id: UUID, newTurn: Bool) {
         guard let index = waiting.firstIndex(where: { $0.id == id }) else { return }
         let message = waiting.remove(at: index)
+        // Kept once it's part of the thread: one still waiting at a quit is gone, and its files
+        // would have nothing to own them. Only the pictures with a preview show.
+        let shown = message.previews.count == message.images.count ? message.images : message.images.filter { $0.preview != nil }
+        pictures?.keep(shown, thread: chat.id, message: message.id)
         if newTurn {
             nextFollows = false
             userSent(message.text, previews: message.previews, id: message.id)

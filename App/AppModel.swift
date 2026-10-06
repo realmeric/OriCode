@@ -437,7 +437,7 @@ final class AppModel {
             guard selectedChatID == id, conversations[id] == nil,
                   let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
             else { return }
-            conversations[id] = Conversation(chat: chat, context: context, stored: stored, said: said)
+            conversations[id] = Conversation(chat: chat, context: context, stored: stored, said: said, pictures: SentPictures.standard)
         }
     }
 

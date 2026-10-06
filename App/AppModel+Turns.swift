@@ -36,7 +36,7 @@ extension AppModel {
 
     func conversation(for chat: Chat) -> Conversation {
         if let existing = conversations[chat.id] { return existing }
-        let created = Conversation(chat: chat, context: context, said: said)
+        let created = Conversation(chat: chat, context: context, said: said, pictures: SentPictures.standard)
         conversations[chat.id] = created
         return created
     }
@@ -106,7 +106,11 @@ extension AppModel {
         let conversation = conversation(for: chat)
         guard !conversation.running, !heldInBlock(chat) else { return false }
         let text = Self.asked(trimmed, images)
-        conversation.userSent(text, previews: images.compactMap(\.preview))
+        // Only the pictures with a preview show, so only they are kept, and in the bubble's order.
+        let shown = images.compactMap { image in image.preview.map { (image: image, preview: $0) } }
+        let id = UUID()
+        conversation.userSent(text, previews: shown.map { $0.preview }, id: id)
+        conversation.pictures?.keep(shown.map { $0.image }, thread: chat.id, message: id)
         startTurn(in: chat, text: text, images: images)
         return true
     }
