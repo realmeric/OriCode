@@ -63,7 +63,24 @@ extension AppModel {
             guard send(trimmed, images: images, in: chat) else { return false }
         }
         draftAttachments = []
+        conversation.sentByHand()
         return true
+    }
+
+    /// A queued message sent into the running turn instead of after it, or as a turn of its own
+    /// when none runs; an agent that can't take one mid-turn keeps it queued.
+    func sendQueuedNow(_ id: UUID) {
+        guard let chat, let conversation = currentConversation, let message = conversation.queue.first(where: { $0.id == id }) else { return }
+        if conversation.running || !conversation.waiting.isEmpty {
+            guard agent(for: chat).capabilities.steer else { return }
+            conversation.removeQueued(id)
+            sendIntoTurn(conversation.sentIntoTurn(Self.asked(message.text, message.images), typed: message.text, images: message.images), in: chat)
+        } else {
+            guard !heldInBlock(chat) else { return }
+            conversation.removeQueued(id)
+            _ = send(message.text, images: message.images, in: chat)
+        }
+        conversation.sentByHand()
     }
 
     /// ⌥Return: while the thread works, what's typed waits in its queue to go out once the turn

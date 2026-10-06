@@ -49,20 +49,7 @@ extension Theme {
                 .markdownTextStyle { ForegroundColor(Ink.secondary) }
                 .padding(.leading, 12)
         }
-        .codeBlock { configuration in
-            ScrollView(.horizontal) {
-                configuration.label
-                    .markdownTextStyle {
-                        FontFamilyVariant(.monospaced)
-                        FontSize(12.5)
-                        ForegroundColor(Ink.primary)
-                    }
-                    .padding(14)
-            }
-            .scrollIndicators(.never)
-            .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
-            .blockMargin(top: 4, bottom: 12)
-        }
+        .codeBlock { CodeBlock(configuration: $0) }
         .table { configuration in
             configuration.label
                 .markdownTableBorderStyle(.init(color: .clear))
@@ -103,4 +90,93 @@ extension View {
         markdownMargin(top: top, bottom: bottom)
             .transformPreference(ReplyMargin.self) { $0.merge(.init(top: top, bottom: bottom)) }
     }
+}
+
+/// A reply's code on its card, with Copy at its top right. In a block taller than what's on
+/// screen the button rides the top edge down the block, so it's in reach wherever the block is
+/// read, and it's moved as a visual effect: scrolling lays nothing out again.
+private struct CodeBlock: View {
+    let configuration: CodeBlockConfiguration
+    @Environment(\.codeCopyLine) private var line
+    @State private var hovering = false
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            configuration.label
+                .markdownTextStyle {
+                    FontFamilyVariant(.monospaced)
+                    FontSize(12.5)
+                    ForegroundColor(Ink.primary)
+                }
+                .padding(14)
+        }
+        .scrollIndicators(.never)
+        .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .overlay {
+            GeometryReader { block in
+                CodeCopyButton(code: configuration.content, lit: hovering)
+                    .padding(CodeCopy.inset)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .visualEffect { [line] content, button in
+                        content.offset(y: CodeCopy.travel(top: button.frame(in: .scrollView(axis: .vertical)).minY, block: block.size.height, line: line))
+                    }
+            }
+        }
+        .onHover { hovering = $0 }
+        .blockMargin(top: 4, bottom: 12)
+    }
+}
+
+enum CodeCopy {
+    static let side: CGFloat = 26
+    static let inset: CGFloat = 8
+
+    /// How far down its block the button sits: none while the block's top is below the line, then
+    /// as far as keeps it on the line, and never past the block's foot.
+    static func travel(top: CGFloat, block: CGFloat, line: CGFloat) -> CGFloat {
+        min(max(0, line - top), max(0, block - side - 2 * inset))
+    }
+}
+
+private struct CodeCopyButton: View {
+    let code: String
+    /// The pointer is over the block.
+    let lit: Bool
+    @State private var hovering = false
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            // The fence's last newline isn't the code's.
+            pasteboard.setString(code.hasSuffix("\n") ? String(code.dropLast()) : code, forType: .string)
+            copied = true
+        } label: {
+            Image(systemName: copied ? "checkmark" : "square.on.square")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(hovering || copied ? Ink.primary : lit ? Ink.secondary : Ink.faint)
+                .frame(width: CodeCopy.side, height: CodeCopy.side)
+                .background(Color.white.opacity(hovering ? 0.16 : lit ? 0.10 : 0), in: .rect(cornerRadius: 8, style: .continuous))
+                .contentShape(.rect)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .help("Copy")
+        .accessibilityLabel("Copy code")
+        .onHover { hovering = $0 }
+        .animation(Motion.fade, value: hovering)
+        .animation(Motion.fade, value: lit)
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(1.4))
+            copied = false
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Where a code block's Copy stops, down from the top of the scroll view it's read in: under
+    /// the title capsule in the transcript.
+    @Entry var codeCopyLine: CGFloat = 8
 }

@@ -88,3 +88,23 @@ struct ReplyTests {
         #expect(abs(whole - apart) < 2)
     }
 }
+
+struct CodeCopyTests {
+    /// A block wholly below the line keeps its button at its own top right.
+    @Test func restsWhileTheBlockIsBelowTheLine() {
+        #expect(CodeCopy.travel(top: 300, block: 600, line: 48) == 0)
+        #expect(CodeCopy.travel(top: 48, block: 600, line: 48) == 0)
+    }
+
+    /// Scrolled past, the button stays on the line for as long as the block has room for it.
+    @Test func ridesTheLineDownTheBlock() {
+        #expect(CodeCopy.travel(top: -152, block: 600, line: 48) == 200)
+        #expect(CodeCopy.travel(top: -2000, block: 600, line: 48) == 600 - CodeCopy.side - 2 * CodeCopy.inset)
+    }
+
+    /// A block no taller than the button gives it nowhere to go.
+    @Test func staysPutInAOneLineBlock() {
+        #expect(CodeCopy.travel(top: -40, block: 44, line: 48) == 2)
+        #expect(CodeCopy.travel(top: -40, block: 30, line: 48) == 0)
+    }
+}

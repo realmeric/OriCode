@@ -74,6 +74,7 @@ struct TranscriptView: View {
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.transcriptLinks)
+        .environment(\.codeCopyLine, 44)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
@@ -87,6 +88,16 @@ struct TranscriptView: View {
             pinned = atBottom
         }
         .onScrollGeometryChange(for: CGFloat.self, of: \.contentSize.height) { content.height = $1 }
+        // A message sent by hand is read where it lands, however far up the thread was scrolled.
+        .onChange(of: conversation.handSent) {
+            pinned = true
+            Task {
+                // A beat for the message's own layout, as a reveal takes, then to the thread's
+                // measured end: the lazy stack is asked for a place it has laid out.
+                try? await Task.sleep(for: .milliseconds(50))
+                position.scrollTo(y: content.height)
+            }
+        }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear(perform: takeReveal)
         .onChange(of: model.reveal) { takeReveal() }

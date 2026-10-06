@@ -210,7 +210,7 @@ struct Composer: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(queue) { message in
                     // A message taken back to edit would land in the command being typed.
-                    QueuedLine(message: message, editable: !model.shellPrompt) {
+                    QueuedLine(message: message, editable: !model.shellPrompt, sendNow: canSteer ? { model.sendQueuedNow(message.id) } : nil) {
                         takeBack(message)
                     } remove: {
                         model.currentConversation?.removeQueued(message.id)
@@ -236,6 +236,11 @@ struct Composer: View {
         .frame(height: queueHeight)
         .padding(.horizontal, 6)
         .padding(.top, 2)
+    }
+
+    /// Whether the thread's agent takes a message while it works, which Send now needs.
+    private var canSteer: Bool {
+        model.chat.map { model.agent(for: $0).capabilities.steer } ?? false
     }
 
     private var queue: [QueuedMessage] {
@@ -738,9 +743,12 @@ private struct Isolated<Content: View>: View {
 private struct QueuedLine: View {
     let message: QueuedMessage
     let editable: Bool
+    /// Sends it into the turn; nil for an agent that takes nothing mid-turn.
+    let sendNow: (() -> Void)?
     let takeBack: () -> Void
     let remove: () -> Void
     @State private var hovered = false
+    @State private var sendHovered = false
     @State private var removeHovered = false
 
     static let height: CGFloat = 28
@@ -769,6 +777,20 @@ private struct QueuedLine: View {
             .onHover { hovered = $0 && editable }
             .help("Edit")
             .accessibilityLabel("Edit queued message: \(message.line)")
+            if let sendNow {
+                Button(action: sendNow) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(sendHovered ? Ink.primary : Ink.faint)
+                        .frame(width: 24, height: 24)
+                        .background(sendHovered ? Surface.hover : .clear, in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .onHover { sendHovered = $0 }
+                .help("Send now")
+                .accessibilityLabel("Send queued message now")
+            }
             Button(action: remove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .semibold))
@@ -785,6 +807,7 @@ private struct QueuedLine: View {
         .padding(.trailing, 2)
         .background(hovered ? Surface.hover : .clear, in: .rect(cornerRadius: 10, style: .continuous))
         .animation(Motion.fade, value: hovered)
+        .animation(Motion.fade, value: sendHovered)
         .animation(Motion.fade, value: removeHovered)
     }
 }

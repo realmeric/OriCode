@@ -175,6 +175,23 @@ struct QueueTests {
         #expect(conversation.queue.map(\.text) == ["then lint"])
     }
 
+    /// Send now takes one queued message into the running turn and leaves the others waiting,
+    /// and like a message sent from the field it counts as sent by hand; queueing doesn't.
+    @Test func sendNowTakesAQueuedMessageIntoTheTurn() throws {
+        let (model, chat) = try thread()
+        let conversation = model.conversation(for: chat)
+        conversation.userSent("Run the tests")
+        #expect(model.queue("then lint"))
+        #expect(model.queue("then push"))
+        #expect(conversation.handSent == 0)
+        model.sendQueuedNow(conversation.queue[1].id)
+        #expect(conversation.waiting.map(\.text) == ["then push"])
+        #expect(conversation.queue.map(\.text) == ["then lint"])
+        #expect(conversation.handSent == 1)
+        #expect(model.send("and one typed"))
+        #expect(conversation.handSent == 2)
+    }
+
     /// The queue's next goes out only once the messages sent into the turn have run, which keeps
     /// the thread working through the turn.done between.
     @Test func theQueueWaitsForWhatWasSentIntoTheTurn() {

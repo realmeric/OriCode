@@ -295,6 +295,9 @@ final class Conversation {
     /// settings alone can't know.
     private(set) var defaultReading: (model: String?, level: String?)?
     private(set) var turn = 0
+    /// Counts the messages sent by hand, from the field or a queued line's Send now, which bring
+    /// the transcript to its end; one the queue sends by itself leaves what's being read alone.
+    private(set) var handSent = 0
     /// Asks that were waiting on you when OriCode quit, by request id. They stay up, and the turn
     /// with them; the CLI that asked is gone, so an answer resumes the session instead.
     private(set) var askedBeforeQuit: Set<String> = []
@@ -440,6 +443,10 @@ final class Conversation {
     /// Whether it has anything the composer mustn't lose by letting the conversation go.
     var holdsMessages: Bool {
         !waiting.isEmpty || !queue.isEmpty || !handedBack.isEmpty
+    }
+
+    func sentByHand() {
+        handSent += 1
     }
 
     func userSent(_ text: String, previews: [Data] = [], id: UUID = UUID()) {
