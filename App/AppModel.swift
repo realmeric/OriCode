@@ -221,6 +221,8 @@ final class AppModel {
     /// or a message ⌘K found. It waits for the transcript that holds it, so it can be set in the
     /// same moment as the thread switch that brings that transcript.
     var reveal: UUID?
+    /// Bumped to bring the thread's transcript to its end, as its pill does: ⌘K's way to it.
+    var threadEnd = 0
     /// What the user's shell can run as a first word, for Tab at the prompt, once asked.
     var shellNames: Task<[String], Never>?
     /// The user's own zsh, kept to answer Tab at the prompt when that's their shell.

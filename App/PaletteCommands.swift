@@ -257,6 +257,10 @@ extension AppModel {
                 self?.copy(chat?.sessionId, saying: "Copied the session ID.")
             })
         }
+        items.append(command("thread.end", "Jump to the end of the thread", icon: "arrow.down", keywords: ["bottom", "latest", "newest", "scroll"],
+                             unavailable: unsent) { [weak self] in
+            self?.threadEnd += 1
+        })
         items.append(command("thread.pin", chat?.pinned == true ? "Unpin thread" : "Pin thread", icon: chat?.pinned == true ? "pin.slash" : "pin",
                              unavailable: unsent) { [weak self] in
             if let chat { withAnimation(Motion.move) { self?.togglePin(chat) } }
