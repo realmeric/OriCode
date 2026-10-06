@@ -18,6 +18,17 @@ extension AppModel {
         chat?.cwd ?? project?.path
     }
 
+    /// Whether the open thread, or the next one, has no folder of the user's.
+    var inNoFolder: Bool {
+        (chat?.project ?? project)?.isNoFolder == true
+    }
+
+    /// The folder a file's path is shortened from when it's named in a message. With no project
+    /// that's where No folder would be, which nothing here makes: the path is only compared.
+    var namingFolder: String {
+        workingFolder ?? noFolderURL.path
+    }
+
     /// Why branches can't change here now, or nil when they can.
     var gitUnavailable: String? {
         if engineState != .ready { return "The engine isn't running" }

@@ -84,7 +84,7 @@ extension AppModel {
     func installPasteMonitor() {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                  event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, project != nil, takesImages,
+                  event.charactersIgnoringModifiers == "v", event.window == NSApp.mainWindow, takesImages,
                   // A paste in an open block is its program's.
                   !(event.window?.firstResponder is BlockTerminalView)
             else { return event }

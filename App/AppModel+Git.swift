@@ -12,10 +12,14 @@ extension AppModel {
         selectedChatID.flatMap { branches[$0] }
     }
 
-    func refreshBranch(for chat: Chat?) {
-        guard let chat, engineState == .ready else { return }
+    /// Asks the engine which branch the thread's folder is on. The read it started, or nil when
+    /// there was nothing to ask.
+    @discardableResult
+    func refreshBranch(for chat: Chat?) -> Task<Void, Never>? {
+        // No folder's own folder is no repository, and one above it, a home kept in git, isn't its.
+        guard let chat, engineState == .ready, chat.project?.isNoFolder != true else { return nil }
         let id = chat.id, cwd = chat.cwd
-        Task {
+        return Task {
             guard let reply = try? await engine.request("git.branch", ["cwd": .string(cwd)]),
                   let info = try? reply.decode(BranchInfo.self),
                   chat.cwd == cwd
@@ -48,14 +52,15 @@ extension AppModel {
         UserDefaults.standard.string(forKey: NewThreads.workspace) == NewThreads.worktree
     }
 
-    /// ⌘N and New thread: the kind Settings › New threads says.
+    /// ⌘N and New thread: the kind Settings › New threads says. No folder has no branch to give,
+    /// and with no project the thread is one of its.
     func openNewThread() {
-        if startsOnBranch { openBranchThread() } else { openLocalThread() }
+        if startsOnBranch, let project, !project.isNoFolder { openBranchThread() } else { openLocalThread() }
     }
 
     /// ⌘⇧N: the other kind.
     func openOtherThread() {
-        if startsOnBranch { openLocalThread() } else { newWorktreeChat() }
+        if startsOnBranch || project?.isNoFolder == true { openLocalThread() } else { newWorktreeChat() }
     }
 
     /// What ⌘⇧N makes, for the menu and ⌘K.

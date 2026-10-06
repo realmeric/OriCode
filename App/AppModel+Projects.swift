@@ -7,7 +7,9 @@ extension AppModel {
     /// for the open thread on every key, and a fetch each time was most of a keystroke's cost.
     var projects: [Project] {
         if let fetched, fetched.revision == revision { return fetched.projects }
-        let projects = (try? context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
+        let all = (try? context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
+        // No folder comes after the folders, wherever projects are listed.
+        let projects = all.filter { !$0.isNoFolder } + all.filter(\.isNoFolder)
         fetched = (revision, projects)
         return projects
     }
@@ -132,15 +134,61 @@ extension AppModel {
         select(project)
     }
 
+    /// Where No folder's threads work: a folder of the app's own that it puts nothing in. Not
+    /// home, which the composer's `@`, ⌘P and the review would each walk the whole of; from here an
+    /// agent still reaches anything on the Mac by its full path, under the thread's permissions.
+    var noFolderURL: URL {
+        support.appending(path: "No Folder", directoryHint: .isDirectory).standardizedFileURL
+    }
+
+    /// The No folder project, made with its folder the first time something asks for it and found
+    /// again after that. A support folder that moved takes the project with it; a thread from
+    /// before keeps the folder it had.
+    func noFolderProject() -> Project {
+        let path = noFolderURL.path
+        try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        if let existing = projects.first(where: \.isNoFolder) {
+            if existing.path != path {
+                existing.path = path
+                save()
+            }
+            return existing
+        }
+        let project = Project(name: Project.noFolderName, path: path)
+        project.id = Project.noFolderID
+        context.insert(project)
+        save()
+        return project
+    }
+
+    /// New thread without a folder: No folder's draft, or a new thread there.
+    func openThreadWithoutFolder() {
+        selectedProjectID = noFolderProject().id
+        openLocalThread()
+    }
+
     func select(_ project: Project) {
+        let left = self.project
         selectedProjectID = project.id
         selectedChatID = project.chats.max { $0.updatedAt < $1.updatedAt }?.id
+        leave(left)
     }
 
     /// Picking a thread picks its project, since the list holds every project's threads.
     func select(_ chat: Chat) {
+        let left = project
         if let project = chat.project { selectedProjectID = project.id }
         selectedChatID = chat.id
+        leave(left)
+    }
+
+    /// No folder with nothing sent in it goes when another project is opened over it: a model or
+    /// a mode picked before the first folder was added made it, and it would stay in every list
+    /// after. With a thread that was started it's the user's, and stays.
+    private func leave(_ left: Project?) {
+        guard let left, left.isNoFolder, left.id != selectedProjectID, !left.chats.contains(where: \.started) else { return }
+        // It comes back with the same id, so an action kept to it stays kept to it.
+        remove(left, forgettingActions: false)
     }
 
     /// Whether ⌘W closes the open thread rather than a window.
@@ -190,7 +238,7 @@ extension AppModel {
 
     /// Projects from before badges had colours get theirs the first time the app opens.
     func colourProjects() {
-        let uncoloured = projects.filter { $0.colorIndex == nil }
+        let uncoloured = projects.filter { $0.colorIndex == nil && !$0.isNoFolder }
         guard !uncoloured.isEmpty else { return }
         for project in uncoloured {
             project.colorIndex = ProjectColor.pick(taken: projects.compactMap(\.colorIndex))
@@ -210,10 +258,12 @@ extension AppModel {
     }
 
     /// A new thread, which stays a draft until its first message. A project keeps one draft at
-    /// most: an older one is empty, and goes.
+    /// most: an older one is empty, and goes. With no project open it's a thread without a
+    /// folder, so the first message needs no folder picked.
     @discardableResult
     func newChat() -> Chat? {
-        guard let project else { return nil }
+        let project = project ?? noFolderProject()
+        if selectedProjectID != project.id { selectedProjectID = project.id }
         for draft in project.chats where !draft.started {
             conversations[draft.id] = nil
             context.delete(draft)

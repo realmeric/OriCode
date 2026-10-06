@@ -165,7 +165,7 @@ struct Drawer: View {
                 if let project = model.project {
                     ProjectBadge(project: project)
                 }
-                Text(model.project?.name ?? "No project")
+                Text(model.project.map { $0.isNoFolder ? Project.noFolderName : $0.name } ?? Project.noFolderName)
                     .font(Type.body.weight(.medium))
                     .foregroundStyle(Ink.primary)
             }

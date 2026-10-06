@@ -116,7 +116,7 @@ extension AppModel {
     /// With nothing typed: what's worth doing now, what was used lately, the latest threads, then
     /// every command that can run.
     func paletteSections() -> [(title: String, items: [PaletteItem])] {
-        let commands = paletteCommands
+        let commands = paletteCommands()
         let reachable = commands + paletteThreads + paletteProjects + paletteChoices
         let recent = paletteRecents.compactMap { id in reachable.first { $0.id == id && $0.unavailable == nil } }.prefix(5)
         let threads = paletteThreads.filter { $0.id != "thread." + (chat?.id.uuidString ?? "") }.prefix(6)
@@ -130,8 +130,10 @@ extension AppModel {
     }
 
     /// With something typed: every command, thread and project, and the choices inside the lists.
-    func paletteSearchable() -> [PaletteItem] {
-        paletteCommands + paletteThreads + paletteProjects + paletteChoices
+    /// `whole` keeps what ⌘K leaves out of a thread without a folder, for a list that isn't the
+    /// open thread's.
+    func paletteSearchable(whole: Bool = false) -> [PaletteItem] {
+        paletteCommands(whole: whole) + paletteThreads + paletteProjects + paletteChoices
     }
 
     /// Only what the moment calls for: Stop while a turn runs, Compact near the context's end, and
@@ -212,26 +214,34 @@ extension AppModel {
 
     // MARK: - Commands
 
-    private var paletteCommands: [PaletteItem] {
+    private func paletteCommands(whole: Bool = false) -> [PaletteItem] {
         let chat = chat
         let running = currentConversation?.running == true
         let option = option(for: chat)
         let agent = self.agent(for: chat)
         let noThread: String? = chat == nil ? "No thread is open" : nil
         let noProject: String? = project == nil ? "Add a project first" : nil
+        // No folder has no repository, no branches and no sessions of Terminal's, so its ⌘K has
+        // no rows for them.
+        let noFolder = !whole && project?.isNoFolder == true
         let unsent: String? = chat?.started == true ? nil : noThread ?? "Send it a message first"
         let busy: String? = running ? "Wait for the turn to end" : nil
         var items: [PaletteItem] = []
 
         // Threads
-        items.append(command("thread.new", "New thread", icon: "square.and.pencil", shortcut: shortcuts.label(.newThread), unavailable: noProject) { [weak self] in
+        // With no project it's a thread without a folder.
+        items.append(command("thread.new", "New thread", icon: "square.and.pencil", shortcut: shortcuts.label(.newThread)) { [weak self] in
             self?.openNewThread()
         })
-        items.append(command("thread.branch", startsOnBranch ? "New thread in the project's folder" : "New thread on its own branch",
-                             icon: startsOnBranch ? "folder" : "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
-                             keywords: ["worktree", "branch", "local"], unavailable: noProject) { [weak self] in self?.openOtherThread() })
-        items.append(PaletteItem(id: "thread.session", kind: .command, title: "Open a Claude Code session…", keywords: ["cli", "terminal", "resume", "import", "claude"],
-                                 icon: "terminal", unavailable: noProject ?? (engineState == .ready ? nil : "The engine isn't running"), action: .list(sessionList)))
+        if !noFolder {
+            items.append(command("thread.branch", startsOnBranch ? "New thread in the project's folder" : "New thread on its own branch",
+                                 icon: startsOnBranch ? "folder" : "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
+                                 keywords: ["worktree", "branch", "local"], unavailable: noProject) { [weak self] in self?.openOtherThread() })
+            items.append(PaletteItem(id: "thread.session", kind: .command, title: "Open a Claude Code session…", keywords: ["cli", "terminal", "resume", "import", "claude"],
+                                     icon: "terminal", unavailable: noProject ?? (engineState == .ready ? nil : "The engine isn't running"), action: .list(sessionList)))
+        }
+        items.append(command("thread.noFolder", "New thread without a folder", icon: "laptopcomputer",
+                             keywords: ["no folder", "no project", "laptop", "scratch", "anywhere"]) { [weak self] in self?.openThreadWithoutFolder() })
         items.append(command("thread.stop", "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
                              unavailable: running ? nil : "Nothing is running") { [weak self] in self?.stop() })
         if agent.capabilities.compact {
@@ -296,40 +306,39 @@ extension AppModel {
         items.append(command("threads.toggle", drawerPinned ? "Hide threads" : "Show threads", icon: "sidebar.left", shortcut: shortcuts.label(.toggleThreads),
                              keywords: ["drawer", "sidebar"]) { [weak self] in self?.toggleDrawerPin() })
 
-        // Model, effort and permissions
+        // Model, effort and permissions, which with no project are the next thread's
         items.append(PaletteItem(id: "model.list", kind: .command, title: "Model…", subtitle: option?.name,
-                                 keywords: ["opus", "sonnet", "haiku", "fable"], icon: "cpu", unavailable: noProject,
+                                 keywords: ["opus", "sonnet", "haiku", "fable"], icon: "cpu",
                                  action: .list(PaletteList(title: "Model", placeholder: "Search models") { [weak self] in self?.modelChoices(named: false) ?? [] })))
         if let option, !option.efforts.isEmpty {
             let level = (chat == nil ? startingEffort : chat?.effort).flatMap { option.efforts.contains($0) ? $0 : nil }
             items.append(PaletteItem(id: "effort.list", kind: .command, title: "Effort…",
                                      subtitle: level.map(ModelMenu.effortName) ?? "Default",
-                                     keywords: ["thinking", "level"], icon: "gauge.with.dots.needle.67percent", unavailable: noProject,
+                                     keywords: ["thinking", "level"], icon: "gauge.with.dots.needle.67percent",
                                      action: .list(PaletteList(title: "Effort", placeholder: "Search levels") { [weak self] in self?.effortChoices(named: false) ?? [] })))
         }
         if !agent.permissionModes.isEmpty {
             let mode = PermissionModeOption(rawValue: chat?.permissionMode ?? startingPermissionMode) ?? .ask
             items.append(PaletteItem(id: "mode.list", kind: .command, title: "Permissions…", subtitle: mode.title,
-                                     keywords: ["mode", "ask", "plan", "auto", "accept edits"], icon: mode.icon, unavailable: noProject,
+                                     keywords: ["mode", "ask", "plan", "auto", "accept edits"], icon: mode.icon,
                                      action: .list(PaletteList(title: "Permissions", placeholder: "Search modes") { [weak self] in self?.modeChoices(named: false) ?? [] })))
         }
         if let option, option.fast {
             let on = chat.map(fastMode(of:)) ?? startingFast
             items.append(command("fast.toggle", on ? "Fast mode off" : "Fast mode on", icon: on ? "bolt.slash" : "bolt",
-                                 subtitle: on ? PickerState(model: self, chat: chat).fastProblem : nil, keywords: ["speed", "fast"],
-                                 unavailable: noProject) { [weak self] in self?.setFast(!on, for: chat) })
+                                 subtitle: on ? PickerState(model: self, chat: chat).fastProblem : nil, keywords: ["speed", "fast"]) { [weak self] in self?.setFast(!on, for: chat) })
         }
         if let option, option.ultra || option.ultraBlocked != nil {
             let on = workflows(of: chat)
             items.append(command("workflows.toggle", on ? "Workflows off" : "Workflows on", icon: "circle.dashed.inset.filled",
                                  subtitle: on ? PickerState(model: self, chat: chat).workflowsMissing : nil,
                                  keywords: ["ultracode", "agents", "fan out", "workflow"],
-                                 unavailable: noProject ?? (option.ultra ? nil : "Needs dynamic workflows, see /config in \(agent.name)")) { [weak self] in
+                                 unavailable: option.ultra ? nil : "Needs dynamic workflows, see /config in \(agent.name)") { [weak self] in
                 self?.setWorkflows(!on, for: chat)
             })
         }
         items.append(command("model.defaults", "Back to defaults", icon: "arrow.counterclockwise",
-                             unavailable: noProject ?? (atDefaults(chat) ? "Already at the defaults" : nil)) { [weak self] in
+                             unavailable: atDefaults(chat) ? "Already at the defaults" : nil) { [weak self] in
             self?.resetToDefaults(for: chat)
         })
         if let option, option.needs == nil {
@@ -337,13 +346,15 @@ extension AppModel {
             items.append(command("model.star", starred ? "Unstar \(option.name)" : "Star \(option.name)", icon: starred ? "star.slash" : "star",
                                  keywords: ["favorite", "favourite"]) { [weak self] in self?.toggleFavorite(option.id) })
         }
-        items.append(command("model.card", "Model and effort", icon: "slider.horizontal.3", shortcut: shortcuts.label(.modelPicker), unavailable: noProject) { [weak self] in
+        items.append(command("model.card", "Model and effort", icon: "slider.horizontal.3", shortcut: shortcuts.label(.modelPicker)) { [weak self] in
             self?.modelPickerShown.toggle()
         })
 
         // Git, in the thread's folder
-        items += gitCommands
-        items += pullCommands
+        if !noFolder {
+            items += gitCommands
+            items += pullCommands
+        }
 
         // The terminal, and your own actions
         items += terminalCommands
@@ -437,7 +448,8 @@ extension AppModel {
     /// a list or asks for input opens ⌘K there.
     func runPaletteCommand(_ id: String) {
         guard let item = paletteSearchable().first(where: { $0.id == id }) else {
-            say("There's no command called \(id)")
+            // One of a folder's commands, which No folder's ⌘K leaves out.
+            say(project?.isNoFolder == true ? Self.missingInNoFolder(id) ?? "There's no command called \(id)" : "There's no command called \(id)")
             return
         }
         if let reason = item.unavailable {
@@ -457,9 +469,17 @@ extension AppModel {
         }
     }
 
-    /// Every command an action can point at, by id, for the action's form.
+    /// What a command ⌘K leaves out of No folder says when an action of the user's runs it there,
+    /// or nil for an id that was never one of them.
+    nonisolated static func missingInNoFolder(_ id: String) -> String? {
+        if id == "thread.session" { return "No folder has no Claude Code sessions to open" }
+        return id == "thread.branch" || id.hasPrefix("git.") || id.hasPrefix("pr.") ? "No folder has no repository" : nil
+    }
+
+    /// Every command an action can point at, by id, for the action's form: the same ones whichever
+    /// project is open, No folder too, since the action may be for another.
     var commandChoices: [(id: String, title: String)] {
-        paletteSearchable()
+        paletteSearchable(whole: true)
             .filter { ($0.kind == .command || $0.id.hasPrefix("settings.")) && !$0.id.hasPrefix("action.") }
             .map { ($0.id, $0.title) }
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
@@ -480,7 +500,6 @@ extension AppModel {
     /// The models in the pickers' order; `named` puts "Model: " before each, for a search from the
     /// top level. With several agents listed each row names its agent before its line.
     private func modelChoices(named: Bool) -> [PaletteItem] {
-        guard project != nil else { return [] }
         let current = option(for: chat).map { ModelRef(provider: providerID(for: chat), id: $0.id).stored }
         let rows = modelGroups(for: chat).flatMap(\.rows)
         let several = Set(rows.map(\.agent)).count > 1
@@ -498,7 +517,7 @@ extension AppModel {
     }
 
     private func effortChoices(named: Bool) -> [PaletteItem] {
-        guard project != nil, let option = option(for: chat), !option.efforts.isEmpty else { return [] }
+        guard let option = option(for: chat), !option.efforts.isEmpty else { return [] }
         let current = (chat == nil ? startingEffort : chat?.effort).flatMap { option.efforts.contains($0) ? $0 : nil }
         let prefix = named ? "Effort: " : ""
         let home = defaultLevel(for: chat).map { "Default (\(ModelMenu.effortName($0)))" } ?? "Default"
@@ -519,7 +538,6 @@ extension AppModel {
     }
 
     private func modeChoices(named: Bool) -> [PaletteItem] {
-        guard project != nil else { return [] }
         let current = chat?.permissionMode ?? startingPermissionMode
         return agent(for: chat).permissionModes.map { mode in
             PaletteItem(id: "mode." + mode.rawValue, kind: .choice, title: (named ? "Permissions: " : "") + mode.title, subtitle: mode.summary,

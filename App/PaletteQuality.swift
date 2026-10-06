@@ -42,7 +42,9 @@ extension AppModel {
         let running = conversations.values.contains { $0.running }
         var items: [PaletteItem] = []
 
-        items.append(command("project.reveal", "Reveal in Finder", icon: "folder", keywords: ["show", "finder"], unavailable: noFolder) {
+        // No folder's threads work in a folder of the app's, where a file written without a path lands.
+        let scratch = project?.isNoFolder == true
+        items.append(command("project.reveal", scratch ? "Reveal the scratch folder in Finder" : "Reveal in Finder", icon: "folder", keywords: ["show", "finder"], unavailable: noFolder) {
             if let folder { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: folder)]) }
         })
         let editorName = editor?.name ?? "the editor"
@@ -57,7 +59,7 @@ extension AppModel {
                 Self.open([url], in: editor)
             })
         }
-        items.append(command("project.copyPath", "Copy project path", icon: "doc.on.clipboard", keywords: ["folder", "path"], unavailable: noFolder) { [weak self] in
+        items.append(command("project.copyPath", scratch ? "Copy the scratch folder's path" : "Copy project path", icon: "doc.on.clipboard", keywords: ["folder", "path"], unavailable: noFolder) { [weak self] in
             self?.copy(folder, saying: "Copied the path.")
         })
 
@@ -136,10 +138,11 @@ extension AppModel {
     }
 
     /// Takes a project and its threads out of OriCode. Its folder stays, and so do any worktrees.
-    func remove(_ project: Project) {
+    /// No folder is made again the next time a thread wants it.
+    func remove(_ project: Project, forgettingActions: Bool = true) {
         // The commands its threads have running go with it.
         for chat in project.chats { endShells(of: chat) }
-        customActions.forget(project: project.id)
+        if forgettingActions { customActions.forget(project: project.id) }
         for chat in project.chats {
             let id = chat.id.uuidString
             conversations[chat.id] = nil
@@ -149,6 +152,9 @@ extension AppModel {
         let removed = project.id
         context.delete(project)
         save()
+        // No folder's own folder goes with it when it's empty: rmdir takes nothing that holds a
+        // file, and it's the app's folder that's named, never a path out of the store.
+        if removed == Project.noFolderID { rmdir(noFolderURL.path) }
         guard selectedProjectID == removed else { return }
         if let next = projects.first(where: { $0.id != removed }) {
             select(next)

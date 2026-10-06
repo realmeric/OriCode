@@ -109,6 +109,16 @@ final class Event {
     }
 }
 
+extension Project {
+    /// The one project that isn't a folder of yours: No folder, for a thread that works on the Mac
+    /// rather than in a project. Known by its id, which neither a new name nor a support folder
+    /// that moved can change, and which needs nothing new in the store.
+    static let noFolderID = UUID(uuidString: "4E6F2046-6F6C-4465-8000-000000000000")!
+    static let noFolderName = "No folder"
+
+    var isNoFolder: Bool { id == Self.noFolderID }
+}
+
 extension Chat {
     static let untitled = "New thread"
 

@@ -152,9 +152,10 @@ struct Composer: View {
                 .onChange(of: completions.isEmpty ? 0 : draft.edits) {
                     if !completions.isEmpty, text != completed { completions = [] }
                 }
-                // A `!` at the start turns the composer into a shell prompt, as in Claude Code.
+                // A `!` at the start turns the composer into a shell prompt, as in Claude Code, once
+                // there's a project for the command to run in.
                 .onChange(of: draft.bang) { _, bang in
-                    guard bang, !model.shellPrompt else { return }
+                    guard bang, !model.shellPrompt, model.project != nil else { return }
                     model.shellPrompt = true
                     text = String(text.dropFirst())
                 }
@@ -314,8 +315,8 @@ struct Composer: View {
     /// or a PDF, is named in the message, for the agent to open with its own tools.
     private func attach(_ url: URL) {
         if !model.shellPrompt, offers.attachments, model.attach(fileAt: url) { return }
-        guard url.isFileURL, let folder = model.chat?.cwd ?? model.project?.path else { return }
-        text = Self.naming(url, from: folder, in: text, shell: model.shellPrompt)
+        guard url.isFileURL else { return }
+        text = Self.naming(url, from: model.namingFolder, in: text, shell: model.shellPrompt)
     }
 
     /// The file's path at the end of the message as a mention, from the thread's folder when it's
@@ -487,7 +488,8 @@ struct Composer: View {
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = true
-            if let folder = model.chat?.cwd ?? model.project?.path { panel.directoryURL = URL(filePath: folder) }
+            // No folder's own folder is empty and deep in Library: there the panel opens where it last was.
+            if let folder = model.workingFolder, !model.inNoFolder { panel.directoryURL = URL(filePath: folder) }
             panel.prompt = "Attach"
             guard panel.runModal() == .OK else { return }
             panel.urls.forEach(attach)
@@ -561,6 +563,8 @@ struct Composer: View {
 
     private func placeholder(shell: Bool) -> String {
         guard shell else { return "Ask for a change" }
+        // No folder by its name, not its folder's.
+        if model.inNoFolder { return "A command for " + Project.noFolderName }
         return "A command for " + (model.chat.map { URL(filePath: $0.cwd).lastPathComponent } ?? model.project?.name ?? "the project")
     }
 
@@ -589,8 +593,8 @@ struct Composer: View {
             mention(path)
             return
         }
-        // With no thread open, the project's folder.
-        guard let folder = model.chat?.cwd ?? model.project?.path else { return }
+        // With no thread open, the project's folder, and with no project where No folder would be.
+        let folder = model.namingFolder
         guard model.shellPrompt else {
             apply(ShellCompletion.mention(text, folder: folder))
             return

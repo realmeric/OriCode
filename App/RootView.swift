@@ -31,30 +31,29 @@ struct RootView: View {
                     } else {
                         Spacer(minLength: 0)
                         EmptyStateView(
-                            line: model.project == nil ? "Add a project to start." : "Where do we pick up?",
+                            line: model.project == nil ? "Just type, or add a project with \(model.shortcuts.label(.addProject))." : "Where do we pick up?",
                             rays: conversation?.heads.rayAgents ?? [:],
                             waiting: conversation?.waitingAsk != nil)
                             .padding(.bottom, 28)
                             .transition(.asymmetric(insertion: Self.settle, removal: Self.lift))
                     }
                     // One composer in one place in the tree, whichever layout is showing, so the
-                    // first message moves it rather than swapping it for another.
-                    if model.project != nil {
-                        Composer(running: conversation?.running ?? false, windowHeight: window.size.height)
-                            // Moves as one piece: otherwise a label that changes with the thread,
-                            // like the model's name, is drawn where the composer is going while
-                            // the rest of it is still on the way.
-                            .geometryGroup()
-                            .padding(.leading, clear)
-                            .column()
-                            // Above the transcript, so the slash menu can rise over it.
-                            .zIndex(1)
-                    }
+                    // first message moves it rather than swapping it for another. With no project
+                    // it's there too: what's sent then starts a thread without a folder.
+                    Composer(running: conversation?.running ?? false, windowHeight: window.size.height)
+                        // Moves as one piece: otherwise a label that changes with the thread,
+                        // like the model's name, is drawn where the composer is going while
+                        // the rest of it is still on the way.
+                        .geometryGroup()
+                        .padding(.leading, clear)
+                        .column()
+                        // Above the transcript, so the slash menu can rise over it.
+                        .zIndex(1)
                     if !started {
                         // Equal room under the composer and over the mark, and the mark's own
                         // height again, so it's the composer that sits in the middle.
                         Spacer(minLength: 0)
-                        Color.clear.frame(height: model.project == nil ? 0 : EmptyStateView.height + 28)
+                        Color.clear.frame(height: EmptyStateView.height + 28)
                     }
                     // The capsule sits 28pt above the window's bottom edge; notes live in that gap.
                     // A ZStack, because EngineNote is an EmptyView when there's nothing to say,
@@ -144,7 +143,9 @@ struct RootView: View {
             default: "Its \(threads) threads go with it."
             }
             let stopping = model.shellsStopping(in: project.chats)
-            Text("\(goes) The folder stays\(worktrees ? ", and so do its worktrees" : "").\(stopping.map { " " + $0 } ?? "")")
+            // No folder's own folder goes when nothing is in it, and nothing else on the Mac does.
+            let folder = project.isNoFolder ? "Whatever they wrote on your Mac stays" : "The folder stays\(worktrees ? ", and so do its worktrees" : "")"
+            Text("\(goes) \(folder).\(stopping.map { " " + $0 } ?? "")")
         }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()

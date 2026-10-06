@@ -68,6 +68,9 @@ final class Takeback {
 @MainActor
 @Observable
 final class ReviewState {
+    /// What the engine's git says of a folder that's no repository, for a folder it isn't asked about.
+    static let notARepository = "This folder isn't a git repository."
+
     /// The folder the diff was read in.
     var folder: String?
     /// The thread looking at it. The files open and the keyboard's hunk are its own, since the
@@ -281,6 +284,17 @@ extension AppModel {
     func readReview(in folder: String? = nil, after delay: Duration = .zero) {
         guard let folder = folder ?? workingFolder, engineState == .ready else { return }
         review.look(at: folder, for: chat?.id)
+        // No folder's own folder is no repository, and one above it, a home kept in git, isn't
+        // its: the review says what git would of a folder that has none, without the engine asked.
+        if inNoFolder {
+            review.trigger?.cancel()
+            review.wanted = false
+            review.diff = nil
+            review.base = ReviewBook()
+            review.book = ReviewBook()
+            review.problem = ReviewState.notARepository
+            return
+        }
         review.wanted = true
         review.trigger?.cancel()
         review.trigger = Task {

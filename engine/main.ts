@@ -17,7 +17,7 @@ import { handed } from "./handover.ts";
 import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
-import { answer, brevity, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
+import { answer, brevity, scratch, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
@@ -296,7 +296,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// for with each message below it; Codex its own ultra at Max on a model that has it; and any
   /// other head OriCode's, told to fan each task out to workers on its rays, with the message too.
   /// Every one of them at the thread's own level.
-  async send({ rays, handover, concise, ...params }: SendParams & { provider?: string; rays?: string[]; handover?: string; concise?: boolean }) {
+  async send({ rays, handover, concise, noFolder, ...params }: SendParams & { provider?: string; rays?: string[]; handover?: string; concise?: boolean; noFolder?: boolean }) {
     const agent = provider(params.provider);
     const path = await cli(agent);
     leave(params.threadId, agent);
@@ -310,8 +310,9 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     // A handover goes ahead of the first message of a session made for it, and never into a turn.
     const opening = handover && !sessions.has(params.threadId) ? `${handed(handover)}\n\n` : "";
     const text = `${opening}${told && !running ? `${told}\n\n` : ""}${params.text}`;
-    // Concise replies, asked for in Settings, go where a head's rays do, ahead of them.
-    const instructions = [concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
+    // Concise replies, asked for in Settings, go where a head's rays do, ahead of them, and after
+    // what a thread without a folder is told of where it is.
+    const instructions = [noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
     const waiting = await session(params.threadId, agent, path).send({ ...params, text, workflows: own, ...head, instructions });
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },

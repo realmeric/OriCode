@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
-import { brevity, drawing, told } from "../provider.ts";
+import { brevity, drawing, scratch, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
 import { lead } from "../ultracode.ts";
 import { engineWith, sandbox } from "./engine.ts";
@@ -295,6 +295,53 @@ test("concise replies are asked for in the engine's words, ahead of a head's ray
   const opened = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "thread/start" || message.method === "thread/resume").map((message) => message.params.developerInstructions);
   assert.deepEqual(opened, [told(brevity), drawing]);
   await engine.end();
+});
+
+test("a thread without a folder is told its folder is a scratch one, ahead of concise replies", async (t) => {
+  const { bin, env } = await sandbox();
+  const logs = await mkdtemp(join(tmpdir(), "oricode-nofolder-logs-"));
+  await agents(bin, logs);
+  const cwd = await mkdtemp(join(tmpdir(), "oricode-nofolder-"));
+  const engine = engineWith(env);
+  t.after(engine.kill);
+  await engine.request("hello", { agents: { codex: { path: join(bin, "codex") } } });
+  const send = { threadId: "nofolder", cwd, text: "hello", permissionMode: "bypassPermissions", provider: "codex" };
+  await engine.request("send", { ...send, noFolder: true, concise: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "nofolder");
+  await engine.request("send", { ...send, noFolder: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "nofolder", engine.lines.length);
+  const opened = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "thread/start" || message.method === "thread/resume").map((message) => message.params.developerInstructions);
+  assert.deepEqual(opened, [told(`${scratch}\n\n${brevity}`), told(scratch)]);
+  await engine.end();
+});
+
+test("Claude Code in a thread without a folder is told so in what's appended to its system prompt", async (t) => {
+  const { env } = await sandbox();
+  const logs = await mkdtemp(join(tmpdir(), "oricode-nofolder-claude-"));
+  const log = join(logs, "claude.log");
+  // A `claude` that keeps what the SDK writes to it, the first of which opens the session. Signed
+  // out, so nothing but a send starts it.
+  await writeFile(env.ORICODE_CLAUDE!, `#!/bin/sh\ncase "$1" in\n  --version) echo "9.9.9 (Claude Code)" ;;\n  auth) echo '{"loggedIn": false}'; exit 1 ;;\n  *) exec cat >> '${log}' ;;\nesac\n`);
+  const cwd = await mkdtemp(join(tmpdir(), "oricode-nofolder-"));
+  const engine = engineWith(env);
+  t.after(engine.kill);
+  await engine.request("hello");
+  const opening = async (from: number): Promise<any[]> => {
+    for (let waited = 0; waited < 200; waited++) {
+      const written = await readFile(log, "utf8").catch(() => "");
+      const opened = written.split("\n").slice(0, -1).map((line) => JSON.parse(line)).filter((message) => message.request?.subtype === "initialize");
+      if (opened.length > from) return opened;
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    throw new Error("claude was never started");
+  };
+  void engine.request("send", { threadId: "nofolder-claude", cwd, text: "hello", permissionMode: "default", noFolder: true });
+  const first = await opening(0);
+  assert.equal(first[0].request.appendSystemPrompt, told(scratch));
+  // A thread in a folder of the user's hears nothing of it.
+  void engine.request("send", { threadId: "folder-claude", cwd, text: "hello", permissionMode: "default" });
+  const both = await opening(1);
+  assert.equal(both[1].request.appendSystemPrompt, drawing);
 });
 
 test("a Claude head gets the tools as an HTTP server loaded with its prompt, allows its own calls to them, and starts again without them", async () => {

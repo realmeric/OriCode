@@ -1,18 +1,25 @@
 import SwiftUI
 
 /// A project's two letters on its colour, at the start of each of its threads, so threads from
-/// different projects can share one list.
+/// different projects can share one list. No folder has no colour and no letters: a laptop, in
+/// the ink the rest of the row is in.
 struct ProjectBadge: View {
     let project: Project
 
     var body: some View {
-        let color = ProjectColor.of(project)
-        Text(project.initials)
-            .font(.system(size: 9.5, weight: .bold, design: .rounded))
-            .foregroundStyle(color)
-            .frame(width: 22, height: 16)
-            .background(color.opacity(0.18), in: .rect(cornerRadius: 5, style: .continuous))
-            .accessibilityLabel(project.name)
+        let color = project.isNoFolder ? Ink.secondary : ProjectColor.of(project)
+        Group {
+            if project.isNoFolder {
+                Image(systemName: "laptopcomputer")
+            } else {
+                Text(project.initials)
+            }
+        }
+        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+        .foregroundStyle(color)
+        .frame(width: 22, height: 16)
+        .background(color.opacity(0.18), in: .rect(cornerRadius: 5, style: .continuous))
+        .accessibilityLabel(project.name)
     }
 }
 

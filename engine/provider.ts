@@ -54,6 +54,11 @@ export const brevity =
   "The user asked for concise replies. Answer first, in as few words as the answer needs: no preamble, no recap of what you did, no offer of more. " +
   "Write a code comment only where it says what the code can't, and change only what was asked.";
 
+/// What a session is told in a thread of No folder, the project that isn't one of the user's folders.
+export const scratch =
+  "This thread has no project folder: your working directory is an empty scratch folder OriCode keeps for threads like it, " +
+  "so use absolute paths for whatever you read or change on this Mac, and ask where to put a file you create rather than leaving it here.";
+
 /// The engine's own words for a session: the window's, then what a head is told of its rays.
 export function told(instructions?: string): string {
   return instructions ? `${drawing}\n\n${instructions}` : drawing;

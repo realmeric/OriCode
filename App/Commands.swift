@@ -13,10 +13,10 @@ struct OriCodeCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Thread") { model.openNewThread() }
                 .keyboardShortcut(shortcuts.key(.newThread))
-                .disabled(model.project == nil)
             Button(model.otherThreadTitle) { model.openOtherThread() }
                 .keyboardShortcut(shortcuts.key(.newThreadOnBranch))
-                .disabled(model.project == nil)
+                .disabled(model.project == nil || model.project?.isNoFolder == true)
+            Button("New Thread Without a Folder") { model.openThreadWithoutFolder() }
             Button("Add Project…") { model.addProject() }
                 .keyboardShortcut(shortcuts.key(.addProject))
         }
@@ -64,7 +64,7 @@ struct OriCodeCommands: Commands {
             Divider()
             Button("Switch Branch…") { model.openBranchSwitcher() }
                 .keyboardShortcut(shortcuts.key(.switchBranch))
-                .disabled(model.project == nil)
+                .disabled(model.project == nil || model.project?.isNoFolder == true)
             Button("Next Thread") { model.stepThread(1) }
                 .keyboardShortcut(shortcuts.key(.nextThread))
                 .disabled(model.chats.count < 2)
@@ -78,7 +78,7 @@ struct OriCodeCommands: Commands {
             if !model.projects.isEmpty {
                 Divider()
                 Menu("Project") {
-                    ForEach(model.projects) { project in
+                    ForEach(model.projects, id: \.id) { project in
                         Button(project.name) { model.select(project) }
                     }
                 }
@@ -101,13 +101,12 @@ struct OriCodeCommands: Commands {
             }
             Button(model.modelPickerShown ? "Hide Model and Effort" : "Model and Effort…") { model.modelPickerShown.toggle() }
                 .keyboardShortcut(shortcuts.key(.modelPicker))
-                .disabled(model.project == nil)
             Button("Back to Defaults") { model.resetToDefaults(for: model.chat) }
-                .disabled(model.project == nil || model.atDefaults(model.chat))
+                .disabled(model.atDefaults(model.chat))
             Toggle("Fast Mode", isOn: fastBinding)
                 .disabled(!(model.option(for: model.chat)?.fast ?? false))
             Toggle("Workflows", isOn: workflowsBinding)
-                .disabled(model.project == nil || !(model.option(for: model.chat)?.ultra ?? false))
+                .disabled(!(model.option(for: model.chat)?.ultra ?? false))
             if !agent.permissionModes.isEmpty {
                 Picker("Permission Mode", selection: modeBinding) {
                     ForEach(agent.permissionModes) { Text($0.title).tag($0.rawValue) }

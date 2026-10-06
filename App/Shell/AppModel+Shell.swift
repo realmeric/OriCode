@@ -11,6 +11,8 @@ extension AppModel {
     func runCommand(_ line: String, forModel: Bool = true) -> ShellBlock? {
         let command = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty, let chat = chat ?? newChat() else { return nil }
+        // No folder's is the app's own, made again if it was taken away, as a turn makes it.
+        if chat.project?.isNoFolder == true { try? FileManager.default.createDirectory(atPath: chat.cwd, withIntermediateDirectories: true) }
         guard FileManager.default.fileExists(atPath: chat.cwd) else {
             say("This thread's folder isn't there any more.")
             return nil
@@ -93,7 +95,7 @@ extension AppModel {
     /// What's running from the shell prompt, for the question at quit: "make test in alpha".
     var runningCommands: [String] {
         shellBlocks.values.filter(\.running).sorted { $0.startedAt < $1.startedAt }.map { block in
-            "\(block.command.split(separator: " ").first.map(String.init) ?? block.command) in \(URL(filePath: block.folder).lastPathComponent)"
+            "\(block.command.split(separator: " ").first.map(String.init) ?? block.command) in \(block.folder == noFolderURL.path ? Project.noFolderName : URL(filePath: block.folder).lastPathComponent)"
         }
     }
 

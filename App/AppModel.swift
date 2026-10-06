@@ -170,6 +170,8 @@ final class AppModel {
     var modeNote: String?
     let engine = Engine()
     let notifier = Notifier()
+    /// The build's Application Support folder, which the No folder project's own folder is in.
+    @ObservationIgnored var support = Build.support
     let context: ModelContext
     /// Kept, so the context never outlives its store: an observer that fired on a model whose
     /// container had gone trapped inside SwiftData.
@@ -421,10 +423,9 @@ final class AppModel {
 
     func open(chatID: UUID) {
         guard let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == chatID })).first,
-              let project = chat.project
+              chat.project != nil
         else { return }
-        selectedProjectID = project.id
-        selectedChatID = chat.id
+        select(chat)
         (NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true } ?? NSApp.mainWindow)?.makeKeyAndOrderFront(nil)
     }
 

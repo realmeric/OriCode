@@ -127,6 +127,8 @@ extension AppModel {
         holdWhileWorking()
         // The commands run from the shell prompt since Claude last read them go first.
         let (text, readShells) = withShells(text, in: chat)
+        // No folder's own folder is the app's to keep there, whatever emptied the support folder.
+        if chat.project?.isNoFolder == true { try? FileManager.default.createDirectory(atPath: chat.cwd, withIntermediateDirectories: true) }
         var params = sendParams(in: chat, text: text, images: images)
         if let handover = handover(for: chat) { params["handover"] = .string(handover) }
         if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
@@ -196,6 +198,8 @@ extension AppModel {
         if let effort = chat.effort, option(for: chat)?.efforts.contains(effort) ?? true { params["effort"] = .string(effort) }
         params["fast"] = .bool(fastMode(of: chat))
         if UserDefaults.standard.bool(forKey: TranscriptSettings.concise) { params["concise"] = true }
+        // The engine tells the session its folder is nobody's project.
+        if chat.project?.isNoFolder == true { params["noFolder"] = true }
         if workflows(of: chat) { params["workflows"] = true }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
