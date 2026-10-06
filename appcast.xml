@@ -3,20 +3,19 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.3.2</title>
-      <pubDate>Mon, 05 Oct 2026 13:24:16 +0300</pubDate>
-      <sparkle:version>349</sparkle:version>
-      <sparkle:shortVersionString>0.3.2</sparkle:shortVersionString>
+      <title>0.3.3</title>
+      <pubDate>Tue, 06 Oct 2026 21:00:39 +0300</pubDate>
+      <sparkle:version>357</sparkle:version>
+      <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[• The pull request is drawn now. The line under the composer is a bead for each check, lit while it runs and red if it failed, then the number and the one thing worth knowing: "2 checks running", "test failed", "conflicts with main", "ready to merge". Click it and it opens out of the title: every check with how long it took, Log and Send to the thread on the row under the pointer, Open on GitHub, and Merge, which asks first and squashes.
-• Settings › Activity shows the tokens that went through OriCode's threads over the last 26 weeks: a grid of days, the same by week, or adding up.
-• Archived threads are within reach. The thread list's filter has Archived, whose rows restore from their menu, ⌘K has Archived threads…, and a message sent in an archived thread brings it back.
-• ⌘K gained what it was missing: Filter threads…, Restore thread, Ask for a review of the changes, Edit and Save for an open file, Show or Hide thinking, and Concise replies on or off.
-• Actions of your own can do more than run a shell line. In Settings › Actions an action can be one of OriCode's own commands, picked by name, and any action can have a key of its own. So a command you wish had a shortcut, or a second name, is something you add yourself; actions.json can still be edited by hand.
-• Settings › Source control › Write message with lets the review's Write Message use the thread's own model instead of the small one.
-• The keyboard shortcuts sheet is ⌘⇧K. ⌘/ is a Shift away on a Turkish keyboard, as ⌘; was.
-• Delete in Settings › Archive asks in Settings, not in the main window behind it.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.3.2/OriCode-0.3.2.zip" sparkle:edSignature="XpMWcvz2Q9YQa0lhS6hhoegPfU2fPLBsYRtECWy8Q0QPRPngQLPDFtpJOlBphus1rS0TEaf6uXyp1XfETNhTDg==" length="5833741" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• A thread no longer needs a folder. With no project, type and send: the thread starts in No folder, which sits after your projects with a laptop for its badge. ⌘K has New thread without a folder, and the File menu has it too. Its working folder is an empty one the app keeps, so nothing walks your disk, and an agent reaches the rest of the Mac by full path, as far as the thread's permissions let it; Claude Code and Codex are told so. A file an agent writes without a path lands in that folder, which ⌘K's Reveal the scratch folder in Finder opens. It has no repository, so ⌘K leaves out the git, branch and pull request commands there, and the review says the folder isn't a git repository.
+• A code block has Copy at its top right. In a block longer than the window it follows the top edge down as you scroll, so it's in reach wherever you're reading.
+• A click on a picture you sent opens it in Quick Look, with the arrows stepping through that message's others. It opens at the size it went to the agent, up to 1568 pixels on its long edge. Pictures are kept at that size from this version on, in OriCode's own folder, and go when their thread is deleted; one sent before it opens as the small preview it was stored with.
+• Over a link in a reply the pointer shows it can be clicked, and a right-click on it offers Open Link and Copy Link. A selection can run across a link but no longer starts on its words.
+• Away from a thread's end, a small arrow sits above the composer and a click on it goes there; it says New when something arrived while you were reading further up. ⌘K has Jump to the end of the thread.
+• A message you send brings the thread to its end when you were near it, and leaves it alone when you were reading further back.
+• A queued message doesn't have to wait for the turn to end: the arrow on its line, Send now, puts it into the turn that's running. It's there for the agents that take a message mid-turn.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.3.3/OriCode-0.3.3.zip" sparkle:edSignature="zh8gh9W874/mm4KMW57SuUtP3Kxzd58hLSVi9CpWoblAFU6TgsunUvTAsLbDgGv0cR2Vf/ng4A+7g9GNABP3Dw==" length="5906143" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
