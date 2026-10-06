@@ -22,22 +22,26 @@ extension Theme {
         }
         .heading1 { configuration in
             configuration.label
+                .linkPointers(configuration.content)
                 .blockMargin(top: 16, bottom: 8)
                 .markdownTextStyle { FontWeight(.semibold); FontSize(18) }
         }
         .heading2 { configuration in
             configuration.label
+                .linkPointers(configuration.content)
                 .blockMargin(top: 14, bottom: 6)
                 .markdownTextStyle { FontWeight(.semibold); FontSize(16) }
         }
         .heading3 { configuration in
             configuration.label
+                .linkPointers(configuration.content)
                 .blockMargin(top: 12, bottom: 4)
                 .markdownTextStyle { FontWeight(.semibold); FontSize(14) }
         }
         .paragraph { configuration in
             configuration.label
                 .lineSpacing(3)
+                .linkPointers(configuration.content)
                 .blockMargin(top: 0, bottom: 10)
         }
         .listItem { configuration in
@@ -50,6 +54,10 @@ extension Theme {
                 .padding(.leading, 12)
         }
         .codeBlock { CodeBlock(configuration: $0) }
+        .tableCell { configuration in
+            configuration.label
+                .linkPointers(configuration.content)
+        }
         .table { configuration in
             configuration.label
                 .markdownTableBorderStyle(.init(color: .clear))

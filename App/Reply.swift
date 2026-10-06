@@ -40,6 +40,7 @@ struct Reply: View {
         }
         .markdownTheme(.glass)
         .markdownSoftBreakMode(.lineBreak)
+        .environment(\.softBreaksAreLines, true)
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -142,5 +143,8 @@ private struct ReplyBlock: View, Equatable {
     private var code: some View {
         Markdown(source)
             .markdownCodeSyntaxHighlighter(open ? StreamingCodeHighlighter(text: source) as CodeSyntaxHighlighter : TranscriptCodeHighlighter.shared)
+            // A block with no link in it does nothing about pointers, and one still growing
+            // waits: it's laid out again with every word.
+            .environment(\.linkPointers, .of(source, open: open))
     }
 }

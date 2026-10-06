@@ -123,6 +123,7 @@ private struct PermissionForm: View {
         } else if ask.toolKind == .planning, let plan = ask.input["plan"]?.string {
             ScrollView {
                 Markdown(plan).markdownTheme(.glass)
+                    .environment(\.linkPointers, .of(plan))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             // The plan scrolls in its own view, whose top edge nothing covers.
