@@ -21,6 +21,8 @@ struct TranscriptView: View {
     /// The latest items, until an earlier one is asked for. The stack is lazy, laying out what's
     /// on screen and a little around it, and anchored at the bottom it lays out the newest first.
     private static let recent = 200
+    /// How far down the top edge's fade runs: nothing above it is read at full strength.
+    private static let fade = TitleBar.height + 20
 
     private var shown: ArraySlice<Item> {
         showAll ? conversation.items[...] : conversation.items.suffix(Self.recent)
@@ -74,7 +76,7 @@ struct TranscriptView: View {
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.transcriptLinks)
-        .environment(\.codeCopyLine, 44)
+        .environment(\.codeCopyLine, Self.fade - CodeCopy.inset)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
@@ -108,7 +110,7 @@ struct TranscriptView: View {
                 // traffic lights and the capsule in the toolbar's row.
                 LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.45), .init(color: .black, location: 1)],
                                startPoint: .top, endPoint: .bottom)
-                    .frame(height: TitleBar.height + 20)
+                    .frame(height: Self.fade)
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
             }

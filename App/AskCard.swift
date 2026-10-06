@@ -125,6 +125,8 @@ private struct PermissionForm: View {
                 Markdown(plan).markdownTheme(.glass)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // The plan scrolls in its own view, whose top edge nothing covers.
+            .environment(\.codeCopyLine, 8)
             .frame(maxHeight: 320)
             .fixedSize(horizontal: false, vertical: true)
         } else if let diff = Diff.of(tool: ask.tool, input: ask.input, cwd: cwd) {

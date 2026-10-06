@@ -71,6 +71,8 @@ extension AppModel {
     /// when none runs; an agent that can't take one mid-turn keeps it queued.
     func sendQueuedNow(_ id: UUID) {
         guard let chat, let conversation = currentConversation, let message = conversation.queue.first(where: { $0.id == id }) else { return }
+        // Waiting on you from before a quit, the thread has no CLI to send into.
+        guard !conversation.waitingAfterQuit else { return }
         if conversation.running || !conversation.waiting.isEmpty {
             guard agent(for: chat).capabilities.steer else { return }
             conversation.removeQueued(id)

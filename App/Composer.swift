@@ -238,9 +238,11 @@ struct Composer: View {
         .padding(.top, 2)
     }
 
-    /// Whether the thread's agent takes a message while it works, which Send now needs.
+    /// Whether the thread's agent takes a message while it works, which Send now needs, and has a
+    /// turn to take it into: none runs in a thread waiting from before a quit.
     private var canSteer: Bool {
-        model.chat.map { model.agent(for: $0).capabilities.steer } ?? false
+        guard model.currentConversation?.waitingAfterQuit != true else { return false }
+        return model.chat.map { model.agent(for: $0).capabilities.steer } ?? false
     }
 
     private var queue: [QueuedMessage] {

@@ -192,6 +192,33 @@ struct QueueTests {
         #expect(conversation.handSent == 2)
     }
 
+    /// A thread waiting from before a quit reads as working with no CLI behind it, so Send now
+    /// leaves its queue alone, as Return does.
+    @Test func sendNowWaitsInAThreadFromBeforeAQuit() throws {
+        let (model, chat) = try thread()
+        let asked: [(String, [String: JSON])] = [
+            ("user", ["text": "Make the file"]),
+            ("tool.use", ["toolUseId": "t1", "name": "AskUserQuestion", "input": [:]]),
+            ("ask", ["requestId": "r1", "kind": "question", "tool": "AskUserQuestion", "toolUseId": "t1", "input": [:],
+                     "options": [["question": "Which name?", "options": [["label": "a.txt"], ["label": "b.txt"]]]]]),
+        ]
+        for (seq, (kind, body)) in asked.enumerated() {
+            var body = body
+            body["event"] = .string(kind)
+            let event = Event(turn: 1, seq: seq, kind: kind, payload: try JSON.object(body).data())
+            container.mainContext.insert(event)
+            event.chat = chat
+        }
+        chat.quitMidTurn = true
+        let conversation = model.conversation(for: chat)
+        try #require(conversation.waitingAfterQuit)
+        conversation.enqueue("then lint")
+        model.sendQueuedNow(conversation.queue[0].id)
+        #expect(conversation.queue.map(\.text) == ["then lint"])
+        #expect(conversation.waiting.isEmpty)
+        #expect(conversation.handSent == 0)
+    }
+
     /// The queue's next goes out only once the messages sent into the turn have run, which keeps
     /// the thread working through the turn.done between.
     @Test func theQueueWaitsForWhatWasSentIntoTheTurn() {

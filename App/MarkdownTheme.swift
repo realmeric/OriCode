@@ -108,7 +108,8 @@ private struct CodeBlock: View {
                     FontSize(12.5)
                     ForegroundColor(Ink.primary)
                 }
-                .padding(14)
+                // A line scrolled to its end stops clear of Copy.
+                .padding(EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: CodeCopy.side + CodeCopy.inset))
         }
         .scrollIndicators(.never)
         .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
