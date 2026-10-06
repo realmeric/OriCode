@@ -2,6 +2,16 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.3.3 "Hands on" - 2026-10-06
+
+- A thread no longer needs a folder. With no project, type and send: the thread starts in No folder, which sits after your projects with a laptop for its badge. ⌘K has New thread without a folder, and the File menu has it too. Its working folder is an empty one the app keeps, so nothing walks your disk, and an agent reaches the rest of the Mac by full path, as far as the thread's permissions let it; Claude Code and Codex are told so. A file an agent writes without a path lands in that folder, which ⌘K's Reveal the scratch folder in Finder opens. It has no repository, so ⌘K leaves out the git, branch and pull request commands there, and the review says the folder isn't a git repository.
+- A code block has Copy at its top right. In a block longer than the window it follows the top edge down as you scroll, so it's in reach wherever you're reading.
+- A click on a picture you sent opens it in Quick Look, with the arrows stepping through that message's others. It opens at the size it went to the agent, up to 1568 pixels on its long edge. Pictures are kept at that size from this version on, in OriCode's own folder, and go when their thread is deleted; one sent before it opens as the small preview it was stored with.
+- Over a link in a reply the pointer shows it can be clicked, and a right-click on it offers Open Link and Copy Link. A selection can run across a link but no longer starts on its words.
+- Away from a thread's end, a small arrow sits above the composer and a click on it goes there; it says New when something arrived while you were reading further up. ⌘K has Jump to the end of the thread.
+- A message you send brings the thread to its end when you were near it, and leaves it alone when you were reading further back.
+- A queued message doesn't have to wait for the turn to end: the arrow on its line, Send now, puts it into the turn that's running. It's there for the agents that take a message mid-turn.
+
 ## v0.3.2 "Hands on" - 2026-10-05
 
 - The pull request is drawn now. The line under the composer is a bead for each check, lit while it runs and red if it failed, then the number and the one thing worth knowing: "2 checks running", "test failed", "conflicts with main", "ready to merge". Click it and it opens out of the title: every check with how long it took, Log and Send to the thread on the row under the pointer, Open on GitHub, and Merge, which asks first and squashes.
