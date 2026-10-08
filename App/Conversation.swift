@@ -337,6 +337,10 @@ final class Conversation {
     /// Deltas for the open item that haven't reached it yet: a fast stream reaches the view at
     /// most once a frame.
     private var held = ""
+    /// Whether streaming text is shown every other frame, asked at each delta: so while the
+    /// thread is drawn beside an open one that's working too, since two replies laid out in one
+    /// frame don't fit it.
+    @ObservationIgnored var everyOtherFrame: () -> Bool = { false }
     private var holding = false
     private var shownAt = ContinuousClock.now
     private var unsaved = false
@@ -839,9 +843,10 @@ final class Conversation {
     }
 
     /// A delta waits for the frame after the last one shown; one after a pause shows at once.
+    /// Every other frame while `everyOtherFrame` says so.
     private func hold(_ delta: String) {
         held += delta
-        let wait = Self.frame - shownAt.duration(to: .now)
+        let wait = Self.frame * (everyOtherFrame() ? 2 : 1) - shownAt.duration(to: .now)
         guard wait > .zero else { return showHeld() }
         guard !holding else { return }
         holding = true

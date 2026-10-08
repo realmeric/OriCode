@@ -37,8 +37,19 @@ extension AppModel {
     func conversation(for chat: Chat) -> Conversation {
         if let existing = conversations[chat.id] { return existing }
         let created = Conversation(chat: chat, context: context, said: said, pictures: SentPictures.standard)
+        pace(created)
         conversations[chat.id] = created
         return created
+    }
+
+    /// With two threads drawn and both at work, the open one streams every frame and the other
+    /// every second one: two replies growing in the same frame cost more than the frame has.
+    func pace(_ conversation: Conversation) {
+        let id = conversation.chat.id
+        conversation.everyOtherFrame = { [weak self] in
+            guard let self, id == besideChatID, roomForTwo else { return false }
+            return currentConversation?.running == true
+        }
     }
 
     /// Starts a turn with what's typed, or sends it into the one running; false when it did
@@ -370,7 +381,7 @@ extension AppModel {
     }
 
     private func isAway(_ chat: Chat) -> Bool {
-        !NSApp.isActive || !inView(chat.id)
+        !NSApp.isActive || !onGlass(chat.id)
     }
 
     /// Tells the engine whether any thread's turn is running, for App Nap.

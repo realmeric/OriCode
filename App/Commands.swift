@@ -75,6 +75,22 @@ struct OriCodeCommands: Commands {
                 Button(chat.title) { model.pick(threadAt: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
             }
+            Divider()
+            // A second thread in view beside the open one, which keeps the keyboard. None of
+            // these is ever disabled: the menu hears of a change late, and a key pressed right
+            // after the thread came beside would find its item still off.
+            Section("Open Beside") {
+                ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
+                    Button(chat.title) { model.openBeside(threadAt: index) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
+                }
+            }
+            Button("Write in Left Thread") { model.write(in: .left) }
+                .keyboardShortcut(shortcuts.key(.writeLeft))
+            Button("Write in Right Thread") { model.write(in: .right) }
+                .keyboardShortcut(shortcuts.key(.writeRight))
+            Button("Close Other Side") { model.closeOtherSide() }
+                .keyboardShortcut(shortcuts.key(.closeOtherSide))
             if !model.projects.isEmpty {
                 Divider()
                 Menu("Project") {

@@ -81,6 +81,7 @@ extension AppModel {
         if let taken = Shortcuts.reserved[combo] { return "\(combo.label) is \(taken)" }
         if let builtIn = ShortcutAction.allCases.first(where: { shortcuts[$0] == combo }) { return "\(combo.label) is \(builtIn.title)" }
         if combo.modifiers == .command, combo.key.count == 1, combo.key.first?.isNumber == true { return "\(combo.label) goes to a thread" }
+        if combo.modifiers == [.command, .option], combo.key.count == 1, combo.key.first?.isNumber == true { return "\(combo.label) opens a thread beside" }
         if let other = customActions.actions.first(where: { $0.keys == combo && $0.id != action.id }) { return "\(combo.label) is \(other.name)" }
         return nil
     }

@@ -53,9 +53,48 @@ extension AppModel {
     }
 
     /// A click on a drawer row: the thread opens and its row stands out the way ⌘1–9's does.
-    func pickByClick(_ chat: Chat) {
-        select(chat)
+    /// With ⌥ held it comes beside the open one.
+    func pickByClick(_ chat: Chat, beside: Bool = false) {
+        if beside {
+            openBeside(chat)
+        } else {
+            select(chat)
+        }
         nudge(chat)
+    }
+
+    /// ⌥⌘1–9: that drawer thread comes beside the open one.
+    func openBeside(threadAt index: Int) {
+        let visible = chats
+        guard visible.indices.contains(index) else { return }
+        openBeside(visible[index])
+    }
+
+    /// Puts a thread in the other half and leaves the keyboard where it is, the plain use being
+    /// to watch one thread while writing in another. With no thread to be beside it opens. The
+    /// window is never widened for it: too narrow for two, one line says so.
+    func openBeside(_ chat: Chat) {
+        guard chat.started, !chat.archived, chat.project != nil else { return }
+        guard let open = self.chat, open.started else {
+            select(chat)
+            return
+        }
+        guard chat.id != open.id else { return }
+        besideChatID = chat.id
+        if !roomForTwo { say("Widen the window to see both") }
+    }
+
+    /// ⌥⌘W and the cross on the other column's title: that thread leaves the window, and goes on
+    /// with whatever it was doing.
+    func closeOtherSide() {
+        besideChatID = nil
+    }
+
+    /// ⌥⌘← and ⌥⌘→: the composer goes under the thread in that half. Folded to one thread there
+    /// are no halves to tell apart, and either key shows the other.
+    func write(in half: Half) {
+        guard let besideChatID, let other = chat(withID: besideChatID) else { return }
+        if besideShown == nil || half != composerHalf { select(other) }
     }
 
     /// The picked row, lit and 6pt out, settles back once the peek's 700ms are up.

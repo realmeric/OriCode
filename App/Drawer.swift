@@ -177,6 +177,7 @@ struct Drawer: View {
 
     private func row(_ chat: Chat, index: Int) -> some View {
         let selected = chat.id == model.chat?.id
+        let beside = chat.id == model.besideChatID
         let peeked = chat.id == model.peekedChatID
         // A row of the list's own rather than a button, which would keep the mouse and leave the
         // list no drag to reorder with.
@@ -243,12 +244,12 @@ struct Drawer: View {
         .padding(.horizontal, 10)
         .frame(height: 34)
         .background(
-            selected || peeked ? Surface.selected : hovered == chat.id ? Surface.hover : .clear,
+            selected || peeked ? Surface.selected : beside || hovered == chat.id ? Surface.hover : .clear,
             in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .offset(x: peeked ? 6 : 0)
         .animation(Motion.move, value: peeked)
-        .onTapGesture { model.pickByClick(chat) }
+        .onTapGesture { model.pickByClick(chat, beside: NSEvent.modifierFlags.contains(.option)) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
         .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)
         .accessibilityAddTraits(.isButton)
@@ -259,6 +260,12 @@ struct Drawer: View {
             if chat.archived {
                 Button("Restore") { withAnimation(Motion.move) { model.restore(chat) } }
             } else {
+                if beside {
+                    Button("Close Other Side") { model.closeOtherSide() }
+                } else {
+                    Button("Open Beside") { model.openBeside(chat) }
+                        .disabled(selected)
+                }
                 Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
                 Button("Rename") { model.startRename(chat) }
                 Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }

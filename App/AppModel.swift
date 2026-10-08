@@ -370,6 +370,23 @@ final class AppModel {
     /// Which half the open thread, and so the composer, is in while another is beside it.
     private(set) var composerHalf = Half.left
 
+    /// Whether the conversation's side of the window is wide enough for two columns, as RootView
+    /// last laid it out. Under that a pair folds to the open thread.
+    var roomForTwo = true
+
+    /// The thread beside, while it's drawn: there's room for two and the open thread has begun,
+    /// a draft having the window to itself until its first message.
+    var besideShown: Chat? {
+        guard roomForTwo, let besideChatID, currentConversation?.started ?? chat?.started ?? false else { return nil }
+        return chat(withID: besideChatID)
+    }
+
+    /// Whether a thread is drawn, which a thread folded away at a narrow width isn't: it stays in
+    /// memory like one in view, and says so when it ends or asks like one that's away.
+    func onGlass(_ id: UUID) -> Bool {
+        id == selectedChatID || id == besideShown?.id
+    }
+
     /// Whether a thread is on the glass: the open one, or the one beside it.
     func inView(_ id: UUID) -> Bool {
         id == selectedChatID || id == besideChatID
@@ -510,7 +527,9 @@ final class AppModel {
             guard inView(id), conversations[id] == nil,
                   let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
             else { return }
-            conversations[id] = Conversation(chat: chat, context: context, stored: stored, said: said, pictures: SentPictures.standard)
+            let read = Conversation(chat: chat, context: context, stored: stored, said: said, pictures: SentPictures.standard)
+            pace(read)
+            conversations[id] = read
         }
     }
 

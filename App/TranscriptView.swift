@@ -47,6 +47,11 @@ struct TranscriptView: View {
     private static let recent = 200
     /// How far down the top edge's fade runs: nothing above it is read at full strength.
     private static let fade = TitleBar.height + 20
+    /// Where the title line of a column beside the open one ends.
+    private static let titled = TitleBar.height + BesideTitle.height
+    /// Where that column's first row starts: as far into its fade, half strength, as the open
+    /// thread's first row is into its own under the toolbar's row.
+    static let besideTop = titled + 10
 
     private var shown: ArraySlice<Item> {
         showAll ? conversation.items[...] : conversation.items.suffix(Self.recent)
@@ -106,11 +111,12 @@ struct TranscriptView: View {
                     .onDisappear { place(endLaidOut: false) }
             }
             .column()
-            .padding(.top, 52)
+            // Under the toolbar's row, and under the title a column beside the open thread has.
+            .padding(.top, active ? TitleBar.height : Self.besideTop)
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.links(in: conversation.chat.id))
-        .environment(\.codeCopyLine, Self.fade - CodeCopy.inset)
+        .environment(\.codeCopyLine, Self.fade + (active ? 0 : BesideTitle.height) - CodeCopy.inset)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
@@ -165,10 +171,13 @@ struct TranscriptView: View {
             // Fades under the top edge and above the composer instead of ending at a line.
             VStack(spacing: 0) {
                 // Clear through the capsule and fading in under it, so nothing reads behind the
-                // traffic lights and the capsule in the toolbar's row.
-                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.45), .init(color: .black, location: 1)],
+                // traffic lights and the capsule in the toolbar's row. Beside the open thread, a
+                // column has its own title under that row: clear through it too, and the fade
+                // starts that much lower.
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .clear, location: active ? 0.45 : Self.titled / (Self.fade + BesideTitle.height)),
+                                       .init(color: .black, location: 1)],
                                startPoint: .top, endPoint: .bottom)
-                    .frame(height: Self.fade)
+                    .frame(height: Self.fade + (active ? 0 : BesideTitle.height))
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
             }

@@ -3,9 +3,6 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
-    /// Whether the last layout had a transcript in it: one arriving where there wasn't one comes
-    /// up behind the travelling composer, and one taking another thread's place only fades in.
-    @State private var hadTranscript = false
 
     var body: some View {
         GeometryReader { window in
@@ -16,18 +13,39 @@ struct RootView: View {
                 // A thread whose events are still being read lays out as it will once they're in,
                 // so the composer doesn't move for the moment it takes.
                 let started = conversation?.started ?? model.chat?.started ?? false
+                // A pinned drawer is a list you keep open, so the conversation moves over for it.
+                let pinned = model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0
+                // Two threads take equal halves when each gets a column's least width. Under that
+                // the pair folds to the open thread, and the window is the one it was with one.
+                let room = window.size.width - pinned >= Column.least * 2
+                let beside = room ? model.besideShown : nil
+                let half = (window.size.width - pinned) / 2
+                let right = model.composerHalf == .right
                 // An unpinned drawer passes over the conversation for a moment, and the composer's
                 // left end draws back out from under it while it's out. The right end, with the
-                // picker and Send, doesn't move.
-                let clear = model.drawerShown && !model.drawerPinned ? Self.clearing(width: window.size.width) : 0
+                // picker and Send, doesn't move, and nor does a composer in the right half.
+                let clear = model.drawerShown && !model.drawerPinned && !(beside != nil && right)
+                    ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
                 VStack(spacing: 0) {
                     if let chat = model.chat, started {
-                        ZStack {
-                            if let conversation { TranscriptView(conversation: conversation, cwd: chat.cwd) }
+                        // Keyed by thread, so a second one arriving, or the two trading the
+                        // composer, makes neither transcript again: each keeps its scroll.
+                        HStack(spacing: 0) {
+                            ForEach(beside.map { right ? [$0, chat] : [chat, $0] } ?? [chat], id: \.id) { thread in
+                                let open = thread.id == chat.id
+                                ZStack {
+                                    if let conversation = model.conversations[thread.id] {
+                                        TranscriptView(conversation: conversation, cwd: thread.cwd, active: open)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .overlay(alignment: .top) {
+                                    if !open { BesideTitle(chat: thread, conversation: model.conversations[thread.id]) }
+                                }
+                                .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
+                            }
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .id(chat.id)
-                        .transition(.asymmetric(insertion: hadTranscript ? Self.swap : Self.rise, removal: Self.leave))
+                        .transition(.asymmetric(insertion: Self.rise, removal: Self.leave))
                     } else {
                         Spacer(minLength: 0)
                         EmptyStateView(
@@ -47,6 +65,25 @@ struct RootView: View {
                         .geometryGroup()
                         .padding(.leading, clear)
                         .column()
+                        // With a thread beside, under the open one's half, and it glides across
+                        // when the two trade.
+                        .padding(right ? .leading : .trailing, beside == nil ? 0 : half)
+                        .background(alignment: right ? .leading : .trailing) {
+                            if let beside {
+                                // The other column's foot, the composer's height and the notes'
+                                // gap under it, is empty glass that brings the composer over. A
+                                // button, since a tap gesture on clear space doesn't take clicks.
+                                Button { model.select(beside) } label: {
+                                    Color.clear.contentShape(.rect)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Write in \(beside.title)")
+                                .frame(width: half)
+                                .padding(.bottom, -Self.notes)
+                            }
+                        }
+                        .animation(Motion.glide, value: right)
+                        .animation(Motion.glide, value: beside?.id)
                         // Above the transcript, so the slash menu can rise over it.
                         .zIndex(1)
                     if !started {
@@ -62,16 +99,22 @@ struct RootView: View {
                         Color.clear
                         EngineNote()
                     }
-                    .frame(height: 28)
+                    .frame(height: Self.notes)
+                    .padding(right ? .leading : .trailing, beside == nil ? 0 : half)
+                    .animation(Motion.glide, value: right)
+                    .animation(Motion.glide, value: beside?.id)
                 }
                 // Whatever empties the window (a new thread, ⌘W, another project) sends the
                 // composer back up to the middle the way the first message sends it down, once
                 // the old transcript has gone, so it never passes over a line of it.
                 .animation(started ? Motion.glide : Motion.glide.delay(0.1), value: started)
-                .onAppear { hadTranscript = started }
-                .onChange(of: started) { _, now in hadTranscript = now }
-                // A pinned drawer is a list you keep open, so the conversation moves over for it.
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
+                .padding(.leading, pinned)
+                .onChange(of: room, initial: true) { model.roomForTwo = room }
+                // A thread beside that was folded away or behind a draft said what it had to in
+                // a notification. Drawn again, it's being read here.
+                .onChange(of: beside?.id) { _, drawn in
+                    if let drawn { model.notifier.clear(chatID: drawn) }
+                }
                 .simultaneousGesture(TapGesture().onEnded {
                     if !model.drawerPinned { model.hideDrawer() }
                     if model.commandCenterShown { model.closeCommandCenter() }
@@ -250,18 +293,28 @@ struct RootView: View {
         }
     }
 
-    /// How much of the column's left end a drawer covers at this window width, with the margin a
-    /// pinned one leaves.
-    private static func clearing(width: CGFloat) -> CGFloat {
-        let left = (width - min(Column.width, width - Column.margin * 2)) / 2
-        return max(0, Drawer.width + Drawer.inset * 2 + Column.margin - left)
+    /// The gap under the composer, where the notes are.
+    private static let notes: CGFloat = 28
+
+    /// The composer's width with a drawer out over the narrowest window, 720pt.
+    static let drawnBack: CGFloat = 388
+
+    /// How much of the column's left end a drawer covers when the column is centred in this
+    /// width, the window's or a left half's, with the margin a pinned one leaves. A half's column
+    /// is narrower than the narrowest window's, and there the composer draws back only as far as
+    /// it does in that window: the drawer lies over the rest of it, where giving it all up would
+    /// leave the field no width between the composer's own buttons.
+    static func clearing(width: CGFloat) -> CGFloat {
+        let column = min(Column.width, width - Column.margin * 2)
+        let covered = Drawer.width + Drawer.inset * 2 + Column.margin - (width - column) / 2
+        return max(0, min(covered, column - drawnBack))
     }
 
     /// The first message's transcript rises in behind the composer once it has mostly gone past,
     /// instead of under it.
     private static let rise = AnyTransition.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22))
-    /// Another thread's transcript fades in once this one has gone, so two are never on the
-    /// glass together.
+    /// A transcript taking another's place in its half, or coming beside one, fades in once
+    /// whatever was there has gone.
     private static let swap = AnyTransition.opacity.animation(Motion.fade.delay(0.1))
     /// A transcript leaving fades before anything moves in: the composer waits for it.
     private static let leave = AnyTransition.opacity.animation(.easeOut(duration: 0.1))
@@ -308,6 +361,8 @@ enum TitleBar {
 enum Column {
     static let width: CGFloat = 760
     static let margin: CGFloat = 20
+    /// The least room a column is given when two threads share the window.
+    static let least: CGFloat = 440
 }
 
 extension View {
@@ -320,6 +375,63 @@ extension View {
 
 extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
+}
+
+/// The line over the column the composer isn't under: its thread's title, its mark while it
+/// works, and a cross while the pointer is on it. A click brings the composer over.
+struct BesideTitle: View {
+    @Environment(AppModel.self) private var model
+    let chat: Chat
+    let conversation: Conversation?
+    @State private var hovering = false
+
+    static let height: CGFloat = 20
+    private static let cross: CGFloat = 18
+
+    var body: some View {
+        HStack(spacing: 4) {
+            // As wide as the cross, so the title stays in the column's middle.
+            Color.clear.frame(width: Self.cross, height: Self.cross)
+            Button {
+                model.select(chat)
+            } label: {
+                HStack(spacing: 6) {
+                    if let conversation, conversation.working {
+                        ThreadMark(conversation: conversation)
+                            .frame(width: TitleCapsule.mark, height: TitleCapsule.mark)
+                            .transition(.opacity)
+                    }
+                    Text(chat.title)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .frame(height: Self.height)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("Write in this thread")
+            Button {
+                model.closeOtherSide()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Ink.secondary)
+                    .frame(width: Self.cross, height: Self.cross)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .opacity(hovering ? 1 : 0)
+            .help("Close this side (\(model.shortcuts.label(.closeOtherSide)))")
+            .accessibilityLabel("Close \(chat.title)")
+        }
+        .animation(Motion.fade, value: hovering)
+        .animation(Motion.fade, value: conversation?.working)
+        .onHover { hovering = $0 }
+        .column()
+        .padding(.top, TitleBar.height)
+    }
 }
 
 /// One quiet line when the engine can't run, never an alert.

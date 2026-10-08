@@ -97,7 +97,8 @@ extension EventModifiers {
 enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case newThread, newThreadOnBranch, addProject, close
     case toggleThreads, commandCenter, shellPrompt, heads, findFile, sideQuestion, review
-    case stop, switchBranch, nextThread, previousThread, modelPicker, rename, delete
+    case stop, switchBranch, nextThread, previousThread, writeLeft, writeRight, closeOtherSide
+    case modelPicker, rename, delete
     case shortcuts
     case send, queue, newLine
 
@@ -120,6 +121,9 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .switchBranch: "Switch Branch"
         case .nextThread: "Next Thread"
         case .previousThread: "Previous Thread"
+        case .writeLeft: "Write in Left Thread"
+        case .writeRight: "Write in Right Thread"
+        case .closeOtherSide: "Close Other Side"
         case .modelPicker: "Model and Effort"
         case .rename: "Rename Thread"
         case .delete: "Delete Thread"
@@ -148,6 +152,10 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .switchBranch: KeyCombo("b", [.command, .shift])
         case .nextThread: KeyCombo("tab", .control)
         case .previousThread: KeyCombo("tab", [.control, .shift])
+        // Arrows, where a split is \ elsewhere: that key is a reach on a Turkish keyboard.
+        case .writeLeft: KeyCombo("left", [.command, .option])
+        case .writeRight: KeyCombo("right", [.command, .option])
+        case .closeOtherSide: KeyCombo("w", [.command, .option])
         case .modelPicker: KeyCombo("m", [.command, .shift])
         case .rename: KeyCombo("r")
         case .delete: KeyCombo("delete")
@@ -236,8 +244,9 @@ enum ReturnPress: Equatable {
         if let other = ShortcutAction.allCases.first(where: { $0 != action && self[$0] == combo }) {
             return "\(combo.label) is \(other.title)"
         }
-        if combo.modifiers == .command, let digit = Int(combo.key), (1...9).contains(digit) {
-            return "\(combo.label) is Go to Thread \(digit)"
+        if let digit = Int(combo.key), (1...9).contains(digit) {
+            if combo.modifiers == .command { return "\(combo.label) is Go to Thread \(digit)" }
+            if combo.modifiers == [.command, .option] { return "\(combo.label) is Open Thread \(digit) Beside" }
         }
         return nil
     }
