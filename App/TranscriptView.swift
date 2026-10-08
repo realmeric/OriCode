@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import QuickLook
 import SwiftUI
 
@@ -28,6 +29,9 @@ struct TranscriptView: View {
         var reached = TranscriptEnd.Place.end
         /// The row named `end` is laid out, which the lazy stack does only around what's showing.
         var endLaidOut = true
+        /// The row named `end` has appeared at least once: until it has, `endLaidOut` and the
+        /// place the view starts at are what it assumed of itself, which nothing has borne out.
+        var endSeen = false
         /// The way to the end that's under way, which the next one, or a reveal, takes over.
         var jump: Task<Void, Never>?
     }
@@ -35,6 +39,8 @@ struct TranscriptView: View {
     /// The room under the last row, a row of its own with a name: the one place in a lazy stack
     /// that is the thread's end whatever the rows above it turn out to measure.
     private static let end = "end"
+
+    private static let logger = Logger(subsystem: "com.realmeric.oricode", category: "transcript")
 
     /// The latest items, until an earlier one is asked for. The stack is lazy, laying out what's
     /// on screen and a little around it, and anchored at the bottom it lays out the newest first.
@@ -93,7 +99,10 @@ struct TranscriptView: View {
                 Color.clear
                     .frame(height: 24)
                     .id(Self.end)
-                    .onAppear { place(endLaidOut: true) }
+                    .onAppear {
+                        content.endSeen = true
+                        place(endLaidOut: true)
+                    }
                     .onDisappear { place(endLaidOut: false) }
             }
             .column()
@@ -132,6 +141,26 @@ struct TranscriptView: View {
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear(perform: takeReveal)
         .onChange(of: model.reveal) { takeReveal() }
+        // Once a view, the active one or not. A transcript built while the app is hidden, as it
+        // comes forward, or behind another app can show its foot with the rows it made laid out
+        // screens above and none ever appearing, and it would go on taking itself to be at the end.
+        .task {
+            // Nothing is laid out to look at while no window shows, so the 300 ms, the swap's fade
+            // and a little, are counted from when one does, whenever in the view's life that is.
+            repeat {
+                if !NSApp.occlusionState.contains(.visible) {
+                    for await _ in NotificationCenter.default.notifications(named: NSApplication.didChangeOcclusionStateNotification).map({ _ in }) {
+                        if NSApp.occlusionState.contains(.visible) { break }
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(300))
+            } while !Task.isCancelled && !NSApp.occlusionState.contains(.visible)
+            // A way to the end that's under way lands first: it doesn't bring the rows either.
+            await content.jump?.value
+            guard !Task.isCancelled, end.adrift(endSeen: content.endSeen) else { return }
+            Self.logger.notice("A transcript of \(conversation.items.count) items came up without its end, \(Int(content.height)) tall in \(Int(content.visible)); laying it out from the top")
+            fromTheTop()
+        }
         .mask {
             // Fades under the top edge and above the composer instead of ending at a line.
             VStack(spacing: 0) {
@@ -212,6 +241,27 @@ struct TranscriptView: View {
             if !position.isPositionedByUser { try? await Task.sleep(for: .milliseconds(80)) }
             guard !Task.isCancelled else { return }
             // Scrolled away by hand in the meantime, the pill comes back.
+            end.landed()
+        }
+    }
+
+    /// Brings the end to a transcript that stands at its foot with no row there. From there the
+    /// lazy stack makes nothing: not for a scroll to the end, by its edge or by the row named
+    /// `end`, and not in a new scroll view. From the top it makes its rows, and the way back
+    /// finds the end.
+    private func fromTheTop() {
+        _ = end.jump()
+        content.jump?.cancel()
+        content.jump = Task {
+            position.scrollTo(edge: .top)
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            position.scrollTo(edge: .bottom)
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            position.scrollTo(id: Self.end, anchor: .bottom)
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
             end.landed()
         }
     }
@@ -386,6 +436,13 @@ enum TranscriptEnd {
             guard !heading else { return }
             pinned = place == .end
             if pinned { news = false }
+        }
+
+        /// Whether a transcript that takes itself to be at its end has never laid that end out:
+        /// what it starts as, until the row named `end` appears. A reveal unpins and a way to the
+        /// end is under way, so neither is adrift.
+        func adrift(endSeen: Bool) -> Bool {
+            !endSeen && pinned && place == .end && !heading
         }
 
         /// Whether a message sent by hand from here brings the end into view.

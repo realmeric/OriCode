@@ -79,6 +79,24 @@ struct TranscriptEndTests {
         #expect(!TranscriptEnd.offered(pinned: standing.pinned, covered: false))
     }
 
+    @Test func aNewTranscriptThatNeverLaidOutItsEndIsAdrift() {
+        #expect(TranscriptEnd.Standing().adrift(endSeen: false))
+        #expect(!TranscriptEnd.Standing().adrift(endSeen: true))
+        // A reveal on appear leaves the end unmade on purpose.
+        var revealed = TranscriptEnd.Standing()
+        revealed.revealing()
+        #expect(!revealed.adrift(endSeen: false))
+        // Scrolled away by hand, or already on the way, it's left alone.
+        #expect(!standing(at: .near).adrift(endSeen: false))
+        #expect(!standing(at: .away).adrift(endSeen: false))
+        var heading = TranscriptEnd.Standing()
+        _ = heading.jump()
+        #expect(!heading.adrift(endSeen: false))
+        // Landed at the foot by its numbers with the end's row still unmade, it is again.
+        heading.landed()
+        #expect(heading.adrift(endSeen: false))
+    }
+
     @Test func scrolledFromTheEndThePillComesAndGoesWithIt() {
         var standing = standing(at: .near)
         #expect(!standing.pinned)
