@@ -10,10 +10,10 @@ extension AppModel {
         selectedChatID.flatMap { conversations[$0] }
     }
 
-    /// A conversation not open, not running, not waiting on you and holding no messages is dropped
-    /// from memory; reopening it reads it back off the main thread.
+    /// A conversation not in view, not running, not waiting on you and holding no messages is
+    /// dropped from memory; reopening it reads it back off the main thread.
     func letGo(_ id: UUID) {
-        guard id != selectedChatID, let conversation = conversations[id], !conversation.working, conversation.waitingAsk == nil,
+        guard !inView(id), let conversation = conversations[id], !conversation.working, conversation.waitingAsk == nil,
               !conversation.waitingAfterQuit, !conversation.holdsMessages
         else { return }
         conversation.flush()
@@ -218,9 +218,11 @@ extension AppModel {
         chat.model ?? (chat.providerID == ProviderInfo.claudeID ? nil : option(for: chat)?.id)
     }
 
-    /// `choice` is one of the agent's own answers, which it gets back by its id.
-    func answer(_ ask: PendingAsk, allow: Bool, answers: [String: String]? = nil, message: String? = nil, choice: PendingAsk.Choice? = nil) {
-        guard let chat else { return }
+    /// `thread` is the ask's own, which with two in view isn't always the open one; without it
+    /// the ask is the open thread's. `choice` is one of the agent's own answers, which it gets
+    /// back by its id.
+    func answer(_ ask: PendingAsk, in thread: UUID? = nil, allow: Bool, answers: [String: String]? = nil, message: String? = nil, choice: PendingAsk.Choice? = nil) {
+        guard let chat = thread == nil ? chat : thread.flatMap(chat(withID:)) else { return }
         if conversation(for: chat).askedBeforeQuit.contains(ask.requestId) {
             answerAfterQuit(ask, in: chat, allow: allow, answers: answers, message: message)
             return
@@ -368,7 +370,7 @@ extension AppModel {
     }
 
     private func isAway(_ chat: Chat) -> Bool {
-        !NSApp.isActive || chat.id != selectedChatID
+        !NSApp.isActive || !inView(chat.id)
     }
 
     /// Tells the engine whether any thread's turn is running, for App Nap.

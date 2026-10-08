@@ -168,7 +168,7 @@ struct StreamingTests {
         let model = AppModel(container: container)
         model.selectedProjectID = chat.project?.id
         model.selectedChatID = chat.id
-        model.transcriptLinks(URL(string: "App/Files.swift:42")!)
+        model.links(in: chat.id)(URL(string: "App/Files.swift:42")!)
         #expect(model.openFile?.path == "App/Files.swift")
         #expect(model.openFile?.line == 42)
     }

@@ -143,6 +143,7 @@ extension AppModel {
         // The commands its threads have running go with it.
         for chat in project.chats { endShells(of: chat) }
         if forgettingActions { customActions.forget(project: project.id) }
+        if project.chats.contains(where: { $0.id == besideChatID }) { besideChatID = nil }
         for chat in project.chats {
             let id = chat.id.uuidString
             conversations[chat.id] = nil
@@ -155,7 +156,8 @@ extension AppModel {
         // No folder's own folder goes with it when it's empty: rmdir takes nothing that holds a
         // file, and it's the app's folder that's named, never a path out of the store.
         if removed == Project.noFolderID { rmdir(noFolderURL.path) }
-        guard selectedProjectID == removed else { return }
+        // A thread of another project beside the one that went takes the window.
+        guard selectedProjectID == removed, !besideTakesWindow() else { return }
         if let next = projects.first(where: { $0.id != removed }) {
             select(next)
         } else {

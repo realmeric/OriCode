@@ -6,6 +6,8 @@ struct AskCard: View {
     @Environment(AppModel.self) private var model
     let ask: PendingAsk
     let cwd: String
+    /// The thread that asked, which an answer goes back to.
+    var thread: UUID?
     /// Only the oldest waiting card takes Return and Esc.
     let listens: Bool
 
@@ -41,9 +43,9 @@ struct AskCard: View {
                 .foregroundStyle(Ink.secondary)
             }
             if ask.kind == "question" {
-                QuestionForm(ask: ask, listens: listens)
+                QuestionForm(ask: ask, thread: thread, listens: listens)
             } else {
-                PermissionForm(ask: ask, cwd: cwd, listens: listens)
+                PermissionForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
             }
         }
     }
@@ -62,6 +64,7 @@ private struct PermissionForm: View {
     @Environment(AppModel.self) private var model
     let ask: PendingAsk
     let cwd: String
+    let thread: UUID?
     let listens: Bool
     @State private var showDiff = false
 
@@ -74,21 +77,21 @@ private struct PermissionForm: View {
             HStack(spacing: 8) {
                 Spacer()
                 if ask.choices.isEmpty {
-                    Button("Deny") { model.answer(ask, allow: false) }
+                    Button("Deny") { model.answer(ask, in: thread, allow: false) }
                         .buttonStyle(.action)
-                    Button("Allow") { model.answer(ask, allow: true) }
+                    Button("Allow") { model.answer(ask, in: thread, allow: true) }
                         .buttonStyle(.action(prominent: listens))
                         .keyboardShortcut(listens ? .defaultAction : nil)
                 } else {
                     // The agent's own answers, in its order, with the one Return gives last.
                     let main = ask.choices.first { $0.kind == "allow_once" } ?? ask.choices.first(where: \.allows)
                     ForEach(ask.choices.filter { $0 != main }, id: \.id) { choice in
-                        Button(choice.name) { model.answer(ask, allow: choice.allows, choice: choice) }
+                        Button(choice.name) { model.answer(ask, in: thread, allow: choice.allows, choice: choice) }
                             .buttonStyle(.action)
                             .help(choice.help ?? "")
                     }
                     if let main {
-                        Button(main.name) { model.answer(ask, allow: true, choice: main) }
+                        Button(main.name) { model.answer(ask, in: thread, allow: true, choice: main) }
                             .buttonStyle(.action(prominent: listens))
                             .help(main.help ?? "")
                             .keyboardShortcut(listens ? .defaultAction : nil)
@@ -165,6 +168,7 @@ private struct PermissionForm: View {
 private struct QuestionForm: View {
     @Environment(AppModel.self) private var model
     let ask: PendingAsk
+    let thread: UUID?
     let listens: Bool
     @State private var picked: [String: Set<String>] = [:]
     @State private var other: [String: String] = [:]
@@ -239,7 +243,7 @@ private struct QuestionForm: View {
             }
             HStack(spacing: 8) {
                 Spacer()
-                Button("Skip") { model.answer(ask, allow: false, message: AskCard.skipMessage) }
+                Button("Skip") { model.answer(ask, in: thread, allow: false, message: AskCard.skipMessage) }
                     .buttonStyle(.action)
                 if questions.count > 1 || questions.contains(where: { $0["multiSelect"]?.bool == true }) {
                     Button("Answer", action: submit)
@@ -288,7 +292,7 @@ private struct QuestionForm: View {
             let text = question["question"]?.string ?? ""
             answers[text] = answer(for: text)
         }
-        model.answer(ask, allow: true, answers: answers)
+        model.answer(ask, in: thread, allow: true, answers: answers)
     }
 }
 

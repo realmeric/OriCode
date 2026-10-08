@@ -6,6 +6,9 @@ struct TranscriptView: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
     let cwd: String
+    /// The open thread's transcript, the one the composer is under: with another beside it, only
+    /// this one answers Return, goes to its end when asked, and has what's open drawn over it.
+    var active = true
     @State private var position = ScrollPosition()
     /// Where the transcript stands against its end.
     @State private var end = TranscriptEnd.Standing()
@@ -62,7 +65,7 @@ struct TranscriptView: View {
                         .padding(.bottom, 20)
                 }
                 // Not while a block is open: Return typed there mustn't answer the card.
-                let listening = model.openShell != nil ? nil : conversation.waitingAsk?.requestId
+                let listening = !active || model.openShell != nil ? nil : conversation.waitingAsk?.requestId
                 let lastLimit = conversation.lastLimit
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     // One view a row, whatever the item draws: an item that can draw nothing, a footer
@@ -97,7 +100,7 @@ struct TranscriptView: View {
             .padding(.top, 52)
         }
         .scrollIndicators(.never)
-        .environment(\.openURL, model.transcriptLinks)
+        .environment(\.openURL, model.links(in: conversation.chat.id))
         .environment(\.codeCopyLine, Self.fade - CodeCopy.inset)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
@@ -123,7 +126,9 @@ struct TranscriptView: View {
         .onChange(of: conversation.handSent) {
             if end.sent() { toEnd(animated: false) }
         }
-        .onChange(of: model.threadEnd) { toEnd(animated: true) }
+        .onChange(of: model.threadEnd) {
+            if active { toEnd(animated: true) }
+        }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear(perform: takeReveal)
         .onChange(of: model.reveal) { takeReveal() }
@@ -141,7 +146,7 @@ struct TranscriptView: View {
         }
         // Over the transcript's foot and outside its fade, so the composer under it never moves.
         .overlay(alignment: .bottom) {
-            let offered = TranscriptEnd.offered(pinned: end.pinned, covered: model.openShell != nil || model.openFile != nil)
+            let offered = TranscriptEnd.offered(pinned: end.pinned, covered: active && (model.openShell != nil || model.openFile != nil))
             ZStack {
                 if offered {
                     // A reply streams into a row that's already there, which no count tells of.
@@ -546,7 +551,8 @@ enum TranscriptEntry: Identifiable {
 struct ItemView: View {
     let item: Item
     let cwd: String
-    /// The thread a message of yours is in, which is where its pictures are kept.
+    /// The thread the item is in: where a message's pictures are kept, and whose ask, limit or
+    /// suggestion it is. Nil stands for the open one.
     var thread: UUID?
     let listening: String?
     let live: Bool
@@ -640,7 +646,7 @@ struct ItemView: View {
                 ToolLine(call: call, cwd: cwd)
             }
         case .ask(_, let ask):
-            AskCard(ask: ask, cwd: cwd, listens: ask.requestId == listening)
+            AskCard(ask: ask, cwd: cwd, thread: thread, listens: ask.requestId == listening)
         case .footer(_, let footer):
             FooterLine(footer: footer)
         case .note(_, let text):
@@ -650,9 +656,9 @@ struct ItemView: View {
                 .textSelection(.enabled)
         case .limited(_, let resetsAt, let window):
             if limitCard {
-                LimitCard(resetsAt: resetsAt, window: window, resumes: resumes)
+                LimitCard(resetsAt: resetsAt, window: window, thread: thread, resumes: resumes)
             } else {
-                LimitLine(resetsAt: resetsAt, window: window)
+                LimitLine(resetsAt: resetsAt, window: window, thread: thread)
             }
         case .nearLimit(_, let window, let used, let resetsAt, let said):
             NearLimitLine(window: window, used: used, resetsAt: resetsAt, said: said)
@@ -661,7 +667,7 @@ struct ItemView: View {
         case .opened(_, let thread, let title, let finished):
             OpenedLine(thread: thread, title: title, finished: finished)
         case .suggested(_, let title, let prompt):
-            SuggestedThread(title: title, prompt: prompt)
+            SuggestedThread(title: title, prompt: prompt, thread: thread)
         }
     }
 }
@@ -688,7 +694,7 @@ struct ToolLine: View {
                 .buttonStyle(.plain)
                 .disabled(call.result == nil)
                 if let path, let shown {
-                    FileLink(path: path, label: shown)
+                    FileLink(path: path, label: shown, cwd: cwd)
                 }
                 if call.isError {
                     Text("failed").foregroundStyle(Ink.faint)
@@ -780,11 +786,13 @@ struct FileLink: View {
     @Environment(AppModel.self) private var model
     let path: String
     let label: String
+    /// Its thread's folder, which the file opens from.
+    let cwd: String
     @State private var hovering = false
 
     var body: some View {
         Button {
-            model.openFile(path)
+            model.openFile(path, in: cwd)
         } label: {
             Text(label)
                 .underline(hovering)

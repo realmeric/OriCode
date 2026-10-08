@@ -14,7 +14,7 @@ struct DiffCard: View {
             } label: {
                 HStack(spacing: 8) {
                     if let path = ToolSummary.path(for: call) {
-                        FileLink(path: path, label: diff?.path ?? ToolSummary.relative(path, to: cwd))
+                        FileLink(path: path, label: diff?.path ?? ToolSummary.relative(path, to: cwd), cwd: cwd)
                             .font(Type.mono)
                             .foregroundStyle(Ink.primary)
                     } else {

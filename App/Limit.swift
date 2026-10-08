@@ -65,9 +65,11 @@ struct LimitLine: View {
     @Environment(AppModel.self) private var model
     let resetsAt: Date
     let window: String?
+    /// The thread it stopped, the open one when nil.
+    var thread: UUID?
 
     var body: some View {
-        Text("Stopped at \(model.agent(for: model.chat).agent)'s \(Limit.name(of: window)), which \(resetsAt > .now ? "resets" : "reset") at \(Limit.time(resetsAt)).")
+        Text("Stopped at \(model.agent(for: thread.flatMap(model.chat(withID:)) ?? model.chat).agent)'s \(Limit.name(of: window)), which \(resetsAt > .now ? "resets" : "reset") at \(Limit.time(resetsAt)).")
             .font(Type.secondary)
             .foregroundStyle(Ink.secondary)
     }
@@ -79,6 +81,8 @@ struct LimitCard: View {
     @Environment(AppModel.self) private var model
     let resetsAt: Date
     let window: String?
+    /// The thread it stopped, the open one when nil.
+    var thread: UUID?
     /// Whether the thread waits to go on when it resets.
     let resumes: Bool
 
@@ -86,7 +90,7 @@ struct LimitCard: View {
         // Drawn again once, at the reset. The countdown in between is the system's to draw.
         TimelineView(.explicit([resetsAt])) { _ in
             let passed = resetsAt <= .now
-            let agent = model.agent(for: model.chat)
+            let agent = model.agent(for: thread.flatMap(model.chat(withID:)) ?? model.chat)
             let when = Limit.weekly(window) ? resetsAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()) : Limit.time(resetsAt)
             HStack(spacing: 14) {
                 GlassLevel(level: 1, side: 34)
@@ -108,7 +112,7 @@ struct LimitCard: View {
                 Spacer(minLength: 12)
                 // Going on at the reset needs the agent to pick its session back up.
                 if !passed, agent.capabilities.resume {
-                    Toggle("Go on when it resets", isOn: Binding(get: { resumes }, set: { model.goOn($0, at: resetsAt) }))
+                    Toggle("Go on when it resets", isOn: Binding(get: { resumes }, set: { model.goOn($0, at: resetsAt, in: thread) }))
                         .toggleStyle(.switch)
                         .controlSize(.small)
                         .font(Type.secondary)

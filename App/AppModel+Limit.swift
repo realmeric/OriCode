@@ -49,10 +49,10 @@ extension AppModel {
         scheduleResumes()
     }
 
-    /// The limit card's toggle: the open thread waits for its limit to reset, a weekly one too,
-    /// or no longer does.
-    func goOn(_ on: Bool, at resetsAt: Date) {
-        guard let chat else { return }
+    /// The limit card's toggle: its thread waits for its limit to reset, a weekly one too, or no
+    /// longer does. `thread` is the card's own, the open one when nil.
+    func goOn(_ on: Bool, at resetsAt: Date, in thread: UUID? = nil) {
+        guard let chat = thread == nil ? chat : thread.flatMap(chat(withID:)) else { return }
         let conversation = conversation(for: chat)
         withAnimation(Motion.fade) {
             if on { conversation.resume(at: resetsAt) } else { conversation.cancelResume() }

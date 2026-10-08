@@ -44,9 +44,9 @@ extension AppModel {
     }
 
     /// Opens a path from anywhere: the finder, a tool line, a diff card or a link in a reply.
-    func openFile(_ path: String, line: Int? = nil) {
-        guard let chat else { return }
-        let cwd = chat.cwd
+    /// `folder` is the thread's the path was shown in, the open thread's when nil.
+    func openFile(_ path: String, line: Int? = nil, in folder: String? = nil) {
+        guard let cwd = folder ?? chat?.cwd else { return }
         let relative = ToolSummary.relative(path, to: cwd)
         // The viewer is under what grows out of the capsule, so the finder, or the review it was
         // opened from, makes way.
@@ -142,7 +142,7 @@ extension AppModel {
         let exists = FileManager.default.fileExists(atPath: file.path, isDirectory: &folder)
         let root = (cwd as NSString).standardizingPath
         if file.path.hasPrefix(root.hasSuffix("/") ? root : root + "/"), !folder.boolValue {
-            openFile(file.path, line: file.line)
+            openFile(file.path, line: file.line, in: cwd)
             return .handled
         }
         guard exists else { return .discarded }

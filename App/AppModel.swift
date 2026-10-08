@@ -145,9 +145,19 @@ final class AppModel {
     /// What a link in the transcript does, made once: MarkdownUI makes `App/Foo.swift` a URL with
     /// no scheme, which the default action hands to Launch Services, and nothing there opens it.
     /// A new action on every body changed the environment of every Markdown block in the thread.
-    @ObservationIgnored lazy var transcriptLinks = OpenURLAction { [unowned self] url in
-        openLink(url, cwd: chat?.cwd ?? "")
+    /// One for each thread, since a thread in view isn't always the open one and a link resolves
+    /// against its own thread's folder.
+    @ObservationIgnored private var links: [UUID: OpenURLAction] = [:]
+
+    func links(in thread: UUID) -> OpenURLAction {
+        if let made = links[thread] { return made }
+        let made = OpenURLAction { [unowned self] url in
+            openLink(url, cwd: chat(withID: thread)?.cwd ?? "")
+        }
+        links[thread] = made
+        return made
     }
+
     /// The models the user starred, by ModelRef's key, in the order starred; the models page and
     /// the model pickers put them first. One Claude Code stops listing stays here, unseen, in case
     /// it's back.
@@ -307,14 +317,25 @@ final class AppModel {
         didSet { UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject") }
     }
 
+    /// The thread the composer is on, and with it the capsule, the review, the menus and Esc.
     var selectedChatID: UUID? {
         didSet {
-            if let oldValue, oldValue != selectedChatID { letGoSoon(oldValue) }
+            // The thread beside, picked by any route, trades places with the one that was open:
+            // each stays in its half and the composer crosses, so neither is drawn twice. A draft
+            // or a thread that's gone has no half to keep, and the picked one is alone again.
+            if let selectedChatID, selectedChatID == besideChatID {
+                let other = oldValue.flatMap { staysInView($0) ? $0 : nil }
+                if other != nil { composerHalf = composerHalf == .left ? .right : .left }
+                besideChatID = other
+            }
+            // With no thread open there's no pair: an empty project picked shows its empty state.
+            if selectedChatID == nil, besideChatID != nil { besideChatID = nil }
+            if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
             if let selectedChatID { leaving[selectedChatID]?.cancel() }
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
             // A ⌘digit peek ends when another thread is opened, however it's opened.
             if peekedChatID != selectedChatID { peekedChatID = nil }
-            loadSelectedConversation()
+            if let selectedChatID { loadConversation(selectedChatID) }
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
             refreshBranch(for: chat)
             readReview()
@@ -322,6 +343,52 @@ final class AppModel {
             watchHeads()
             tellWindow()
         }
+    }
+
+    /// A second thread in view beside the open one, never the same thread. It can be another
+    /// project's, so it's found with `chat(withID:)`.
+    var besideChatID: UUID? {
+        didSet {
+            guard besideChatID != oldValue else { return }
+            if let besideChatID, besideChatID == selectedChatID { self.besideChatID = nil }
+            if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
+            guard let besideChatID else {
+                composerHalf = .left
+                return
+            }
+            leaving[besideChatID]?.cancel()
+            loadConversation(besideChatID)
+            notifier.clear(chatID: besideChatID)
+        }
+    }
+
+    enum Half {
+        case left
+        case right
+    }
+
+    /// Which half the open thread, and so the composer, is in while another is beside it.
+    private(set) var composerHalf = Half.left
+
+    /// Whether a thread is on the glass: the open one, or the one beside it.
+    func inView(_ id: UUID) -> Bool {
+        id == selectedChatID || id == besideChatID
+    }
+
+    /// Whether a thread can be left in view: one that has begun and is still in the drawer.
+    private func staysInView(_ id: UUID) -> Bool {
+        guard let chat = chat(withID: id) else { return false }
+        return chat.started && !chat.archived && chat.project != nil
+    }
+
+    /// The thread beside takes the window when the open one is closed, archived or deleted;
+    /// false when there's none.
+    func besideTakesWindow() -> Bool {
+        guard let id = besideChatID else { return false }
+        besideChatID = nil
+        guard let chat = chat(withID: id), chat.project != nil else { return false }
+        select(chat)
+        return true
     }
 
     var lastPermissionMode: String {
@@ -397,7 +464,7 @@ final class AppModel {
         drawerShown = drawerPinned
         clearDrafts()
         carryUltracode()
-        loadSelectedConversation()
+        if let selectedChatID { loadConversation(selectedChatID) }
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
         startingSeen = startingValues
@@ -435,12 +502,12 @@ final class AppModel {
     /// Reads the thread's events on a context of its own, off the main thread, and replays them
     /// here. Anything that needs the conversation meanwhile, an engine event or a send, makes it
     /// at once through `conversation(for:)`, and then this one is dropped.
-    private func loadSelectedConversation() {
-        guard let id = selectedChatID, conversations[id] == nil else { return }
+    private func loadConversation(_ id: UUID) {
+        guard conversations[id] == nil else { return }
         let container = context.container
         Task {
             let stored = await Task.detached(priority: .userInitiated) { StoredEvent.read(id, from: ModelContext(container)) }.value
-            guard selectedChatID == id, conversations[id] == nil,
+            guard inView(id), conversations[id] == nil,
                   let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
             else { return }
             conversations[id] = Conversation(chat: chat, context: context, stored: stored, said: said, pictures: SentPictures.standard)

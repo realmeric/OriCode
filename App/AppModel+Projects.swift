@@ -49,6 +49,7 @@ extension AppModel {
         }
         let archived = chat.id
         let wasSelected = archived == selectedChatID
+        if archived == besideChatID { besideChatID = nil }
         endShells(of: chat)
         Task { _ = try? await engine.request("close", ["threadId": .string(archived.uuidString)]) }
         conversations[archived] = nil
@@ -56,7 +57,7 @@ extension AppModel {
         chat.pinned = false
         chat.position = nil
         save()
-        guard wasSelected else { return }
+        guard wasSelected, !besideTakesWindow() else { return }
         if let next = chats.first(where: { $0.project?.id == selectedProjectID }) ?? chats.first {
             select(next)
         } else {
@@ -197,11 +198,13 @@ extension AppModel {
     }
 
     /// ⌘W: the open thread goes back to the project's empty composer, the way Claude's app
-    /// closes a session, and stays in the list. With none open it closes the window.
+    /// closes a session, and stays in the list; with another beside it, that one takes the
+    /// window. With none open it closes the window.
     func close() {
         if closesThread {
-            if let chat { release(chat) }
-            selectedChatID = nil
+            let closed = chat
+            if !besideTakesWindow() { selectedChatID = nil }
+            if let closed { release(closed) }
             return
         }
         let key = NSApp.keyWindow
@@ -212,7 +215,7 @@ extension AppModel {
     /// Lets go of a thread that isn't doing anything: its CLI in the engine, and its transcript
     /// here, which the store has and which is read again when the thread is opened.
     func release(_ chat: Chat) {
-        guard let conversation = conversations[chat.id],
+        guard !inView(chat.id), let conversation = conversations[chat.id],
               !conversation.working, conversation.waitingAsk == nil, !conversation.holdsMessages
         else { return }
         conversation.flush()
@@ -297,6 +300,7 @@ extension AppModel {
     func delete(_ chat: Chat) {
         let deleted = chat.id
         let wasSelected = deleted == selectedChatID
+        if deleted == besideChatID { besideChatID = nil }
         endShells(of: chat)
         // A thread it opened that still works in its worktree keeps it, as its own from here.
         if let branch = chat.worktreeBranch, let heir = projects.flatMap(\.chats).first(where: { $0.id != deleted && $0.cwd == chat.cwd && $0.worktreeBranch == nil }) {
@@ -308,7 +312,7 @@ extension AppModel {
         SentPictures.standard.forget(thread: deleted)
         context.delete(chat)
         save()
-        guard wasSelected else { return }
+        guard wasSelected, !besideTakesWindow() else { return }
         // The next thread in the same project if there is one, so deleting doesn't switch projects.
         let rest = chats.filter { $0.id != deleted }
         if let next = rest.first(where: { $0.project?.id == selectedProjectID }) ?? rest.first {

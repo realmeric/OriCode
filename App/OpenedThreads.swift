@@ -214,8 +214,8 @@ extension AppModel {
         guard let opener = chat.openedBy, let conversation = conversations[chat.id], conversation.turnsEnded == 1,
               let parent = self.chat(withID: opener)
         else { return }
-        // The thread on screen may be reading its events just now, and would miss the line.
-        if conversations[opener] != nil || opener == selectedChatID {
+        // A thread on screen may be reading its events just now, and would miss the line.
+        if conversations[opener] != nil || inView(opener) {
             self.conversation(for: parent).threadDone(chat, finished: conversation.endedByItself)
         } else {
             Conversation.threadDone(chat, finished: conversation.endedByItself, unread: parent, in: context)
@@ -255,10 +255,12 @@ struct SuggestedThread: View {
     @Environment(AppModel.self) private var model
     let title: String
     let prompt: String
+    /// The thread that suggested it, the open one when nil.
+    var thread: UUID?
 
     var body: some View {
         Button {
-            if let chat = model.chat { model.openSuggested(title: title, prompt: prompt, from: chat) }
+            if let chat = thread.flatMap(model.chat(withID:)) ?? model.chat { model.openSuggested(title: title, prompt: prompt, from: chat) }
         } label: {
             Label(title, systemImage: "plus")
         }

@@ -57,10 +57,12 @@ test("a child that never answers fails at its deadline, and its group goes with 
   const bin = await mkdtemp(join(tmpdir(), "oricode-bin-"));
   const git = await hanging(bin);
   const started = Date.now();
-  const failed = (await run(git.path, ["rev-parse", "HEAD"], { timeout: 300 }).catch((error) => error)) as RunError;
-  assert.ok(Date.now() - started < 2000);
+  // Long enough for the stand-in to have started both: with every test file running at once, a
+  // shell can take over 300 ms to reach its first line.
+  const failed = (await run(git.path, ["rev-parse", "HEAD"], { timeout: 1500 }).catch((error) => error)) as RunError;
+  assert.ok(Date.now() - started < 4000);
   assert.equal(failed.killed, true);
-  assert.match(failed.message, /didn't finish in 0\.3s\.$/);
+  assert.match(failed.message, /didn't finish in 1\.5s\.$/);
   assert.equal(git.pids().length, 2);
   assert.deepEqual(await gone(git.pids()), []);
 });
