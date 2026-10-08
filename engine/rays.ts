@@ -8,7 +8,7 @@ import type { Model } from "./models.ts";
 import type { Provider, SendParams, Session } from "./provider.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
-import { askApp, mostOpened, mostSuggested, openThread, suggestThread, Unanswered } from "./threads.ts";
+import { askApp, listThreads, mostOpened, mostSuggested, openThread, readThread, suggestThread, Unanswered } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -268,7 +268,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.rays.length ? tools : []), ...(this.opens ? [openThread] : []), suggestThread] } };
+        return { result: { tools: [...(this.rays.length ? tools : []), ...(this.opens ? [openThread] : []), suggestThread, listThreads, readThread] } };
       case "tools/call":
         try {
           const out = await this.call(params.name, params.arguments ?? {});
@@ -301,6 +301,11 @@ export class Rays {
         return this.open(args);
       case "suggest_thread":
         return this.suggest(args);
+      case "list_threads":
+        return this.read("threads.list", pick(args, ["edited"]));
+      case "read_thread":
+        if (!String(args.thread ?? "").trim()) return Promise.reject(new Error("read_thread needs a thread's id, which list_threads gives."));
+        return this.read("thread.read", { thread: String(args.thread).trim(), ...(Number.isSafeInteger(args.before) && args.before >= 0 ? { before: args.before } : {}) });
       default:
         return Promise.reject(new Error(`OriCode has no tool called ${name}.`));
     }
@@ -365,6 +370,17 @@ export class Rays {
     this.suggested += 1;
     emit({ event: "thread.suggested", threadId: this.threadId, title, text });
     return { shown: title, started: false };
+  }
+
+  /// The app answers from the events it has stored, the engine keeping none. Nothing is made or
+  /// sent, so an answer that came late lost nothing.
+  async read(name: string, fields: Record<string, unknown>): Promise<unknown> {
+    try {
+      return await askApp(name, { threadId: this.threadId, ...fields });
+    } catch (error) {
+      if (error instanceof Unanswered) throw new Error("OriCode took too long to read that. Nothing was started or changed, so ask again.");
+      throw error;
+    }
   }
 
   async start(args: Record<string, any>): Promise<unknown> {

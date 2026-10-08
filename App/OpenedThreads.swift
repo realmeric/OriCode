@@ -3,7 +3,8 @@ import SwiftUI
 /// What an agent asks the app for through OriCode's own tools (engine/threads.ts): each arrives as
 /// an event with a request id and is answered with `app.reply`. A thread opened this way is a
 /// thread like any other, made and sent to as the composer would. A thread it only suggests is an
-/// event in its transcript, and made by the user's click.
+/// event in its transcript, and made by the user's click. What it asks about the other threads is
+/// read from the store (OtherThreads).
 extension AppModel {
     /// Why the app didn't do what a tool asked, in words the agent reads as the tool's error.
     struct Refused: LocalizedError {
@@ -65,7 +66,7 @@ extension AppModel {
     }
 
     /// An event that asks the app for something and waits on its answer.
-    static let asks: Set<String> = ["thread.open"]
+    static let asks: Set<String> = ["thread.open", "threads.list", "thread.read"]
 
     func answerTool(_ event: EngineEvent, from thread: UUID) {
         guard let requestId = event.body["requestId"]?.string else { return }
@@ -97,15 +98,20 @@ extension AppModel {
             let chat = try open(opening, request, in: place)
             refreshBranch(for: chat)
             return Self.made(chat, on: opening.agent)
+        case "threads.list":
+            return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
+        case "thread.read":
+            return try await readThread(event.body["thread"]?.string ?? "", before: event.body["before"]?.int, for: thread)
         default:
             throw Refused(why: "OriCode doesn't know what \(event.name) asks for.")
         }
     }
 
-    /// What the tool answers: the thread as it was made, for the agent to tell the user.
+    /// What the tool answers: the thread as it was made, for the agent to tell the user, and the
+    /// id read_thread takes to see what it did.
     static func made(_ chat: Chat, on agent: ProviderInfo) -> JSON {
         var made: [String: JSON] = [
-            "thread": .string(chat.title), "agent": .string(agent.id), "mode": .string(chat.permissionMode), "folder": .string(chat.cwd),
+            "thread": .string(chat.title), "id": .string(chat.id.uuidString), "agent": .string(agent.id), "mode": .string(chat.permissionMode), "folder": .string(chat.cwd),
         ]
         if let model = chat.model { made["model"] = .string(model) }
         if let branch = chat.worktreeBranch { made["branch"] = .string(branch) }

@@ -50,7 +50,8 @@ enum JSON: Codable, Sendable, Hashable {
         if case .number(let value) = self { value } else { nil }
     }
 
-    var int: Int? { double.map { Int($0) } }
+    /// Nil for a number no Int holds, which Int($0) would trap on.
+    var int: Int? { double.flatMap { Int(exactly: $0.rounded(.towardZero)) } }
 
     var bool: Bool? {
         if case .bool(let value) = self { value } else { nil }

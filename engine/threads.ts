@@ -4,7 +4,9 @@ import { emit } from "./wire.ts";
 // The tools an agent has for the user's threads, served beside a head's worker tools from the
 // same MCP server (rays.ts). The app keeps the threads, so a call that makes one goes to it as an
 // event carrying a request id and waits for its `app.reply`; a suggestion makes nothing, and is an
-// event alone. Nothing here keeps a thread or polls one.
+// event alone. What a thread may know of the others it reads: the app answers a listing or a
+// transcript from the events it has stored, and no tool here sends a thread anything or stops one.
+// Nothing here keeps a thread or polls one.
 
 /// Threads one turn may open, so a thread can't fan out without end.
 export const mostOpened = 3;
@@ -15,8 +17,8 @@ export const openThread = {
     "Open another thread in OriCode and send it its first message. Call it only when the user asked for another thread in their own words, " +
     '"open another thread", "send this to a new thread", and never because a task looks big enough for one. ' +
     "It is an ordinary thread of the user's, in their list, on your agent and model unless you name others and in a permission mode no looser than yours. " +
-    "It works in this project's folder on its own while you go on, and its result doesn't come back to you. " +
-    `Returns its name, which you tell the user. A thread opened this way can't open another, and one turn opens ${mostOpened} at most.`,
+    "It works in this project's folder on its own while you go on, and its result doesn't come back to you: read_thread shows what it did, when the user asks. " +
+    `Returns its name, which you tell the user, and its id. A thread opened this way can't open another, and one turn opens ${mostOpened} at most.`,
   inputSchema: {
     type: "object",
     properties: {
@@ -49,6 +51,36 @@ export const suggestThread = {
       prompt: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what you saw, in which file and line, and what to do about it." },
     },
     required: ["title", "prompt"],
+  },
+};
+
+export const listThreads = {
+  name: "list_threads",
+  description:
+    "List the user's threads in this project as OriCode has them stored: each one's id, name, agent, whether it is working, waiting on the user or idle, when it was last active, and the files it edited most recently, latest first. " +
+    'To find which thread changed a file, pass `edited`: only the threads whose own edits touched that file come back, from their whole history. An edit is a file the thread\'s agent or one of its workers wrote with an edit tool; what a shell command changed isn\'t known. ' +
+    "It reads and starts nothing, and you can't message, steer or stop another thread. Use it when the user asks about their other threads, or what a thread you opened has done.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      edited: { type: "string", description: "A file's name or path, Drawer.swift or App/Drawer.swift. Only threads that edited it are listed, each with the matching files." },
+    },
+  },
+};
+
+export const readThread = {
+  name: "read_thread",
+  description:
+    "Read another thread's transcript as OriCode stored it: what the user said, what the agent answered, and each tool call as one line. " +
+    "One call returns the latest part, oldest line first, up to about 12,000 characters, with long messages cut. When there is more, the answer carries `before`: pass it back to read the part before that. " +
+    "Reading wakes nothing: the thread isn't told and nothing is sent to it. Read only what the user's question needs.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      thread: { type: "string", description: "The thread's id, from list_threads or from open_thread's answer." },
+      before: { type: "number", description: "The `before` of an earlier answer, for the part of the transcript ahead of it." },
+    },
+    required: ["thread"],
   },
 };
 

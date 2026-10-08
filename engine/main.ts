@@ -117,8 +117,8 @@ const seam: Seam = {
 
 /// The URL of the thread's tools and what it's told of them, on an agent that takes them: a head's
 /// worker tools when the thread has rays, or runs OriCode's workflows, on its own model when it
-/// has no rays; open_thread unless another thread opened this one; and suggest_thread, which every
-/// such thread has and is told when to call. A thread with no rays left keeps the workers it has, and can't start more.
+/// has no rays; open_thread unless another thread opened this one; suggest_thread, which every
+/// such thread has and is told when to call; and list_threads and read_thread, which only read. A thread with no rays left keeps the workers it has, and can't start more.
 async function threadTools(params: SendParams & { rays?: string[]; opened?: boolean }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions">> {
   const takes = agent.capabilities.workers === true;
   const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];

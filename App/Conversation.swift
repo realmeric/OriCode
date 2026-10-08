@@ -877,6 +877,13 @@ final class Conversation {
         try? context.save()
     }
 
+    /// The held deltas into the store for a thread that reads this one (read_thread). Being read
+    /// isn't work, so the thread's date stays as it is.
+    func saveHeld() {
+        showHeld()
+        if context.hasChanges { try? context.save() }
+    }
+
     func stopped() {
         heads.clear()
         handBackQueue()

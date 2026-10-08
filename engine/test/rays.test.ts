@@ -120,7 +120,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.equal(init.protocolVersion, "2025-06-18");
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
-    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "suggest_thread"],
+    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "suggest_thread", "list_threads", "read_thread"],
   );
 
   const from = engine.lines.length;

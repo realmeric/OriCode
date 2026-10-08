@@ -99,7 +99,7 @@ struct OpenedThreadsTests {
         #expect(model.chats.map(\.id) == [chat.id, parent.id])
         #expect(model.selectedChatID == parent.id)
         // The tool's answer names it.
-        #expect(AppModel.made(chat, on: .claude) == ["thread": "Rename sum.txt", "agent": "claude", "mode": "acceptEdits", "folder": "/tmp/alpha", "model": "opus"])
+        #expect(AppModel.made(chat, on: .claude) == ["thread": "Rename sum.txt", "id": .string(chat.id.uuidString), "agent": "claude", "mode": "acceptEdits", "folder": "/tmp/alpha", "model": "opus"])
     }
 
     @Test func itsSendsTellTheEngineAnotherThreadOpenedIt() throws {
