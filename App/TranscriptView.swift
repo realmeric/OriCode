@@ -658,6 +658,8 @@ struct ItemView: View {
             NearLimitLine(window: window, used: used, resetsAt: resetsAt, said: said)
         case .shell(let id, let run):
             ShellBlockView(id: id, run: run)
+        case .opened(_, let thread, let title, let finished):
+            OpenedLine(thread: thread, title: title, finished: finished)
         }
     }
 }

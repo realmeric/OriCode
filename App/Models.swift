@@ -73,6 +73,9 @@ final class Chat {
     /// It changed agent, and its next send starts a session of the new agent's own that opens with
     /// the thread so far. Cleared when that session's turn starts.
     var handover: Bool = false
+    /// The thread that opened it, through open_thread, when one did: its first turn's end is told
+    /// to that thread, and it never opens a thread itself.
+    var openedBy: UUID?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

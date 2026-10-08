@@ -111,7 +111,8 @@ extension AppModel {
     func askToDelete(_ chat: Chat?) {
         guard let chat else { return }
         deletingLoss = nil
-        guard let branch = chat.worktreeBranch, FileManager.default.fileExists(atPath: chat.cwd) else {
+        // A worktree another thread works in too stays, so there is nothing to ask about it.
+        guard let branch = chat.worktreeBranch, ownFolder(of: chat) != nil, FileManager.default.fileExists(atPath: chat.cwd) else {
             deletingChat = chat
             return
         }
@@ -123,7 +124,7 @@ extension AppModel {
     }
 
     func delete(_ chat: Chat, removingWorktree: Bool) {
-        if removingWorktree, let branch = chat.worktreeBranch, let root = chat.project?.path {
+        if removingWorktree, let branch = chat.worktreeBranch, ownFolder(of: chat) != nil, let root = chat.project?.path {
             let path = chat.cwd
             Task {
                 do {

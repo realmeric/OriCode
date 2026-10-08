@@ -15,6 +15,7 @@ import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
 import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
+import { appReplied, openedByAnother, opening } from "./threads.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
 import { answer, brevity, scratch, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
@@ -114,16 +115,20 @@ const seam: Seam = {
   forget: (threadId) => sessions.delete(threadId),
 };
 
-/// The URL of a head's tools and what it's told of its rays, when the thread has rays and its
-/// agent takes the tools, or runs OriCode's workflows, on its own model when it has no rays.
-/// A thread with none left keeps the workers it has, and can't start more.
-async function headTools(params: SendParams & { rays?: string[] }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions">> {
-  const picked = agent.capabilities.workers ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
+/// The URL of the thread's tools and what it's told of them, on an agent that takes them: a head's
+/// worker tools when the thread has rays, or runs OriCode's workflows, on its own model when it
+/// has no rays, and open_thread unless another thread opened this one. A thread with no rays left
+/// keeps the workers it has, and can't start more.
+async function threadTools(params: SendParams & { rays?: string[]; opened?: boolean }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions">> {
+  const takes = agent.capabilities.workers === true;
+  const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
   const rays = fans && !picked.length ? [{ agent: agent.id, model: fans.id }] : picked;
-  const instructions = fans ? fanning(rays) : brief(rays);
-  const head = rays.length ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
-  head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort);
-  return rays.length && head ? { tools: head.url, instructions } : {};
+  const opens = takes && !params.opened;
+  const instructions = [rays.length ? (fans ? fanning(rays) : brief(rays)) : undefined, opens ? opening : takes ? openedByAnother : undefined].filter(Boolean).join("\n\n") || undefined;
+  const served = rays.length > 0 || opens;
+  const head = served ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
+  head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort, opens);
+  return served && head ? { tools: head.url, instructions } : { instructions };
 }
 
 /// An agent's models as the app gets them, from its CLI the first time and kept after, with
@@ -295,15 +300,16 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// session a head. With workflows on, Claude Code runs its own, as Ultracode at xhigh and asked
   /// for with each message below it; Codex its own ultra at Max on a model that has it; and any
   /// other head OriCode's, told to fan each task out to workers on its rays, with the message too.
-  /// Every one of them at the thread's own level.
-  async send({ rays, handover, concise, noFolder, ...params }: SendParams & { provider?: string; rays?: string[]; handover?: string; concise?: boolean; noFolder?: boolean }) {
+  /// Every one of them at the thread's own level. `opened` says another thread opened this one,
+  /// which leaves it without open_thread.
+  async send({ rays, handover, concise, noFolder, opened, ...params }: SendParams & { provider?: string; rays?: string[]; handover?: string; concise?: boolean; noFolder?: boolean; opened?: boolean }) {
     const agent = provider(params.provider);
     const path = await cli(agent);
     leave(params.threadId, agent);
     const model = params.workflows ? await workflowsModel(agent, path, params.model) : undefined;
     const own = agent.id === claude.id ? params.workflows === true : model !== undefined && !model.ultraRays && params.effort === "max";
     const fans = own ? undefined : model;
-    const head = await headTools({ ...params, rays }, agent, fans);
+    const head = await threadTools({ ...params, rays, opened }, agent, fans);
     const told = agent.id === claude.id && own && params.effort !== "xhigh" ? claudeLead : fans ? lead : undefined;
     // A message into a running turn joins one that was told already.
     const running = sessions.get(params.threadId)?.isRunning;
@@ -345,6 +351,12 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async answer(params: Answer) {
     answer(params);
+    return { ok: true };
+  },
+
+  /// The app's answer to something a tool asked it for, a thread opened say (threads.ts).
+  async "app.reply"(params: { requestId: string; result?: unknown; error?: string }) {
+    appReplied(params);
     return { ok: true };
   },
 

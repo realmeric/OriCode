@@ -298,6 +298,10 @@ extension AppModel {
         let deleted = chat.id
         let wasSelected = deleted == selectedChatID
         endShells(of: chat)
+        // A thread it opened that still works in its worktree keeps it, as its own from here.
+        if let branch = chat.worktreeBranch, let heir = projects.flatMap(\.chats).first(where: { $0.id != deleted && $0.cwd == chat.cwd && $0.worktreeBranch == nil }) {
+            heir.worktreeBranch = branch
+        }
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         // Its events can't find it through the conversation any more.
         conversations[deleted] = nil

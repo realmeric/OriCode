@@ -12,6 +12,7 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
 import { brevity, drawing, scratch, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
+import { opening as mayOpen } from "../threads.ts";
 import { lead } from "../ultracode.ts";
 import { engineWith, sandbox } from "./engine.ts";
 
@@ -116,7 +117,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.equal(init.protocolVersion, "2025-06-18");
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
-    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker"],
+    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread"],
   );
 
   const from = engine.lines.length;
@@ -293,7 +294,7 @@ test("concise replies are asked for in the engine's words, ahead of a head's ray
   await engine.request("send", send);
   await engine.until((line, ) => line.event === "turn.done" && line.threadId === "k222", engine.lines.length);
   const opened = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "thread/start" || message.method === "thread/resume").map((message) => message.params.developerInstructions);
-  assert.deepEqual(opened, [told(brevity), drawing]);
+  assert.deepEqual(opened, [told(`${brevity}\n\n${mayOpen}`), told(mayOpen)]);
   await engine.end();
 });
 
@@ -311,7 +312,7 @@ test("a thread without a folder is told its folder is a scratch one, ahead of co
   await engine.request("send", { ...send, noFolder: true });
   await engine.until((line) => line.event === "turn.done" && line.threadId === "nofolder", engine.lines.length);
   const opened = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "thread/start" || message.method === "thread/resume").map((message) => message.params.developerInstructions);
-  assert.deepEqual(opened, [told(`${scratch}\n\n${brevity}`), told(scratch)]);
+  assert.deepEqual(opened, [told(`${scratch}\n\n${brevity}\n\n${mayOpen}`), told(`${scratch}\n\n${mayOpen}`)]);
   await engine.end();
 });
 
@@ -337,11 +338,11 @@ test("Claude Code in a thread without a folder is told so in what's appended to 
   };
   void engine.request("send", { threadId: "nofolder-claude", cwd, text: "hello", permissionMode: "default", noFolder: true });
   const first = await opening(0);
-  assert.equal(first[0].request.appendSystemPrompt, told(scratch));
+  assert.equal(first[0].request.appendSystemPrompt, told(`${scratch}\n\n${mayOpen}`));
   // A thread in a folder of the user's hears nothing of it.
   void engine.request("send", { threadId: "folder-claude", cwd, text: "hello", permissionMode: "default" });
   const both = await opening(1);
-  assert.equal(both[1].request.appendSystemPrompt, drawing);
+  assert.equal(both[1].request.appendSystemPrompt, told(mayOpen));
 });
 
 test("a Claude head gets the tools as an HTTP server loaded with its prompt, allows its own calls to them, and starts again without them", async () => {

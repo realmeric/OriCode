@@ -8,6 +8,7 @@ import type { Model } from "./models.ts";
 import type { Provider, SendParams, Session } from "./provider.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
+import { askApp, mostOpened, openThread, Unanswered } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -18,7 +19,8 @@ import { emit, event, log, tap, untap } from "./wire.ts";
 // worker's events come back through wire.ts's taps: its asks go to the head's thread as the
 // thread's own, its cost is added to the thread's in a `worker` event, and it's a head in the
 // thread's `heads`, so its ray lights. Nothing here polls: a worker runs only once started, and
-// its session is let go when idle like a thread's.
+// its session is let go when idle like a thread's. A thread with no rays is served here too, for
+// the one tool every thread on such an agent has, open_thread (threads.ts).
 
 /// A model a head may send a worker out on, picked for the thread in the model menu.
 export type Ray = { agent: string; model: string };
@@ -153,7 +155,7 @@ const heads = new Map<string, Rays>();
 const byPath = new Map<string, Rays>();
 let listening: Promise<number> | undefined;
 
-/// The thread's head, made with its tools' server the first time the thread allows workers.
+/// The thread's tools, made with their server the first time the thread is given any.
 export async function raysFor(threadId: string, seam: Seam, watched: boolean): Promise<Rays> {
   const port = await serve();
   let found = heads.get(threadId);
@@ -221,6 +223,10 @@ export class Rays {
   private instructions = "";
   /// The head's own level, which a worker takes when it's given none and its model has it.
   private level: string | undefined;
+  /// Whether the thread may open others, which one another thread opened may not, and how many
+  /// its turn has opened.
+  private opens = false;
+  private opened = 0;
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -230,6 +236,7 @@ export class Rays {
     this.url = `http://127.0.0.1:${port}${this.path}`;
     // The thread's own `heads` go out with its workers after them.
     tap(threadId, (name, fields) => {
+      if (name === "turn.started") this.opened = 0;
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
       this.tell();
@@ -239,13 +246,14 @@ export class Rays {
 
   /// What the thread's latest send says: where it works, in which mode, at what level, and its
   /// rays, none when it has none left, with what the head is told of them: `brief`, or what
-  /// workflows on tell it.
-  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string): void {
+  /// workflows on tell it; and whether it may open threads.
+  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string, opens = false): void {
     this.cwd = cwd;
     this.mode = mode;
     this.rays = rays;
     this.instructions = instructions;
     this.level = level;
+    this.opens = opens;
   }
 
   has(workerId: string): boolean {
@@ -259,7 +267,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools } };
+        return { result: { tools: [...(this.rays.length ? tools : []), ...(this.opens ? [openThread] : [])] } };
       case "tools/call":
         try {
           const out = await this.call(params.name, params.arguments ?? {});
@@ -288,6 +296,8 @@ export class Rays {
         return this.stop(args.worker).then(() => this.status(this.worker(args.worker)));
       case "merge_worker":
         return this.merge(this.worker(args.worker));
+      case "open_thread":
+        return this.open(args);
       default:
         return Promise.reject(new Error(`OriCode has no tool called ${name}.`));
     }
@@ -316,6 +326,29 @@ export class Rays {
       }),
     );
     return { agents: listed };
+  }
+
+  /// The app makes the thread and sends it its first message, as the composer would, and says
+  /// what it made: the tool's answer. The thread it's asked from doesn't wait on the turn.
+  async open(args: Record<string, any>): Promise<unknown> {
+    if (!this.opens) throw new Error("Another thread opened this one, so it can't open threads of its own.");
+    const text = String(args.message ?? "").trim();
+    if (!text) throw new Error("A thread needs its first message.");
+    if (this.opened >= mostOpened) throw new Error(`This turn has opened ${mostOpened} threads, which is as many as one turn may.`);
+    this.opened += 1;
+    try {
+      return await askApp("thread.open", {
+        threadId: this.threadId,
+        title: String(args.title ?? "").trim(),
+        text,
+        ...pick(args, ["agent", "model", "folder"]),
+        worktree: args.worktree === true,
+      });
+    } catch (error) {
+      // One the app refused made no thread. One it was slow over may yet, and stays counted.
+      if (!(error instanceof Unanswered)) this.opened -= 1;
+      throw error;
+    }
   }
 
   async start(args: Record<string, any>): Promise<unknown> {

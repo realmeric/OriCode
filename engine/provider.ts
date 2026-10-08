@@ -31,11 +31,12 @@ export type SendParams = {
   /// The app's id for the message. The CLI reports on a message by it: when a message sent
   /// during a turn is taken up, or cancelled before it was.
   id?: string;
-  /// The URL of OriCode's own tools for a head, its MCP server, when the thread has rays.
+  /// The URL of OriCode's own tools for the thread, its MCP server: a head's worker tools when
+  /// it has rays, and open_thread unless another thread opened it.
   tools?: string;
-  /// What the head is told of its rays: Claude Code takes it appended to its system prompt and
-  /// Codex as developer instructions, and the ACP agents hear it only in the tools' MCP
-  /// instructions, which say it too. A session opens again when it changes.
+  /// What the thread is told of those tools, a head of its rays: Claude Code takes it appended to
+  /// its system prompt and Codex as developer instructions, and the ACP agents hear it only in
+  /// the tools' MCP instructions, which say it too. A session opens again when it changes.
   instructions?: string;
 };
 

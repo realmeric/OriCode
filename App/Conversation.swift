@@ -193,11 +193,15 @@ enum Item: Identifiable, Hashable {
     case nearLimit(id: UUID, window: String, used: Double, resetsAt: Date, said: Date)
     /// A command run from the composer's shell prompt.
     case shell(id: UUID, run: ShellRun)
+    /// A thread this one opened ended its first turn: which, its name then, and whether the turn
+    /// ended by itself.
+    case opened(id: UUID, thread: UUID, title: String, finished: Bool)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
-             .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _):
+             .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _),
+             .opened(let id, _, _, _):
             id
         }
     }
@@ -313,6 +317,10 @@ final class Conversation {
     private var nextFollows = false
     /// Whether an error came in since the turn started, which makes it one that failed.
     private var failed = false
+    /// Whether the latest turn ended by itself, neither stopped nor failed.
+    private(set) var endedByItself = true
+    /// Lines for threads this one opened whose first turn ended while a turn ran here.
+    private var openedHeld: [JSON] = []
     let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -512,6 +520,7 @@ final class Conversation {
         if nextFollows, waiting.isEmpty {
             nextFollows = false
             running = false
+            writeOpenedHeld()
         }
     }
 
@@ -577,10 +586,46 @@ final class Conversation {
         running = false
         handBackQueue()
         record("note", ["event": "note", "text": .string(message)])
+        writeOpenedHeld()
     }
 
     func note(_ message: String) {
         record("note", ["event": "note", "text": .string(message)])
+    }
+
+    /// How many turns have ended, which for a thread another opened says when its first has.
+    var turnsEnded: Int {
+        items.count { if case .footer = $0 { true } else { false } }
+    }
+
+    /// A thread this one opened ended its first turn: one stored line. A turn running here keeps
+    /// its reply and its run of calls whole, so the line waits for that turn's end.
+    func threadDone(_ thread: Chat, finished: Bool) {
+        let line = Self.threadDone(thread, finished: finished)
+        guard !running else { return openedHeld.append(line) }
+        record("thread.done", line)
+    }
+
+    private static func threadDone(_ thread: Chat, finished: Bool) -> JSON {
+        ["event": "thread.done", "thread": .string(thread.id.uuidString), "title": .string(thread.title), "finished": .bool(finished)]
+    }
+
+    /// The same line for a thread whose transcript isn't in memory, written after its last event
+    /// without reading the rest.
+    static func threadDone(_ thread: Chat, finished: Bool, unread chat: Chat, in context: ModelContext) {
+        let id = chat.id
+        var last = FetchDescriptor<Event>(predicate: #Predicate { $0.chat?.id == id }, sortBy: [SortDescriptor(\.seq, order: .reverse)])
+        last.fetchLimit = 1
+        let latest = try? context.fetch(last).first
+        let event = Event(turn: latest?.turn ?? 0, seq: (latest?.seq ?? -1) + 1, kind: "thread.done", payload: (try? threadDone(thread, finished: finished).data()) ?? Data())
+        context.insert(event)
+        event.chat = chat
+        chat.updatedAt = .now
+    }
+
+    private func writeOpenedHeld() {
+        for line in openedHeld { record("thread.done", line) }
+        openedHeld = []
     }
 
     func receive(_ event: EngineEvent) {
@@ -664,7 +709,9 @@ final class Conversation {
                 chat.contextWindow = event.body["context"]?["window"]?.int ?? chat.contextWindow
             }
             record(event.name, event.body)
-            if !QueuedMessage.endedByItself(event.body["stopReason"]?.string, failed: failed) { handBackQueue() }
+            writeOpenedHeld()
+            endedByItself = QueuedMessage.endedByItself(event.body["stopReason"]?.string, failed: failed)
+            if !endedByItself { handBackQueue() }
             flush()
         default:
             break
@@ -745,6 +792,7 @@ final class Conversation {
     /// a turn running or a subagent or background command out, since the CLI that ran them goes too.
     func quitting() {
         guard working else { return }
+        writeOpenedHeld()
         chat.quitMidTurn = true
         unsaved = true
         flush()
@@ -765,6 +813,7 @@ final class Conversation {
         settleAfterQuit(except: nil)
         record("turn.done", ["event": "turn.done", "stopReason": "interrupted"])
         running = false
+        writeOpenedHeld()
         handBackQueue()
     }
 
@@ -825,6 +874,7 @@ final class Conversation {
         nextFollows = false
         retrying = nil
         finishOpenTools()
+        writeOpenedHeld()
         flush()
     }
 
@@ -949,6 +999,9 @@ final class Conversation {
                                     resetsAt: date("resetsAt"), said: date("said")))
         case "shell":
             items.append(.shell(id: id, run: ShellRun(body)))
+        case "thread.done":
+            guard let thread = body["thread"]?.string.flatMap(UUID.init(uuidString:)) else { break }
+            items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true))
         case "worker":
             workerCost += body["costUSD"]?.double ?? 0
             if let edit = RayEdit(body, turn: items.count(where: \.startsTurn)) { rayEdits.append(edit) }

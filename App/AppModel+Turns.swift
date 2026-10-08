@@ -201,6 +201,8 @@ extension AppModel {
         // The engine tells the session its folder is nobody's project.
         if chat.project?.isNoFolder == true { params["noFolder"] = true }
         if workflows(of: chat) { params["workflows"] = true }
+        // A thread another opened is left without open_thread.
+        if chat.openedBy != nil { params["opened"] = true }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
@@ -300,6 +302,11 @@ extension AppModel {
             letGo(id)
             return
         }
+        // A tool of OriCode's own asks the app for something, a thread opened say, and waits.
+        if Self.asks.contains(event.name) {
+            answerTool(event, from: id)
+            return
+        }
         guard let chat = chat(withID: id) else { return }
         if event.name.hasPrefix("message.") {
             // A message taken up brightens in place; one handed back fades out.
@@ -321,6 +328,7 @@ extension AppModel {
         if event.name == "limited" { scheduleResumes() }
         if event.name == "limits" { takeLimits(event.body, for: chat.providerID) }
         if event.name == "turn.done" {
+            tellOpener(of: chat)
             pushedMaybe(in: chat.cwd)
             refreshBranch(for: chat)
         }
