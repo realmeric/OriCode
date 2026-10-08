@@ -1,12 +1,13 @@
-// A thread that opens another through the real engine: a stand-in Codex in the thread's place, the
-// test calling open_thread over MCP as its agent would and answering `thread.open` as the app would.
+// A thread that opens another, or suggests one, through the real engine: a stand-in Codex in the
+// thread's place, the test calling the tools over MCP as its agent would and answering
+// `thread.open` as the app would.
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { told } from "../provider.ts";
-import { mostOpened, openedByAnother, opening } from "../threads.ts";
+import { mostOpened, mostSuggested, openedByAnother, opening, suggesting } from "../threads.ts";
 import { engineWith, sandbox } from "./engine.ts";
 
 async function mcp(url: string, method: string, params: object = {}): Promise<any> {
@@ -42,15 +43,15 @@ async function codex(t: { after: (fn: () => unknown) => void }) {
   return { engine, cwd, turn, starts };
 }
 
-test("a thread with no rays has open_thread alone, is told when to use it, and the app's answer is the tool's", async (t) => {
+test("a thread with no rays has open_thread and suggest_thread alone, is told when to open one, and the app's answer is the tool's", async (t) => {
   const { engine, turn, starts } = await codex(t);
   await turn("parent");
   const [started] = await starts();
   const url: string = started.config["mcp_servers.oricode"].url;
-  assert.equal(started.developerInstructions, told(opening));
-  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, opening);
+  assert.equal(started.developerInstructions, told(`${opening}\n\n${suggesting}`));
+  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, `${opening}\n\n${suggesting}`);
   const tools = (await mcp(url, "tools/list")).tools;
-  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread"]);
+  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "suggest_thread"]);
   assert.match(tools[0].description, /only when the user asked for another thread in their own words/);
   assert.match((await call(url, "start_worker", { agent: "codex", task: "x" })).error, /isn't one of this thread's rays/);
 
@@ -100,19 +101,49 @@ test("one turn opens three threads at most, and the next turn three more", async
   await engine.end();
 });
 
+test("a suggestion goes to the app as an event and starts nothing, two a turn at most", async (t) => {
+  const { engine, turn, starts } = await codex(t);
+  await turn("parent");
+  const url: string = (await starts())[0].config["mcp_servers.oricode"].url;
+  const described = (await mcp(url, "tools/list")).tools.find((tool: { name: string }) => tool.name === "suggest_thread");
+  assert.match(described.description, /Nothing starts\./);
+  assert.match(described.description, /Most replies suggest nothing\./);
+  assert.deepEqual(described.inputSchema.required, ["title", "prompt"]);
+
+  const from = engine.lines.length;
+  assert.deepEqual(await call(url, "suggest_thread", { title: " Fix the README's install line ", prompt: " README.md says npm install; the repo uses pnpm. " }), { shown: "Fix the README's install line", started: false });
+  const suggested = await engine.until((line) => line.event === "thread.suggested", from);
+  assert.deepEqual(suggested, { event: "thread.suggested", threadId: "parent", title: "Fix the README's install line", text: "README.md says npm install; the repo uses pnpm." });
+  // The app isn't asked for anything, so there is nothing for it to answer.
+  assert.equal(engine.lines.slice(from).some((line) => line.event === "thread.open" || line.requestId), false);
+
+  // One with no title or no prompt has nothing to show, and isn't one of the turn's two.
+  assert.deepEqual(await call(url, "suggest_thread", { title: " ", prompt: "x" }), { error: "A suggestion needs a title for its button." });
+  assert.deepEqual(await call(url, "suggest_thread", { title: "x" }), { error: "A suggestion needs the prompt its thread would start on." });
+  assert.deepEqual(await call(url, "suggest_thread", { title: "Second", prompt: "y" }), { shown: "Second", started: false });
+  assert.deepEqual(await call(url, "suggest_thread", { title: "Third", prompt: "z" }), { error: "This turn has suggested 2 threads, which is as many as one turn may." });
+  assert.equal(engine.lines.slice(from).filter((line) => line.event === "thread.suggested").length, mostSuggested);
+  // The next turn has two of its own.
+  await turn("parent");
+  assert.deepEqual(await call(url, "suggest_thread", { title: "Third", prompt: "z" }), { shown: "Third", started: false });
+  await engine.end();
+});
+
 test("a thread another thread opened has no open_thread, with rays or without, and is told why", async (t) => {
   const { engine, turn, starts } = await codex(t);
   await turn("child", { opened: true });
   await turn("child-head", { opened: true, rays: ["codex/gpt-small"] });
   const [child, head] = await starts();
-  // Without rays it has no tools of OriCode's at all.
-  assert.equal(child.config, undefined);
-  assert.equal(child.developerInstructions, told(openedByAnother));
+  // Without rays it has suggest_thread alone, which opens nothing.
+  assert.deepEqual((await mcp(child.config["mcp_servers.oricode"].url, "tools/list")).tools.map((tool: { name: string }) => tool.name), ["suggest_thread"]);
+  assert.equal(child.developerInstructions, told(`${openedByAnother}\n\n${suggesting}`));
   const url: string = head.config["mcp_servers.oricode"].url;
-  assert.match(head.developerInstructions, /^[^]*You are this thread's head\.[^]*\n\nAnother thread opened this one for the user, so it can't open threads of its own\.$/);
+  assert.match(head.developerInstructions, /^[^]*You are this thread's head\./);
+  assert.equal(head.developerInstructions.endsWith(`\n\n${openedByAnother}\n\n${suggesting}`), true);
   const listed = (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name);
   assert.equal(listed.includes("start_worker"), true);
   assert.equal(listed.includes("open_thread"), false);
+  assert.equal(listed.includes("suggest_thread"), true);
   const from = engine.lines.length;
   assert.deepEqual(await call(url, "open_thread", { title: "x", message: "y" }), { error: "Another thread opened this one, so it can't open threads of its own." });
   assert.equal(engine.lines.slice(from).some((line) => line.event === "thread.open"), false);

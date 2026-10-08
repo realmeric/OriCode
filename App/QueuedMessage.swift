@@ -9,6 +9,9 @@ struct QueuedMessage: Identifiable, Hashable {
     var images: [ImageAttachment] = []
     /// When it was written, which puts it among others handed back.
     var written = Date.now
+    /// For a suggested thread's prompt: the one an earlier click put in the field, which this one
+    /// takes the place of when it's still there as it was put.
+    var replaces: String?
 
     /// What the composer's line says: the first line, or the images when there's no text.
     var line: String {
@@ -23,6 +26,12 @@ struct QueuedMessage: Identifiable, Hashable {
     static func endedByItself(_ stopReason: String?, failed: Bool) -> Bool {
         guard !failed, let stopReason else { return !failed }
         return stopReason != "interrupted" && stopReason != "engine_stopped" && !stopReason.hasPrefix("error")
+    }
+
+    /// The field's text without the suggested prompt at its head, when the user hasn't changed it.
+    static func text(_ text: String, without suggested: String) -> String {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return typed.hasPrefix(suggested) ? String(typed.dropFirst(suggested.count)) : text
     }
 
     /// Texts put together in the field, parted by a blank line, leaving out the empty ones.

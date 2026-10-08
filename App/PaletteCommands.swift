@@ -150,7 +150,7 @@ extension AppModel {
                     self?.send("/compact")
                 })
             }
-            if case .note = conversation.items.last, let text = lastUserText {
+            if case .note = conversation.items.last(where: { !$0.followsTurn }), let text = lastUserText {
                 now.append(command("thread.again", "Send the last message again", icon: "arrow.clockwise") { [weak self] in self?.send(text) })
             }
         }

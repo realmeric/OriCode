@@ -2,7 +2,8 @@ import SwiftUI
 
 /// What an agent asks the app for through OriCode's own tools (engine/threads.ts): each arrives as
 /// an event with a request id and is answered with `app.reply`. A thread opened this way is a
-/// thread like any other, made and sent to as the composer would.
+/// thread like any other, made and sent to as the composer would. A thread it only suggests is an
+/// event in its transcript, and made by the user's click.
 extension AppModel {
     /// Why the app didn't do what a tool asked, in words the agent reads as the tool's error.
     struct Refused: LocalizedError {
@@ -220,6 +221,44 @@ extension AppModel {
     func openOpened(_ id: UUID) {
         guard chat(withID: id)?.project != nil else { return say("That thread was deleted") }
         open(chatID: id)
+    }
+
+    /// A click on a suggestion: a new thread in the suggesting thread's project, made as ⌘N makes
+    /// one and named as the button was, with the prompt in the composer for the user to send,
+    /// change or leave. It comes to the field the way a message handed back does, ahead of
+    /// anything already typed there, and in place of the prompt an earlier click left there
+    /// untouched: the project keeps one draft, so a second suggestion takes over the first's.
+    @discardableResult
+    func openSuggested(title: String, prompt: String, from chat: Chat) -> Chat? {
+        guard let project = chat.project else { return nil }
+        if selectedProjectID != project.id { selectedProjectID = project.id }
+        guard let thread = newChat() else { return nil }
+        thread.title = Chat.title(from: title)
+        thread.titleIsCustom = true
+        save()
+        let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        conversation(for: thread).handBackQueue(with: [QueuedMessage(text: prompt, replaces: suggestedPrompt)])
+        suggestedPrompt = prompt
+        return thread
+    }
+}
+
+/// A thread the agent suggested, under the reply it came with: an action button with its title.
+/// Nothing has started; a click opens a new thread with the prompt waiting in the composer.
+struct SuggestedThread: View {
+    @Environment(AppModel.self) private var model
+    let title: String
+    let prompt: String
+
+    var body: some View {
+        Button {
+            if let chat = model.chat { model.openSuggested(title: title, prompt: prompt, from: chat) }
+        } label: {
+            Label(title, systemImage: "plus")
+        }
+        .buttonStyle(.action(small: true))
+        .help(prompt)
+        .accessibilityHint("Opens a new thread with this prompt in the composer")
     }
 }
 

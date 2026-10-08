@@ -196,12 +196,15 @@ enum Item: Identifiable, Hashable {
     /// A thread this one opened ended its first turn: which, its name then, and whether the turn
     /// ended by itself.
     case opened(id: UUID, thread: UUID, title: String, finished: Bool)
+    /// A thread the agent suggested for something outside the task: the button's words, and the
+    /// message a thread made from it would start on.
+    case suggested(id: UUID, title: String, prompt: String)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _),
-             .opened(let id, _, _, _):
+             .opened(let id, _, _, _), .suggested(let id, _, _):
             id
         }
     }
@@ -319,8 +322,9 @@ final class Conversation {
     private var failed = false
     /// Whether the latest turn ended by itself, neither stopped nor failed.
     private(set) var endedByItself = true
-    /// Lines for threads this one opened whose first turn ended while a turn ran here.
-    private var openedHeld: [JSON] = []
+    /// What goes under a turn that's still running here, for its end: lines for threads this one
+    /// opened whose first turn ended meanwhile, and the threads the turn suggested.
+    @ObservationIgnored private var underTurn: [(kind: String, line: JSON)] = []
     let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -408,7 +412,7 @@ final class Conversation {
 
     /// The limit that stopped the thread's latest turn, when one did.
     var turnLimit: (resetsAt: Date, window: String?)? {
-        for item in items.reversed().drop(while: { if case .footer = $0 { true } else { false } }) {
+        for item in items.reversed().drop(while: { if case .footer = $0 { true } else { $0.followsTurn } }) {
             if case .limited(_, let resetsAt, let window) = item { return (resetsAt, window) }
             if item.startsTurn { return nil }
             if case .footer = item { return nil }
@@ -520,7 +524,7 @@ final class Conversation {
         if nextFollows, waiting.isEmpty {
             nextFollows = false
             running = false
-            writeOpenedHeld()
+            writeUnderTurn()
         }
     }
 
@@ -586,7 +590,7 @@ final class Conversation {
         running = false
         handBackQueue()
         record("note", ["event": "note", "text": .string(message)])
-        writeOpenedHeld()
+        writeUnderTurn()
     }
 
     func note(_ message: String) {
@@ -602,7 +606,7 @@ final class Conversation {
     /// its reply and its run of calls whole, so the line waits for that turn's end.
     func threadDone(_ thread: Chat, finished: Bool) {
         let line = Self.threadDone(thread, finished: finished)
-        guard !running else { return openedHeld.append(line) }
+        guard !running else { return underTurn.append(("thread.done", line)) }
         record("thread.done", line)
     }
 
@@ -623,9 +627,9 @@ final class Conversation {
         chat.updatedAt = .now
     }
 
-    private func writeOpenedHeld() {
-        for line in openedHeld { record("thread.done", line) }
-        openedHeld = []
+    private func writeUnderTurn() {
+        for (kind, line) in underTurn { record(kind, line) }
+        underTurn = []
     }
 
     func receive(_ event: EngineEvent) {
@@ -689,6 +693,13 @@ final class Conversation {
         case "tool.use", "tool.result", "ask", "ask.cancelled", "error", "note":
             if event.name == "error" { failed = true }
             record(event.name, event.body)
+        case "thread.suggested":
+            // Under the reply it came with, which is still being written.
+            guard running else {
+                record(event.name, event.body)
+                break
+            }
+            underTurn.append((event.name, event.body))
         case "workflow":
             workflowChanged(event.body)
             heads.workflow(event.body)
@@ -709,7 +720,7 @@ final class Conversation {
                 chat.contextWindow = event.body["context"]?["window"]?.int ?? chat.contextWindow
             }
             record(event.name, event.body)
-            writeOpenedHeld()
+            writeUnderTurn()
             endedByItself = QueuedMessage.endedByItself(event.body["stopReason"]?.string, failed: failed)
             if !endedByItself { handBackQueue() }
             flush()
@@ -792,7 +803,7 @@ final class Conversation {
     /// a turn running or a subagent or background command out, since the CLI that ran them goes too.
     func quitting() {
         guard working else { return }
-        writeOpenedHeld()
+        writeUnderTurn()
         chat.quitMidTurn = true
         unsaved = true
         flush()
@@ -813,7 +824,7 @@ final class Conversation {
         settleAfterQuit(except: nil)
         record("turn.done", ["event": "turn.done", "stopReason": "interrupted"])
         running = false
-        writeOpenedHeld()
+        writeUnderTurn()
         handBackQueue()
     }
 
@@ -874,7 +885,7 @@ final class Conversation {
         nextFollows = false
         retrying = nil
         finishOpenTools()
-        writeOpenedHeld()
+        writeUnderTurn()
         flush()
     }
 
@@ -1002,6 +1013,9 @@ final class Conversation {
         case "thread.done":
             guard let thread = body["thread"]?.string.flatMap(UUID.init(uuidString:)) else { break }
             items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true))
+        case "thread.suggested":
+            guard let prompt = body["text"]?.string?.nonEmpty else { break }
+            items.append(.suggested(id: id, title: body["title"]?.string?.nonEmpty ?? Chat.title(from: prompt), prompt: prompt))
         case "worker":
             workerCost += body["costUSD"]?.double ?? 0
             if let edit = RayEdit(body, turn: items.count(where: \.startsTurn)) { rayEdits.append(edit) }
@@ -1044,5 +1058,14 @@ extension Item {
     /// A message sent between turns, which starts one. One Claude took up mid-turn doesn't.
     var startsTurn: Bool {
         if case .user(_, _, _, let midTurn) = self { !midTurn } else { false }
+    }
+
+    /// A line written under a turn once it's over, after its footer: a thread it opened ending its
+    /// first turn, or one it suggested. What reads how a turn ended looks past these.
+    var followsTurn: Bool {
+        switch self {
+        case .opened, .suggested: true
+        default: false
+        }
     }
 }

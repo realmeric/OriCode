@@ -14,7 +14,7 @@ import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { defaultsKey, writeCache } from "../cache.ts";
 import { fallback, helloList, type Model } from "../models.ts";
 import { drawing } from "../provider.ts";
-import { opening } from "../threads.ts";
+import { opening, suggesting } from "../threads.ts";
 import { version } from "../version.ts";
 
 const cli = "9.9.9 (Claude Code)";
@@ -688,7 +688,7 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
   assert.equal(start.effort, "ultra");
   // Every thread on an agent that takes MCP has OriCode's tools, for open_thread, and hears of it.
   const { config, ...opened } = sent.find((message) => message.method === "thread/start").params;
-  assert.deepEqual(opened, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: `${drawing}\n\n${opening}` });
+  assert.deepEqual(opened, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: `${drawing}\n\n${opening}\n\n${suggesting}` });
   assert.match(config["mcp_servers.oricode"].url, /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f-]{36}$/);
   const decisions = sent.filter((message) => message.method === undefined && message.result?.decision).map((message) => message.result.decision);
   assert.deepEqual(decisions, [{ acceptWithExecpolicyAmendment: { execpolicy_amendment: ["make", "test"] } }, "decline"]);

@@ -244,6 +244,9 @@ final class AppModel {
     /// Whether the engine has been told a turn is running, so it keeps App Nap off.
     var holdingForTurns = false
     var draftAttachments: [ImageAttachment] = []
+    /// The prompt the latest click on a suggested thread handed the composer, which the next
+    /// click's takes the place of.
+    @ObservationIgnored var suggestedPrompt: String?
     /// Each agent's plan usage by its id, and when the engine last read it.
     var usages: [String: PlanUsage] = [:]
     var usagesAt: [String: Date] = [:]

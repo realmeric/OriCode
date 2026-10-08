@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { emit } from "./wire.ts";
 
 // The tools an agent has for the user's threads, served beside a head's worker tools from the
-// same MCP server (rays.ts). The app keeps the threads, so each call goes to it as an event
-// carrying a request id and waits for its `app.reply`. Nothing here keeps a thread or polls one.
+// same MCP server (rays.ts). The app keeps the threads, so a call that makes one goes to it as an
+// event carrying a request id and waits for its `app.reply`; a suggestion makes nothing, and is an
+// event alone. Nothing here keeps a thread or polls one.
 
 /// Threads one turn may open, so a thread can't fan out without end.
 export const mostOpened = 3;
@@ -29,6 +30,34 @@ export const openThread = {
     required: ["title", "message"],
   },
 };
+
+/// Threads one turn may suggest: the tool is the agent's to offer unasked, and a reply with a row
+/// of chips under it is one nobody reads.
+export const mostSuggested = 2;
+
+export const suggestThread = {
+  name: "suggest_thread",
+  description:
+    "Offer the user a thread for something you came across that is worth doing and is outside what they asked for: a bug seen in passing, a doc that has gone stale, a test that was already failing. " +
+    "Nothing starts. The user sees your title on a button under your reply, and a click opens a new thread in this project with your prompt in its message field, unsent, theirs to edit or ignore. " +
+    "Most replies suggest nothing. Suggest only what is real, that you saw yourself in the files or the output, and never a part of the task you were given, a next step in it, or a general improvement. " +
+    `One turn suggests ${mostSuggested} at most. Say in a few words of your reply what you noticed; the button carries the rest.`,
+  inputSchema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "A few words for the button, naming the work: Fix the off-by-one in paginate()." },
+      prompt: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what you saw, in which file and line, and what to do about it." },
+    },
+    required: ["title", "prompt"],
+  },
+};
+
+/// What every session with the tools is told of suggest_thread, where its agent has somewhere to
+/// hear it. The description alone wasn't enough: an agent said in its reply what it had seen and
+/// left the tool uncalled, so this ties the call to that sentence.
+export const suggesting =
+  "When your reply is about to tell the user of a problem you saw and left alone because it is outside what they asked for, a bug seen in passing, a doc gone stale, a test that was already failing, call suggest_thread for it before you end the turn, one of the oricode MCP server's tools. " +
+  "It starts nothing: it puts a button under your reply that opens a new thread with the prompt you wrote, unsent. Never call it for a part of the task, a next step in it or a general improvement. Most replies call for none.";
 
 /// What a session that may open threads is told, where its agent has somewhere to hear it.
 export const opening =

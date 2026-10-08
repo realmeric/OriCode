@@ -32,7 +32,7 @@ export type SendParams = {
   /// during a turn is taken up, or cancelled before it was.
   id?: string;
   /// The URL of OriCode's own tools for the thread, its MCP server: a head's worker tools when
-  /// it has rays, and open_thread unless another thread opened it.
+  /// it has rays, open_thread unless another thread opened it, and suggest_thread.
   tools?: string;
   /// What the thread is told of those tools, a head of its rays: Claude Code takes it appended to
   /// its system prompt and Codex as developer instructions, and the ACP agents hear it only in

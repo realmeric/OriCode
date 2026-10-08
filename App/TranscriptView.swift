@@ -660,6 +660,8 @@ struct ItemView: View {
             ShellBlockView(id: id, run: run)
         case .opened(_, let thread, let title, let finished):
             OpenedLine(thread: thread, title: title, finished: finished)
+        case .suggested(_, let title, let prompt):
+            SuggestedThread(title: title, prompt: prompt)
         }
     }
 }

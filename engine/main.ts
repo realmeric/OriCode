@@ -15,7 +15,7 @@ import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
 import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
-import { appReplied, openedByAnother, opening } from "./threads.ts";
+import { appReplied, openedByAnother, opening, suggesting } from "./threads.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
 import { answer, brevity, scratch, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
@@ -117,18 +117,17 @@ const seam: Seam = {
 
 /// The URL of the thread's tools and what it's told of them, on an agent that takes them: a head's
 /// worker tools when the thread has rays, or runs OriCode's workflows, on its own model when it
-/// has no rays, and open_thread unless another thread opened this one. A thread with no rays left
-/// keeps the workers it has, and can't start more.
+/// has no rays; open_thread unless another thread opened this one; and suggest_thread, which every
+/// such thread has and is told when to call. A thread with no rays left keeps the workers it has, and can't start more.
 async function threadTools(params: SendParams & { rays?: string[]; opened?: boolean }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions">> {
   const takes = agent.capabilities.workers === true;
   const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
   const rays = fans && !picked.length ? [{ agent: agent.id, model: fans.id }] : picked;
   const opens = takes && !params.opened;
-  const instructions = [rays.length ? (fans ? fanning(rays) : brief(rays)) : undefined, opens ? opening : takes ? openedByAnother : undefined].filter(Boolean).join("\n\n") || undefined;
-  const served = rays.length > 0 || opens;
-  const head = served ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
+  const instructions = [rays.length ? (fans ? fanning(rays) : brief(rays)) : undefined, opens ? opening : takes ? openedByAnother : undefined, takes ? suggesting : undefined].filter(Boolean).join("\n\n") || undefined;
+  const head = takes ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
   head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort, opens);
-  return served && head ? { tools: head.url, instructions } : { instructions };
+  return takes && head ? { tools: head.url, instructions } : { instructions };
 }
 
 /// An agent's models as the app gets them, from its CLI the first time and kept after, with

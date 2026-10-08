@@ -199,7 +199,8 @@ struct Composer: View {
         .onChange(of: model.shellPrompt ? nil : model.currentConversation?.returning, initial: true) {
             guard !model.shellPrompt, let back = model.currentConversation?.takeHandedBack(), !back.isEmpty else { return }
             withAnimation(Motion.fade) {
-                text = QueuedMessage.joined(back.map(\.text) + [text])
+                let typed = back.compactMap(\.replaces).reduce(text) { QueuedMessage.text($0, without: $1) }
+                text = QueuedMessage.joined(back.map(\.text) + [typed])
                 model.draftAttachments = back.flatMap(\.images) + model.draftAttachments
             }
         }

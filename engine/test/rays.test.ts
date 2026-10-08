@@ -12,9 +12,12 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
 import { brevity, drawing, scratch, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
-import { opening as mayOpen } from "../threads.ts";
+import { opening, suggesting } from "../threads.ts";
 import { lead } from "../ultracode.ts";
 import { engineWith, sandbox } from "./engine.ts";
+
+/// What a thread with no rays is told of its tools.
+const mayOpen = `${opening}\n\n${suggesting}`;
 
 /// A folder with a repository in it and one commit.
 async function repository(): Promise<string> {
@@ -117,7 +120,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.equal(init.protocolVersion, "2025-06-18");
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
-    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread"],
+    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "suggest_thread"],
   );
 
   const from = engine.lines.length;

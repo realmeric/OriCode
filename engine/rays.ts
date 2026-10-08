@@ -8,7 +8,7 @@ import type { Model } from "./models.ts";
 import type { Provider, SendParams, Session } from "./provider.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
-import { askApp, mostOpened, openThread, Unanswered } from "./threads.ts";
+import { askApp, mostOpened, mostSuggested, openThread, suggestThread, Unanswered } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -20,7 +20,7 @@ import { emit, event, log, tap, untap } from "./wire.ts";
 // thread's own, its cost is added to the thread's in a `worker` event, and it's a head in the
 // thread's `heads`, so its ray lights. Nothing here polls: a worker runs only once started, and
 // its session is let go when idle like a thread's. A thread with no rays is served here too, for
-// the one tool every thread on such an agent has, open_thread (threads.ts).
+// the tools every thread on such an agent has, open_thread and suggest_thread (threads.ts).
 
 /// A model a head may send a worker out on, picked for the thread in the model menu.
 export type Ray = { agent: string; model: string };
@@ -224,9 +224,10 @@ export class Rays {
   /// The head's own level, which a worker takes when it's given none and its model has it.
   private level: string | undefined;
   /// Whether the thread may open others, which one another thread opened may not, and how many
-  /// its turn has opened.
+  /// its turn has opened and suggested.
   private opens = false;
   private opened = 0;
+  private suggested = 0;
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -236,7 +237,7 @@ export class Rays {
     this.url = `http://127.0.0.1:${port}${this.path}`;
     // The thread's own `heads` go out with its workers after them.
     tap(threadId, (name, fields) => {
-      if (name === "turn.started") this.opened = 0;
+      if (name === "turn.started") this.opened = this.suggested = 0;
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
       this.tell();
@@ -267,7 +268,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.rays.length ? tools : []), ...(this.opens ? [openThread] : [])] } };
+        return { result: { tools: [...(this.rays.length ? tools : []), ...(this.opens ? [openThread] : []), suggestThread] } };
       case "tools/call":
         try {
           const out = await this.call(params.name, params.arguments ?? {});
@@ -298,6 +299,8 @@ export class Rays {
         return this.merge(this.worker(args.worker));
       case "open_thread":
         return this.open(args);
+      case "suggest_thread":
+        return this.suggest(args);
       default:
         return Promise.reject(new Error(`OriCode has no tool called ${name}.`));
     }
@@ -349,6 +352,19 @@ export class Rays {
       if (!(error instanceof Unanswered)) this.opened -= 1;
       throw error;
     }
+  }
+
+  /// Nothing is made: the app shows the suggestion under the reply, and the user's click makes
+  /// the thread, with the prompt in the composer for them to send or not.
+  async suggest(args: Record<string, any>): Promise<unknown> {
+    const title = String(args.title ?? "").trim();
+    const text = String(args.prompt ?? "").trim();
+    if (!title) throw new Error("A suggestion needs a title for its button.");
+    if (!text) throw new Error("A suggestion needs the prompt its thread would start on.");
+    if (this.suggested >= mostSuggested) throw new Error(`This turn has suggested ${mostSuggested} threads, which is as many as one turn may.`);
+    this.suggested += 1;
+    emit({ event: "thread.suggested", threadId: this.threadId, title, text });
+    return { shown: title, started: false };
   }
 
   async start(args: Record<string, any>): Promise<unknown> {
