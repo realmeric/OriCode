@@ -58,7 +58,8 @@ struct RootView: View {
                     // One composer in one place in the tree, whichever layout is showing, so the
                     // first message moves it rather than swapping it for another. With no project
                     // it's there too: what's sent then starts a thread without a folder.
-                    Composer(running: conversation?.running ?? false, windowHeight: window.size.height)
+                    Composer(chat: model.chat, conversation: conversation, state: model.composer(for: model.chat),
+                             running: conversation?.running ?? false, windowHeight: window.size.height)
                         // Moves as one piece: otherwise a label that changes with the thread,
                         // like the model's name, is drawn where the composer is going while
                         // the rest of it is still on the way.

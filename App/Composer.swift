@@ -4,11 +4,16 @@ import SwiftUI
 struct Composer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The thread it writes to, nil in a window with none open, and what's typed for it, which
+    /// stays with the thread when the composer shows another.
+    let chat: Chat?
+    let conversation: Conversation?
+    let state: ComposerState
     let running: Bool
     let windowHeight: CGFloat
-    /// What's typed, in an object of its own: the body never reads it, so a key redraws only the
-    /// few views below that do.
-    @State private var draft = Draft()
+    /// Counts the turns to the prompt and back made while one thread is showing, which the
+    /// morph plays for. A thread at the prompt taking the place of one that isn't shows as it is.
+    @State private var morph = 0
     @State private var slashSelected = 0
     @State private var mentionSelected = 0
     /// Esc put the files away, until the word they were for is done with.
@@ -46,6 +51,24 @@ struct Composer: View {
     /// A text field's placeholder, as AppKit draws it.
     private static let placeholderInk = Color(nsColor: .placeholderTextColor)
 
+    /// What's typed, in an object of its own: the body never reads it, so a key redraws only the
+    /// few views below that do.
+    private var draft: Draft { state.draft }
+
+    /// The thread's project, or with no thread the one the next starts in.
+    private var project: Project? { chat?.project ?? model.project }
+
+    /// The folder the thread works in, or the next one would.
+    private var folder: String? { chat?.cwd ?? model.project?.path }
+
+    private var inNoFolder: Bool { project?.isNoFolder == true }
+
+    /// The folder a file's path is shortened from when it's named in a message.
+    private var namingFolder: String { folder ?? model.noFolderURL.path }
+
+    /// Not under an open block, whose program has the keyboard, nor while a card waits.
+    private var takesKeyboard: Bool { model.openShell(in: chat) == nil && conversation?.waitingAsk == nil }
+
     private var text: String {
         get { draft.text }
         nonmutating set { draft.text = newValue }
@@ -56,7 +79,7 @@ struct Composer: View {
             if !queue.isEmpty {
                 queuedLines
             }
-            if !model.draftAttachments.isEmpty {
+            if !state.attachments.isEmpty {
                 thumbnails
             }
             row
@@ -76,7 +99,7 @@ struct Composer: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
             top = $0
-            model.composerTop = $0
+            state.top = $0
         }
         // Before the picker and the menus: every change inside the view a drop target is on
         // gathers its drop preferences again, which the picker's page turns paid on every frame.
@@ -97,7 +120,7 @@ struct Composer: View {
                 // The Rays page grows past the effort page's height, so the card is held to the
                 // room the window has on its side of the composer, and the list scrolls in it.
                 let room = below ? windowHeight - top - height - 10 - Self.pickerFoot : top - 10 - Self.pickerTop
-                PickerCard(chat: model.chat, room: room, below: below)
+                PickerCard(chat: chat, room: room, below: below)
                     .padding(below ? .top : .bottom, height + 10)
                     // It rises by itself, a turn after it's built.
                     .transition(.asymmetric(insertion: .identity,
@@ -111,7 +134,7 @@ struct Composer: View {
             }
             // The field takes the keyboard back while the card still stands, and the card fades
             // from the next turn, so the fade's first frame isn't the one that moves the keyboard.
-            draft.keyboard(model.composerTakesKeyboard)
+            draft.keyboard(takesKeyboard)
             DispatchQueue.main.async {
                 if !model.modelPickerShown { cardShown = false }
             }
@@ -142,12 +165,10 @@ struct Composer: View {
                     mentionSelected = 0
                     if word == nil { mentionOff = false }
                     // As the word begins, typed or pasted whole.
-                    if before == nil, word != nil, !model.shellPrompt, let folder = model.chat?.cwd ?? model.project?.path {
-                        model.loadProjectFiles(in: folder)
-                    }
+                    if before == nil, word != nil, !state.shellPrompt, let folder { model.loadProjectFiles(in: folder) }
                 }
                 // Esc puts the files away as it does Tab's list.
-                .onChange(of: completions.isEmpty && mentionMatches.isEmpty) { _, none in model.composerMenu = !none }
+                .onChange(of: completions.isEmpty && mentionMatches.isEmpty) { _, none in state.menu = !none }
                 // Typing anything but what Tab left puts its list away; only watched while there is one.
                 .onChange(of: completions.isEmpty ? 0 : draft.edits) {
                     if !completions.isEmpty, text != completed { completions = [] }
@@ -155,53 +176,66 @@ struct Composer: View {
                 // A `!` at the start turns the composer into a shell prompt, as in Claude Code, once
                 // there's a project for the command to run in.
                 .onChange(of: draft.bang) { _, bang in
-                    guard bang, !model.shellPrompt, model.project != nil else { return }
-                    model.shellPrompt = true
+                    guard bang, !state.shellPrompt, project != nil else { return }
+                    state.shellPrompt = true
                     text = String(text.dropFirst())
                 }
                 .onChange(of: slashQuery) { _, query in
                     slashSelected = 0
-                    if query != nil, let chat = model.chat { model.loadCommands(for: chat) }
+                    if query != nil, let chat { model.loadCommands(for: chat) }
                 }
             }
         }
         // Esc puts the list away before anything else hears it.
-        .onChange(of: model.composerMenu) { _, shown in
-            guard !shown else { return }
+        .onChange(of: Held(by: state, state.menu)) { before, menu in
+            guard before.state == menu.state, !menu.value else { return }
             completions = []
             if draft.at != nil { mentionOff = true }
         }
-        .onChange(of: model.shellPrompt) { _, prompt in
+        .onChange(of: Held(by: state, state.shellPrompt)) { before, prompt in
             completions = []
             recalled = nil
             // Tab at the prompt wants the shell's commands; asked once, as the prompt opens.
-            if prompt { model.loadShellCommands() }
+            if prompt.value { model.loadShellCommands() }
+            if before.state == prompt.state { morph += 1 }
+        }
+        // Another thread's draft in the field: the lists and ↑'s place were the last one's, and
+        // the files an `@` lists are one folder's.
+        .onChange(of: ObjectIdentifier(state)) {
+            completions = []
+            recalled = nil
+            mentionOff = false
+            slashSelected = 0
+            mentionSelected = 0
+            if draft.at != nil, !state.shellPrompt, let folder { model.loadProjectFiles(in: folder) }
+            if slashQuery != nil, let chat { model.loadCommands(for: chat) }
+            state.menu = !mentionMatches.isEmpty
         }
         .onAppear {
-            draft.keyboard(model.composerTakesKeyboard)
+            draft.keyboard(takesKeyboard)
             cardShown = model.modelPickerShown
         }
         // Not while a block is open, which has the keyboard until it goes.
-        .onChange(of: model.composerFocus) {
-            if model.openShell == nil { draft.keyboard(true) }
+        .onChange(of: state.focus) {
+            if model.openShell(in: chat) == nil { draft.keyboard(true) }
         }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
             if waiting != nil {
                 draft.keyboard(false)
             } else if !model.keyboardTaken {
-                draft.keyboard(model.composerTakesKeyboard)
+                draft.keyboard(takesKeyboard)
             }
         }
         // Messages that won't go out after all, sent into the turn or queued, come back here when
         // their thread is the one showing: oldest first, ahead of what's typed. Not into a command
         // being typed at the prompt; they wait for the prompt to turn back into the composer.
-        .onChange(of: model.shellPrompt ? nil : model.currentConversation?.returning, initial: true) {
-            guard !model.shellPrompt, let back = model.currentConversation?.takeHandedBack(), !back.isEmpty else { return }
+        .onChange(of: state.shellPrompt ? nil : conversation?.returning, initial: true) {
+            guard !state.shellPrompt, let back = conversation?.takeHandedBack(), !back.isEmpty else { return }
             withAnimation(Motion.fade) {
                 let typed = back.compactMap(\.replaces).reduce(text) { QueuedMessage.text($0, without: $1) }
                 text = QueuedMessage.joined(back.map(\.text) + [typed])
-                model.draftAttachments = back.flatMap(\.images) + model.draftAttachments
+                state.attachments = back.flatMap(\.images) + state.attachments
             }
         }
     }
@@ -212,10 +246,10 @@ struct Composer: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(queue) { message in
                     // A message taken back to edit would land in the command being typed.
-                    QueuedLine(message: message, editable: !model.shellPrompt, sendNow: canSteer ? { model.sendQueuedNow(message.id) } : nil) {
+                    QueuedLine(message: message, editable: !state.shellPrompt, sendNow: canSteer ? { model.sendQueuedNow(message.id, in: chat) } : nil) {
                         takeBack(message)
                     } remove: {
-                        model.currentConversation?.removeQueued(message.id)
+                        conversation?.removeQueued(message.id)
                     }
                     .transition(.opacity)
                 }
@@ -243,12 +277,12 @@ struct Composer: View {
     /// Whether the thread's agent takes a message while it works, which Send now needs, and has a
     /// turn to take it into: none runs in a thread waiting from before a quit.
     private var canSteer: Bool {
-        guard model.currentConversation?.waitingAfterQuit != true else { return false }
-        return model.chat.map { model.agent(for: $0).capabilities.steer } ?? false
+        guard conversation?.waitingAfterQuit != true else { return false }
+        return chat.map { model.agent(for: $0).capabilities.steer } ?? false
     }
 
     private var queue: [QueuedMessage] {
-        model.currentConversation?.queue ?? []
+        conversation?.queue ?? []
     }
 
     /// Up to three lines and half of a fourth, which says the rest scroll.
@@ -259,16 +293,16 @@ struct Composer: View {
     /// A queued message back in the field to be edited, after what's typed, its images with it.
     private func takeBack(_ message: QueuedMessage) {
         withAnimation(Motion.fade) {
-            guard let taken = model.currentConversation?.takeBack(message.id) else { return }
+            guard let taken = conversation?.takeBack(message.id) else { return }
             text = QueuedMessage.joined([text, taken.text])
-            model.draftAttachments += taken.images
+            state.attachments += taken.images
         }
         draft.keyboard(true)
     }
 
     private var thumbnails: some View {
         HStack(spacing: 6) {
-            ForEach(model.draftAttachments) { attachment in
+            ForEach(state.attachments) { attachment in
                 Image(nsImage: attachment.thumbnail)
                     .resizable()
                     .scaledToFill()
@@ -276,7 +310,7 @@ struct Composer: View {
                     .clipShape(.rect(cornerRadius: 10, style: .continuous))
                     .overlay(alignment: .topTrailing) {
                         Button {
-                            model.draftAttachments.removeAll { $0.id == attachment.id }
+                            state.attachments.removeAll { $0.id == attachment.id }
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 13))
@@ -305,7 +339,7 @@ struct Composer: View {
                 took = true
                 _ = provider.loadObject(ofClass: NSImage.self) { image, _ in
                     guard let image = image as? NSImage else { return }
-                    Task { @MainActor in model.attach([image]) }
+                    Task { @MainActor in model.attach([image], in: chat) }
                 }
             }
         }
@@ -315,9 +349,9 @@ struct Composer: View {
     /// A picture goes among the attachments when the agent takes pictures; any other file, a folder
     /// or a PDF, is named in the message, for the agent to open with its own tools.
     private func attach(_ url: URL) {
-        if !model.shellPrompt, offers.attachments, model.attach(fileAt: url) { return }
+        if !state.shellPrompt, offers.attachments, model.attach(fileAt: url, in: chat) { return }
         guard url.isFileURL else { return }
-        text = Self.naming(url, from: model.namingFolder, in: text, shell: model.shellPrompt)
+        text = Self.naming(url, from: namingFolder, in: text, shell: state.shellPrompt)
     }
 
     /// The file's path at the end of the message as a mention, from the thread's folder when it's
@@ -341,13 +375,13 @@ struct Composer: View {
             return true
         }
         guard offers.attachments, let images = board.readObjects(forClasses: [NSImage.self]) as? [NSImage], !images.isEmpty else { return false }
-        model.attach(images)
+        model.attach(images, in: chat)
         return true
     }
 
     private var row: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            if model.shellPrompt {
+            if state.shellPrompt {
                 Text("$")
                     .font(Type.mono)
                     .foregroundStyle(Ink.secondary)
@@ -359,9 +393,9 @@ struct Composer: View {
             // Fonts don't interpolate, so the field's text and placeholder fade in with the new type
             // over a copy of what it showed in the old one. The field itself stays, and keeps the
             // keyboard; SwiftUI's opacity doesn't reach its AppKit view, so its colours fade instead.
-            KeyframeAnimator(initialValue: 1.0, trigger: model.shellPrompt) { shown in
-                let placeholder = placeholder(shell: model.shellPrompt)
-                let font = model.shellPrompt ? ComposerTextView.mono : ComposerTextView.body
+            KeyframeAnimator(initialValue: 1.0, trigger: morph) { shown in
+                let placeholder = placeholder(shell: state.shellPrompt)
+                let font = state.shellPrompt ? ComposerTextView.mono : ComposerTextView.body
                 let baseline = Alignment(horizontal: .leading, vertical: .firstTextBaseline)
                 let underTop = ComposerTextView.baseline(font)
                 ComposerField(draft: draft, placeholder: placeholder, font: font, shown: shown, maxLines: maxLines, keys: keys)
@@ -370,7 +404,7 @@ struct Composer: View {
                     .background(alignment: baseline) {
                         if draft.empty {
                             Text(placeholder)
-                                .font(model.shellPrompt ? Type.mono : Type.body)
+                                .font(state.shellPrompt ? Type.mono : Type.body)
                                 .foregroundStyle(Self.placeholderInk.opacity(shown))
                                 .lineLimit(1)
                                 .allowsHitTesting(false)
@@ -386,17 +420,18 @@ struct Composer: View {
                 LinearKeyframe(1, duration: 0.18, timingCurve: .easeOut)
             }
             .padding(.vertical, 9)
-            .padding(.leading, model.shellPrompt ? 0 : 14)
+            .padding(.leading, state.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
                 attachButton
-                ModelMenu(chat: model.chat)
-                if offers.usage { UsageGlass(chat: model.chat) }
+                ModelMenu(chat: chat)
+                if offers.usage { UsageGlass(chat: chat) }
             }
             .frame(height: 36)
             Isolated { sendButton }
         }
         // The prompt comes and goes with the move spring, or, with Reduce Motion, fades in place.
-        .animation(reduceMotion ? nil : Motion.move, value: model.shellPrompt)
+        .animation(reduceMotion ? nil : Motion.move, value: state.shellPrompt)
+        .transaction(value: ObjectIdentifier(state)) { $0.disablesAnimations = true }
     }
 
     /// The keys the field hands the composer.
@@ -417,7 +452,7 @@ struct Composer: View {
                     return true
                 }
                 // The last message queued comes back to be edited before any sent before it.
-                if text.isEmpty, !model.shellPrompt, let last = queue.last {
+                if text.isEmpty, !state.shellPrompt, let last = queue.last {
                     takeBack(last)
                     return true
                 }
@@ -441,8 +476,8 @@ struct Composer: View {
             tab: tab,
             // ⌫ in an empty prompt turns it back.
             delete: {
-                guard model.shellPrompt, text.isEmpty else { return false }
-                model.shellPrompt = false
+                guard state.shellPrompt, text.isEmpty else { return false }
+                state.shellPrompt = false
                 return true
             },
             drop: { accept($0) },
@@ -453,20 +488,20 @@ struct Composer: View {
     /// no queue.
     private func enter(_ modifiers: EventModifiers) {
         completions = []
-        let action = model.shortcuts.returnPress(modifiers, working: working && !model.shellPrompt)
+        let action = model.shortcuts.returnPress(modifiers, working: working && !state.shellPrompt)
         if action == .queue {
             sendAfterTurn()
         } else if action == .newLine {
             // Where the caret is: at the start it pushes the text down.
             draft.newLine()
-        } else if model.shellPrompt {
+        } else if state.shellPrompt {
             runCommand()
         } else if let command = selectedSlash, text != "/" + command.name {
             complete(command)
         } else if let path = selectedMention, draft.at != path {
             mention(path)
         } else if !canSend, let ask = waitingPermission {
-            model.answer(ask, allow: true)
+            model.answer(ask, in: chat?.id, allow: true)
         } else {
             send()
         }
@@ -474,8 +509,8 @@ struct Composer: View {
 
     /// The field as it looked before the prompt turned, fading out as the field fades in.
     private var ghost: some View {
-        Text(text.isEmpty ? placeholder(shell: !model.shellPrompt) : text)
-            .font(model.shellPrompt ? Type.body : Type.mono)
+        Text(text.isEmpty ? placeholder(shell: !state.shellPrompt) : text)
+            .font(state.shellPrompt ? Type.body : Type.mono)
             .foregroundStyle(text.isEmpty ? Self.placeholderInk : Ink.primary)
             .lineLimit(1...maxLines)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -490,7 +525,7 @@ struct Composer: View {
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = true
             // No folder's own folder is empty and deep in Library: there the panel opens where it last was.
-            if let folder = model.workingFolder, !model.inNoFolder { panel.directoryURL = URL(filePath: folder) }
+            if let folder, !inNoFolder { panel.directoryURL = URL(filePath: folder) }
             panel.prompt = "Attach"
             guard panel.runModal() == .OK else { return }
             panel.urls.forEach(attach)
@@ -521,9 +556,9 @@ struct Composer: View {
     /// waiting on you from before a quit has no turn to send into, so it keeps Stop. ⌥Return queues
     /// what's typed for after the turn instead, which the help says.
     private var sendButton: some View {
-        let stops = running && !model.shellPrompt && (!canSend || model.currentConversation?.waitingAfterQuit == true)
+        let stops = running && !state.shellPrompt && (!canSend || conversation?.waitingAfterQuit == true)
         return Button {
-            if model.shellPrompt { runCommand() } else if stops { model.stop() } else { send() }
+            if state.shellPrompt { runCommand() } else if stops { model.stop(in: chat) } else { send() }
         } label: {
             Image(systemName: stops ? "stop.fill" : "arrow.up")
                 .font(.system(size: stops ? 12 : 15, weight: .semibold))
@@ -545,13 +580,13 @@ struct Composer: View {
         .buttonStyle(.plain)
         .disabled(!stops && !canSend)
         .help(help(stops: stops))
-        .accessibilityLabel(model.shellPrompt ? "Run" : stops ? "Stop" : "Send")
+        .accessibilityLabel(state.shellPrompt ? "Run" : stops ? "Stop" : "Send")
     }
 
     private func help(stops: Bool) -> String {
         let shortcuts = model.shortcuts
         let send = shortcuts.label(.send)
-        if model.shellPrompt { return "Run (\(send))" }
+        if state.shellPrompt { return "Run (\(send))" }
         if stops { return "Stop (\(shortcuts.label(.stop)))" }
         guard working else { return "Send (\(send))" }
         return offers.steer ? "Send now (\(send)), or after this turn (\(shortcuts.label(.queue)))" : "Send after this turn (\(send))"
@@ -559,20 +594,20 @@ struct Composer: View {
 
     /// What the thread's agent can do, or the next thread's.
     private var offers: ProviderInfo.Capabilities {
-        model.agent(for: model.chat).capabilities
+        model.agent(for: chat).capabilities
     }
 
     private func placeholder(shell: Bool) -> String {
         guard shell else { return "Ask for a change" }
         // No folder by its name, not its folder's.
-        if model.inNoFolder { return "A command for " + Project.noFolderName }
-        return "A command for " + (model.chat.map { URL(filePath: $0.cwd).lastPathComponent } ?? model.project?.name ?? "the project")
+        if inNoFolder { return "A command for " + Project.noFolderName }
+        return "A command for " + (chat.map { URL(filePath: $0.cwd).lastPathComponent } ?? project?.name ?? "the project")
     }
 
     private func runCommand() {
         guard canSend else { return }
         model.rememberCommand(text)
-        model.runCommand(text)
+        model.runCommand(text, in: chat)
         text = ""
         recalled = nil
     }
@@ -595,8 +630,8 @@ struct Composer: View {
             return
         }
         // With no thread open, the project's folder, and with no project where No folder would be.
-        let folder = model.namingFolder
-        guard model.shellPrompt else {
+        let folder = namingFolder
+        guard state.shellPrompt else {
             apply(ShellCompletion.mention(text, folder: folder))
             return
         }
@@ -653,8 +688,8 @@ struct Composer: View {
     }
 
     private var history: [String] {
-        if model.shellPrompt { return model.shellHistory }
-        let sent = model.currentConversation?.items.compactMap { item -> String? in
+        if state.shellPrompt { return model.shellHistory }
+        let sent = conversation?.items.compactMap { item -> String? in
             if case .user(_, let text, _, _) = item { text } else { nil }
         } ?? []
         // What the app sent for you isn't yours to send again.
@@ -663,11 +698,11 @@ struct Composer: View {
 
     /// The word after a leading "/", while it's still being typed.
     private var slashQuery: String? {
-        model.shellPrompt ? nil : draft.slash
+        state.shellPrompt ? nil : draft.slash
     }
 
     private var slashMatches: [SlashCommandInfo] {
-        guard let query = slashQuery, let chat = model.chat, let commands = model.slashCommands[chat.providerID]?[chat.cwd] else { return [] }
+        guard let query = slashQuery, let chat, let commands = model.slashCommands[chat.providerID]?[chat.cwd] else { return [] }
         return Array(Fuzzy.rank(commands, by: query) { $0.name }.prefix(8))
     }
 
@@ -683,8 +718,12 @@ struct Composer: View {
     /// The project's files that match the word after an `@`, best first; a path from the root or
     /// from home isn't the project's, and Tab completes it.
     private var mentionMatches: [String] {
-        guard !model.shellPrompt, !mentionOff, let word = draft.at, !word.hasPrefix("/"), !word.hasPrefix("~") else { return [] }
-        return Array(Fuzzy.rank(model.projectFiles, by: word) { $0 }.prefix(8))
+        guard !state.shellPrompt, !mentionOff, let word = draft.at, !word.hasPrefix("/"), !word.hasPrefix("~") else { return [] }
+        // One list for one folder, and it may be another thread's until this one's is read. The
+        // list is read before the folder is asked about, so the files arriving draw this again.
+        let files = model.projectFiles
+        guard model.projectFilesFolder == folder else { return [] }
+        return Array(Fuzzy.rank(files, by: word) { $0 }.prefix(8))
     }
 
     private var selectedMention: String? {
@@ -703,7 +742,7 @@ struct Composer: View {
     }
 
     private var waitingAsk: PendingAsk? {
-        model.currentConversation?.waitingAsk
+        conversation?.waitingAsk
     }
 
     private var waitingPermission: PendingAsk? {
@@ -711,14 +750,14 @@ struct Composer: View {
     }
 
     private var canSend: Bool {
-        !draft.blank || !model.draftAttachments.isEmpty
+        !draft.blank || !state.attachments.isEmpty
     }
 
     private func send() {
         guard canSend else { return }
         // The first message moves the composer from the middle of an empty thread to the bottom.
         var sent = false
-        withAnimation(Motion.glide) { sent = model.send(text) }
+        withAnimation(Motion.glide) { sent = model.send(text, in: chat) }
         guard sent else { return }
         text = ""
         recalled = nil
@@ -726,14 +765,26 @@ struct Composer: View {
 
     /// A turn running, or messages sent into one still to run.
     private var working: Bool {
-        running || model.currentConversation?.waiting.isEmpty == false
+        running || conversation?.waiting.isEmpty == false
     }
 
     /// ⌥Return while the thread works: what's typed fades into the queue's lines.
     private func sendAfterTurn() {
-        guard canSend, model.queue(text) else { return }
+        guard canSend, model.queue(text, in: chat) else { return }
         text = ""
         recalled = nil
+    }
+}
+
+/// A value with the composer it was read from, so a change that is only another thread's draft
+/// coming into the field can be told from one made in the thread showing.
+private struct Held<Value: Equatable>: Equatable {
+    let state: ObjectIdentifier
+    let value: Value
+
+    init(by state: ComposerState, _ value: Value) {
+        self.state = ObjectIdentifier(state)
+        self.value = value
     }
 }
 

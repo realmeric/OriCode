@@ -67,16 +67,19 @@ extension AppModel {
         agent(for: chat).capabilities.attachments
     }
 
-    func attach(_ images: [NSImage]) {
-        guard takesImages else { return }
+    /// Into a thread's composer, the open thread's when none is named.
+    func attach(_ images: [NSImage], in thread: Chat? = nil) {
+        let thread = thread ?? chat
+        guard agent(for: thread).capabilities.attachments else { return }
         let added = images.compactMap(ImageAttachment.init(image:))
         guard !added.isEmpty else { return }
-        draftAttachments.append(contentsOf: added)
+        composer(for: thread).attachments.append(contentsOf: added)
     }
 
-    func attach(fileAt url: URL) -> Bool {
-        guard takesImages, let attachment = ImageAttachment(url: url) else { return false }
-        draftAttachments.append(attachment)
+    func attach(fileAt url: URL, in thread: Chat? = nil) -> Bool {
+        let thread = thread ?? chat
+        guard agent(for: thread).capabilities.attachments, let attachment = ImageAttachment(url: url) else { return false }
+        composer(for: thread).attachments.append(attachment)
         return true
     }
 

@@ -243,8 +243,9 @@ extension AppModel {
         thread.titleIsCustom = true
         save()
         let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        conversation(for: thread).handBackQueue(with: [QueuedMessage(text: prompt, replaces: suggestedPrompt)])
-        suggestedPrompt = prompt
+        let composer = composer(for: thread)
+        conversation(for: thread).handBackQueue(with: [QueuedMessage(text: prompt, replaces: composer.suggestedPrompt)])
+        composer.suggestedPrompt = prompt
         return thread
     }
 }

@@ -53,6 +53,7 @@ extension AppModel {
         endShells(of: chat)
         Task { _ = try? await engine.request("close", ["threadId": .string(archived.uuidString)]) }
         conversations[archived] = nil
+        composers[archived] = nil
         chat.archived = true
         chat.pinned = false
         chat.position = nil
@@ -188,6 +189,12 @@ extension AppModel {
     /// after. With a thread that was started it's the user's, and stays.
     private func leave(_ left: Project?) {
         guard let left, left.isNoFolder, left.id != selectedProjectID, !left.chats.contains(where: \.started) else { return }
+        // What was typed in its draft began in the window with no thread open, and goes back
+        // there rather than away with the draft, unless something has been typed there since.
+        if looseComposer.isEmpty, let typed = left.chats.compactMap({ composers[$0.id] }).first(where: { !$0.isEmpty }) {
+            looseComposer = typed
+            composerShowsOpenThread()
+        }
         // It comes back with the same id, so an action kept to it stays kept to it.
         remove(left, forgettingActions: false)
     }
@@ -265,10 +272,20 @@ extension AppModel {
     /// folder, so the first message needs no folder picked.
     @discardableResult
     func newChat() -> Chat? {
+        // What's in the composer where no thread has begun, with none open or in the draft this
+        // one takes the place of, is for the thread it starts: text typed, a picture dropped or
+        // a prompt opened before the first message, or before a model pick, stays in the field.
+        var typed: ComposerState?
+        if chat == nil {
+            typed = looseComposer
+            looseComposer = ComposerState()
+        }
         let project = project ?? noFolderProject()
         if selectedProjectID != project.id { selectedProjectID = project.id }
         for draft in project.chats where !draft.started {
             conversations[draft.id] = nil
+            if typed == nil { typed = composers[draft.id] }
+            composers[draft.id] = nil
             context.delete(draft)
         }
         let chat = Chat(project: project, permissionMode: startingPermissionMode)
@@ -279,6 +296,7 @@ extension AppModel {
         chat.fastMode = startingFast
         context.insert(chat)
         save()
+        if let typed { composers[chat.id] = typed }
         selectedChatID = chat.id
         return chat
     }
@@ -309,6 +327,7 @@ extension AppModel {
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         // Its events can't find it through the conversation any more.
         conversations[deleted] = nil
+        composers[deleted] = nil
         SentPictures.standard.forget(thread: deleted)
         context.delete(chat)
         save()

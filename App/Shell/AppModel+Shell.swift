@@ -5,12 +5,12 @@ import SwiftUI
 /// block goes into the thread, and Claude reads every block since your last message with the next
 /// one, the way Claude Code's own `!` does.
 extension AppModel {
-    /// Runs a line from the shell prompt in the open thread, starting one if there's none.
-    /// `forModel` false keeps its block out of what the model reads.
+    /// Runs a line from the shell prompt in a thread, the open one when none is named, starting
+    /// one if there's none. `forModel` false keeps its block out of what the model reads.
     @discardableResult
-    func runCommand(_ line: String, forModel: Bool = true) -> ShellBlock? {
+    func runCommand(_ line: String, in thread: Chat? = nil, forModel: Bool = true) -> ShellBlock? {
         let command = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty, let chat = chat ?? newChat() else { return nil }
+        guard !command.isEmpty, let chat = thread ?? chat ?? newChat() else { return nil }
         // No folder's is the app's own, made again if it was taken away, as a turn makes it.
         if chat.project?.isNoFolder == true { try? FileManager.default.createDirectory(atPath: chat.cwd, withIntermediateDirectories: true) }
         guard FileManager.default.fileExists(atPath: chat.cwd) else {

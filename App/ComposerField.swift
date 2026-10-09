@@ -133,7 +133,13 @@ struct ComposerField: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let field = scroll.documentView as? ComposerTextView else { return }
         field.keys = keys
-        field.draft = draft
+        if field.draft !== draft {
+            // Another thread's draft. The one that was here lets go of the field, or a message
+            // handed back to its thread would be written over what this one shows.
+            if field.draft?.field === field { field.draft?.field = nil }
+            field.draft = draft
+            field.turn(to: draft.text)
+        }
         if draft.field !== field { draft.field = field }
         field.dress(font: font, ink: 0.92 * shown)
         field.maxHeight = ComposerTextView.lineHeight(font) * CGFloat(maxLines)
@@ -272,6 +278,21 @@ final class ComposerTextView: NSTextView {
             measure()
         }
         setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+    }
+
+    /// Another draft's text in the field, which is no edit: nothing for ⌘Z to take back, and
+    /// nothing left on its stack from the draft that was here, whose text it would bring over.
+    func turn(to text: String) {
+        if hasMarkedText() { inputContext?.discardMarkedText() }
+        showing = true
+        defer { showing = false }
+        breakUndoCoalescing()
+        undoManager?.disableUndoRegistration()
+        string = text
+        undoManager?.enableUndoRegistration()
+        if let textStorage { undoManager?.removeAllActions(withTarget: textStorage) }
+        setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        measure()
     }
 
     override func setFrameSize(_ newSize: NSSize) {

@@ -53,12 +53,14 @@ extension AppModel {
     }
 
     /// Starts a turn with what's typed, or sends it into the one running; false when it did
-    /// neither, so the composer keeps the text.
+    /// neither, so the composer keeps the text. In the open thread when none is named, and with
+    /// none open in a new one.
     @discardableResult
-    func send(_ text: String) -> Bool {
+    func send(_ text: String, in thread: Chat? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let images = draftAttachments
-        guard !trimmed.isEmpty || !images.isEmpty, let chat = chat ?? newChat() else { return false }
+        let composer = composer(for: thread ?? chat)
+        let images = composer.attachments
+        guard !trimmed.isEmpty || !images.isEmpty, let chat = thread ?? chat ?? newChat() else { return false }
         let conversation = conversation(for: chat)
         // Waiting on you from before a quit, the thread has no CLI to send into.
         guard !conversation.waitingAfterQuit else { return false }
@@ -66,22 +68,22 @@ extension AppModel {
             // An agent that can't take a message mid-turn gets it after the turn, as ⌥Return would.
             guard agent(for: chat).capabilities.steer else {
                 conversation.enqueue(trimmed, images: images)
-                draftAttachments = []
+                composer.attachments = []
                 return true
             }
             sendIntoTurn(conversation.sentIntoTurn(Self.asked(trimmed, images), typed: trimmed, images: images), in: chat)
         } else {
             guard send(trimmed, images: images, in: chat) else { return false }
         }
-        draftAttachments = []
+        composer.attachments = []
         conversation.sentByHand()
         return true
     }
 
     /// A queued message sent into the running turn instead of after it, or as a turn of its own
     /// when none runs; an agent that can't take one mid-turn keeps it queued.
-    func sendQueuedNow(_ id: UUID) {
-        guard let chat, let conversation = currentConversation, let message = conversation.queue.first(where: { $0.id == id }) else { return }
+    func sendQueuedNow(_ id: UUID, in thread: Chat? = nil) {
+        guard let chat = thread ?? chat, let conversation = conversations[chat.id], let message = conversation.queue.first(where: { $0.id == id }) else { return }
         // Waiting on you from before a quit, the thread has no CLI to send into.
         guard !conversation.waitingAfterQuit else { return }
         if conversation.running || !conversation.waiting.isEmpty {
@@ -99,14 +101,15 @@ extension AppModel {
     /// ⌥Return: while the thread works, what's typed waits in its queue to go out once the turn
     /// ends; false when there's nothing to queue or no turn to wait for.
     @discardableResult
-    func queue(_ text: String) -> Bool {
+    func queue(_ text: String, in thread: Chat? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let images = draftAttachments
-        guard !trimmed.isEmpty || !images.isEmpty, let conversation = currentConversation,
+        let composer = composer(for: thread ?? chat)
+        let images = composer.attachments
+        guard !trimmed.isEmpty || !images.isEmpty, let conversation = (thread ?? chat).flatMap({ conversations[$0.id] }),
               conversation.running || !conversation.waiting.isEmpty
         else { return false }
         conversation.enqueue(trimmed, images: images)
-        draftAttachments = []
+        composer.attachments = []
         return true
     }
 
@@ -263,8 +266,8 @@ extension AppModel {
     /// Stop ends the turn and takes back everything still to go: the engine cancels what was sent
     /// into the turn, and the queue goes back now, not when the turn ends, since a turn already
     /// ending by itself as the interrupt goes out would still send its next.
-    func stop() {
-        guard let chat else { return }
+    func stop(in thread: Chat? = nil) {
+        guard let chat = thread ?? chat else { return }
         let conversation = conversation(for: chat)
         conversation.handBackQueue()
         if conversation.waitingAfterQuit {

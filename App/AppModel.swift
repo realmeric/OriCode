@@ -139,9 +139,12 @@ final class AppModel {
     /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
     /// thread that hasn't asked yet, or no thread at all, shows what's already known.
     var fastReadings: [String: FastReading] = [:]
-    /// Bumped to put the cursor in the composer when nothing else would move it there: ⌘N on the
-    /// draft that's already open.
-    var composerFocus = 0
+    /// What each thread's composer holds, by thread, and the one for the window with no thread
+    /// open, which the thread it starts takes with it.
+    @ObservationIgnored var composers: [UUID: ComposerState] = [:]
+    @ObservationIgnored var looseComposer = ComposerState()
+    /// The one the window's composer last showed.
+    @ObservationIgnored var shownComposer: ComposerState?
     /// What a link in the transcript does, made once: MarkdownUI makes `App/Foo.swift` a URL with
     /// no scheme, which the default action hands to Launch Services, and nothing there opens it.
     /// A new action on every body changed the environment of every Markdown block in the thread.
@@ -218,8 +221,6 @@ final class AppModel {
     /// The block whose panel is in the window but not yet showing: its terminal comes into the
     /// window in a turn with nothing moving, and the panel rises in the next.
     var stagingBlock: UUID?
-    /// Whether the composer is a shell prompt for the thread's folder, after a `!` at its start.
-    var shellPrompt = false
     /// The commands run from it in this launch, by their block's id, running or ended.
     var shellBlocks: [UUID: ShellBlock] = [:]
     /// Marks the blocks a message sent into a turn carried as read, by the message, once Claude
@@ -239,24 +240,14 @@ final class AppModel {
     var shellNames: Task<[String], Never>?
     /// The user's own zsh, kept to answer Tab at the prompt when that's their shell.
     var zshCompletion: ZshCompletion?
-    /// Tab's list of matches is up in the composer, and Esc puts it away first.
-    var composerMenu = false
-    /// Where the composer's top edge is in the window, which the terminal stops above.
-    var composerTop: CGFloat = 0
     /// ⌘K's levels, what's typed at each, and what it's doing.
     let palette = PaletteState()
     /// The model button's picker, here so Esc can close it before anything under it.
     var modelPickerShown = false
-    /// Where the model button is in the window, so a click on it is left to the button.
-    var modelButtonFrame = CGRect.zero
     /// Whether the last titled window to become key is the main one, for what ⌘W closes.
     var mainWindowKey = true
     /// Whether the engine has been told a turn is running, so it keeps App Nap off.
     var holdingForTurns = false
-    var draftAttachments: [ImageAttachment] = []
-    /// The prompt the latest click on a suggested thread handed the composer, which the next
-    /// click's takes the place of.
-    @ObservationIgnored var suggestedPrompt: String?
     /// Each agent's plan usage by its id, and when the engine last read it.
     var usages: [String: PlanUsage] = [:]
     var usagesAt: [String: Date] = [:]
@@ -314,7 +305,10 @@ final class AppModel {
     private var noteTask: Task<Void, Never>?
 
     var selectedProjectID: UUID? {
-        didSet { UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject") }
+        didSet {
+            UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject")
+            composerShowsOpenThread()
+        }
     }
 
     /// The thread the composer is on, and with it the capsule, the review, the menus and Esc.
@@ -337,6 +331,7 @@ final class AppModel {
             if peekedChatID != selectedChatID { peekedChatID = nil }
             if let selectedChatID { loadConversation(selectedChatID) }
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
+            composerShowsOpenThread()
             refreshBranch(for: chat)
             readReview()
             returnKeyboard()
@@ -481,6 +476,7 @@ final class AppModel {
         drawerShown = drawerPinned
         clearDrafts()
         carryUltracode()
+        composerShowsOpenThread()
         if let selectedChatID { loadConversation(selectedChatID) }
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()

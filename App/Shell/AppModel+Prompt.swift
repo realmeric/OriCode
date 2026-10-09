@@ -18,7 +18,11 @@ extension AppModel {
 
     /// The block drawn full over the open thread, if one is.
     var openShell: ShellBlock? {
-        chat.flatMap { openBlocks[$0.id] }.flatMap { shellBlocks[$0] }
+        openShell(in: chat)
+    }
+
+    func openShell(in thread: Chat?) -> ShellBlock? {
+        thread.flatMap { openBlocks[$0.id] }.flatMap { shellBlocks[$0] }
     }
 
     /// Draws a running block full over its thread, to be typed into. One whose thread isn't on
