@@ -21,15 +21,22 @@ struct RootView: View {
                 let beside = room ? model.besideShown : nil
                 let half = (window.size.width - pinned) / 2
                 let right = model.composerHalf == .right
-                // An unpinned drawer passes over the conversation for a moment, and the composer's
-                // left end draws back out from under it while it's out. The right end, with the
-                // picker and Send, doesn't move, and nor does a composer in the right half.
-                let clear = model.drawerShown && !model.drawerPinned && !(beside != nil && right)
+                // Left to right, the threads on the glass, each with a composer under it; with
+                // none begun, the window's one composer.
+                let threads: [Chat?] = if let beside { right ? [beside, model.chat] : [model.chat, beside] } else { [model.chat] }
+                // The open thread alone, folded or a draft with the other waiting behind it, keeps
+                // its half's composer, or the first message from the right half's draft would
+                // hand the composer it was typed in to the thread coming back on the left.
+                let halves: [AppModel.Half] = beside == nil && right ? [.right] : [.left, .right]
+                // An unpinned drawer passes over the conversation for a moment, and the left
+                // composer's left end draws back out from under it while it's out. Its right end,
+                // with the picker and Send, doesn't move, and nor does a composer in the right half.
+                let clear = model.drawerShown && !model.drawerPinned
                     ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
                 VStack(spacing: 0) {
                     if let chat = model.chat, started {
                         // Keyed by thread, so a second one arriving, or the two trading the
-                        // composer, makes neither transcript again: each keeps its scroll.
+                        // keyboard, makes neither transcript again: each keeps its scroll.
                         HStack(spacing: 0) {
                             ForEach(beside.map { right ? [$0, chat] : [chat, $0] } ?? [chat], id: \.id) { thread in
                                 let open = thread.id == chat.id
@@ -39,6 +46,11 @@ struct RootView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                // A click in a column puts the keyboard in its thread. Its title
+                                // line is laid over this, so the cross there closes its own side.
+                                .simultaneousGesture(TapGesture().onEnded {
+                                    if !open { model.select(thread) }
+                                })
                                 .overlay(alignment: .top) {
                                     if !open { BesideTitle(chat: thread, conversation: model.conversations[thread.id]) }
                                 }
@@ -55,38 +67,30 @@ struct RootView: View {
                             .padding(.bottom, 28)
                             .transition(.asymmetric(insertion: Self.settle, removal: Self.lift))
                     }
-                    // One composer in one place in the tree, whichever layout is showing, so the
-                    // first message moves it rather than swapping it for another. With no project
-                    // it's there too: what's sent then starts a thread without a folder.
-                    Composer(chat: model.chat, conversation: conversation, state: model.composer(for: model.chat),
-                             running: conversation?.running ?? false, windowHeight: window.size.height)
-                        // Moves as one piece: otherwise a label that changes with the thread,
-                        // like the model's name, is drawn where the composer is going while
-                        // the rest of it is still on the way.
-                        .geometryGroup()
-                        .padding(.leading, clear)
-                        .column()
-                        // With a thread beside, under the open one's half, and it glides across
-                        // when the two trade.
-                        .padding(right ? .leading : .trailing, beside == nil ? 0 : half)
-                        .background(alignment: right ? .leading : .trailing) {
-                            if let beside {
-                                // The other column's foot, the composer's height and the notes'
-                                // gap under it, is empty glass that brings the composer over. A
-                                // button, since a tap gesture on clear space doesn't take clicks.
-                                Button { model.select(beside) } label: {
-                                    Color.clear.contentShape(.rect)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Write in \(beside.title)")
-                                .frame(width: half)
-                                .padding(.bottom, -Self.notes)
-                            }
+                    // The composers in one place in the tree, whichever layout is showing, so the
+                    // first message moves the one there is rather than swapping it for another.
+                    // With no project it's there too: what's sent then starts a thread without a
+                    // folder. Keyed by half and not by thread, so another thread opened shows in
+                    // the same composer, and a second coming beside doesn't make the first again.
+                    // Each stands on the same line, so one growing with its text leaves the other.
+                    HStack(alignment: .bottom, spacing: 0) {
+                        ForEach(Array(zip(halves, threads)), id: \.0) { side, thread in
+                            let conversation = thread.flatMap { model.conversations[$0.id] }
+                            Composer(chat: thread, conversation: conversation, state: model.composer(for: thread),
+                                     running: conversation?.running ?? false, windowHeight: window.size.height)
+                                // Moves as one piece: otherwise a label that changes with the thread,
+                                // like the model's name, is drawn where the composer is going while
+                                // the rest of it is still on the way.
+                                .geometryGroup()
+                                .padding(.leading, side == halves[0] ? clear : 0)
+                                .column()
+                                .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                         }
-                        .animation(Motion.glide, value: right)
-                        .animation(Motion.glide, value: beside?.id)
-                        // Above the transcript, so the slash menu can rise over it.
-                        .zIndex(1)
+                    }
+                    // The one there was glides to its half as a second comes beside it.
+                    .animation(Motion.glide, value: beside?.id)
+                    // Above the transcript, so the slash menu can rise over it.
+                    .zIndex(1)
                     if !started {
                         // Equal room under the composer and over the mark, and the mark's own
                         // height again, so it's the composer that sits in the middle.
@@ -314,8 +318,8 @@ struct RootView: View {
     /// The first message's transcript rises in behind the composer once it has mostly gone past,
     /// instead of under it.
     private static let rise = AnyTransition.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22))
-    /// A transcript taking another's place in its half, or coming beside one, fades in once
-    /// whatever was there has gone.
+    /// A transcript taking another's place in its half, or coming beside one with its composer,
+    /// fades in once whatever was there has gone.
     private static let swap = AnyTransition.opacity.animation(Motion.fade.delay(0.1))
     /// A transcript leaving fades before anything moves in: the composer waits for it.
     private static let leave = AnyTransition.opacity.animation(.easeOut(duration: 0.1))
@@ -378,8 +382,8 @@ extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
-/// The line over the column the composer isn't under: its thread's title, its mark while it
-/// works, and a cross while the pointer is on it. A click brings the composer over.
+/// The line over the column the keyboard isn't in: its thread's title, its mark while it works,
+/// and a cross while the pointer is on it. A click brings the keyboard over.
 struct BesideTitle: View {
     @Environment(AppModel.self) private var model
     let chat: Chat

@@ -95,7 +95,6 @@ struct SuggestedThreadsTests {
         let elsewhere = Chat(project: other)
         container.mainContext.insert(elsewhere)
         model.selectedProjectID = other.id
-        let focus = model.composerFocus
 
         let thread = try #require(model.openSuggested(title: "Fix the README's install line", prompt: prompt, from: chat))
         #expect(thread.project?.id == project.id)
@@ -104,8 +103,8 @@ struct SuggestedThreadsTests {
         #expect(thread.titleIsCustom)
         #expect(model.selectedProjectID == project.id)
         #expect(model.selectedChatID == thread.id)
-        // Opening it puts the cursor in the composer, as opening any thread does.
-        #expect(model.composerFocus == focus + 1)
+        // Opening it puts the cursor in its composer, as opening any thread does.
+        #expect(model.composerFocus == 1)
         // Nothing was sent: it's a draft with an empty transcript, and the prompt is the composer's to take.
         #expect(!thread.started)
         #expect(thread.openedBy == nil)

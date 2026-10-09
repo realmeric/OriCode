@@ -40,7 +40,7 @@ struct KeyboardTests {
         model.open(block)
         #expect(model.openShell === block)
         #expect(!model.composerTakesKeyboard)
-        let focus = model.composerFocus
+        let focus = model.composer(for: second).focus
         model.selectedChatID = second.id
         #expect(model.openShell == nil)
         #expect(model.composerTakesKeyboard)
@@ -100,9 +100,11 @@ struct KeyboardTests {
         model.returnKeyboard()
         model.closeBlock()
         #expect(model.composerFocus == focus)
-        // Another thread with nothing waiting has the composer.
+        // Another thread with nothing waiting has its composer asked.
+        let asked = model.composer(for: second).focus
         model.selectedChatID = second.id
-        #expect(model.composerFocus == focus + 1)
+        #expect(model.composerFocus == asked + 1)
+        #expect(model.composer(for: first).focus == focus)
         // Answered, the card gives it back.
         model.selectedChatID = first.id
         model.conversation(for: first).answered("r", allow: true)

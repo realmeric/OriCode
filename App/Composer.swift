@@ -69,6 +69,10 @@ struct Composer: View {
     /// Not under an open block, whose program has the keyboard, nor while a card waits.
     private var takesKeyboard: Bool { model.openShell(in: chat) == nil && conversation?.waitingAsk == nil }
 
+    /// Whether the keyboard is this composer's to have: its thread is the selected one, as it
+    /// always is with one composer in the window.
+    private var selected: Bool { chat == nil || chat?.id == model.selectedChatID }
+
     private var text: String {
         get { draft.text }
         nonmutating set { draft.text = newValue }
@@ -86,8 +90,11 @@ struct Composer: View {
         }
         .padding(6)
         .frame(minHeight: 48)
-        .background(dropTarget ? Surface.dropTarget : Surface.composer, in: .rect(cornerRadius: 24, style: .continuous))
+        // Beside the composer with the keyboard, the other rests a step down, the hover tint.
+        .background(dropTarget ? Surface.dropTarget : selected ? Surface.composer : Surface.hover,
+                    in: .rect(cornerRadius: 24, style: .continuous))
         .animation(Motion.fade, value: dropTarget)
+        .animation(Motion.fade, value: selected)
         .overlay {
             // The raised-glass highlight along the top edge, fading out before the sides.
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -101,6 +108,8 @@ struct Composer: View {
             top = $0
             state.top = $0
         }
+        // A click anywhere on it puts the keyboard in its thread, as one on the field does.
+        .simultaneousGesture(TapGesture().onEnded { choose() })
         // Before the picker and the menus: every change inside the view a drop target is on
         // gathers its drop preferences again, which the picker's page turns paid on every frame.
         .onDrop(of: [.image, .fileURL], isTargeted: $dropTarget) { providers in
@@ -127,23 +136,41 @@ struct Composer: View {
                                             removal: .scale(scale: 0.97, anchor: anchor).combined(with: .opacity).animation(Motion.fade)))
             }
         }
+        // One picker for the window, over the composer with the keyboard.
         .onChange(of: model.modelPickerShown) { _, shown in
             guard !shown else {
-                cardShown = true
+                cardShown = selected
                 return
             }
             // The field takes the keyboard back while the card still stands, and the card fades
             // from the next turn, so the fade's first frame isn't the one that moves the keyboard.
-            draft.keyboard(takesKeyboard)
+            if selected { draft.keyboard(takesKeyboard) }
             DispatchQueue.main.async {
                 if !model.modelPickerShown { cardShown = false }
+            }
+        }
+        // The keyboard is in one field, the selected thread's. The composer that stops being
+        // selected lets go even when the other won't take it, with an ask waiting there, or
+        // typing would go on landing in a thread the capsule no longer names.
+        .onChange(of: selected) { _, selected in
+            cardShown = selected && model.modelPickerShown
+            if !selected {
+                draft.keyboard(false)
+            } else if takesKeyboard, !model.keyboardTaken {
+                draft.keyboard(true)
+            }
+            // The files an `@` lists are one folder's, and may be the other thread's by now.
+            if selected, draft.at != nil, !state.shellPrompt, let folder, model.projectFilesFolder != folder {
+                model.loadProjectFiles(in: folder)
             }
         }
         .overlay(alignment: .bottomLeading) {
             // Reads only what a key seldom changes, so typing redraws nothing here.
             Isolated {
                 ZStack(alignment: .bottomLeading) {
-                    if !slashMatches.isEmpty {
+                    // The lists answer the arrows, Tab and Esc, so they're up only where those go.
+                    if !selected {
+                    } else if !slashMatches.isEmpty {
                         SlashMenu(commands: slashMatches, selected: min(slashSelected, slashMatches.count - 1)) { complete($0) }
                             .frame(maxWidth: 520, alignment: .leading)
                             .padding(.bottom, height + 8)
@@ -210,20 +237,26 @@ struct Composer: View {
             if draft.at != nil, !state.shellPrompt, let folder { model.loadProjectFiles(in: folder) }
             if slashQuery != nil, let chat { model.loadCommands(for: chat) }
             state.menu = !mentionMatches.isEmpty
+            // Where this composer is on the glass is the view's, and the thread it shows now
+            // hasn't been told.
+            state.top = top
+            if selected, !model.keyboardTaken { draft.keyboard(takesKeyboard) }
         }
         .onAppear {
-            draft.keyboard(takesKeyboard)
-            cardShown = model.modelPickerShown
+            if selected { draft.keyboard(takesKeyboard) }
+            cardShown = selected && model.modelPickerShown
         }
-        // Not while a block is open, which has the keyboard until it goes.
-        .onChange(of: state.focus) {
-            if model.openShell(in: chat) == nil { draft.keyboard(true) }
+        // Asked for by this thread: not while a block is open, which has the keyboard until it
+        // goes. Another thread's count coming into the view asks for nothing.
+        .onChange(of: Held(by: state, state.focus)) { before, focus in
+            if before.state == focus.state, model.openShell(in: chat) == nil { draft.keyboard(true) }
         }
         // While Claude waits on a card, the card owns Return and Esc; the field would eat them.
+        // An ask answered in the thread beside leaves the keyboard where it is.
         .onChange(of: waitingAsk?.requestId) { _, waiting in
             if waiting != nil {
                 draft.keyboard(false)
-            } else if !model.keyboardTaken {
+            } else if selected, !model.keyboardTaken {
                 draft.keyboard(takesKeyboard)
             }
         }
@@ -423,7 +456,7 @@ struct Composer: View {
             .padding(.leading, state.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
                 attachButton
-                ModelMenu(chat: chat)
+                ModelMenu(chat: chat, state: state)
                 if offers.usage { UsageGlass(chat: chat) }
             }
             .frame(height: 36)
@@ -481,7 +514,13 @@ struct Composer: View {
                 return true
             },
             drop: { accept($0) },
-            dropping: { dropTarget = $0 })
+            dropping: { dropTarget = $0 },
+            focused: choose)
+    }
+
+    /// The keyboard came to this composer, or a click did: its thread is the selected one.
+    private func choose() {
+        if let chat, !selected { model.select(chat) }
     }
 
     /// Return: Settings › Shortcuts says whether it sends, queues or breaks the line. The prompt has

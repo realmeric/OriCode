@@ -100,6 +100,8 @@ struct ComposerKeys {
     var drop: ((NSPasteboard) -> Bool)?
     /// Something the drop would take is over the field, or no longer is.
     var dropping: (Bool) -> Void = { _ in }
+    /// The field took the keyboard, by a click in it or because it was handed over.
+    var focused: () -> Void = {}
 }
 
 /// The composer's field: AppKit's text view in its scroll view, which keeps its layout from one key
@@ -139,8 +141,12 @@ struct ComposerField: NSViewRepresentable {
             if field.draft?.field === field { field.draft?.field = nil }
             field.draft = draft
             field.turn(to: draft.text)
+            // Taken from a composer on its way out that still shows it, the right one of a pair
+            // put away with the keyboard in it, which doesn't take it back in the time it has left.
+            draft.field = field
+        } else if draft.field == nil {
+            draft.field = field
         }
-        if draft.field !== field { draft.field = field }
         field.dress(font: font, ink: 0.92 * shown)
         field.maxHeight = ComposerTextView.lineHeight(font) * CGFloat(maxLines)
         if field.accessibilityLabel() != placeholder {
@@ -327,6 +333,12 @@ final class ComposerTextView: NSTextView {
     func letGoOfKeyboard() {
         wantsKeyboard = false
         if window?.firstResponder === self { window?.makeFirstResponder(nil) }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let took = super.becomeFirstResponder()
+        if took { keys?.focused() }
+        return took
     }
 
     override func viewDidMoveToWindow() {

@@ -143,8 +143,6 @@ final class AppModel {
     /// open, which the thread it starts takes with it.
     @ObservationIgnored var composers: [UUID: ComposerState] = [:]
     @ObservationIgnored var looseComposer = ComposerState()
-    /// The one the window's composer last showed.
-    @ObservationIgnored var shownComposer: ComposerState?
     /// What a link in the transcript does, made once: MarkdownUI makes `App/Foo.swift` a URL with
     /// no scheme, which the default action hands to Launch Services, and nothing there opens it.
     /// A new action on every body changed the environment of every Markdown block in the thread.
@@ -305,17 +303,14 @@ final class AppModel {
     private var noteTask: Task<Void, Never>?
 
     var selectedProjectID: UUID? {
-        didSet {
-            UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject")
-            composerShowsOpenThread()
-        }
+        didSet { UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject") }
     }
 
-    /// The thread the composer is on, and with it the capsule, the review, the menus and Esc.
+    /// The thread the keyboard is in, and with it the capsule, the review, the menus and Esc.
     var selectedChatID: UUID? {
         didSet {
             // The thread beside, picked by any route, trades places with the one that was open:
-            // each stays in its half and the composer crosses, so neither is drawn twice. A draft
+            // each stays in its half and the keyboard crosses, so neither is drawn twice. A draft
             // or a thread that's gone has no half to keep, and the picked one is alone again.
             if let selectedChatID, selectedChatID == besideChatID {
                 let other = oldValue.flatMap { staysInView($0) ? $0 : nil }
@@ -331,7 +326,6 @@ final class AppModel {
             if peekedChatID != selectedChatID { peekedChatID = nil }
             if let selectedChatID { loadConversation(selectedChatID) }
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
-            composerShowsOpenThread()
             refreshBranch(for: chat)
             readReview()
             returnKeyboard()
@@ -362,7 +356,7 @@ final class AppModel {
         case right
     }
 
-    /// Which half the open thread, and so the composer, is in while another is beside it.
+    /// Which half the open thread, and so the keyboard, is in while another is beside it.
     private(set) var composerHalf = Half.left
 
     /// Whether the conversation's side of the window is wide enough for two columns, as RootView
@@ -476,7 +470,6 @@ final class AppModel {
         drawerShown = drawerPinned
         clearDrafts()
         carryUltracode()
-        composerShowsOpenThread()
         if let selectedChatID { loadConversation(selectedChatID) }
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()

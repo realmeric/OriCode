@@ -193,7 +193,6 @@ extension AppModel {
         // there rather than away with the draft, unless something has been typed there since.
         if looseComposer.isEmpty, let typed = left.chats.compactMap({ composers[$0.id] }).first(where: { !$0.isEmpty }) {
             looseComposer = typed
-            composerShowsOpenThread()
         }
         // It comes back with the same id, so an action kept to it stays kept to it.
         remove(left, forgettingActions: false)

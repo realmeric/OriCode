@@ -192,18 +192,19 @@ struct ComposerStateTests {
         #expect(!model.shellPrompt)
     }
 
-    @Test func whereTheComposerIsGoesWithItToTheNextThread() {
+    @Test func whereAComposerIsAndHowOftenItWasAskedAreItsOwn() {
         let composer = model.composer(for: first)
         composer.top = 640
         composer.modelButtonFrame = CGRect(x: 700, y: 650, width: 120, height: 30)
         composer.menu = true
-        let focus = model.composerFocus
+        let focus = composer.focus
         model.selectedChatID = second.id
-        #expect(model.composerTop == 640)
-        #expect(model.modelButtonFrame == composer.modelButtonFrame)
-        #expect(model.composerFocus == focus + 1)
-        // The list it had up was the first thread's, and isn't up when that thread comes back.
-        #expect(!model.composerMenu && !composer.menu)
+        // The second thread's composer hasn't been laid out, and was asked once, on being opened.
+        #expect(model.composerTop == 0)
+        #expect(model.modelButtonFrame == .zero)
+        #expect(model.composerFocus == 1)
+        #expect(!model.composerMenu)
+        #expect(composer.top == 640 && composer.focus == focus && composer.menu)
     }
 
     // MARK: Through the composer

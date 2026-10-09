@@ -90,7 +90,7 @@ extension AppModel {
         besideChatID = nil
     }
 
-    /// ⌥⌘← and ⌥⌘→: the composer goes under the thread in that half. Folded to one thread there
+    /// ⌥⌘← and ⌥⌘→: the keyboard goes to the thread in that half. Folded to one thread there
     /// are no halves to tell apart, and either key shows the other.
     func write(in half: Half) {
         guard let besideChatID, let other = chat(withID: besideChatID) else { return }

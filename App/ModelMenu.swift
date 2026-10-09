@@ -46,11 +46,24 @@ enum PermissionModeOption: String, CaseIterable, Identifiable {
 struct ModelMenu: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
+    let state: ComposerState
     @State private var hovering = false
+    /// Where the button is in the window, kept for the next thread this composer shows, which
+    /// comes without the button moving.
+    @State private var frame = CGRect.zero
+
+    /// The picker is one for the window and opens over the composer with the keyboard.
+    private var selected: Bool { chat == nil || chat?.id == model.selectedChatID }
 
     var body: some View {
         Button {
-            model.modelPickerShown.toggle()
+            // From the composer without the keyboard it opens over this one, wherever it was.
+            if let chat, !selected {
+                model.select(chat)
+                model.modelPickerShown = true
+            } else {
+                model.modelPickerShown.toggle()
+            }
         } label: {
             HStack(spacing: 6) {
                 AgentMark(agent: model.providerID(for: chat))
@@ -103,13 +116,17 @@ struct ModelMenu: View {
             .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil, workflows ? "workflows" : nil] + rays.map(\.stored))
             .padding(.horizontal, 8)
             .frame(height: 30)
-            .background(hovering || model.modelPickerShown ? Surface.hover : .clear, in: .capsule)
+            .background(hovering || model.modelPickerShown && selected ? Surface.hover : .clear, in: .capsule)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .fixedSize()
         .onHover { hovering = $0 }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.modelButtonFrame = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            frame = $0
+            state.modelButtonFrame = $0
+        }
+        .onChange(of: ObjectIdentifier(state)) { state.modelButtonFrame = frame }
         .help("Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
         .accessibilityValue([accessibilityEffort, workflows ? "workflows on" : nil, rays.isEmpty ? nil : raysLine].compactMap { $0 }.joined(separator: ", "))

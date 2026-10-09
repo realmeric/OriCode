@@ -37,22 +37,6 @@ extension AppModel {
         return made
     }
 
-    /// The window has one composer, which shows the open thread's. Where it is on the glass and
-    /// how often it was asked to take the keyboard are that one view's, so they go to the thread
-    /// it shows next, and the list it had up stays behind.
-    func composerShowsOpenThread() {
-        let next = composer(for: chat)
-        guard let last = shownComposer, last !== next else {
-            shownComposer = next
-            return
-        }
-        next.top = last.top
-        next.modelButtonFrame = last.modelButtonFrame
-        next.focus = last.focus
-        last.menu = false
-        shownComposer = next
-    }
-
     // The open thread's composer under the names it had as one composer on the model, for the
     // menus, Esc, ⌘K and the paste monitor, which act on the thread the keyboard is in.
 
@@ -71,8 +55,11 @@ extension AppModel {
         set { composer(for: chat).menu = newValue }
     }
 
+    /// The higher of the composers on the glass, which the review and a full block stop above.
+    /// One that hasn't been laid out yet has no edge to stop above.
     var composerTop: CGFloat {
-        composer(for: chat).top
+        let tops = [chat, besideShown].compactMap { $0 }.map { composer(for: $0).top }.filter { $0 > 0 }
+        return tops.min() ?? composer(for: chat).top
     }
 
     var modelButtonFrame: CGRect {
