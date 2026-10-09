@@ -326,7 +326,9 @@ function onlyTheKey(value: string, turn: Request) {
     assert.equal(request.headers["x-api-key"], undefined, request.url);
     assert.equal(request.headers.cookie, undefined, request.url);
     assert.doesNotMatch(headers, /sk-ant-|planted|oauth/i, request.url);
-    if (request.body) assert.doesNotMatch(JSON.stringify(request.body), /sk-ant-|planted/, request.url);
+    // A body is searched for the credentials themselves, each of which starts sk-ant-: Claude
+    // Code's own prompt says "planted" since 2.1.295, and it goes in every body.
+    if (request.body) assert.doesNotMatch(JSON.stringify(request.body), /sk-ant-/, request.url);
   }
   for (const request of requests.filter((request) => request.method === "POST")) assert.equal(request.headers.authorization, `Bearer ${value}`);
   assert.equal(JSON.parse(turn.body.metadata.user_id).account_uuid, "");
