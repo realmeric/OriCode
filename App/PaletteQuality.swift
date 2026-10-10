@@ -42,11 +42,17 @@ extension AppModel {
         let running = conversations.values.contains { $0.running }
         var items: [PaletteItem] = []
 
-        // No folder's threads work in a folder of the app's, where a file written without a path lands.
+        // No folder's threads work in a folder of the app's, where a file written without a path lands:
+        // it's shown where it is, being empty, and a project's folder, or a thread's worktree, is opened.
         let scratch = project?.isNoFolder == true
-        items.append(command("project.reveal", scratch ? "Reveal the scratch folder in Finder" : "Reveal in Finder", icon: "folder", keywords: ["show", "finder"], unavailable: noFolder) {
-            if let folder { NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: folder)]) }
-        })
+        var finder = command("project.reveal", scratch ? "Reveal the scratch folder in Finder" : "Open project folder in Finder", icon: "folder",
+                             keywords: ["open", "reveal", "show", "path", "worktree"], unavailable: noFolder) { [weak self] in
+            guard let folder else { return }
+            let url = URL(filePath: folder)
+            if scratch { NSWorkspace.shared.activateFileViewerSelecting([url]) } else if !NSWorkspace.shared.open(url) { self?.say("\(folder) isn't there") }
+        }
+        if !scratch { finder.formerly = "Reveal in Finder" }
+        items.append(finder)
         let editorName = editor?.name ?? "the editor"
         items.append(command("project.editor", "Open in \(editorName)", icon: "chevron.left.forwardslash.chevron.right",
                              keywords: ["editor", "cursor", "zed", "code", "xcode"],

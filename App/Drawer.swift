@@ -155,11 +155,21 @@ struct Drawer: View {
 
     private var projectMenu: some View {
         Menu {
-            ForEach(model.projects) { project in
-                Toggle(project.name, isOn: Binding(get: { project.id == model.project?.id }, set: { _ in model.select(project) }))
+            // Every row has its symbol, a folder for a project and No folder's laptop, so the names stay in one column.
+            Group {
+                ForEach(model.projects.filter { !$0.isNoFolder }) { project in
+                    Toggle(isOn: Binding(get: { project.id == model.project?.id }, set: { _ in model.select(project) })) {
+                        Label(project.name, systemImage: "folder")
+                    }
+                }
+                // There before anything was sent in it, when it isn't a project yet: a draft there, as ⌘K's.
+                Toggle(isOn: Binding(get: { model.project?.isNoFolder == true }, set: { _ in model.openThreadWithoutFolder() })) {
+                    Label(Project.noFolderName, systemImage: "laptopcomputer")
+                }
+                Divider()
+                Button { model.addProject() } label: { Label("Add project…", systemImage: "folder.badge.plus") }
             }
-            if !model.projects.isEmpty { Divider() }
-            Button("Add project…") { model.addProject() }
+            .labelStyle(.titleAndIcon)
         } label: {
             HStack(spacing: 8) {
                 if let project = model.project {

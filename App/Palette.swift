@@ -14,6 +14,10 @@ struct PaletteItem: Identifiable {
     var subtitle: String?
     /// Found by a search, never shown.
     var keywords: [String] = []
+    /// A name it had, searched as the title is and never shown. Among the keywords it would come after
+    /// the title, where a search takes its letters from the new name first: the r and e of "reveal"
+    /// from "project".
+    var formerly: String?
     var shortcut: String?
     var icon: String?
     /// A model's agent, whose mark stands in for the icon.
@@ -126,7 +130,11 @@ enum Palette {
         return items
             .compactMap { item -> (PaletteItem, Int)? in
                 let line = item.kind == .thread || item.kind == .project ? [item.subtitle ?? ""] : []
-                guard var score = Fuzzy.score(query, in: ([item.title] + item.keywords + line).joined(separator: " ")) else { return nil }
+                var found = Fuzzy.score(query, in: ([item.title] + item.keywords + line).joined(separator: " "))
+                if let formerly = item.formerly, let old = Fuzzy.score(query, in: ([formerly] + item.keywords + line).joined(separator: " ")) {
+                    found = max(found ?? old, old)
+                }
+                guard var score = found else { return nil }
                 if let at = recents.firstIndex(of: item.id) { score += (20 - min(at, 20)) * 2 }
                 if item.kind == .choice { score -= 12 }
                 return (item, score)
