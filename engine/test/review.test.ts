@@ -1,7 +1,7 @@
 // The review's git, on scratch repositories: nothing here touches Claude or a real repo.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../git.ts";
@@ -84,6 +84,73 @@ test("modified, new, deleted and renamed files, and awkward names, come back wit
   const stamped = file(diff, "bin.dat").stamp;
   assert.match(stamped ?? "", /^4:/);
   assert.equal(a.stamp, null);
+});
+
+test("every file says when it last changed on disk, a gone one says nothing, and HEAD says when it was committed", async () => {
+  const dir = await repo({ "a.txt": numbered(3), "gone.txt": "bye\n", "old.txt": numbered(20) });
+  const began = Date.now() - 1000;
+  await writeFile(join(dir, "a.txt"), numbered(3).replace("line 2", "line two"));
+  await rm(join(dir, "gone.txt"));
+  await git(dir, ["mv", "old.txt", "new.txt"]);
+  await writeFile(join(dir, "fresh.txt"), "hi\n");
+  // A date in the future is the file's own, as a write's is.
+  const at = new Date(Date.now() + 3_600_000);
+  at.setMilliseconds(0);
+  await utimes(join(dir, "a.txt"), at, at);
+
+  const before = Date.now();
+  const diff = await workingDiff(dir);
+  assert.equal(file(diff, "a.txt").changedAt, at.getTime());
+  assert.ok((file(diff, "fresh.txt").changedAt ?? 0) >= began);
+  assert.equal(file(diff, "gone.txt").changedAt, null);
+  assert.ok((file(diff, "new.txt").changedAt ?? 0) >= began);
+  assert.ok(diff.headAt !== null && Math.abs(diff.headAt - before) < 60_000, `${diff.headAt}`);
+
+  // A touch alone moves the time, and the mark with it: a command that writes a file with no
+  // edit of the agent's is seen the same way.
+  const later = new Date(at.getTime() + 60_000);
+  await utimes(join(dir, "a.txt"), later, later);
+  const again = await workingDiff(dir, diff.mark);
+  assert.ok(!("same" in again));
+  assert.equal(file(again, "a.txt").changedAt, later.getTime());
+});
+
+test("a file put in place with an old date counts from when it was put there", async () => {
+  // Written and dated long ago somewhere else, then moved in: mv, cp -p, rsync -a and tar keep
+  // the date a file's text was written, and only the inode says when it came to be here.
+  const dir = await repo({ "a.txt": "one\n", "link.txt": "one\n", "target.txt": "old\n" });
+  const outside = await mkdtemp(join(tmpdir(), "oricode-review-outside-"));
+  const old = new Date("2026-01-01T12:00:00Z");
+  await writeFile(join(outside, "a.txt"), "two\n");
+  await utimes(join(outside, "a.txt"), old, old);
+  await writeFile(join(outside, "new.txt"), "new\n");
+  await utimes(join(outside, "new.txt"), old, old);
+  await utimes(join(dir, "target.txt"), old, old);
+  const began = Date.now() - 1000;
+  await rename(join(outside, "a.txt"), join(dir, "a.txt"));
+  await rename(join(outside, "new.txt"), join(dir, "new.txt"));
+  // A link pointed at a file whose own date is old.
+  await rm(join(dir, "link.txt"));
+  await symlink("target.txt", join(dir, "link.txt"));
+
+  const diff = await workingDiff(dir);
+  for (const path of ["a.txt", "new.txt", "link.txt"]) {
+    assert.ok((file(diff, path).changedAt ?? 0) >= began, `${path}: ${file(diff, path).changedAt} is before ${began}`);
+  }
+
+  // A date set back moves the mark, since the file was touched, and never the time back.
+  await utimes(join(dir, "a.txt"), old, old);
+  const again = await workingDiff(dir, diff.mark);
+  assert.ok(!("same" in again));
+  assert.ok((file(again, "a.txt").changedAt ?? 0) >= began);
+});
+
+test("before the first commit HEAD has no time", async () => {
+  const dir = await repo({});
+  await writeFile(join(dir, "a.txt"), "one\n");
+  const diff = await workingDiff(dir);
+  assert.equal(diff.headAt, null);
+  assert.equal(typeof file(diff, "a.txt").changedAt, "number");
 });
 
 test("from a folder inside the repository, paths are still from its top", async () => {

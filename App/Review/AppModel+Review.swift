@@ -81,6 +81,11 @@ final class ReviewState {
     var base = ReviewBook()
     /// The book with your marks laid over it, which the review shows.
     var book = ReviewBook()
+    /// Which review reads the book: Legacy's files fold and its keyboard reads one at a time,
+    /// Witness has every file open and walks its page's order.
+    var design = ReviewDesign.legacy
+    /// Witness's reading of the base book, made with it while Witness is the design.
+    var page = WitnessPage()
     var loading = false
     var problem: String?
     /// The hunk the keyboard is on.
@@ -117,9 +122,26 @@ final class ReviewState {
     @ObservationIgnored var wanted = false
     @ObservationIgnored var queue: Task<Void, Never>?
     @ObservationIgnored var colouring: Task<Void, Never>?
-    /// The thread the book was built for: a read that finds nothing moved builds it again only
-    /// for another.
-    @ObservationIgnored var builtFor: UUID?
+    /// What the book was built for: a read that finds nothing moved builds it again only for
+    /// another thread, another design, or once a command has ended since, which Witness reads.
+    @ObservationIgnored var builtFor: Built?
+
+    struct Built: Equatable {
+        let thread: UUID?
+        let design: ReviewDesign
+        var runs = 0
+    }
+
+    /// Whether each command line seen so far holds a check, so a read cuts a line up once.
+    @ObservationIgnored private var checkLines: [String: Bool] = [:]
+
+    func isCheck(_ command: String?) -> Bool {
+        guard let command else { return false }
+        if let known = checkLines[command] { return known }
+        let found = !Provenance.recognise(command).isEmpty
+        checkLines[command] = found
+        return found
+    }
 
     var root: String? { diff?.root }
 
@@ -130,7 +152,7 @@ final class ReviewState {
 
     /// A chapter whose hunks are all reviewed folds under its message until it's opened.
     func folded(_ chapter: ReviewChapter) -> Bool {
-        chapter.units.allSatisfy(\.reviewed) && !unfolded.contains(chapter.id)
+        design == .legacy && chapter.units.allSatisfy(\.reviewed) && !unfolded.contains(chapter.id)
     }
 
     /// A reviewed hunk, or a lockfile's, is one line until it's opened.
@@ -138,15 +160,32 @@ final class ReviewState {
         (unit.reviewed || unit.lockfile) && !unfolded.contains(unit.id)
     }
 
-    /// The hunks the keyboard can reach: none of a folded chapter's.
+    /// The hunks the keyboard can reach, in the order it walks them: none of a folded chapter's,
+    /// and in Witness the page's order.
     var visibleUnits: [ReviewUnit] {
-        book.chapters.filter { !folded($0) }.flatMap(\.units)
+        guard design == .witness else { return book.chapters.filter { !folded($0) }.flatMap(\.units) }
+        let units = Dictionary(book.units.map { ($0.id, $0) }) { first, _ in first }
+        return page.order.compactMap { units[$0] }
+    }
+
+    /// Whether a hunk's file shows its hunks, which in Witness every file does.
+    func shows(_ unit: ReviewUnit) -> Bool {
+        design == .witness || openFiles.contains(unit.section)
     }
 
     /// The hunk the keyboard is on, while its file is open.
     var selectedUnit: ReviewUnit? {
         guard let selected else { return nil }
-        return book.units.first { $0.id == selected && openFiles.contains($0.section) }
+        return book.units.first { $0.id == selected && shows($0) }
+    }
+
+    /// → and ←. Legacy opens or folds the file the keyboard is in; Witness, whose files are all
+    /// open, opens or closes what the keyboard is on when it's one line: a change that needs no
+    /// reading, or one reviewed.
+    func open(_ open: Bool) {
+        guard let unit = book.units.first(where: { $0.id == selected }) else { return }
+        guard design == .witness else { return setOpen(unit.section, open) }
+        if open { unfolded.insert(unit.id) } else { unfolded.remove(unit.id) }
     }
 
     /// Points the review at a thread's folder. Another folder starts over; another thread in the
@@ -157,6 +196,7 @@ final class ReviewState {
             diff = nil
             base = ReviewBook()
             book = ReviewBook()
+            page = WitnessPage()
             problem = nil
             lastTakeback = nil
         } else if self.thread == thread {
@@ -212,7 +252,7 @@ final class ReviewState {
         }
         let here = units[index]
         var next = index + step
-        while units.indices.contains(next), units[next].section == here.section, !openFiles.contains(here.section) {
+        while units.indices.contains(next), units[next].section == here.section, !shows(here) {
             next += step
         }
         guard units.indices.contains(next) else { return }
@@ -239,10 +279,12 @@ final class ReviewState {
 
     /// Where the keyboard goes once a hunk is marked: the next one still to review in its file,
     /// earlier ones too, so a file is finished before it's left; else the next in the files after.
+    /// In Witness it is the next on the page, where a file's other changes can be far below.
     func next(after unit: ReviewUnit) -> ReviewUnit? {
         let units = visibleUnits
         guard let index = units.firstIndex(where: { $0.id == unit.id }) else { return nil }
         let rest = units[(index + 1)...] + units[..<index]
+        guard design == .legacy else { return rest.first { !$0.reviewed } }
         return rest.first { !$0.reviewed && $0.section == unit.section } ?? rest.first { !$0.reviewed }
     }
 
@@ -267,11 +309,20 @@ extension AppModel {
             openFile = nil
             openInIsland(.review)
         }
+        review.design = .chosen
         readReview(in: folder)
         // The book read while the review was closed is placed and coloured now; a read that
         // brings a new one does both again.
         review.placeFiles()
         colour(review.book.units)
+    }
+
+    /// The review on screen is this design's: one chosen in Settings while the review is open
+    /// reads the book its own way from the next read, which is asked for here.
+    func useReview(_ design: ReviewDesign) {
+        guard review.design != design else { return }
+        review.design = design
+        readReview()
     }
 
     func closeReview() {
@@ -337,10 +388,32 @@ extension AppModel {
     /// whose book stands unless another thread is looking at it now.
     func take(_ reply: JSON, in folder: String) async throws {
         if reply["same"]?.bool == true, let diff = review.diff {
-            if review.builtFor != review.thread { await build(diff, in: folder) }
+            if review.builtFor != building { await build(diff, in: folder) }
             return
         }
         await build(try reply.decode(WorkingDiff.self), in: folder)
+    }
+
+    /// What a book built now would be built for. Witness reads the checks that have ended, so
+    /// one more of them is a new book for it though the files haven't moved; an `ls` isn't.
+    private var building: ReviewState.Built {
+        var built = ReviewState.Built(thread: review.thread, design: review.design)
+        guard built.design == .witness, let chat else { return built }
+        built.runs = conversation(for: chat).items.count { item in
+            switch item {
+            case .tool(_, let call): call.kind == .run && call.result != nil && review.isCheck(call.shown("command"))
+            case .shell(_, let run): run.endedAt != nil && review.isCheck(run.command)
+            default: false
+            }
+        }
+        return built
+    }
+
+    /// Whether the thread's agent says how a command of its own ended: Claude Code's Bash and
+    /// Codex do, and an agent whose model API runs in Claude Code.
+    private func reportsExitCodes(_ chat: Chat?) -> Bool {
+        let id = providerID(for: chat)
+        return id == "claude" || id == "codex" || agents.first { $0.id == id }?.route == "Claude Code"
     }
 
     /// The book for a diff. The chapters, words and moves are worked out off the main thread;
@@ -348,17 +421,20 @@ extension AppModel {
     private func build(_ diff: WorkingDiff, in folder: String) async {
         let items = chat.map { conversation(for: $0).items } ?? []
         let rayEdits = chat.map { conversation(for: $0).rayEdits } ?? []
-        let thread = review.thread
-        let base = await Task.detached(priority: .userInitiated) {
-            ReviewBook(diff: diff, provenance: Provenance(items: items, rayEdits: rayEdits) { RepoPath.relative($0, cwd: folder, root: diff.root) })
+        let built = building
+        let exits = reportsExitCodes(chat)
+        let (base, page) = await Task.detached(priority: .userInitiated) {
+            let provenance = Provenance(items: items, rayEdits: rayEdits, exits: exits) { RepoPath.relative($0, cwd: folder, root: diff.root) }
+            let base = ReviewBook(diff: diff, provenance: provenance)
+            return (base, built.design == .witness ? WitnessPage(diff: diff, units: base.units, provenance: provenance) : WitnessPage())
         }.value
         guard review.folder == folder else { return }
         review.diff = diff
         review.base = base
-        review.builtFor = thread
+        review.builtFor = built
         review.problem = nil
         review.marks.prune(in: diff.root, head: diff.head, keeping: Set(diff.files.map(\.path)))
-        applyMarks()
+        applyMarks(on: page)
         review.keepOpenFiles()
         if reviewShown {
             review.placeFiles()
@@ -368,10 +444,12 @@ extension AppModel {
 
     /// Lays the marks over the book. The keyboard stays on a hunk: one put back is selected
     /// again, and when the selected one is gone, the hunk that took its place is selected, the
-    /// way a list moves on after a delete. A note whose hunk has no row any more is let go.
-    func applyMarks() {
+    /// way a list moves on after a delete. A note whose hunk has no row any more is let go. A
+    /// new book's page comes in with it, so the order before is read off the page that was up.
+    func applyMarks(on page: WitnessPage? = nil) {
         guard let root = review.root else { return }
         let before = review.visibleUnits.map(\.id)
+        if let page { review.page = page }
         review.book = review.base.marked(with: review.marks.marks(in: root))
         let visible = review.visibleUnits
         if let back = review.reselect.lazy.compactMap({ id in visible.first { $0.id == id } }).first {
@@ -449,7 +527,7 @@ extension AppModel {
     /// in a closed one.
     func toggleSelectedReviewed() {
         let shown = review.selected == nil
-            ? review.visibleUnits.first { !$0.reviewed && review.openFiles.contains($0.section) }
+            ? review.visibleUnits.first { !$0.reviewed && review.shows($0) }
             : review.selectedUnit
         guard let shown else { return }
         toggleReviewed(shown)
@@ -813,6 +891,8 @@ extension AppModel {
                     unit: unit.id, path: comment.path, quote: line.map { [$0.signed] } ?? [],
                     place: line == nil ? comment.path : "\(comment.path):\(comment.line)", text: comment.text, suggested: true))
                 review.openFiles.insert(unit.section)
+                // In Witness a change that needs no reading is one line, and a comment on it is read.
+                if review.design == .witness, review.page.quiet.contains(where: { $0.id == unit.id }) { review.unfolded.insert(unit.id) }
                 placed += 1
             }
         }

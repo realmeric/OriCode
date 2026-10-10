@@ -42,6 +42,8 @@ extension AppModel {
         holdForShells()
         store(block)
         putBack(block)
+        // A command of yours can change files and can be a check: the review reads again.
+        if block.chatID == chat?.id { readReview() }
     }
 
     /// A block putting itself back, its program letting go of the screen or its command ending,

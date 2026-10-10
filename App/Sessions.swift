@@ -58,7 +58,15 @@ extension AppModel {
         context.insert(chat)
         var turn = 0
         for (seq, body) in events.enumerated() {
-            guard let kind = body["event"]?.string, let payload = try? body.data() else { continue }
+            guard let kind = body["event"]?.string else { continue }
+            // A transcript doesn't say when, and the event's own date is this moment: its calls
+            // are marked as having no time, so the review reads nothing off when they ran.
+            var body = body
+            if kind == "tool.use", case .object(var fields) = body {
+                fields["untimed"] = true
+                body = .object(fields)
+            }
+            guard let payload = try? body.data() else { continue }
             if kind == "user" { turn += 1 }
             let event = Event(turn: turn, seq: seq, kind: kind, payload: payload)
             context.insert(event)

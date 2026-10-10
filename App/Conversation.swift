@@ -38,6 +38,8 @@ struct ToolCall: Hashable {
     /// pattern, url, query, description, todos and patch. Claude's calls have none, and their
     /// input is read instead.
     var view: JSON = .null
+    /// When its tool.use came, which for a command is when it began to run.
+    var startedAt: Date?
 
     var kind: ToolKind { declared ?? ToolKind(claude: name) }
 
@@ -219,6 +221,7 @@ struct StoredEvent: Sendable {
     let seq: Int
     /// Nil for a payload that doesn't decode, which still counts for the turn and the order.
     let body: JSON?
+    let createdAt: Date
     /// For the events a conversation writes again, a command's and a workflow's.
     let model: PersistentIdentifier?
 
@@ -229,7 +232,7 @@ struct StoredEvent: Sendable {
         return ((try? context.fetch(descriptor)) ?? []).map { event in
             StoredEvent(
                 id: event.id, kind: event.kind, turn: event.turn, seq: event.seq,
-                body: try? JSONDecoder().decode(JSON.self, from: event.payload),
+                body: try? JSONDecoder().decode(JSON.self, from: event.payload), createdAt: event.createdAt,
                 model: event.kind == "shell" || event.kind == "workflow" ? event.persistentModelID : nil)
         }
     }
@@ -373,7 +376,7 @@ final class Conversation {
                 if event.kind == "shell" { shellEvents[event.id] = object }
                 if event.kind == "workflow", let taskId = body["taskId"]?.string { workflowEvents[taskId] = object }
             }
-            apply(event.kind, body, id: event.id)
+            apply(event.kind, body, id: event.id, at: event.createdAt)
         }
         open = nil
         endWorkflows(saving: false)
@@ -781,7 +784,7 @@ final class Conversation {
             return
         }
         event.payload = (try? body.data()) ?? event.payload
-        apply("workflow", body, id: event.id)
+        apply("workflow", body, id: event.id, at: event.createdAt)
         unsaved = true
         flush()
     }
@@ -797,7 +800,7 @@ final class Conversation {
             if saving {
                 workflowChanged(.object(body))
             } else {
-                apply("workflow", .object(body), id: event.id)
+                apply("workflow", .object(body), id: event.id, at: event.createdAt)
             }
         }
     }
@@ -924,7 +927,7 @@ final class Conversation {
         event.chat = chat
         unsaved = true
         open = nil
-        apply(kind, body, id: event.id)
+        apply(kind, body, id: event.id, at: event.createdAt)
         if kind == "user" || kind == "text" {
             said?.add(event.id, in: chat.id, user: kind == "user", text: body[kind == "user" ? "text" : "delta"]?.string ?? "")
         }
@@ -933,7 +936,7 @@ final class Conversation {
         return event
     }
 
-    private func apply(_ kind: String, _ body: JSON, id: UUID) {
+    private func apply(_ kind: String, _ body: JSON, id: UUID, at date: Date) {
         switch kind {
         case "user":
             let images = body["images"]?.array?.compactMap { $0.string.flatMap { Data(base64Encoded: $0) } } ?? []
@@ -946,7 +949,8 @@ final class Conversation {
             let name = body["name"]?.string ?? ""
             var call = ToolCall(
                 toolUseId: body["toolUseId"]?.string ?? "", name: name, input: body["input"] ?? .null,
-                declared: ToolKind(body["kind"], tool: name), view: body["view"] ?? .null)
+                declared: ToolKind(body["kind"], tool: name), view: body["view"] ?? .null,
+                startedAt: body["untimed"]?.bool == true ? nil : date)
             if call.kind == .plan { call.plan = planned(call.view["todos"] == nil ? call.input : call.view, at: id) }
             items.append(.tool(id: id, call: call))
         case "tool.result":
@@ -957,6 +961,10 @@ final class Conversation {
                 call.result = body["content"]?.string ?? ""
                 call.isError = body["isError"]?.bool ?? false
                 call.patch = Hunk.list(body["patch"])
+                // A command whose result is as old as its call was read out of a transcript, by
+                // a build that didn't mark it, or came from an agent that tells of a call only
+                // once it's over: either way when it began isn't known.
+                if call.kind == .run, let started = call.startedAt, (0..<0.005).contains(date.timeIntervalSince(started)) { call.startedAt = nil }
                 items[index] = .tool(id: itemId, call: call)
             }
         case "workflow":

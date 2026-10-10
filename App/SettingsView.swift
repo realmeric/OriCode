@@ -513,9 +513,21 @@ private struct ArchivePane: View {
 private struct SourceControlPane: View {
     @AppStorage(NewThreads.branchPrefix) private var prefix = NewThreads.defaultBranchPrefix
     @AppStorage(NewThreads.messageModel) private var messageModel = ""
+    @AppStorage(ReviewDesign.key) private var review = ReviewDesign.legacy
 
     var body: some View {
         PaneTitle(text: "Source control")
+        SectionHeading("Review")
+        SettingsCard {
+            SettingsRow(title: "Review", detail: review == .witness
+                ? "Opens on the changes to read first, each with its reason from what happened in the thread."
+                : "The diff by turn, under your messages, as it was before Witness.") {
+                Picker("Review", selection: $review) {
+                    ForEach(ReviewDesign.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .menuRow()
+            }
+        }
         SectionHeading("Threads on their own branch")
         SettingsCard {
             SettingsRow(title: "Branch prefix", detail: "The next such thread's branch is \(prefix)t-1a2b3c, in .worktrees inside the project.") {

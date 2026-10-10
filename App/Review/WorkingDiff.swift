@@ -11,6 +11,8 @@ struct WorkingDiff: Decodable, Sendable {
     /// What the engine read it at, sent back with the next read, which answers `same` while
     /// nothing has moved.
     var mark: String?
+    /// When HEAD was committed, in milliseconds; nil before the first commit.
+    var headAt: Double?
 }
 
 struct FileDiff: Decodable, Hashable, Sendable {
@@ -30,6 +32,9 @@ struct FileDiff: Decodable, Hashable, Sendable {
     let stamp: String?
     /// Some of its text isn't UTF-8, so the lines shown can't be written back byte for byte.
     let lossy: Bool
+    /// When the working tree's file last changed, in milliseconds: the disk's word for it, whoever
+    /// wrote the file. Nil for one that's gone.
+    var changedAt: Double?
 
     var isNew: Bool { status == "?" || status == "A" }
 

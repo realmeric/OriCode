@@ -175,7 +175,8 @@ struct ReviewBook: Sendable {
         guard !file.hunks.isEmpty, !file.binary, !file.cut else {
             return [ReviewUnit(
                 id: file.path + "#" + file.status, file: file, hunk: nil, fingerprint: Fingerprint.of(file: file),
-                colourKey: "", lines: [], turn: provenance.lastTurn(editing: file.path), whitespaceOnly: false)]
+                colourKey: "", lines: [],
+                turn: provenance.lastTurn(editing: file.path) ?? file.oldPath.flatMap(provenance.lastTurn(editing:)), whitespaceOnly: false)]
         }
         var occurrences: [String: Int] = [:]
         return file.hunks.map { hunk in
@@ -185,7 +186,9 @@ struct ReviewBook: Sendable {
             occurrences[fingerprint] = occurrence + 1
             var lines = Self.lines(of: hunk)
             let turns = lines.indices.map { index -> Int? in
+                // A file renamed after its edits has them under the name it had then.
                 lines[index].kind == .context ? nil : provenance.turn(of: lines[index].signed, in: file.path)
+                    ?? file.oldPath.flatMap { provenance.turn(of: lines[index].signed, in: $0) }
             }
             let changed = lines.indices.filter { lines[$0].kind != .context }
             let significant = changed.filter { Self.significant(lines[$0].signed) }

@@ -30,9 +30,13 @@ export type FileDiff = {
   /// Some of its text isn't UTF-8, so its lines as shown can't be written back byte for byte:
   /// it's taken back and committed whole.
   lossy: boolean;
+  /// When the working tree's file last changed, in milliseconds: the later of its text's date
+  /// and its inode's, so one moved into place counts from the move. Null for one that's gone.
+  changedAt: number | null;
 };
 
-export type Diff = { root: string; head: string | null; mark: string; files: FileDiff[] };
+/// `headAt` is when HEAD was committed, in milliseconds, null before the first commit.
+export type Diff = { root: string; head: string | null; headAt: number | null; mark: string; files: FileDiff[] };
 
 export type IndexEntry = { path: string; mode: string; sha: string };
 
@@ -100,11 +104,14 @@ export async function workingDiff(cwd: string, since?: string): Promise<Diff | {
     throw error;
   });
   const { commit, changed, untracked } = parseStatus(status);
-  const stamps = await Promise.all([...changed, ...untracked].map((path) => stamp(join(root, path))));
-  const mark = createHash("sha256").update(status).update(stamps.join("\0")).digest("hex");
+  const listed = [...changed, ...untracked];
+  const dates = await Promise.all(listed.map((path) => dated(join(root, path))));
+  const mark = createHash("sha256").update(status).update(dates.map((file) => `${stamp(file)}:${file?.changedMs ?? ""}`).join("\0")).digest("hex");
   if (mark === since) return { root, same: true };
+  const changedAt = new Map(listed.map((path, index) => [path, dates[index]?.changedMs ?? null]));
   // With no commit yet, everything is measured against the empty tree.
   const base = commit ?? (await gitRun(root, ["hash-object", "-t", "tree", "/dev/null"])).trim();
+  const committed = commit ? gitRun(root, ["show", "-s", "--format=%ct", commit]).then((out) => Number(out.trim()) * 1000 || null, () => null) : null;
   const { named, counts } = parseSummary(await gitRun(root, [...diffArgs, "--raw", "--numstat", "-z", base]));
   const huge = named.filter((file) => {
     const count = counts.get(file.path);
@@ -132,27 +139,40 @@ export async function workingDiff(cwd: string, since?: string): Promise<Diff | {
       cut,
       stamp: null,
       lossy: chunk?.lossy ?? false,
+      changedAt: changedAt.get(file.path) ?? null,
     };
   });
   const paths = untracked.filter((path) => !path.endsWith("/"));
   for (const [index, path] of paths.entries()) {
-    files.push(index < untrackedFiles ? await newFile(root, path) : { ...blank(path), cut: true });
+    files.push({ ...(index < untrackedFiles ? await newFile(root, path) : { ...blank(path), cut: true }), changedAt: changedAt.get(path) ?? null });
   }
   for (const file of files) {
-    if (file.binary || file.cut || file.hunks.length === 0) file.stamp = await stamp(join(root, file.path));
+    // A path status didn't name the way the diff does is read here, the one time it's needed.
+    if (!changedAt.has(file.path)) file.changedAt = (await dated(join(root, file.path)))?.changedMs ?? null;
+    if (file.binary || file.cut || file.hunks.length === 0) file.stamp = stamp(await dated(join(root, file.path)));
   }
-  return { root, head: commit, mark, files };
+  return { root, head: commit, headAt: await committed, mark, files };
 }
 
-async function stamp(path: string): Promise<string> {
-  return stat(path).then(
-    (info) => `${info.size}:${info.mtimeMs}`,
-    () => "gone",
+/// `changedMs` is the latest the file can have been put as it is: its text written, or the
+/// file moved, linked or copied into place with an old date kept, which only its inode's own
+/// time tells; for a link, the link's times too. It is never earlier than the truth.
+type Dated = { size: number; mtimeMs: number; changedMs: number };
+
+/// A file's size and dates, or null for one that isn't there.
+async function dated(path: string): Promise<Dated | null> {
+  return Promise.all([stat(path), lstat(path)]).then(
+    ([info, link]) => ({ size: info.size, mtimeMs: info.mtimeMs, changedMs: Math.max(info.mtimeMs, info.ctimeMs, link.mtimeMs, link.ctimeMs) }),
+    () => null,
   );
 }
 
+function stamp(file: Dated | null): string {
+  return file ? `${file.size}:${file.mtimeMs}` : "gone";
+}
+
 function blank(path: string): FileDiff {
-  return { path, oldPath: null, status: "?", binary: false, executable: false, hunks: [], added: 0, deleted: 0, cut: false, stamp: null, lossy: false };
+  return { path, oldPath: null, status: "?", binary: false, executable: false, hunks: [], added: 0, deleted: 0, cut: false, stamp: null, lossy: false, changedAt: null };
 }
 
 /// An untracked file as git would diff it once added: one hunk of added lines.

@@ -10,6 +10,7 @@ struct Island: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var island
     @State private var capsuleHovered = false
+    @AppStorage(ReviewDesign.key) private var reviewDesign = ReviewDesign.legacy
 
     enum Piece: Hashable {
         case capsule, command, heads, files, side, pull, review
@@ -106,10 +107,15 @@ struct Island: View {
                 .surface(.pull, in: island, glass: reduceMotion)
                 .transition(arrival)
         case .review:
-            ReviewPanel()
-                .frame(width: min(ReviewPanel.width, room.width), height: reviewHeight(room))
-                .surface(.review, in: island, glass: reduceMotion)
-                .transition(arrival)
+            Group {
+                switch reviewDesign {
+                case .witness: WitnessReview()
+                case .legacy: LegacyReview()
+                }
+            }
+            .frame(width: min(ReviewDesign.width, room.width), height: reviewHeight(room))
+            .surface(.review, in: island, glass: reduceMotion)
+            .transition(arrival)
         }
     }
 
