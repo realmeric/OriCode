@@ -297,6 +297,13 @@ extension AppModel {
             self?.close()
         })
         let others: String? = chats.count > 1 ? nil : "No other thread"
+        // Its list is every project's threads whatever the drawer is filtered to, so it's counted, not the drawer's rows.
+        items.append(PaletteItem(id: "thread.beside", kind: .command, title: "Open beside…", keywords: ["side by side", "split", "two", "pair", "second"],
+                                 icon: "rectangle.split.2x1", unavailable: unsent ?? (besideable.isEmpty ? "No other thread" : nil), action: .list(besideList)))
+        if besideChatID != nil {
+            items.append(command("thread.closeOtherSide", "Close other side", icon: "xmark.rectangle", shortcut: shortcuts.label(.closeOtherSide),
+                                 keywords: ["beside", "side by side", "split", "pair"]) { [weak self] in self?.closeOtherSide() })
+        }
         items.append(command("thread.next", "Next thread", icon: "chevron.down", shortcut: shortcuts.label(.nextThread), unavailable: others) { [weak self] in
             self?.stepThread(1)
         })
@@ -419,6 +426,26 @@ extension AppModel {
                 PaletteItem(id: "archived." + chat.id.uuidString, kind: .thread, title: chat.title,
                             subtitle: [chat.project?.name, chat.updatedAt.formatted(date: .abbreviated, time: .omitted)].compactMap { $0 }.joined(separator: " · "),
                             icon: "archivebox", project: chat.project, action: .run { [weak self] in self?.restore(chat) })
+            }
+        }
+    }
+
+    /// The threads that can come beside the open one: every project's that have begun and aren't
+    /// archived, the latest worked on first.
+    private var besideable: [Chat] {
+        projects.flatMap(\.chats)
+            .filter { $0.started && !$0.archived && $0.id != selectedChatID }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Each a row that comes beside the open thread and leaves the keyboard where it is.
+    private var besideList: PaletteList {
+        PaletteList(title: "Open beside", placeholder: "Search threads") { [weak self] in
+            guard let self else { return [] }
+            return besideable.map { chat in
+                PaletteItem(id: "beside." + chat.id.uuidString, kind: .thread, title: chat.title, subtitle: chat.project?.name,
+                            icon: "bubble.left", project: chat.project, checked: chat.id == besideChatID,
+                            action: .run { [weak self] in self?.openBeside(chat) })
             }
         }
     }

@@ -223,10 +223,15 @@ extension AppModel {
         }
     }
 
-    /// A click on that line: the thread, if it's still there.
-    func openOpened(_ id: UUID) {
-        guard chat(withID: id)?.project != nil else { return say("That thread was deleted") }
-        open(chatID: id)
+    /// A click on that line: the thread it names comes beside the one the line is in, which has
+    /// the keyboard. Already beside it, nothing moves. In a window too narrow for two it's the
+    /// thread shown, with the one it came from waiting beside for the window to widen.
+    func openOpened(_ id: UUID, from parent: UUID? = nil) {
+        guard let opened = chat(withID: id), opened.project != nil else { return say("That thread was deleted") }
+        guard !opened.archived, let parent = parent.map(chat(withID:)) ?? chat, parent.id != id else { return open(chatID: id) }
+        if selectedChatID != parent.id { select(parent) }
+        if besideChatID != id { besideChatID = id }
+        if besideShown == nil { select(opened) }
     }
 
     /// A click on a suggestion: a new thread in the suggesting thread's project, made as ⌘N makes
@@ -277,11 +282,13 @@ struct OpenedLine: View {
     let thread: UUID
     let title: String
     let finished: Bool
+    /// The thread the line is in; nil stands for the open one.
+    var parent: UUID?
     @State private var hovering = false
 
     var body: some View {
         Button {
-            model.openOpened(thread)
+            model.openOpened(thread, from: parent)
         } label: {
             Text(Self.words(title: title, finished: finished))
                 .underline(hovering)

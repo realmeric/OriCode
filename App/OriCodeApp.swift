@@ -30,6 +30,9 @@ struct OriCodeApp: App {
                     delegate.endCommands = { [model] in model.endShells() }
                     delegate.markCutOffTurns = { [model] in model.markCutOffTurns() }
                     updates.say = { [model] line in model.say(line) }
+                    // SwiftUI gives the window's first focus to the thread list as it shows the
+                    // window, after the composer has taken the keyboard, so it's handed back.
+                    model.returnKeyboard()
                     // The test host opens this build's own store, whose threads booting would pick up
                     // and send; a test that needs the engine makes its own model.
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }

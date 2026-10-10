@@ -302,6 +302,8 @@ final class AppModel {
     /// The wait for the soonest session limit to reset, when a thread it stopped goes on.
     var resumeTask: Task<Void, Never>?
     private var booted = false
+    /// The open thread's read at launch.
+    @ObservationIgnored private var openRead: Task<Void, Never>?
     /// A `provider` event that came before hello's list did, applied once it has.
     @ObservationIgnored var earlyProviders: [ProviderInfo] = []
     private var noteTask: Task<Void, Never>?
@@ -346,6 +348,7 @@ final class AppModel {
             guard besideChatID != oldValue else { return }
             if let besideChatID, besideChatID == selectedChatID { self.besideChatID = nil }
             if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
+            UserDefaults.standard.set(besideChatID?.uuidString, forKey: "besideChat")
             guard let besideChatID else {
                 composerHalf = .left
                 return
@@ -356,13 +359,28 @@ final class AppModel {
         }
     }
 
-    enum Half {
+    enum Half: String {
         case left
         case right
     }
 
     /// Which half the open thread, and so the keyboard, is in while another is beside it.
-    private(set) var composerHalf = Half.left
+    private(set) var composerHalf = Half.left {
+        didSet { UserDefaults.standard.set(composerHalf.rawValue, forKey: "composerHalf") }
+    }
+
+    /// At launch: the thread that was beside the open one is beside it again, each in the half it
+    /// was in. One deleted or archived meanwhile isn't, and the open thread has the window; the
+    /// half kept for that pair goes too, or the next pair would come back with its sides traded.
+    private func restorePair() {
+        let kept = UserDefaults.standard
+        let half = kept.string(forKey: "composerHalf").flatMap(Half.init) ?? .left
+        if let beside = kept.string(forKey: "besideChat").flatMap(UUID.init), chat?.started == true, staysInView(beside) {
+            besideChatID = beside
+        }
+        if besideChatID == nil { kept.removeObject(forKey: "besideChat") }
+        composerHalf = besideChatID == nil ? .left : half
+    }
 
     /// Whether the conversation's side of the window is wide enough for two columns, as RootView
     /// last laid it out. Under that a pair folds to the open thread.
@@ -476,7 +494,8 @@ final class AppModel {
         drawerShown = drawerPinned
         clearDrafts()
         carryUltracode()
-        if let selectedChatID { loadConversation(selectedChatID) }
+        if let selectedChatID { openRead = loadConversation(selectedChatID) }
+        restorePair()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
         startingSeen = startingValues
@@ -518,11 +537,16 @@ final class AppModel {
     /// Reads the thread's events on a context of its own, off the main thread, and replays them
     /// here. Anything that needs the conversation meanwhile, an engine event or a send, makes it
     /// at once through `conversation(for:)`, and then this one is dropped.
-    private func loadConversation(_ id: UUID) {
-        guard conversations[id] == nil else { return }
+    @discardableResult
+    private func loadConversation(_ id: UUID) -> Task<Void, Never>? {
+        guard conversations[id] == nil else { return nil }
         let container = context.container
-        Task {
+        let first = openRead
+        return Task {
             let stored = await Task.detached(priority: .userInitiated) { StoredEvent.read(id, from: ModelContext(container)) }.value
+            // A thread restored beside the open one is read alongside it and replayed after it,
+            // so the pair's launch shows the open thread as soon as one thread's does.
+            await first?.value
             guard inView(id), conversations[id] == nil,
                   let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
             else { return }
