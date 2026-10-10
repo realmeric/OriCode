@@ -33,6 +33,9 @@ struct OriCodeApp: App {
                     // The test host opens this build's own store, whose threads booting would pick up
                     // and send; a test that needs the engine makes its own model.
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+                    // Here and not in the model: a test's model has a store of its own, with
+                    // none of this build's threads in it, and would drop every draft kept.
+                    model.pruneDrafts()
                     await model.boot()
                 }
                 .frame(minWidth: 720, minHeight: 480)

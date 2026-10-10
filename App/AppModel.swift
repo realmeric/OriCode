@@ -143,6 +143,10 @@ final class AppModel {
     /// open, which the thread it starts takes with it.
     @ObservationIgnored var composers: [UUID: ComposerState] = [:]
     @ObservationIgnored var looseComposer = ComposerState()
+    /// Where started threads' drafts are kept across a quit, text only, and each draft's count of
+    /// edits when it was last written there. A test gives its model a suite of its own.
+    @ObservationIgnored let draftsKept: UserDefaults
+    @ObservationIgnored var draftsWritten: [UUID: Int] = [:]
     /// What a link in the transcript does, made once: MarkdownUI makes `App/Foo.swift` a URL with
     /// no scheme, which the default action hands to Launch Services, and nothing there opens it.
     /// A new action on every body changed the environment of every Markdown block in the thread.
@@ -319,6 +323,7 @@ final class AppModel {
             }
             // With no thread open there's no pair: an empty project picked shows its empty state.
             if selectedChatID == nil, besideChatID != nil { besideChatID = nil }
+            if let oldValue, oldValue != selectedChatID { keepDraft(of: oldValue) }
             if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
             if let selectedChatID { leaving[selectedChatID]?.cancel() }
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
@@ -462,9 +467,10 @@ final class AppModel {
         return (list.first { $0.id == id } ?? list.first).map(agent(for: chat).narrowing)
     }
 
-    init(container: ModelContainer) {
+    init(container: ModelContainer, drafts: UserDefaults = .standard) {
         store = container
         context = container.mainContext
+        draftsKept = drafts
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
@@ -488,6 +494,10 @@ final class AppModel {
                 self?.readReview()
                 self?.refreshPull(for: self?.chat)
             }
+        }
+        // What's typed and not sent is kept as the app is left, since a crash or a kill asks nobody.
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.keepDrafts() }
         }
         // Titled windows only: text input puts borderless helper windows in the key spot too.
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in

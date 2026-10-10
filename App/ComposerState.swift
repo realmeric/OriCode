@@ -33,8 +33,59 @@ extension AppModel {
         guard let thread else { return looseComposer }
         if let made = composers[thread.id] { return made }
         let made = ComposerState()
+        if let kept = keptDrafts[thread.id.uuidString] {
+            made.draft.text = kept
+            draftsWritten[thread.id] = made.draft.edits
+        }
         composers[thread.id] = made
         return made
+    }
+
+    static let draftsKey = "threadDrafts"
+
+    private var keptDrafts: [String: String] {
+        draftsKept.dictionary(forKey: Self.draftsKey) as? [String: String] ?? [:]
+    }
+
+    /// Writes a started thread's draft where the next launch finds it, or takes it out once it's
+    /// sent or emptied. Called when the keyboard leaves the thread, the app is left or quits, and
+    /// never on a key; a draft not edited since it was last written costs one comparison of counts.
+    /// A command at the prompt isn't a message, and isn't kept as one; nor is it marked written,
+    /// since Esc makes it a message again without an edit.
+    func keepDraft(of thread: UUID) {
+        guard let state = composers[thread], state.draft.edits != draftsWritten[thread, default: 0],
+              let chat = chat(withID: thread), chat.started, !chat.archived
+        else { return }
+        draftsWritten[thread] = state.shellPrompt ? nil : state.draft.edits
+        var kept = keptDrafts
+        if state.draft.blank || state.shellPrompt {
+            guard kept.removeValue(forKey: thread.uuidString) != nil else { return }
+        } else {
+            kept[thread.uuidString] = state.draft.text
+        }
+        draftsKept.set(kept, forKey: Self.draftsKey)
+    }
+
+    func keepDrafts() {
+        for thread in composers.keys { keepDraft(of: thread) }
+    }
+
+    /// A thread archived or deleted takes what its composer held, and what was kept of it.
+    func forgetComposer(of thread: UUID) {
+        composers[thread] = nil
+        draftsWritten[thread] = nil
+        var kept = keptDrafts
+        guard kept.removeValue(forKey: thread.uuidString) != nil else { return }
+        draftsKept.set(kept, forKey: Self.draftsKey)
+    }
+
+    /// At launch: a kept draft whose thread is gone or archived has no field to come back to.
+    func pruneDrafts() {
+        let kept = keptDrafts
+        guard !kept.isEmpty else { return }
+        let listed = Set(projects.flatMap(\.chats).filter { $0.started && !$0.archived }.map(\.id.uuidString))
+        let rest = kept.filter { listed.contains($0.key) }
+        if rest.count != kept.count { draftsKept.set(rest, forKey: Self.draftsKey) }
     }
 
     // The open thread's composer under the names it had as one composer on the model, for the

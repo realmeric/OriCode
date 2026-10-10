@@ -51,8 +51,16 @@ struct RootView: View {
                                 .simultaneousGesture(TapGesture().onEnded {
                                     if !open { model.select(thread) }
                                 })
+                                // It fades out of the column the keyboard comes to and into the
+                                // one it left.
                                 .overlay(alignment: .top) {
-                                    if !open { BesideTitle(chat: thread, conversation: model.conversations[thread.id]) }
+                                    ZStack(alignment: .top) {
+                                        if !open {
+                                            BesideTitle(chat: thread, conversation: model.conversations[thread.id])
+                                                .transition(.opacity)
+                                        }
+                                    }
+                                    .animation(Motion.fade, value: open)
                                 }
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                             }
@@ -77,7 +85,8 @@ struct RootView: View {
                         ForEach(Array(zip(halves, threads)), id: \.0) { side, thread in
                             let conversation = thread.flatMap { model.conversations[$0.id] }
                             Composer(chat: thread, conversation: conversation, state: model.composer(for: thread),
-                                     running: conversation?.running ?? false, windowHeight: window.size.height)
+                                     running: conversation?.running ?? false, windowHeight: window.size.height,
+                                     paired: beside != nil)
                                 // Moves as one piece: otherwise a label that changes with the thread,
                                 // like the model's name, is drawn where the composer is going while
                                 // the rest of it is still on the way.
@@ -105,9 +114,9 @@ struct RootView: View {
                         EngineNote()
                     }
                     .frame(height: Self.notes)
+                    // Under the half with the keyboard at once: nothing crosses with it.
                     .padding(right ? .leading : .trailing, beside == nil ? 0 : half)
-                    .animation(Motion.glide, value: right)
-                    .animation(Motion.glide, value: beside?.id)
+                    .animation(Motion.glide, value: beside == nil)
                 }
                 // Whatever empties the window (a new thread, ⌘W, another project) sends the
                 // composer back up to the middle the way the first message sends it down, once

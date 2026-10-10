@@ -11,6 +11,8 @@ struct Composer: View {
     let state: ComposerState
     let running: Bool
     let windowHeight: CGFloat
+    /// One of two on the glass. Alone, a composer has the window's width and its button says all.
+    var paired = false
     /// Counts the turns to the prompt and back made while one thread is showing, which the
     /// morph plays for. A thread at the prompt taking the place of one that isn't shows as it is.
     @State private var morph = 0
@@ -40,6 +42,11 @@ struct Composer: View {
     @State private var cardShown = false
     /// Whether the queue's lines are scrolled to the last, which leaves nothing below to fade into.
     @State private var queueAtEnd = true
+    /// How much the model button says in a composer this wide, when it's one of two. It moves on
+    /// a resize, never on a key.
+    @State private var says = ModelMenu.Says.all
+    /// Whether the composer has had a width yet. The body doesn't read it.
+    @State private var laidOut = false
 
     /// The tallest picker, its gap and the 52pt title bar: with less room than this above the
     /// composer, the picker opens below it.
@@ -104,6 +111,12 @@ struct Composer: View {
                 .allowsHitTesting(false)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        // A composer that arrives narrow has its button short from the start; the words go and
+        // come back with the move spring only as its width crosses a step.
+        .onGeometryChange(for: ModelMenu.Says.self) { ModelMenu.says(in: $0.size.width) } action: { step in
+            if step != says { withAnimation(laidOut ? Motion.move : nil) { says = step } }
+            laidOut = true
+        }
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
             top = $0
             state.top = $0
@@ -456,7 +469,7 @@ struct Composer: View {
             .padding(.leading, state.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
                 attachButton
-                ModelMenu(chat: chat, state: state)
+                ModelMenu(chat: chat, state: state, says: paired ? says : .all)
                 if offers.usage { UsageGlass(chat: chat) }
             }
             .frame(height: 36)
@@ -800,6 +813,13 @@ struct Composer: View {
         guard sent else { return }
         text = ""
         recalled = nil
+        forgetKept()
+    }
+
+    /// A message that has gone isn't a draft the next launch should bring back, whatever ends
+    /// this one. A write only when the text had been kept, and never on any other key.
+    private func forgetKept() {
+        if let chat { model.keepDraft(of: chat.id) }
     }
 
     /// A turn running, or messages sent into one still to run.
@@ -812,6 +832,7 @@ struct Composer: View {
         guard canSend, model.queue(text, in: chat) else { return }
         text = ""
         recalled = nil
+        forgetKept()
     }
 }
 

@@ -47,6 +47,8 @@ struct ModelMenu: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     let state: ComposerState
+    /// How much of itself the button says, which its composer's width decides.
+    var says = Says.all
     @State private var hovering = false
     /// Where the button is in the window, kept for the next thread this composer shows, which
     /// comes without the button moving.
@@ -68,11 +70,12 @@ struct ModelMenu: View {
             HStack(spacing: 6) {
                 AgentMark(agent: model.providerID(for: chat))
                     .frame(width: 14, height: 14)
-                let name = selectedModel.map { Self.shortName($0.name) } ?? "Model"
-                Text(name)
-                    .foregroundStyle(Ink.primary)
-                    .id(name)
-                    .transition(.blurReplace)
+                if says > .mark {
+                    Text(name)
+                        .foregroundStyle(Ink.primary)
+                        .id(name)
+                        .transition(.blurReplace)
+                }
                 // The head's rays beside it, each its agent's mark.
                 if !rays.isEmpty {
                     HStack(spacing: 2) {
@@ -100,7 +103,7 @@ struct ModelMenu: View {
                 }
                 // The level in effect: faint when it's Default's, brighter when picked, and at
                 // full strength while workflows are on, so a thread can't stay on them unnoticed.
-                if let level = shownEffort ?? model.defaultLevel(for: chat) {
+                if says == .all, let level {
                     Text(Self.effortName(level))
                         .foregroundStyle(workflows ? Ink.primary : shownEffort == nil ? Ink.faint : Ink.secondary)
                         .id(level)
@@ -127,11 +130,17 @@ struct ModelMenu: View {
             state.modelButtonFrame = $0
         }
         .onChange(of: ObjectIdentifier(state)) { state.modelButtonFrame = frame }
-        .help("Model and permission mode")
+        // The words a narrow composer's button leaves out are here.
+        .help(says == .all ? "Model and permission mode" : ([name] + (level.map { [Self.effortName($0)] } ?? [])).joined(separator: ", ") + ". Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
         .accessibilityValue([accessibilityEffort, workflows ? "workflows on" : nil, rays.isEmpty ? nil : raysLine].compactMap { $0 }.joined(separator: ", "))
         .task(id: "\(model.providerID(for: chat)) \(model.engineState == .ready)") { model.readModels(for: chat) }
     }
+
+    private var name: String { selectedModel.map { Self.shortName($0.name) } ?? "Model" }
+
+    /// The level in effect, the thread's or Default's.
+    private var level: String? { shownEffort ?? model.defaultLevel(for: chat) }
 
     private var fast: Bool {
         PickerState(model: model, chat: chat).fastAsked
@@ -158,6 +167,25 @@ struct ModelMenu: View {
     private var accessibilityEffort: String {
         if let effort = shownEffort { return "Effort \(Self.effortName(effort))" }
         return model.defaultLevel(for: chat).map { "Effort \(Self.effortName($0)), the default" } ?? ""
+    }
+
+    /// What the button says: all of it, or in a narrow composer less, so the field keeps its room.
+    /// The level's word goes first and the model's name after it, which leaves the agent's mark,
+    /// the rays, the bolt, the workflows glyph and the chevron.
+    enum Says: Comparable {
+        case mark
+        case name
+        case all
+    }
+
+    /// A paired composer's widths under which the level's word goes, and the name with it. Measured
+    /// with the widest button Claude Code's list makes, three rays, the bolt, the workflows glyph
+    /// and Extra high beside its longest names: the field is 150pt or wider while a word shows.
+    nonisolated static let levelFrom: CGFloat = 540
+    nonisolated static let nameFrom: CGFloat = 470
+
+    nonisolated static func says(in composer: CGFloat) -> Says {
+        composer < nameFrom ? .mark : composer < levelFrom ? .name : .all
     }
 
     static func effortName(_ effort: String) -> String {

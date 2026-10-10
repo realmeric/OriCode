@@ -48,6 +48,21 @@ struct ModelMenuTests {
         model.selectedProjectID = project.id
     }
 
+    /// A narrow composer's model button gives up the level's word, then the model's name.
+    @Test func theButtonSaysLessInANarrowComposer() {
+        #expect(ModelMenu.says(in: 720) == .all)
+        #expect(ModelMenu.says(in: ModelMenu.levelFrom) == .all)
+        #expect(ModelMenu.says(in: ModelMenu.levelFrom - 1) == .name)
+        #expect(ModelMenu.says(in: ModelMenu.nameFrom) == .name)
+        #expect(ModelMenu.says(in: ModelMenu.nameFrom - 1) == .mark)
+        // Under a drawer, and in the narrowest half of a pair.
+        #expect(ModelMenu.says(in: RootView.drawnBack) == .mark)
+        #expect(ModelMenu.says(in: Column.least - Column.margin * 2) == .mark)
+        // Each half at 1180pt keeps all of it. One thread is never asked: its composer says all
+        // at any width, a pinned drawer's included.
+        #expect(ModelMenu.says(in: 1180 / 2 - Column.margin * 2) == .all)
+    }
+
     /// A pick writes the last picks, a star the favorites, and Settings' keys are read from the
     /// host's defaults, so each test that touches them puts them back as they were.
     static func keepingDefaults() -> () -> Void {

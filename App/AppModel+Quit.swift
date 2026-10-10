@@ -11,9 +11,10 @@ extension AppModel {
     static let deniedMessage = "The user denied this. Tell them you stopped, and wait for what they want instead."
 
     /// Called as the app terminates, whatever asked it to: ⌘Q, the Dock, a logout, an update's
-    /// restart, or a SIGTERM.
+    /// restart, or a SIGTERM. What's typed and not sent is kept for the next launch too.
     func markCutOffTurns() {
         for conversation in conversations.values { conversation.quitting() }
+        keepDrafts()
     }
 
     /// Once the engine and the thread's agent are ready: a thread cut off while it worked gets the

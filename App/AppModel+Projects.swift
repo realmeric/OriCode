@@ -53,7 +53,7 @@ extension AppModel {
         endShells(of: chat)
         Task { _ = try? await engine.request("close", ["threadId": .string(archived.uuidString)]) }
         conversations[archived] = nil
-        composers[archived] = nil
+        forgetComposer(of: archived)
         chat.archived = true
         chat.pinned = false
         chat.position = nil
@@ -326,7 +326,7 @@ extension AppModel {
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         // Its events can't find it through the conversation any more.
         conversations[deleted] = nil
-        composers[deleted] = nil
+        forgetComposer(of: deleted)
         SentPictures.standard.forget(thread: deleted)
         context.delete(chat)
         save()
