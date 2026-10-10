@@ -39,7 +39,7 @@ extension AppModel {
         if reviewShown {
             if review.noting != nil {
                 review.noting = nil
-            } else {
+            } else if !review.closeOpened() {
                 closeReview()
             }
             return true

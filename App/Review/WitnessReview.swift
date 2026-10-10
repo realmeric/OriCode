@@ -5,8 +5,11 @@ import SwiftUI
 /// why it's there; the runs; what last changed before them, in the order the thread first
 /// touched the files; and last what needs no reading, a line each.
 struct WitnessReview: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
-        ReviewFrame(design: .witness) { WitnessScroll() }
+        // A review opened again has its place, and every row is there to scroll to it.
+        ReviewFrame(design: .witness) { WitnessScroll(placed: model.review.selected != nil) }
     }
 }
 
@@ -17,16 +20,23 @@ private struct WitnessScroll: View {
     /// to a frame while they fill the first screen, as Legacy makes its own, and then all the
     /// rest at once, which the lazy stack lays out only as they come into view. A row to a frame
     /// to the end costs a long page a frame's work for every row it has.
-    @State private var made = 3
+    @State private var made: Int
+    /// How many plain characters a line of code has room for, which says what can't wrap.
+    @State private var columns = 100
     private static let firstScreen = 16
+    private static let side: CGFloat = 16
+
+    init(placed: Bool) {
+        _made = State(initialValue: placed ? .max : 3)
+    }
 
     private enum Row: Identifiable {
         case sentence(String)
         case heading(String)
         /// A file's line, with the lines its changes under it add and take out.
         case file(WitnessPage.FileLine, added: Int, deleted: Int)
-        /// A change under its file's line, which knows whether it's the first there and the last.
-        case unit(ReviewUnit, first: Bool, last: Bool)
+        /// A change under its file's line, and what that line has already said of it.
+        case unit(ReviewUnit, said: [String])
         case run(Provenance.Run, below: String?)
         case quiet(WitnessPage.Quiet, ReviewUnit)
 
@@ -35,7 +45,7 @@ private struct WitnessScroll: View {
             case .sentence: "sentence"
             case .heading(let text): "h:" + text
             case .file(let line, _, _): line.id
-            case .unit(let unit, _, _): unit.id
+            case .unit(let unit, _): unit.id
             case .run(let run, _): "r:" + run.check
             case .quiet(_, let unit): unit.id
             }
@@ -52,7 +62,8 @@ private struct WitnessScroll: View {
                 let shown = line.units.compactMap { units[$0] }
                 guard !shown.isEmpty else { continue }
                 rows.append(.file(line, added: shown.reduce(0) { $0 + $1.added }, deleted: shown.reduce(0) { $0 + $1.deleted }))
-                rows += shown.enumerated().map { .unit($1, first: $0 == 0, last: $0 == shown.count - 1) }
+                // With one change under it, the line's reasons are that change's, and its caption needn't repeat them.
+                rows += shown.map { .unit($0, said: shown.count == 1 ? line.reasons : []) }
             }
         }
         if page.queued { rows.append(.heading("Read first · \(page.first) of \(page.total) changes")) }
@@ -93,23 +104,29 @@ private struct WitnessScroll: View {
                                 .padding(.top, 16)
                         case .file(let line, let added, let deleted):
                             FileLine(line: line, added: added, deleted: deleted)
-                        case .unit(let unit, let first, let last):
-                            UnitView(unit: unit, alone: false)
-                                .padding(.horizontal, 4)
-                                .padding(.top, 4)
-                                .padding(.bottom, last ? 4 : 0)
-                                .background(Surface.card, in: .fileCard(top: first, bottom: last))
+                        case .unit(let unit, let said):
+                            WitnessUnit(unit: unit, digits: model.review.page.digits, columns: columns, said: said)
+                                .padding(.bottom, 4)
                         case .run(let run, let below):
                             RunRow(run: run, below: below)
                         case .quiet(let line, let unit):
-                            QuietRow(line: line, unit: unit)
+                            QuietRow(line: line, unit: unit, digits: model.review.page.digits, columns: columns)
                         }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, Self.side)
                 .padding(.bottom, 16)
             }
             .scrollIndicators(.automatic)
+            .onGeometryChange(for: Int.self) { geometry in
+                // A scroller that is always there takes its width from the page.
+                let scroller = NSScroller.preferredScrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
+                return Int((geometry.size.width - scroller - Self.side * 2 - WitnessHunk.codeX(model.review.page.digits) - 12) / WitnessHunk.advance) - 1
+            } action: { columns = max(20, $0) }
+            .onAppear {
+                guard let selected = model.review.selected else { return }
+                proxy.scrollTo(selected, anchor: .center)
+            }
             .onChange(of: model.review.selected) { _, selected in
                 guard let selected else { return }
                 made = .max
@@ -168,7 +185,8 @@ private struct FileLine: View {
             part.foregroundColor = ink
             text.append(part)
         }
-        if let status = FileHeader.status(line.file) {
+        // A deleted file's reason is the word itself.
+        if line.file.status != "D", let status = FileHeader.status(line.file) {
             add(status + " ", line.file.status == "D" ? Ink.deleted : line.file.isNew ? Ink.added : Ink.secondary)
         }
         add(line.file.path, Ink.primary)
@@ -222,6 +240,8 @@ private struct QuietRow: View {
     @Environment(AppModel.self) private var model
     let line: WitnessPage.Quiet
     let unit: ReviewUnit
+    let digits: Int
+    let columns: Int
 
     var body: some View {
         let review = model.review
@@ -250,11 +270,118 @@ private struct QuietRow: View {
             }
             .buttonStyle(.plain)
             .help(open ? "Close it (←)" : "Open it (→)")
+            .contextMenu { if !open { WitnessActions(unit: unit) } }
             if open {
-                UnitView(unit: unit, alone: false)
-                    .padding(4)
-                    .background(Surface.card, in: .rect(cornerRadius: 12, style: .continuous))
+                WitnessUnit(unit: unit, digits: digits, columns: columns, said: [line.what])
             }
         }
+    }
+}
+
+/// Witness's top row: the branch, how much changed, the file the keyboard is in with the
+/// page's others behind it, and everything else behind "…".
+struct WitnessHeader: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.undoManager) private var undoManager
+
+    var body: some View {
+        let review = model.review
+        let book = review.book
+        let files = review.page.files
+        HStack(spacing: 8) {
+            // The buttons keep their words. What's left of the row goes to the branch, which
+            // gives way in its middle, then goes, and the counts go after it.
+            ViewThatFits(in: .horizontal) {
+                place(branch: .infinity)
+                place(branch: 320)
+                place(branch: 200)
+                place(branch: 110)
+                place(branch: nil)
+                place(branch: nil, counts: false)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if review.loading || review.asking {
+                ProgressView().controlSize(.mini)
+            }
+            if !files.isEmpty {
+                Menu(Self.place(of: review.selectedUnit, in: files)) {
+                    ForEach(files, id: \.first) { entry in
+                        Button(entry.file.path) {
+                            review.select(book.units.first { $0.id == entry.first })
+                            review.focusTick += 1
+                        }
+                    }
+                }
+                .menuStyle(.button)
+                .buttonStyle(.action(small: true))
+                .fixedSize()
+                .help("The file the keyboard is in, and the others (Tab, ⇧Tab)")
+                Menu {
+                    WitnessActions(unit: review.selectedUnit)
+                    Divider()
+                    Button("Ask for a Review") { model.askForReview() }
+                        .disabled(review.asking)
+                    Button("Mark All Reviewed") { model.setReviewed(book.units.filter { !$0.reviewed }, true) }
+                        .disabled(book.toReview == 0)
+                    Menu("Mark Reviewed by Turn") {
+                        ForEach(book.chapters) { chapter in
+                            Button(AppModel.turnName(chapter)) { model.setReviewed(chapter.units.filter { !$0.reviewed }, true) }
+                                .disabled(chapter.units.allSatisfy(\.reviewed))
+                        }
+                    }
+                    Menu("Take Back by Turn") {
+                        ForEach(book.chapters) { chapter in
+                            Button(AppModel.turnName(chapter)) {
+                                model.takeBack(chapter.units, label: chapter.turn == nil ? "Take Back All" : "Take Back Turn", undoManager: undoManager)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(.action(small: true))
+                .fixedSize()
+                .help("What can be done with the change under the keyboard, and with all of them")
+                .accessibilityLabel("More")
+            }
+            Button("Close") { model.closeReview() }
+                .buttonStyle(.action(small: true))
+                .fixedSize()
+                .help("Close the review (⌘⇧D)")
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 40)
+    }
+
+    /// The row's words: Review, the branch in as much width as it's given, and the counts.
+    private func place(branch width: CGFloat?, counts: Bool = true) -> some View {
+        let book = model.review.book
+        return HStack(spacing: 8) {
+            Text("Review")
+                .font(Type.body.weight(.medium))
+                .foregroundStyle(Ink.primary)
+            if let width, let info = model.currentBranch {
+                Text(info.branch).font(Type.mono).foregroundStyle(Ink.secondary)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: width, alignment: .leading)
+                    .help(info.branch)
+                if info.ahead > 0 { Text("↑\(info.ahead)").font(Type.mono).foregroundStyle(Ink.faint) }
+            }
+            if counts, !book.units.isEmpty {
+                Counts(added: book.added, deleted: book.deleted, quiet: true).opacity(0.8)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize(horizontal: width == .infinity || width == nil, vertical: false)
+    }
+
+    /// "RootView.swift · 1 of 9": the keyboard's file among the page's, or how many there are.
+    static func place(of unit: ReviewUnit?, in files: [(file: FileDiff, first: String)]) -> String {
+        guard let unit, let index = files.firstIndex(where: { $0.file.path == unit.file.path && $0.file.status == unit.file.status }) else {
+            return files.count == 1 ? "1 file" : "\(files.count) files"
+        }
+        return "\((unit.file.path as NSString).lastPathComponent) · \(index + 1) of \(files.count)"
     }
 }

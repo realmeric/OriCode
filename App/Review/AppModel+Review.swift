@@ -90,6 +90,8 @@ final class ReviewState {
     var problem: String?
     /// The hunk the keyboard is on.
     var selected: String?
+    /// Where that is in Witness, for when a read brings the book back without the hunk.
+    var place: ReviewPlace?
     /// Reviewed hunks and chapters opened again.
     var unfolded: Set<String> = []
     /// Hunks too long to draw whole until asked.
@@ -155,9 +157,11 @@ final class ReviewState {
         design == .legacy && chapter.units.allSatisfy(\.reviewed) && !unfolded.contains(chapter.id)
     }
 
-    /// A reviewed hunk, or a lockfile's, is one line until it's opened.
+    /// A reviewed hunk, or a lockfile's, is one line until it's opened. In Witness nothing
+    /// folds for being reviewed: only a change that needs no reading is a line.
     func folded(_ unit: ReviewUnit) -> Bool {
-        (unit.reviewed || unit.lockfile) && !unfolded.contains(unit.id)
+        guard design == .legacy else { return page.isQuiet(unit.id) && !unfolded.contains(unit.id) }
+        return (unit.reviewed || unit.lockfile) && !unfolded.contains(unit.id)
     }
 
     /// The hunks the keyboard can reach, in the order it walks them: none of a folded chapter's,
@@ -204,6 +208,7 @@ final class ReviewState {
         }
         self.thread = thread
         selected = nil
+        place = nil
         noting = nil
         openFiles = []
         placed = false
@@ -267,13 +272,14 @@ final class ReviewState {
         }
     }
 
-    /// Opens a file or folds it. Folding lets go of a note being written in it.
+    /// Opens a file or folds it. Folding lets go of a note being written in it; in Witness,
+    /// where no file folds, the note stays while the keyboard walks on.
     func setOpen(_ section: String, _ open: Bool) {
         if open {
             openFiles.insert(section)
         } else {
             openFiles.remove(section)
-            if book.units.contains(where: { $0.id == noting && $0.section == section }) { noting = nil }
+            if design == .legacy, book.units.contains(where: { $0.id == noting && $0.section == section }) { noting = nil }
         }
     }
 
@@ -334,6 +340,8 @@ extension AppModel {
     /// back, and after every edit while the review is open, so it keeps up with Claude.
     func readReview(in folder: String? = nil, after delay: Duration = .zero) {
         guard let folder = folder ?? workingFolder, engineState == .ready else { return }
+        // Read for the review that would open, so its page is there when it does.
+        review.design = .chosen
         review.look(at: folder, for: chat?.id)
         // No folder's own folder is no repository, and one above it, a home kept in git, isn't
         // its: the review says what git would of a folder that has none, without the engine asked.
@@ -449,6 +457,9 @@ extension AppModel {
     func applyMarks(on page: WitnessPage? = nil) {
         guard let root = review.root else { return }
         let before = review.visibleUnits.map(\.id)
+        if review.design == .witness, let held = review.book.units.first(where: { $0.id == review.selected }) {
+            review.place = ReviewPlace(held)
+        }
         if let page { review.page = page }
         review.book = review.base.marked(with: review.marks.marks(in: root))
         let visible = review.visibleUnits
@@ -456,8 +467,11 @@ extension AppModel {
             review.select(back)
             review.reselect = []
         } else if let selected = review.selected, !visible.contains(where: { $0.id == selected }) {
+            // In Witness the nearest change in the file the keyboard was in; else, and in Legacy,
+            // the one that took its place in the order.
             let at = before.firstIndex(of: selected) ?? 0
-            review.select(visible.isEmpty ? nil : visible[min(at, visible.count - 1)])
+            let near = review.design == .witness ? review.place?.nearest(in: visible) : nil
+            review.select(near ?? (visible.isEmpty ? nil : visible[min(at, visible.count - 1)]))
         }
         if let noting = review.noting, !visible.contains(where: { $0.id == noting && !review.folded($0) }) {
             review.noting = nil
@@ -468,6 +482,8 @@ extension AppModel {
     /// comes in meanwhile starts over with its own hunks.
     private func colour(_ units: [ReviewUnit]) {
         review.colouring?.cancel()
+        // Witness draws code in ink alone.
+        guard review.design == .legacy else { return }
         let keys = Set(units.map(\.colourKey))
         if review.colours.count > 4000 { review.colours = review.colours.filter { keys.contains($0.key) } }
         var seen = Set<String>()
@@ -518,7 +534,10 @@ extension AppModel {
         } else {
             review.marks.unmark(units, in: root)
         }
-        for unit in units { review.unfolded.remove(unit.id) }
+        // In Witness a mark folds nothing and closes nothing.
+        if review.design == .legacy {
+            for unit in units { review.unfolded.remove(unit.id) }
+        }
         applyMarks()
     }
 
@@ -542,7 +561,8 @@ extension AppModel {
         } else {
             let next = review.next(after: unit)
             setReviewed([unit], true)
-            review.select(next, leaving: unit)
+            // With none left to review, Witness's keyboard stays on the change, which is still on the page.
+            review.select(review.design == .witness ? next ?? unit : next, leaving: unit)
         }
     }
 

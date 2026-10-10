@@ -133,7 +133,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
-        case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups.flatMap { $0.rows.map(\.title) }
+        case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups().flatMap { $0.rows.map(\.title) }
         case .about: ["version", "source", "oricode"]
         }
     }
@@ -513,7 +513,7 @@ private struct ArchivePane: View {
 private struct SourceControlPane: View {
     @AppStorage(NewThreads.branchPrefix) private var prefix = NewThreads.defaultBranchPrefix
     @AppStorage(NewThreads.messageModel) private var messageModel = ""
-    @AppStorage(ReviewDesign.key) private var review = ReviewDesign.legacy
+    @AppStorage(ReviewDesign.key) private var review = ReviewDesign.witness
 
     var body: some View {
         PaneTitle(text: "Source control")
@@ -630,7 +630,7 @@ private struct ShortcutsPane: View {
             .font(Type.secondary)
             .foregroundStyle(Ink.secondary)
             .padding(.top, 6)
-        ForEach(ShortcutList.groups, id: \.title) { group in
+        ForEach(ShortcutList.groups(), id: \.title) { group in
             SectionHeading(group.title)
             SettingsCard {
                 ForEach(group.rows, id: \.self) { row in

@@ -27,7 +27,36 @@ enum ShortcutList {
         let rows: [Row]
     }
 
-    static let groups: [Group] = [
+    /// Every group, the Review's rows being the keys of the review that's chosen.
+    static func groups(review: ReviewDesign = .chosen) -> [Group] {
+        fixed + [Group(title: "Review", rows: review == .witness ? witness : legacy)]
+    }
+
+    private static let witness: [Row] = [
+        .fixed("Next and previous change", keys: "↓ ↑  or  J K"),
+        .fixed("Next and previous file", keys: "Tab  ⇧Tab"),
+        .fixed("Mark reviewed, then the next", keys: "Space"),
+        .fixed("Mark the file reviewed", keys: "⇧Space"),
+        .fixed("Open or close removed lines or a quiet line", keys: "→ ←"),
+        .fixed("Add a note", keys: "N"),
+        .fixed("Take it back", keys: "⌫"),
+        .fixed("Undo that", keys: "⌘Z"),
+        .fixed("Open the file at the line", keys: "O"),
+        .fixed("Commit", keys: "⌘Return"),
+    ]
+
+    private static let legacy: [Row] = [
+        .fixed("Next and previous hunk", keys: "↓ ↑  or  J K"),
+        .fixed("Fold or open the file", keys: "← →"),
+        .fixed("Mark reviewed, then the next", keys: "Space"),
+        .fixed("Add a note", keys: "N"),
+        .fixed("Take it back", keys: "⌫"),
+        .fixed("Undo that", keys: "⌘Z"),
+        .fixed("Open the file", keys: "O"),
+        .fixed("Commit", keys: "⌘Return"),
+    ]
+
+    private static let fixed: [Group] = [
         Group(title: Build.name, rows: [
             .fixed("Settings", keys: "⌘,"),
         ]),
@@ -75,16 +104,6 @@ enum ShortcutList {
             .fixed("Allow what the thread asks", keys: "Return"),
             .fixed("Deny it, or close what's on top", keys: "Esc"),
         ]),
-        Group(title: "Review", rows: [
-            .fixed("Next and previous hunk", keys: "↓ ↑  or  J K"),
-            .fixed("Fold or open the file", keys: "← →"),
-            .fixed("Mark reviewed, then the next", keys: "Space"),
-            .fixed("Add a note", keys: "N"),
-            .fixed("Take it back", keys: "⌫"),
-            .fixed("Undo that", keys: "⌘Z"),
-            .fixed("Open the file", keys: "O"),
-            .fixed("Commit", keys: "⌘Return"),
-        ]),
     ]
 }
 
@@ -93,7 +112,7 @@ struct ShortcutsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
-    private let groups = ShortcutList.groups
+    private let groups = ShortcutList.groups()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {

@@ -10,7 +10,7 @@ struct Island: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var island
     @State private var capsuleHovered = false
-    @AppStorage(ReviewDesign.key) private var reviewDesign = ReviewDesign.legacy
+    @AppStorage(ReviewDesign.key) private var reviewDesign = ReviewDesign.witness
 
     enum Piece: Hashable {
         case capsule, command, heads, files, side, pull, review

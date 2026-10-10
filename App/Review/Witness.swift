@@ -9,9 +9,9 @@ enum ReviewDesign: String, CaseIterable, Sendable {
     /// Either review is this wide at most.
     static let width: CGFloat = 960
 
-    /// What's chosen, Legacy until something is.
+    /// What's chosen, Witness until something is.
     static var chosen: ReviewDesign {
-        UserDefaults.standard.string(forKey: key).flatMap(ReviewDesign.init(rawValue:)) ?? .legacy
+        UserDefaults.standard.string(forKey: key).flatMap(ReviewDesign.init(rawValue:)) ?? .witness
     }
 
     var title: String {
@@ -61,6 +61,33 @@ struct WitnessPage: Sendable {
 
     /// Every change in the order the page shows it, which is the order the keyboard walks.
     var order: [String] { readFirst.flatMap(\.units) + rest.flatMap(\.units) + quiet.map(\.id) }
+    /// How many digits the page's longest line number has: one number column for every file,
+    /// so code starts at the same x in all of them.
+    private(set) var digits = 2
+    /// The line each change is on: its file's, or its own when it needs no reading. Tab walks these.
+    private(set) var lineOf: [String: String] = [:]
+
+    /// Whether a change is one of those that need no reading, a line until it's opened.
+    func isQuiet(_ id: String) -> Bool { lineOf[id] == id }
+
+    /// The page's files in its order, each once, with the first change it has here.
+    var files: [(file: FileDiff, first: String)] {
+        var seen = Set<String>()
+        var files: [(FileDiff, String)] = []
+        for line in readFirst + rest {
+            guard let first = line.units.first, seen.insert(line.file.path + "\u{0}" + line.file.status).inserted else { continue }
+            files.append((line.file, first))
+        }
+        let units = Dictionary(quietFiles.map { ($0.id, $0.file) }) { first, _ in first }
+        for line in quiet {
+            guard let file = units[line.id], seen.insert(file.path + "\u{0}" + file.status).inserted else { continue }
+            files.append((file, line.id))
+        }
+        return files
+    }
+
+    /// The file of each change that needs no reading, which its line names by path alone.
+    private var quietFiles: [(id: String, file: FileDiff)] = []
 
     /// Three edits of a file with two runs among them put it first.
     static let manyEdits = 3
@@ -95,6 +122,8 @@ struct WitnessPage: Sendable {
             files[key]!.units.append(unit)
         }
         total = units.count
+        let longest = units.compactMap(\.hunk).map { max($0.oldStart + $0.oldLines, $0.newStart + $0.newLines) }.max() ?? 0
+        digits = max(2, String(longest).count)
 
         // Every file a check reads, with the runs it changed after: a lockfile's change or a
         // re-indented file after a run is the sentence's business as much as an edit is.
@@ -139,6 +168,7 @@ struct WitnessPage: Sendable {
                     for reason in own[index] where !lead.reasons.contains(reason) { lead.reasons.append(reason) }
                 } else if let what = Self.quiet(unit) {
                     quiet.append(Quiet(id: unit.id, path: file.path, what: what))
+                    quietFiles.append((unit.id, file))
                 } else {
                     rest.units.append(unit.id)
                 }
@@ -156,6 +186,11 @@ struct WitnessPage: Sendable {
             if a.rank < Self.firstUnknown || b.rank < Self.firstUnknown { return a.rank < b.rank }
             return (a.changed, a.rank) < (b.changed, b.rank)
         }.map(\.line)
+
+        for line in readFirst + rest {
+            for unit in line.units { lineOf[unit] = line.id }
+        }
+        for line in quiet { lineOf[line.id] = line.id }
 
         if !rest.isEmpty, !runs.isEmpty {
             let it = runs.count == 1 ? "it" : "them"

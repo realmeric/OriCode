@@ -17,7 +17,12 @@ struct ReviewFrame<Page: View>: View {
     var body: some View {
         let review = model.review
         VStack(spacing: 0) {
-            if stage >= 1 { ReviewHeader() }
+            if stage >= 1 {
+                switch design {
+                case .witness: WitnessHeader()
+                case .legacy: ReviewHeader()
+                }
+            }
             if stage < 3 {
                 Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let problem = review.problem, review.diff == nil {
@@ -40,7 +45,7 @@ struct ReviewFrame<Page: View>: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .space, .return, "j", "k", "n", "o"], phases: .down) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .space, .return, .tab, Self.backtab, "j", "k", "n", "o"], phases: .down) { press in
             key(press)
         }
         // The Delete key reaches a focused view as the Delete command, never as a key press.
@@ -68,17 +73,27 @@ struct ReviewFrame<Page: View>: View {
         }
     }
 
+    /// What ⇧Tab arrives as.
+    private static var backtab: KeyEquivalent { KeyEquivalent("\u{19}") }
+
     private func key(_ press: KeyPress) -> KeyPress.Result {
         guard model.review.noting == nil else { return .ignored }
+        let witness = model.review.design == .witness
         switch press.key {
+        case .tab where witness, Self.backtab where witness:
+            // Past the last file Tab goes on to the message, as it does from Legacy.
+            guard model.review.walkFile(press.key == Self.backtab || press.modifiers.contains(.shift) ? -1 : 1) else { return .ignored }
         case .downArrow, "j":
             model.review.move(1)
         case .upArrow, "k":
             model.review.move(-1)
         case .leftArrow, .rightArrow:
             // The file the keyboard is in, folded under it or not; in Witness, the line it's on.
-            guard model.review.book.units.contains(where: { $0.id == model.review.selected }) else { return .ignored }
+            guard let unit = model.review.book.units.first(where: { $0.id == model.review.selected }) else { return .ignored }
+            if witness, !model.review.opens(unit) { return .ignored }
             model.review.open(press.key == .rightArrow)
+        case .space where witness && press.modifiers.contains(.shift):
+            model.toggleFileReviewed()
         case .space:
             model.toggleSelectedReviewed()
         case .return where press.modifiers.contains(.command):
@@ -87,11 +102,11 @@ struct ReviewFrame<Page: View>: View {
         case "n":
             guard let unit = model.review.selectedUnit else { return .ignored }
             // A line closed under the keyboard in Witness opens for its note.
-            if model.review.design == .witness { model.review.unfolded.insert(unit.id) }
+            if witness, model.review.page.isQuiet(unit.id) { model.review.unfolded.insert(unit.id) }
             model.review.noting = unit.id
         case "o":
             guard let unit = model.review.selectedUnit, !unit.file.status.hasPrefix("D") else { return .ignored }
-            model.openFile(unit.file.path)
+            if witness { model.openAtLine(unit) } else { model.openFile(unit.file.path) }
         default:
             return .ignored
         }
@@ -193,10 +208,6 @@ struct UnitView: View {
     /// Past this many lines a hunk shows its start until asked, so one new file can't stall the list.
     private static let long = 400
 
-    /// Witness draws no tick, which elsewhere on its page would read as a run's word on the code;
-    /// what you reviewed is a filled circle and the word.
-    private var ticks: Bool { model.review.design == .legacy }
-
     var body: some View {
         let review = model.review
         let selected = review.selected == unit.id
@@ -206,12 +217,12 @@ struct UnitView: View {
                 review.unfolded.insert(unit.id)
             } label: {
                 HStack(spacing: 6) {
-                    if unit.reviewed, ticks {
+                    if unit.reviewed {
                         Image(systemName: "checkmark").font(.system(size: 10, weight: .semibold))
                     } else {
                         Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                     }
-                    Text(unit.lockfile && !unit.reviewed ? "lockfile" : (unit.reviewed && !ticks ? "reviewed · " : "") + (unit.hunk.map { Self.place($0) } ?? "Reviewed"))
+                    Text(unit.lockfile && !unit.reviewed ? "lockfile" : unit.hunk.map { Self.place($0) } ?? "Reviewed")
                         .lineLimit(1)
                     Counts(added: unit.added, deleted: unit.deleted, quiet: true).opacity(0.6)
                     Spacer()
@@ -294,7 +305,7 @@ struct UnitView: View {
                 Button {
                     model.toggleReviewed(unit)
                 } label: {
-                    Image(systemName: unit.reviewed ? (ticks ? "checkmark.circle.fill" : "circle.fill") : "circle")
+                    Image(systemName: unit.reviewed ? "checkmark.circle.fill" : "circle")
                 }
                 .help(unit.reviewed ? "Mark not reviewed (Space)" : "Mark reviewed (Space)")
             }
@@ -525,6 +536,16 @@ struct ReviewFooter: View {
         return units.contains(where: \.reviewed) && units.contains { !$0.reviewed }
     }
 
+    /// What the white button says. In Witness it names what it takes: every file, or the
+    /// changes marked reviewed.
+    static func commitTitle(_ book: ReviewBook, in design: ReviewDesign) -> String {
+        let reviewedOnly = reviewedOnly(book)
+        guard design == .witness else { return reviewedOnly ? "Commit Reviewed" : "Commit" }
+        if reviewedOnly { return "Commit \(book.units.count(where: \.reviewed)) Reviewed" }
+        let files = Set(book.units.map { $0.file.path + "\u{0}" + $0.file.status }).count
+        return files == 1 ? "Commit 1 File" : "Commit \(files) Files"
+    }
+
     var body: some View {
         @Bindable var review = model.review
         let book = review.book
@@ -578,7 +599,7 @@ struct ReviewFooter: View {
                             .help("Haiku writes a message from the diff")
                             .buttonStyle(.action)
                     }
-                    Button(reviewedOnly ? "Commit Reviewed" : "Commit") { commit(reviewedOnly) }
+                    Button(Self.commitTitle(book, in: review.design)) { commit(reviewedOnly) }
                         .buttonStyle(.action(prominent: true))
                         .disabled(!canCommit)
                         .help(reviewedOnly ? "Commit only the hunks you marked reviewed (⌘Return)" : "Commit every change here (⌘Return)")
