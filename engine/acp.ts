@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { diffHunks, diffOf, exitCode, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
@@ -763,7 +763,7 @@ export class AcpSession {
         toolUseId: call.toolCallId,
         content: resultText(call.content, call.rawOutput),
         isError: call.status === "failed",
-        patch: diff && call.status === "completed" ? (typeof unified === "string" ? unifiedHunks(unified) : diffHunks(diff)) : undefined,
+        patch: diff && call.status === "completed" ? (typeof unified === "string" ? unifiedHunks(unified) : diffHunks(diff, isFile(diff.path, diff.newText))) : undefined,
         exitCode: call.kind === "execute" ? exitCode(call.rawOutput) : undefined,
       });
     }
@@ -829,6 +829,16 @@ export class AcpSession {
         })),
       });
     });
+  }
+}
+
+/// Whether a diff's new text is its file as it is now. ACP's diff is the file before and after,
+/// and several agents send only the strings they swapped, which say nothing of where they were.
+function isFile(path: string, text: string): boolean {
+  try {
+    return statSync(path).size === Buffer.byteLength(text) && readFileSync(path, "utf8") === text;
+  } catch {
+    return false;
   }
 }
 

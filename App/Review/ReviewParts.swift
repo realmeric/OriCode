@@ -361,16 +361,20 @@ struct UnitView: View {
     /// Where a hunk's changes are, in the file as it is now or, for lines that only went, as it
     /// was; and the function or type git found them in.
     static func place(_ hunk: DiffHunk) -> String {
-        let lines = ReviewBook.lines(of: hunk)
-        let added = lines.filter { $0.kind == .added }.compactMap(\.new)
-        let numbers = added.isEmpty ? lines.filter { $0.kind == .deleted }.compactMap(\.old) : added
-        let range = switch (numbers.min(), numbers.max()) {
-        case (let low?, let high?) where low == high: "line \(low)"
-        case (let low?, let high?): "lines \(low)–\(high)"
-        default: "line \(hunk.newStart)"
-        }
+        let range = range(of: ReviewBook.lines(of: hunk)) ?? "line \(hunk.newStart)"
         let context = hunk.context.trimmingCharacters(in: .whitespaces)
         return context.isEmpty ? range : "\(range) · \(context)"
+    }
+
+    /// The lines a hunk changed, by number, or nil when none of them has one.
+    static func range(of lines: [ReviewLine]) -> String? {
+        let added = lines.filter { $0.kind == .added }.compactMap(\.new)
+        let numbers = added.isEmpty ? lines.filter { $0.kind == .deleted }.compactMap(\.old) : added
+        return switch (numbers.min(), numbers.max()) {
+        case (let low?, let high?) where low == high: "line \(low)"
+        case (let low?, let high?): "lines \(low)–\(high)"
+        default: nil
+        }
     }
 
     /// What there is to say about a file the review can't show line by line.

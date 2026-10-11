@@ -67,6 +67,7 @@ private struct PermissionForm: View {
     let thread: UUID?
     let listens: Bool
     @State private var showDiff = false
+    @AppStorage(ReviewDesign.key) private var design = ReviewDesign.witness
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -135,7 +136,20 @@ private struct PermissionForm: View {
             .fixedSize(horizontal: false, vertical: true)
         } else if let diff = Diff.of(tool: ask.tool, input: ask.input, cwd: cwd) {
             DisclosureGroup(isExpanded: $showDiff) {
-                DiffLinesView(lines: diff.lines)
+                if design == .witness {
+                    // All of it, long lines wrapped, in a scroll view of its own: the edit
+                    // hasn't been made, so there is no review to read the rest in.
+                    ScrollView {
+                        WitnessDiff(diff: diff, rows: nil)
+                            .equatable()
+                            .padding(.vertical, 10)
+                    }
+                    .scrollIndicators(.never)
+                    .frame(maxHeight: 360)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    DiffLinesView(lines: diff.lines)
+                }
             } label: {
                 HStack(spacing: 6) {
                     Text("+\(diff.added)").foregroundStyle(Ink.added)

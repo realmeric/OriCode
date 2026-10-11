@@ -104,12 +104,16 @@ export function unifiedHunks(diff: string): Hunk[] {
 }
 
 /// A diff's hunks. Grok's search and replace, like OpenCode's edit, sends only the strings it
-/// swapped, and says in the diff's _meta where they were; one that swapped in several places is
-/// shown from line 1.
-export function diffHunks(diff: Extract<ToolContent, { type: "diff" }>): Hunk[] {
+/// swapped, and says in the diff's _meta where they were. One that swapped in several places, or
+/// that says nowhere, has no line numbers: its hunks start at 0, unless `whole` says the new text
+/// is the file itself, as ACP means it to be, and then the lines are the file's own.
+export function diffHunks(diff: Extract<ToolContent, { type: "diff" }>, whole = false): Hunk[] {
   const places = diff._meta?.details ?? [];
   const place = places[0];
-  if (places.length !== 1 || typeof place.old_line !== "number" || typeof place.new_line !== "number") return hunks(diff.oldText, diff.newText);
+  if (places.length !== 1 || typeof place.old_line !== "number" || typeof place.new_line !== "number") {
+    const found = hunks(diff.oldText, diff.newText);
+    return whole ? found : found.map((hunk) => ({ ...hunk, oldStart: 0, newStart: 0 }));
+  }
   const prefix = place.line_prefix ?? "";
   const { old_line: oldLine, new_line: newLine } = place;
   return hunks(prefix + (diff.oldText ?? ""), prefix + diff.newText).map((hunk) => ({ ...hunk, oldStart: hunk.oldStart + oldLine - 1, newStart: hunk.newStart + newLine - 1 }));

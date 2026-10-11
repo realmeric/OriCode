@@ -3,7 +3,7 @@
 // scripted turn for each prompt and no model anywhere. It takes any clientInfo, as that Devin did.
 // DEVIN_LOGIN=1 stands for the credentials `devin auth login` stores. Each process logs its
 // arguments and environment, and every message it's sent, to DEVIN_LOG.
-import { appendFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const argv = process.argv.slice(2);
@@ -89,6 +89,7 @@ async function prompt(sessionId: string, text: string, cwd: string): Promise<obj
     const path = `${cwd}/hello.txt`;
     const diff = { type: "diff", path, oldText: "zero\none\nend\n", newText: "zero\ntwo\nend\n" };
     update(sessionId, { sessionUpdate: "tool_call", toolCallId: "tc-edit", title: "Edit hello.txt", kind: "edit", status: "in_progress", rawInput: { file_path: path }, locations: [{ path }], content: [diff] });
+    writeFileSync(path, diff.newText);
     update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "tc-edit", status: "completed", content: [diff] });
     update(sessionId, {
       sessionUpdate: "plan",

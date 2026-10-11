@@ -139,7 +139,8 @@ test("a turn: thinking, text, a read, an edit with its diff after an ask, a plan
   assert.deepEqual(read.view, { path: "/w/a.txt" });
   assert.deepEqual(readResult, { event: "tool.result", threadId: "work", toolUseId: read.toolUseId, content: "one\ntwo\n", isError: false });
   assert.equal(edit.kind, "edit");
-  assert.deepEqual(editResult.patch, [{ oldStart: 1, newStart: 1, lines: [" one", "-two", "+2", " three"] }]);
+  // No file at /w/a.txt holds the diff's new text, so nothing says its lines are a file's.
+  assert.deepEqual(editResult.patch, [{ oldStart: 0, newStart: 0, lines: [" one", "-two", "+2", " three"] }]);
   assert.equal(plan.name, "TodoWrite");
   assert.equal(plan.kind, "plan");
   assert.deepEqual(plan.view.todos, [

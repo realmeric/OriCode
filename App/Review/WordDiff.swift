@@ -7,6 +7,13 @@ import Foundation
 enum WordDiff {
     /// Character ranges that changed, by the line's index in the hunk.
     static func ranges(in lines: [ReviewLine]) -> [Int: [Range<Int>]] {
+        var budget = Int.max
+        return ranges(in: lines, spending: &budget).words
+    }
+
+    /// The same for as many of a hunk's runs, in order, as the budget has bytes of line to pair,
+    /// and the line the first run past it starts at: nothing is known of the lines from there on.
+    static func ranges(in lines: [ReviewLine], spending budget: inout Int) -> (words: [Int: [Range<Int>]], known: Int) {
         var result: [Int: [Range<Int>]] = [:]
         var index = 0
         while index < lines.count {
@@ -17,6 +24,11 @@ enum WordDiff {
             let deleted = Array(index..<(lines[index...].firstIndex { $0.kind != .deleted } ?? lines.count))
             let afterDeleted = deleted.last! + 1
             let added = Array(afterDeleted..<(lines[afterDeleted...].firstIndex { $0.kind != .added } ?? lines.count))
+            if budget < .max {
+                let cost = zip(deleted, added).reduce(0) { $0 + lines[$1.0].text.utf8.count + lines[$1.1].text.utf8.count }
+                guard cost <= budget else { return (result, index) }
+                budget -= cost
+            }
             for (old, new) in zip(deleted, added) {
                 guard let (a, b) = pair(lines[old].text, lines[new].text) else { continue }
                 if !a.isEmpty { result[old] = a }
@@ -24,7 +36,7 @@ enum WordDiff {
             }
             index = max(afterDeleted, added.last.map { $0 + 1 } ?? afterDeleted)
         }
-        return result
+        return (result, lines.count)
     }
 
     /// The ranges that differ on each side, or nil when the two lines aren't one line edited.

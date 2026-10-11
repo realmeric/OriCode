@@ -198,12 +198,13 @@ test("Grok's modes: Ask and Plan share a process, Don't ask starts it as always-
   assert.deepEqual(reach("bypassPermissions"), { mode: "default", args: ["--permission-mode", "bypassPermissions"] });
 });
 
-test("an edit Grok places in its _meta starts at that line; one in several places, or none, from line 1", () => {
+test("an edit Grok places in its _meta starts at that line; one in several places, or none, has no line unless its text is the file", () => {
   const diff = { type: "diff" as const, path: "/w/a.swift", oldText: "let a = 1", newText: "let a = 2" };
   assert.deepEqual(diffHunks({ ...diff, _meta: { details: [{ old_line: 40, new_line: 41, line_prefix: "    " }] } }), [
     { oldStart: 40, newStart: 41, lines: ["-    let a = 1", "+    let a = 2"] },
   ]);
   const twice = { details: [{ old_line: 3, new_line: 3 }, { old_line: 9, new_line: 9 }] };
-  assert.deepEqual(diffHunks({ ...diff, _meta: twice }), [{ oldStart: 1, newStart: 1, lines: ["-let a = 1", "+let a = 2"] }]);
-  assert.deepEqual(diffHunks(diff), [{ oldStart: 1, newStart: 1, lines: ["-let a = 1", "+let a = 2"] }]);
+  assert.deepEqual(diffHunks({ ...diff, _meta: twice }), [{ oldStart: 0, newStart: 0, lines: ["-let a = 1", "+let a = 2"] }]);
+  assert.deepEqual(diffHunks(diff), [{ oldStart: 0, newStart: 0, lines: ["-let a = 1", "+let a = 2"] }]);
+  assert.deepEqual(diffHunks(diff, true), [{ oldStart: 1, newStart: 1, lines: ["-let a = 1", "+let a = 2"] }]);
 });

@@ -103,6 +103,9 @@ final class ReviewState {
     var notes: [ReviewNote] = []
     /// The unit a note is being written on.
     var noting: String?
+    /// The file and line an edit's card in the transcript opened the review for, until the
+    /// read that opening it started is in.
+    var landing: (file: String, line: Int)?
     /// What the note's field opens reading, when A opened it; taken by the field as it appears.
     var noteStart = ""
     var message = ""
@@ -339,6 +342,31 @@ extension AppModel {
         colour(review.book.units)
     }
 
+    /// The review opened from an edit's card in the transcript: the keyboard goes to the change
+    /// in that file nearest the edit's line, in the book that's here and again in the one the
+    /// read brings, which has the edit when a turn still working made it since the last read.
+    /// A file with nothing left to review opens the review where it was.
+    func openReview(at file: String, line: Int) {
+        openReview()
+        guard reviewShown else { return }
+        review.landing = (file, line)
+        land()
+        // With no read on its way this book is the one there is.
+        if !review.wanted, !review.reading { review.landing = nil }
+    }
+
+    /// Whether the keyboard went to the change a card asked for. The card isn't forgotten
+    /// here: the read that ends the wait does that.
+    @discardableResult
+    func land() -> Bool {
+        guard review.design == .witness, let landing = review.landing, let folder = review.folder, let root = review.root,
+              let path = RepoPath.relative(landing.file, cwd: folder, root: root),
+              let unit = ReviewPlace(path: path, line: landing.line).nearest(in: review.visibleUnits)
+        else { return false }
+        review.select(unit)
+        return true
+    }
+
     /// The review on screen is this design's: one chosen in Settings while the review is open
     /// reads the book its own way from the next read, which is asked for here.
     func useReview(_ design: ReviewDesign) {
@@ -350,6 +378,7 @@ extension AppModel {
     func closeReview() {
         withAnimation(Motion.move) { reviewShown = false }
         review.noting = nil
+        review.landing = nil
     }
 
     /// Reads the diff again for the open thread's folder: when the thread or the window comes
@@ -389,6 +418,8 @@ extension AppModel {
         defer {
             review.reading = false
             review.loading = false
+            // A read that said nothing had moved brought no book, and the one here stands.
+            review.landing = nil
         }
         while review.wanted, let folder = review.folder {
             review.wanted = false
@@ -511,6 +542,12 @@ extension AppModel {
         }
         if let noting = review.noting, !visible.contains(where: { $0.id == noting && !review.folded($0) }) {
             review.noting = nil
+        }
+        // A new book is what a card's change was waited for in: it is there or there is none,
+        // unless a read asked for since is still to come.
+        if page != nil {
+            land()
+            if !review.wanted { review.landing = nil }
         }
     }
 

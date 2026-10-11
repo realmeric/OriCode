@@ -52,9 +52,13 @@ enum WitnessHunk {
         return found
     }
 
-    static func pieces(_ lines: [ReviewLine], words: [Int: [Range<Int>]], opened: Bool, whole: Bool, columns: Int) -> [Piece] {
+    /// `rows` and `known` are the transcript's card's. It stops once that many rows are laid, a
+    /// folded removal being one, and it pairs words up to a line and no further: a removal from
+    /// there on is drawn, since whether one of its lines was edited into a new one isn't known.
+    static func pieces(_ lines: [ReviewLine], words: [Int: [Range<Int>]], opened: Bool, whole: Bool, columns: Int, rows: Int = .max, known: Int = .max) -> [Piece] {
         let shown = whole || lines.count <= long ? lines.count : shownOfLong
-        let folded = opened ? [:] : Dictionary(removals(in: lines, words: words).map { ($0.lowerBound, $0) }) { first, _ in first }
+        var laid = 0
+        let folded = opened ? [:] : Dictionary(removals(in: lines, words: words).filter { $0.lowerBound < known }.map { ($0.lowerBound, $0) }) { first, _ in first }
         var pieces: [Piece] = []
         var block: Range<Int>?
         func flush() {
@@ -62,7 +66,8 @@ enum WitnessHunk {
             block = nil
         }
         var index = 0
-        while index < shown {
+        while index < shown, laid < rows {
+            laid += 1
             if let range = folded[index] {
                 flush()
                 // Whole, past where the hunk is cut too: the row says how many lines went.
@@ -308,38 +313,7 @@ struct WitnessLines: View, Equatable {
     }
 
     private func block(_ range: Range<Int>, wraps: Bool) -> some View {
-        HStack(alignment: .top, spacing: 0) {
-            Text(numbers(range))
-                .multilineTextAlignment(.trailing)
-                .frame(width: WitnessHunk.numbers(digits), alignment: .trailing)
-            // Not selectable: a selectable text answers a right-click with its own menu, and the
-            // change's menu, which copies it, is the one a right-click is for.
-            Text(code(range))
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, WitnessHunk.gap)
-                .padding(.trailing, 12)
-        }
-        .font(Type.mono)
-        .lineHeight(.exact(points: WitnessHunk.lineHeight))
-        .background(alignment: .topLeading) {
-            if !unit.reviewed {
-                edge(range, .added, fill: wraps)
-                edge(range, .deleted, fill: wraps)
-                edge(range, .added, moved: true, fill: wraps)
-                edge(range, .deleted, moved: true, fill: wraps)
-            }
-        }
-    }
-
-    /// The edge of one kind beside a piece, and no view at all where it has none.
-    @ViewBuilder
-    private func edge(_ range: Range<Int>, _ kind: ReviewLine.Kind, moved: Bool = false, fill: Bool) -> some View {
-        let rows = edges(range, kind, moved: moved)
-        if !rows.isEmpty {
-            let ink = kind == .added ? Ink.added : Ink.deleted
-            Edges(rows: rows, fill: fill).fill(moved ? ink.opacity(0.35) : ink)
-        }
+        WitnessHunk.block(unit.lines, words: unit.words, range: range, wraps: wraps, digits: digits, reviewed: unit.reviewed)
     }
 
     private func removal(_ range: Range<Int>) -> some View {
@@ -348,34 +322,106 @@ struct WitnessLines: View, Equatable {
             model.review.unfolded.insert(unit.id)
             model.review.focusTick += 1
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("\(range.count) lines removed")
-                let name = WitnessHunk.naming(unit.lines[range])
-                if !name.isEmpty {
-                    Text(" · ").foregroundStyle(Ink.secondary)
-                    Text(name).font(Type.mono).lineLimit(1).truncationMode(.tail)
-                }
-                Spacer(minLength: 0)
-            }
-            .font(Type.secondary)
-            .foregroundStyle(Ink.deleted)
-            .padding(.leading, WitnessHunk.codeX(digits))
-            .padding(.trailing, 12)
-            .frame(height: WitnessHunk.lineHeight + 4)
-            .contentShape(.rect)
+            WitnessHunk.removal(unit.lines[range], digits: digits).contentShape(.rect)
         }
         .buttonStyle(.plain)
         .background(alignment: .topLeading) {
-            if !unit.reviewed { Edges(rows: [0..<1], fill: true).fill(Ink.deleted) }
+            if !unit.reviewed { WitnessHunk.removalEdge }
         }
         .help("Show the lines (→)")
     }
+}
+
+/// The drawing itself. The review's page lays a hunk out with `block`; the transcript's card of
+/// an edit sets the same lines, from `code`, as one text.
+@MainActor
+extension WitnessHunk {
+    /// A run of a hunk's lines, with an edge beside what changed until the change is reviewed.
+    /// Lines sure to fit are one text, each number before its code; a line that may wrap has
+    /// its number in a text of its own, so what it wraps to starts where the code does.
+    static func block(_ lines: [ReviewLine], words: [Int: [Range<Int>]], range: Range<Int>, wraps: Bool, digits: Int, reviewed: Bool) -> some View {
+        // Not selectable: a selectable text answers a right-click with its own menu, and the
+        // change's menu, which copies it, is the one a right-click is for.
+        Group {
+            if wraps {
+                HStack(alignment: .top, spacing: 0) {
+                    Text(numbers(lines, range, reviewed: reviewed))
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: numbers(digits), alignment: .trailing)
+                    Text(code(lines, words: words, range))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, gap)
+                }
+            } else {
+                Text(code(lines, words: words, range, numbered: digits, reviewed: reviewed))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, inset(digits))
+            }
+        }
+        .padding(.trailing, 12)
+        .font(Type.mono)
+        .lineHeight(.exact(points: lineHeight))
+        .background(alignment: .topLeading) {
+            if !reviewed {
+                edge(lines, range, .added, fill: wraps)
+                edge(lines, range, .deleted, fill: wraps)
+                edge(lines, range, .added, moved: true, fill: wraps)
+                edge(lines, range, .deleted, moved: true, fill: wraps)
+            }
+        }
+    }
+
+    /// What a text whose lines begin with their numbers is set in by, so the numbers end where
+    /// their own column would and the code starts at the code's x.
+    static func inset(_ digits: Int) -> CGFloat {
+        digits > 0 ? numbers(digits) - CGFloat(digits) * advance : codeX(0)
+    }
+
+    /// The columns before the code on a line that has no number, a place or a count.
+    static func margin(_ digits: Int) -> AttributedString {
+        guard digits > 0 else { return AttributedString() }
+        var margin = AttributedString(String(repeating: " ", count: digits))
+        margin[margin.characters.index(before: margin.endIndex)..<margin.endIndex].kern = gap
+        return margin
+    }
+
+    /// A long removal as its one row: how many lines went and what the first of them was.
+    static func removal(_ lines: ArraySlice<ReviewLine>, digits: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("\(lines.count) lines removed")
+            let name = naming(lines)
+            if !name.isEmpty {
+                Text(" · ").foregroundStyle(Ink.secondary)
+                Text(name).font(Type.mono).lineLimit(1).truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(Type.secondary)
+        .foregroundStyle(Ink.deleted)
+        .padding(.leading, codeX(digits))
+        .padding(.trailing, 12)
+        .frame(height: lineHeight + 4)
+    }
+
+    static var removalEdge: some View { Edges(rows: [0..<1], fill: true).fill(Ink.deleted) }
+
+    /// The edge of one kind beside a piece, and no view at all where it has none.
+    @ViewBuilder
+    private static func edge(_ lines: [ReviewLine], _ range: Range<Int>, _ kind: ReviewLine.Kind, moved: Bool = false, fill: Bool) -> some View {
+        let rows = edges(lines, range, kind, moved: moved)
+        if !rows.isEmpty {
+            let ink = kind == .added ? Ink.added : Ink.deleted
+            Edges(rows: rows, fill: fill).fill(moved ? ink.opacity(0.35) : ink)
+        }
+    }
 
     /// Which rows of a piece have an edge of a kind, as runs, so neighbours draw as one.
-    private func edges(_ range: Range<Int>, _ kind: ReviewLine.Kind, moved: Bool = false) -> [Range<Int>] {
+    private static func edges(_ lines: [ReviewLine], _ range: Range<Int>, _ kind: ReviewLine.Kind, moved: Bool = false) -> [Range<Int>] {
         var runs: [Range<Int>] = []
         for index in range {
-            let line = unit.lines[index]
+            let line = lines[index]
             guard line.kind == kind, line.moved == moved, !line.seen else { continue }
             let row = index - range.lowerBound
             if let last = runs.last, last.upperBound == row {
@@ -387,31 +433,44 @@ struct WitnessLines: View, Equatable {
         return runs
     }
 
-    private func numbers(_ range: Range<Int>) -> AttributedString {
+    private static func number(_ line: ReviewLine) -> String? {
+        (line.kind == .deleted ? line.old : line.new).map(String.init)
+    }
+
+    private static func numbers(_ lines: [ReviewLine], _ range: Range<Int>, reviewed: Bool) -> AttributedString {
         var text = AttributedString()
         for index in range {
-            let line = unit.lines[index]
-            var part = AttributedString((line.kind == .deleted ? line.old : line.new).map(String.init) ?? " ")
-            part.foregroundColor = WitnessHunk.numberInk(line, reviewed: unit.reviewed)
+            let line = lines[index]
+            var part = AttributedString(number(line) ?? " ")
+            part.foregroundColor = numberInk(line, reviewed: reviewed)
             text.append(part)
             if index != range.upperBound - 1 { text.append(AttributedString("\n")) }
         }
         return text
     }
 
-    private func code(_ range: Range<Int>) -> AttributedString {
+    /// The code of a run of lines, and with `numbered` each line's number before it, set right
+    /// in that many columns with the gap after it.
+    static func code(_ lines: [ReviewLine], words: [Int: [Range<Int>]], _ range: Range<Int>, numbered digits: Int = 0, reviewed: Bool = false) -> AttributedString {
         var text = AttributedString()
         for index in range {
-            let line = unit.lines[index]
+            let line = lines[index]
+            if digits > 0 {
+                let number = number(line) ?? ""
+                var before = AttributedString(String(repeating: " ", count: max(0, digits - number.count)) + number)
+                before.foregroundColor = numberInk(line, reviewed: reviewed)
+                before[before.characters.index(before: before.endIndex)..<before.endIndex].kern = gap
+                text.append(before)
+            }
             // An empty line keeps its height as a space.
-            let plain = WitnessHunk.drawn(line.text)
+            let plain = drawn(line.text)
             var part = AttributedString(plain.isEmpty ? " " : plain)
-            part.foregroundColor = WitnessHunk.ink(line)
+            part.foregroundColor = ink(line)
             // A line seen at an earlier mark or moved has no wash: its words aren't news.
-            if let words = unit.words[index], !line.seen, !line.moved, !plain.isEmpty {
+            if let words = words[index], !line.seen, !line.moved, !plain.isEmpty {
                 let wash = (line.kind == .added ? Ink.added : Ink.deleted).opacity(0.25)
                 let count = part.characters.count
-                for range in WitnessHunk.drawn(words, of: line.text) where range.upperBound <= count {
+                for range in drawn(words, of: line.text) where range.upperBound <= count {
                     let start = part.characters.index(part.startIndex, offsetBy: range.lowerBound)
                     let end = part.characters.index(part.startIndex, offsetBy: range.upperBound)
                     part[start..<end].backgroundColor = wash
@@ -427,7 +486,7 @@ struct WitnessLines: View, Equatable {
 
 /// The edges beside a piece's changed rows: each run one bar, or the piece's whole height for
 /// a line that wraps.
-private struct Edges: Shape {
+struct Edges: Shape {
     let rows: [Range<Int>]
     let fill: Bool
 

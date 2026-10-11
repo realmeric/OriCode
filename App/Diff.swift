@@ -9,6 +9,10 @@ struct Diff: Hashable {
     struct Line: Hashable {
         let kind: Kind
         let text: String
+        /// Its number in the file before the edit and after it, when the edit has reported its
+        /// hunks. A gap carries the starts of the hunk after it.
+        var old: Int?
+        var new: Int?
     }
 
     let path: String
@@ -55,14 +59,24 @@ struct Diff: Hashable {
         }
         var lines: [Line] = []
         for (index, hunk) in patch.enumerated() {
-            if index > 0 { lines.append(Line(kind: .gap, text: "")) }
+            // A patch that came without its starts has no numbers to give.
+            let placed = hunk.oldStart > 0 || hunk.newStart > 0
+            if index > 0 { lines.append(Line(kind: .gap, text: "", old: placed ? hunk.oldStart : nil, new: placed ? hunk.newStart : nil)) }
+            var old = hunk.oldStart, new = hunk.newStart
             for raw in hunk.lines {
                 let text = String(raw.dropFirst())
                 switch raw.first {
-                case "+": lines.append(Line(kind: .added, text: text))
-                case "-": lines.append(Line(kind: .deleted, text: text))
+                case "+":
+                    lines.append(Line(kind: .added, text: text, new: placed ? new : nil))
+                    new += 1
+                case "-":
+                    lines.append(Line(kind: .deleted, text: text, old: placed ? old : nil))
+                    old += 1
                 case "\\": continue
-                default: lines.append(Line(kind: .context, text: text))
+                default:
+                    lines.append(Line(kind: .context, text: text, old: placed ? old : nil, new: placed ? new : nil))
+                    old += 1
+                    new += 1
                 }
             }
         }
@@ -83,13 +97,31 @@ struct Diff: Hashable {
             return Diff(path: path, lines: lines)
         case "Write":
             let content = input["content"]?.string ?? ""
-            return Diff(path: path, lines: content.components(separatedBy: "\n").map { Line(kind: .added, text: $0) })
+            // What it writes is the whole file, so its lines are the file's.
+            return Diff(path: path, lines: content.components(separatedBy: "\n").enumerated().map { Line(kind: .added, text: $1, new: $0 + 1) })
         default:
             return nil
         }
     }
 }
 
+extension Diff {
+    /// The edit a hunk at a time, as the lines the review draws.
+    var hunks: [[ReviewLine]] {
+        lines.split { $0.kind == .gap }.map { hunk in
+            hunk.map { ReviewLine(kind: $0.kind == .added ? .added : $0.kind == .deleted ? .deleted : .context, text: $0.text, old: $0.old, new: $0.new) }
+        }
+    }
+
+    /// Where the review's keyboard goes for this edit: the first line it wrote, or where its
+    /// first removal was.
+    var line: Int {
+        lines.first { $0.kind == .added }?.new ?? lines.lazy.compactMap(\.new).first ?? 0
+    }
+}
+
+/// Legacy's drawing of an edit: a sign before each line and a band behind it, scrolling in a
+/// view of its own.
 struct DiffLinesView: View {
     let lines: [Diff.Line]
 
