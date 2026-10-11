@@ -89,6 +89,8 @@ enum WitnessHunk {
     }
 
     static func fits(_ text: String, columns: Int) -> Bool {
+        let bytes = text.utf8
+        if bytes.allSatisfy({ $0 >= 0x20 && $0 < 0x7F }) { return bytes.count <= columns }
         let scalars = text.unicodeScalars
         return scalars.count <= columns && scalars.allSatisfy { $0.value >= 0x20 && $0.value < 0x7F || narrow.contains($0) }
     }
@@ -97,12 +99,15 @@ enum WitnessHunk {
     /// and Cyrillic. A tab-indented file or one with ş in a string is as cheap to draw as any.
     static let narrow: Set<Unicode.Scalar> = {
         let font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular) as CTFont
+        let units = (0xA0...0x4FF).map { UniChar($0) }
+        var glyphs = [CGGlyph](repeating: 0, count: units.count)
+        var advances = [CGSize](repeating: .zero, count: units.count)
+        // False when some have no glyph; those stay 0 and are left out below.
+        _ = CTFontGetGlyphsForCharacters(font, units, &glyphs, units.count)
+        CTFontGetAdvancesForGlyphs(font, .horizontal, glyphs, &advances, glyphs.count)
         var found = Set<Unicode.Scalar>()
-        for value in 0xA0...0x4FF {
-            guard let scalar = Unicode.Scalar(value) else { continue }
-            var unit = UniChar(value), glyph = CGGlyph(0)
-            guard CTFontGetGlyphsForCharacters(font, &unit, &glyph, 1) else { continue }
-            if abs(CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, nil, 1) - advance) < 0.01 { found.insert(scalar) }
+        for (index, unit) in units.enumerated() where glyphs[index] != 0 && abs(advances[index].width - advance) < 0.01 {
+            if let scalar = Unicode.Scalar(unit) { found.insert(scalar) }
         }
         return found
     }()
@@ -116,8 +121,8 @@ enum WitnessHunk {
     /// the line again, and with each tab as spaces, so every character is one advance wide.
     static func drawn(_ text: String) -> String {
         var text = text
-        if text.unicodeScalars.last == "\r" { text.unicodeScalars.removeLast() }
-        guard text.contains("\t") else { return text }
+        if text.utf8.last == 13 { text.unicodeScalars.removeLast() }
+        guard text.utf8.contains(9) else { return text }
         var drawn = ""
         var column = 0
         for character in text {
@@ -130,7 +135,7 @@ enum WitnessHunk {
 
     /// Where a line's character ranges fall once its tabs are spaces.
     static func drawn(_ ranges: [Range<Int>], of text: String) -> [Range<Int>] {
-        guard text.contains("\t") else { return ranges }
+        guard text.utf8.contains(9) else { return ranges }
         var at = [0]
         for character in text {
             at.append(at[at.count - 1] + (character == "\t" ? tab - at[at.count - 1] % tab : 1))
