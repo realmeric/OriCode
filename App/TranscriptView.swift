@@ -83,7 +83,8 @@ struct TranscriptView: View {
                     // with nothing to say, would have the lazy stack make every row to count them.
                     VStack(alignment: .leading, spacing: 0) { view(of: entry, listening: listening, lastLimit: lastLimit) }
                         .background {
-                            if lit == entry.id {
+                            // An item in a run is lit where it stands, in the run opened for it.
+                            if lit == entry.id, case .item = entry {
                                 Surface.selected
                                     .clipShape(.rect(cornerRadius: 14, style: .continuous))
                                     .padding(-8)
@@ -290,12 +291,19 @@ struct TranscriptView: View {
             // The lazy stack finds an item only once what's around it has been laid out, so the
             // scroll goes first to where the item should be by its place in the thread.
             let entries = TranscriptEntry.fold(shown, thinking: showThinking)
-            if let index = entries.firstIndex(where: { $0.id == id }) {
-                position.scrollTo(y: content.height * CGFloat(index) / CGFloat(entries.count))
+            // A call folded into a run is found by its run's row.
+            let row = entries.firstIndex { $0.holds(id) }
+            if let row {
+                position.scrollTo(y: content.height * CGFloat(row) / CGFloat(entries.count))
                 try? await Task.sleep(for: .milliseconds(50))
             }
-            withAnimation(Motion.move) { position.scrollTo(id: id, anchor: .center) }
+            withAnimation(Motion.move) { position.scrollTo(id: row.map { entries[$0].id } ?? id, anchor: .center) }
             withAnimation(Motion.fade) { lit = id }
+            if let row, case .run = entries[row] {
+                // The run opens on the call, which may stand a screen below the run's own line.
+                try? await Task.sleep(for: .milliseconds(120))
+                withAnimation(Motion.move) { position.scrollTo(id: ToolRunRow.name(of: id), anchor: .center) }
+            }
             // The scroll view speaks only when its place changes, and an item in the last
             // screenful, or a thread shorter than the window, leaves it at the end it was at: once
             // the move has settled its word is taken as it stands.
@@ -323,7 +331,8 @@ struct TranscriptView: View {
                 stream: item.id == streaming ? conversation.live : nil)
         case .run(let items):
             ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id,
-                       stream: items.contains { $0.id == streaming } ? conversation.live : nil)
+                       stream: items.contains { $0.id == streaming } ? conversation.live : nil,
+                       lit: lit.flatMap { id in items.contains { $0.id == id } ? id : nil })
         }
     }
 
@@ -797,7 +806,13 @@ struct ToolRunRow: View {
     let live: Bool
     /// The text streaming into one of its items, thinking between the calls.
     var stream: LiveText?
+    /// One of its calls that a reveal asked for: the run opens on it and the call is lit.
+    var lit: UUID?
     @State private var open = false
+
+    /// What a call inside an open run is scrolled to by, its item's id being the run's own row's
+    /// when it is the run's first.
+    static func name(of item: UUID) -> String { "call:" + item.uuidString }
 
     var body: some View {
         let calls = items.compactMap { item -> ToolCall? in
@@ -836,6 +851,15 @@ struct ToolRunRow: View {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         ItemView(item: item, cwd: cwd, listening: nil, live: live && index == items.count - 1,
                                  stream: item.id == stream?.id ? stream : nil)
+                            .id(Self.name(of: item.id))
+                            .background {
+                                if item.id == lit {
+                                    Surface.selected
+                                        .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                                        .padding(-6)
+                                        .transition(.opacity)
+                                }
+                            }
                             .padding(.top, index == 0 ? 0 : TranscriptView.spacing(before: item, after: items[index - 1]))
                     }
                 }
@@ -843,6 +867,11 @@ struct ToolRunRow: View {
                 .padding(.top, 8)
                 .transition(.opacity)
             }
+        }
+        // A row the lazy stack makes while its call is lit has no change to hear of, and one
+        // that comes back on screen hears only of the light going out.
+        .onChange(of: lit, initial: true) { was, lit in
+            if was != nil || lit != nil { open = true }
         }
     }
 }

@@ -103,6 +103,8 @@ final class ReviewState {
     var notes: [ReviewNote] = []
     /// The unit a note is being written on.
     var noting: String?
+    /// What the note's field opens reading, when A opened it; taken by the field as it appears.
+    var noteStart = ""
     var message = ""
     /// What the review is doing to the files, one thing at a time.
     var busy: String?
@@ -195,7 +197,12 @@ final class ReviewState {
     /// open, opens or closes what the keyboard is on when it's one line: a change that needs no
     /// reading, or one reviewed.
     func open(_ open: Bool) {
-        guard let unit = book.units.first(where: { $0.id == selected }) else { return }
+        guard let unit = book.units.first(where: { $0.id == selected }) else {
+            // A run's row, which opens on the end of what the run printed.
+            guard let selected, design == .witness, page.run(selected) != nil else { return }
+            if open { unfolded.insert(selected) } else { unfolded.remove(selected) }
+            return
+        }
         guard design == .witness else { return setOpen(unit.section, open) }
         if open { unfolded.insert(unit.id) } else { unfolded.remove(unit.id) }
     }
@@ -257,6 +264,7 @@ final class ReviewState {
     /// ↑↓ and J K: the next hunk, never one in a folded chapter. A file closed under the
     /// keyboard is passed over whole.
     func move(_ step: Int) {
+        guard design == .legacy else { return walk(step) }
         let units = visibleUnits
         guard !units.isEmpty else { return }
         guard let index = units.firstIndex(where: { $0.id == selected }) else {
@@ -494,7 +502,7 @@ extension AppModel {
         if let back = review.reselect.lazy.compactMap({ id in visible.first { $0.id == id } }).first {
             review.select(back)
             review.reselect = []
-        } else if let selected = review.selected, !visible.contains(where: { $0.id == selected }) {
+        } else if let selected = review.selected, review.page.run(selected) == nil, !visible.contains(where: { $0.id == selected }) {
             // In Witness the nearest change in the file the keyboard was in; else, and in Legacy,
             // the one that took its place in the order.
             let at = before.firstIndex(of: selected) ?? 0

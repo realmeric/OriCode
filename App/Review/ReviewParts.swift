@@ -45,7 +45,7 @@ struct ReviewFrame<Page: View>: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .space, .return, .tab, Self.backtab, "j", "k", "n", "o"], phases: .down) { press in
+        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .space, .return, .tab, Self.backtab, "j", "k", "n", "o", "t", "a"], phases: .down) { press in
             key(press)
         }
         // The Delete key reaches a focused view as the Delete command, never as a key press.
@@ -89,7 +89,11 @@ struct ReviewFrame<Page: View>: View {
             model.review.move(-1)
         case .leftArrow, .rightArrow:
             // The file the keyboard is in, folded under it or not; in Witness, the line it's on.
-            guard let unit = model.review.book.units.first(where: { $0.id == model.review.selected }) else { return .ignored }
+            guard let unit = model.review.book.units.first(where: { $0.id == model.review.selected }) else {
+                guard witness, model.review.page.run(model.review.selected) != nil else { return .ignored }
+                model.review.open(press.key == .rightArrow)
+                break
+            }
             if witness, !model.review.opens(unit) { return .ignored }
             model.review.open(press.key == .rightArrow)
         case .space where witness && press.modifiers.contains(.shift):
@@ -107,6 +111,10 @@ struct ReviewFrame<Page: View>: View {
         case "o":
             guard let unit = model.review.selectedUnit, !unit.file.status.hasPrefix("D") else { return .ignored }
             if witness { model.openAtLine(unit) } else { model.openFile(unit.file.path) }
+        case "t" where witness:
+            model.showInThread()
+        case "a" where witness:
+            model.askAgain()
         default:
             return .ignored
         }
@@ -518,6 +526,11 @@ struct NoteEditor: View {
         .background(Surface.userMessage, in: .rect(cornerRadius: 10, style: .continuous))
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
+        .onAppear {
+            // Witness's A opens it on a line already written, to change or send as it is.
+            text = model.review.noteStart
+            model.review.noteStart = ""
+        }
         .task {
             try? await Task.sleep(for: .milliseconds(40))
             focused = true

@@ -24,17 +24,44 @@ struct ReviewPlace: Hashable, Sendable {
 }
 
 extension ReviewState {
+    /// ↑↓ and J K in Witness: the next change on the page, or a run's row where one stands
+    /// between two. A row is walked onto for what → opens on it, and nothing marks it.
+    func walk(_ step: Int) {
+        let units = visibleUnits
+        let changes = Set(units.map(\.id))
+        let stops = page.walk.filter { changes.contains($0) || page.run($0) != nil }
+        guard let selected, let index = stops.firstIndex(of: selected) else {
+            select((step > 0 ? units.first { !$0.reviewed } : units.last { !$0.reviewed }) ?? units.first)
+            return
+        }
+        guard stops.indices.contains(index + step) else { return }
+        let next = stops[index + step]
+        if let unit = units.first(where: { $0.id == next }) { select(unit) } else { self.selected = next }
+    }
+
     /// Tab and ⇧Tab: the first change of the next file's line on the page, or of the one before.
     /// False when there is none that way, and the key is the window's to move on with.
     @discardableResult
     func walkFile(_ step: Int) -> Bool {
         let units = visibleUnits
         guard !units.isEmpty else { return false }
+        let line = { (unit: ReviewUnit) in self.page.lineOf[unit.id] }
+        // From a run's row: the first change under it, or the top of the file's line over it.
+        if page.run(selected) != nil, let at = page.walk.firstIndex(of: selected ?? "") {
+            let change = { (id: String) in units.first { $0.id == id } }
+            if step > 0 {
+                guard let next = page.walk[(at + 1)...].lazy.compactMap(change).first else { return false }
+                select(next)
+            } else {
+                guard let before = page.walk[..<at].reversed().lazy.compactMap(change).first else { return false }
+                select(units.first { line($0) == line(before) } ?? before)
+            }
+            return true
+        }
         guard let index = units.firstIndex(where: { $0.id == selected }) else {
             select(units.first)
             return true
         }
-        let line = { (unit: ReviewUnit) in self.page.lineOf[unit.id] }
         let here = line(units[index])
         if step > 0 {
             guard let next = units[(index + 1)...].first(where: { line($0) != here }) else { return false }
@@ -62,7 +89,7 @@ extension ReviewState {
     /// Esc, before it closes the review: what → opened under the keyboard closes first.
     func closeOpened() -> Bool {
         guard design == .witness, let selected, unfolded.contains(selected),
-              let unit = book.units.first(where: { $0.id == selected }), opens(unit)
+              page.run(selected) != nil || book.units.first(where: { $0.id == selected }).map(opens) == true
         else { return false }
         unfolded.remove(selected)
         return true
@@ -98,6 +125,65 @@ extension AppModel {
         openFile(unit.file.path, line: WitnessHunk.line(of: unit))
     }
 
+    /// T: the review makes way and the thread shows the edit behind a change, lit for a moment;
+    /// on a run's row, the command. The review opened again is where it was.
+    func showInThread(_ unit: ReviewUnit? = nil) {
+        let change = unit ?? review.selectedUnit
+        guard let item = change.map(edit(behind:)) ?? review.page.run(review.selected).flatMap(item(of:)) else { return }
+        if let unit { review.selected = unit.id }
+        closeReview()
+        reveal = item
+    }
+
+    /// The transcript's item that shows the edit behind a change, when the thread has one.
+    func edit(behind unit: ReviewUnit) -> UUID? {
+        review.page.accounts[unit.id]?.edit
+    }
+
+    /// The transcript's item a run was: the thread's own call or a command of yours. A
+    /// subagent's command has none.
+    private func item(of run: Provenance.Run) -> UUID? {
+        guard let chat else { return nil }
+        switch run.source {
+        case .shell(let id): return id
+        case .call(let call):
+            return conversation(for: chat).items.first { if case .tool(_, let made) = $0 { made.toolUseId == call } else { false } }?.id
+        case nil: return nil
+        }
+    }
+
+    /// What a run printed, as it is stored: a call's result, or a command of yours as its
+    /// terminal left it.
+    func printed(by run: Provenance.Run) -> String? {
+        guard let chat else { return nil }
+        let conversation = conversation(for: chat)
+        switch run.source {
+        case .call(let id):
+            for case .tool(_, let call) in conversation.items where call.toolUseId == id { return call.result }
+            return conversation.under.values.joined().first { $0.toolUseId == id }?.result
+        case .shell(let id):
+            guard case .shell(_, let block)? = conversation.items.first(where: { $0.id == id }) else { return nil }
+            return ShellRender.plain(ShellRender.lines(ShellRender.replay(block.output)))
+        case nil:
+            return nil
+        }
+    }
+
+    /// A: the note's field opens already asking for the check again, to be changed or sent as
+    /// it is. Nothing goes until Send. On a run's row the note is on the first change that
+    /// changed after the run.
+    func askAgain(from unit: ReviewUnit? = nil) {
+        let page = review.page
+        let row = unit == nil && review.selectedUnit == nil ? page.run(review.selected) : nil
+        let units = review.visibleUnits
+        let under = row.flatMap { run in units.first { page.changedAfter[run.check]?.contains($0.file.path) == true } ?? units.first }
+        guard let target = unit ?? review.selectedUnit ?? under, review.noting != target.id,
+              let line = page.askAgain(for: target.file.path, on: row)
+        else { return }
+        review.noteStart = line
+        note(on: target)
+    }
+
     /// The change's lines to the pasteboard, signed as a diff has them.
     func copy(_ unit: ReviewUnit) {
         NSPasteboard.general.clearContents()
@@ -113,11 +199,7 @@ extension AppModel {
 
     /// A turn as a menu names it: its message's first words, never its number.
     static func turnName(_ chapter: ReviewChapter) -> String {
-        guard let prompt = chapter.prompt else { return "Changes no edit here made" }
-        let line = prompt.split(whereSeparator: \.isNewline).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
-        guard line.count > 48 else { return line.isEmpty ? "A message with no words" : line }
-        let cut = line.prefix(48)
-        return (cut.lastIndex(of: " ").map { String(cut[..<$0]) } ?? String(cut)) + "…"
+        chapter.prompt.map(WitnessPage.firstWords) ?? "Changes no edit here made"
     }
 }
 
@@ -156,6 +238,12 @@ struct WitnessActions: View {
                 if let unit { model.copy(unit) }
             }
             .disabled(unit?.hunk == nil)
+            Button("Show in Thread") { model.showInThread(unit) }
+                .badge(Text("T"))
+                .disabled(unit.flatMap(model.edit(behind:)) == nil)
+            Button("Ask for the Check Again") { model.askAgain(from: unit) }
+                .badge(Text("A"))
+                .disabled(review.page.runs.isEmpty)
             if let unit, review.opens(unit) {
                 let open = review.unfolded.contains(unit.id)
                 Button(open ? "Close" : review.page.isQuiet(unit.id) ? "Open" : "Show Removed Lines") {

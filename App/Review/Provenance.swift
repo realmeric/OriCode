@@ -7,8 +7,13 @@ import Foundation
 struct Provenance {
     /// Each turn's message, by its number: the first message is turn 1.
     private(set) var prompts: [Int: String] = [:]
+    /// Every edit in the order it was made, a worker's among them. A line is credited to one by
+    /// where it stands here.
+    private var made: [Edit] = []
     private var added: [String: [String: Int]] = [:]
     private var deleted: [String: [String: Int]] = [:]
+    /// The last recorded edit of each file, by where it stands in `made`.
+    private var lastMade: [String: Int] = [:]
     /// For each turn, the files it edited in the order it first did.
     private var order: [Int: [String: Int]] = [:]
     /// The latest turn that edited each file at all, for files the review can't read by line.
@@ -43,6 +48,24 @@ struct Provenance {
         let command: String
         let startedAt: Date?
         let outcome: Outcome
+        /// Where what it printed is kept, which its row opens the end of.
+        var source: Source?
+    }
+
+    /// The call or the prompt's block a run was: a tool call by its id, the thread's own or a
+    /// subagent's, or the transcript's item for a command of yours.
+    enum Source: Hashable, Sendable {
+        case call(String)
+        case shell(UUID)
+    }
+
+    /// One edit: the turn it was made in, the transcript's item that shows it, and what the agent
+    /// last said in that turn before making it. A subagent's edit is shown by the call that
+    /// started the subagent, and a worker's has no item.
+    struct Edit: Hashable, Sendable {
+        let turn: Int
+        var item: UUID?
+        var said: String?
     }
 
     private struct Touch: Hashable, Sendable {
@@ -76,6 +99,7 @@ struct Provenance {
     /// Settings.
     init(items: [Item], under: [String: [ToolCall]] = [:], rayEdits: [RayEdit] = [], exits: Bool = true, own: String? = nil, resolve: (String) -> String?) {
         var turn = 0
+        var said: String?
         var waiting = rayEdits[...]
         let inside = { (folder: String) in resolve((folder as NSString).appendingPathComponent("x")) != nil }
         for item in items {
@@ -86,17 +110,20 @@ struct Provenance {
                 credit(&waiting, through: turn, resolve: resolve)
                 turn += 1
                 prompts[turn] = text
-            case .shell(_, let run):
+                said = nil
+            case .text(_, let text):
+                said = Self.sentence(of: text) ?? said
+            case .shell(let id, let run):
                 // A command of yours at the prompt checks the work as the agent's does.
                 guard run.forModel, run.endedAt != nil else { continue }
                 for found in Self.recognise(run.command, from: run.folder, own: own, inside: inside) {
                     let why = found.unknown ?? (run.exitCode == nil ? "ended with no exit code" : nil)
                     runs.append(Run(
                         check: found.check, command: run.command, startedAt: run.startedAt,
-                        outcome: why.map(Run.Outcome.unknown) ?? (run.exitCode == 0 ? .exitedZero : .failed)))
+                        outcome: why.map(Run.Outcome.unknown) ?? (run.exitCode == 0 ? .exitedZero : .failed), source: .shell(id)))
                 }
-            case .tool(_, let call):
-                take(call, in: turn, by: nil, under: under, exits: exits, own: own, inside: inside, resolve: resolve)
+            case .tool(let id, let call):
+                take(call, in: turn, by: nil, shown: Edit(turn: turn, item: id, said: said), under: under, exits: exits, own: own, inside: inside, resolve: resolve)
             default:
                 break
             }
@@ -107,8 +134,10 @@ struct Provenance {
     /// A call's part in the thread: a command's runs, an edit's lines, and under a call that
     /// started a subagent, each of the subagent's own in the order it made them. `parent` is
     /// that call for a subagent's, whose runs Legacy's line of checks leaves out as it always has.
+    /// `shown` is the edit this call would be, were it one: its item in the transcript, or the
+    /// item of the call a subagent's stands under.
     private mutating func take(
-        _ call: ToolCall, in turn: Int, by parent: ToolCall?, under: [String: [ToolCall]],
+        _ call: ToolCall, in turn: Int, by parent: ToolCall?, shown: Edit, under: [String: [ToolCall]],
         exits: Bool, own: String?, inside: (String) -> Bool, resolve: (String) -> String?
     ) {
         if call.kind == .run {
@@ -127,7 +156,7 @@ struct Provenance {
                 let failed = background ? call.ended != "completed" : call.isError || (call.exitCode ?? 0) != 0
                 runs.append(Run(
                     check: found.check, command: command, startedAt: call.startedAt,
-                    outcome: why.map(Run.Outcome.unknown) ?? (failed ? .failed : .exitedZero)))
+                    outcome: why.map(Run.Outcome.unknown) ?? (failed ? .failed : .exitedZero), source: .call(call.toolUseId)))
             }
             guard parent == nil, Self.checks(command) else { return }
             let check = Check(command: command, failed: call.isError)
@@ -140,7 +169,7 @@ struct Provenance {
         if call.kind == .agent, call.input["isolation"]?.string != nil { return }
         // What a subagent called, or a workflow's agents, where the call that started them stands.
         if let calls = under[call.toolUseId] {
-            for child in calls { take(child, in: turn, by: call, under: under, exits: exits, own: own, inside: inside, resolve: resolve) }
+            for child in calls { take(child, in: turn, by: call, shown: shown, under: under, exits: exits, own: own, inside: inside, resolve: resolve) }
             return
         }
         if call.kind == .agent {
@@ -155,10 +184,12 @@ struct Provenance {
         if order[turn, default: [:]][path] == nil { order[turn, default: [:]][path] = order[turn]?.count ?? 0 }
         if firsts[path] == nil { firsts[path] = firsts.count }
         touches[path, default: []].append(Touch(at: call.startedAt, runs: runs.count))
+        made.append(shown)
+        lastMade[path] = made.count - 1
         for line in diff.lines {
             switch line.kind {
-            case .added: added[path, default: [:]][line.text] = turn
-            case .deleted: deleted[path, default: [:]][line.text] = turn
+            case .added: added[path, default: [:]][line.text] = made.count - 1
+            case .deleted: deleted[path, default: [:]][line.text] = made.count - 1
             case .context, .gap: break
             }
         }
@@ -168,6 +199,7 @@ struct Provenance {
     private mutating func credit(_ waiting: inout ArraySlice<RayEdit>, through last: Int, resolve: (String) -> String?) {
         while let edit = waiting.first, edit.turn <= last {
             waiting.removeFirst()
+            made.append(Edit(turn: edit.turn))
             for file in edit.files {
                 guard let path = resolve(file.path) else { continue }
                 lastEdit[path] = edit.turn
@@ -175,8 +207,8 @@ struct Provenance {
                 if firsts[path] == nil { firsts[path] = firsts.count }
                 for line in file.hunks.flatMap(\.lines) {
                     let text = String(line.dropFirst())
-                    if line.hasPrefix("+") { added[path, default: [:]][text] = edit.turn }
-                    if line.hasPrefix("-") { deleted[path, default: [:]][text] = edit.turn }
+                    if line.hasPrefix("+") { added[path, default: [:]][text] = made.count - 1 }
+                    if line.hasPrefix("-") { deleted[path, default: [:]][text] = made.count - 1 }
                 }
                 rays[edit.turn, default: [:]][path] = edit.ray
             }
@@ -188,9 +220,40 @@ struct Provenance {
 
     /// The turn whose edit put this line in, or took it out: a "+" or "-" line of git's diff.
     func turn(of line: String, in path: String) -> Int? {
+        edit(of: line, in: path).map { made[$0].turn }
+    }
+
+    /// Where the edit that wrote a line of git's diff stands among all of them.
+    private func edit(of line: String, in path: String) -> Int? {
         guard let sign = line.first else { return nil }
         let text = String(line.dropFirst())
         return sign == "+" ? added[path]?[text] : sign == "-" ? deleted[path]?[text] : nil
+    }
+
+    /// The edit behind a change: the one that wrote the most of its lines, signed as git's diff
+    /// has them, and the later of two that wrote as many. A line is known by its text, so one a
+    /// later edit wrote again elsewhere in the file, a `return nil`, is credited to that edit, and
+    /// the latest edit to write any line would be the wrong one for a change with such a line in
+    /// it. For a change no edit's lines match it is the last recorded edit of the file. `paths`
+    /// are the file's names, the one it has now first.
+    func edit(behind lines: [String], in paths: [String]) -> Edit? {
+        var wrote: [Int: Int] = [:]
+        for line in lines {
+            if let edit = paths.lazy.compactMap({ edit(of: line, in: $0) }).first { wrote[edit, default: 0] += 1 }
+        }
+        let most = wrote.max { ($0.value, $0.key) < ($1.value, $1.key) }?.key
+        return (most ?? paths.lazy.compactMap { lastMade[$0] }.first).map { made[$0] }
+    }
+
+    /// What the agent said, as the review quotes it: the first line of it with words in it,
+    /// without the marks a heading, a list or bold text is written with.
+    static func sentence(of text: String) -> String? {
+        for line in text.split(whereSeparator: \.isNewline) {
+            let plain = line.drop { "#>-*• \t".contains($0) }.replacingOccurrences(of: "**", with: "").trimmingCharacters(in: .whitespaces)
+            guard plain.contains(where: { $0.isLetter || $0.isNumber }) else { continue }
+            return plain.count > 240 ? String(plain.prefix(239)) + "…" : plain
+        }
+        return nil
     }
 
     func lastTurn(editing path: String) -> Int? { lastEdit[path] }
@@ -212,19 +275,25 @@ struct Provenance {
     /// while the thread went on, so a run is between two edits by when it began. Where a time
     /// is missing, the edits' or the run's, it is by where their calls stand.
     func edits(of path: String, since: Date?) -> (count: Int, runsBetween: Int) {
+        let told = story(of: path, since: since)
+        return (told.count, told.between.count)
+    }
+
+    /// The same count, with the runs between by name.
+    func story(of path: String, since: Date?) -> (count: Int, between: [Run]) {
         let counted = (touches[path] ?? []).filter { touch in
             guard let since else { return true }
             return touch.at.map { $0 >= since } ?? false
         }
-        guard let first = counted.first, let last = counted.last else { return (0, 0) }
+        guard let first = counted.first, let last = counted.last else { return (0, []) }
         let times = counted.compactMap(\.at)
         let span = times.count == counted.count ? times.min().flatMap { from in times.max().map { (from, $0) } } : nil
         let stood = min(first.runs, last.runs)..<max(first.runs, last.runs)
-        let between = runs.indices.count { index in
+        let between = runs.indices.filter { index in
             if let span, let started = runs[index].startedAt { return started > span.0 && started < span.1 }
             return stood.contains(index)
         }
-        return (counted.count, between)
+        return (counted.count, between.map { runs[$0] })
     }
 
     private static let runners: Set = ["pytest", "jest", "vitest", "tsc", "eslint", "mypy", "ruff", "xcodebuild", "swiftlint", "rspec", "phpunit", "mvn", "gradle", "ctest", "tox"]

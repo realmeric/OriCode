@@ -37,11 +37,13 @@ enum ShortcutList {
         .fixed("Next and previous file", keys: "Tab  ⇧Tab"),
         .fixed("Mark reviewed, then the next", keys: "Space"),
         .fixed("Mark the file reviewed", keys: "⇧Space"),
-        .fixed("Open or close removed lines or a quiet line", keys: "→ ←"),
+        .fixed("Open or close removed lines, a quiet line or a run's output", keys: "→ ←"),
         .fixed("Add a note", keys: "N"),
         .fixed("Take it back", keys: "⌫"),
         .fixed("Undo that", keys: "⌘Z"),
         .fixed("Open the file at the line", keys: "O"),
+        .fixed("Show the edit in the thread", keys: "T"),
+        .fixed("A note asking for the check again", keys: "A"),
         .fixed("Commit", keys: "⌘Return"),
     ]
 

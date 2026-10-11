@@ -59,8 +59,45 @@ struct WitnessPage: Sendable {
     /// Whether the first ones are a queue: not when every change that's read is among them.
     var queued: Bool { !readFirst.isEmpty && !rest.isEmpty }
 
-    /// Every change in the order the page shows it, which is the order the keyboard walks.
+    /// Every change in the order the page shows it.
     var order: [String] { readFirst.flatMap(\.units) + rest.flatMap(\.units) + quiet.map(\.id) }
+
+    /// What the keyboard walks: the changes in that order, and each run's row where it stands,
+    /// over what last changed before it or, with nothing under the runs, at the top.
+    var walk: [String] {
+        let rows = runs.map(Self.id)
+        guard !rest.isEmpty else { return rows + order }
+        return readFirst.flatMap(\.units) + rows + rest.flatMap(\.units) + quiet.map(\.id)
+    }
+
+    /// A run's row, as the keyboard and the page know it.
+    static func id(of run: Provenance.Run) -> String { "r:" + run.check }
+
+    func run(_ id: String?) -> Provenance.Run? {
+        guard let id, id.hasPrefix("r:") else { return nil }
+        return runs.first { Self.id(of: $0) == id }
+    }
+
+    /// What the thread says of a change, which the caption under the page tells for the one the
+    /// keyboard is on. None of it orders the page or stands beside a run's result.
+    struct Account: Hashable, Sendable {
+        /// Which change it is on the page, counted from 1.
+        var number = 0
+        /// The message that asked for it, by its first words; nil when no edit here made it.
+        var asked: String?
+        /// How often its file was edited and what ran between, in words.
+        var edits: String?
+        /// The worker whose edits made it.
+        var ray: Provenance.Ray?
+        /// The transcript's item that shows the edit behind it.
+        var edit: UUID?
+        /// What the agent said in that turn before it made the edit.
+        var said: String?
+    }
+
+    private(set) var accounts: [String: Account] = [:]
+    /// For each check on the page, the files it reads that changed after its last run.
+    private(set) var changedAfter: [String: [String]] = [:]
     /// How many digits the page's longest line number has: one number column for every file,
     /// so code starts at the same x in all of them.
     private(set) var digits = 2
@@ -157,9 +194,24 @@ struct WitnessPage: Sendable {
             }
             // A file renamed after its edits has them under the name it had then.
             let known = [file.path, file.oldPath].compactMap { $0 }.first { provenance.firstEdit(of: $0) != nil }
-            let edits = provenance.edits(of: known ?? file.path, since: committed)
-            if edits.count >= Self.manyEdits, edits.runsBetween >= Self.manyRuns {
-                whole.append("edited \(edits.count) times with \(edits.runsBetween) runs between")
+            let story = provenance.story(of: known ?? file.path, since: committed)
+            if story.count >= Self.manyEdits, story.between.count >= Self.manyRuns {
+                whole.append("edited \(story.count) times with \(story.between.count) runs between")
+            }
+            for unit in entry.units {
+                var account = Account(asked: unit.turn.flatMap { provenance.prompts[$0] }.map(Self.firstWords), edits: Self.edits(story))
+                // A change no edit here made has none to show, whatever else was done to its file.
+                if let turn = unit.turn {
+                    let changed = unit.lines.filter { $0.kind != .context }.map(\.signed)
+                    let telling = changed.filter(ReviewBook.significant)
+                    let edit = provenance.edit(behind: telling.isEmpty ? changed : telling, in: [file.path, file.oldPath].compactMap { $0 })
+                    // The message is the one that edit answered, where a later turn wrote a line of it again.
+                    if let asked = edit.flatMap({ provenance.prompts[$0.turn] }) { account.asked = Self.firstWords(asked) }
+                    account.ray = provenance.ray(of: file.path, in: edit?.turn ?? turn)
+                    account.edit = edit?.item
+                    account.said = edit?.said
+                }
+                accounts[unit.id] = account
             }
             let own = entry.units.map { unit in Self.wordsTakenOut(unit) ? ["words taken out of a line"] : [] }
                 .enumerated().map { $1 + entry.units[$0].labels.filter(Signals.testWarnings.contains) }
@@ -195,6 +247,8 @@ struct WitnessPage: Sendable {
             for unit in line.units { lineOf[unit] = line.id }
         }
         for line in quiet { lineOf[line.id] = line.id }
+        for (index, id) in order.enumerated() { accounts[id]?.number = index + 1 }
+        for run in runs { changedAfter[run.check] = read.filter { $0.later.contains(run) }.map(\.path) }
 
         if !rest.isEmpty, !runs.isEmpty {
             let it = runs.count == 1 ? "it" : "them"
@@ -207,6 +261,60 @@ struct WitnessPage: Sendable {
             return started >= committed
         }
         if unseen { sentence += " " + Self.unseenSubagent }
+    }
+
+    /// A message as a menu or the caption names it: its first line's first words.
+    static func firstWords(_ prompt: String) -> String {
+        let line = prompt.split(whereSeparator: \.isNewline).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard line.count > 48 else { return line.isEmpty ? "A message with no words" : line }
+        let cut = line.prefix(48)
+        return (cut.lastIndex(of: " ").map { String(cut[..<$0]) } ?? String(cut)) + "…"
+    }
+
+    /// A file's recorded edits and the runs between its first and its last, in words; nil for a
+    /// file no recorded edit touched.
+    static func edits(_ story: (count: Int, between: [Provenance.Run])) -> String? {
+        guard story.count > 0 else { return nil }
+        guard story.count > 1 else { return "edited once" }
+        let checks = story.between.map(\.check).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        let between = switch (story.between.count, checks.count) {
+        case (0, _): "no run between"
+        case (1, _): "a run of \(checks[0]) between"
+        case (let runs, 1): "\(runs) runs of \(checks[0]) between"
+        case (let runs, _): "\(runs) runs between, of \(list(checks))"
+        }
+        return "edited \(story.count) times with \(between)"
+    }
+
+    /// The line A leaves in a note for the agent: the check to run again, unpiped so that its
+    /// ending is its own, and what changed after it last ran. It is for the run whose row the
+    /// keyboard is on, or for the check a change's file changed after, and failing that the one
+    /// the page's sentence is about. Nil when no check has run.
+    func askAgain(for path: String?, on row: Provenance.Run? = nil) -> String? {
+        let after = path.flatMap { path in runs.first { changedAfter[$0.check]?.contains(path) == true } }
+        guard let run = row ?? after ?? runs.first(where: { $0.outcome == .failed }) ?? runs.first else { return nil }
+        var how = ", unpiped"
+        if case .unknown(let why) = run.outcome {
+            if why.hasPrefix("followed") { how += " and with nothing after it" }
+            if why == "run in the background" || why.hasPrefix("stopped") { how += " and in the foreground" }
+        }
+        let names = (changedAfter[run.check] ?? []).map { ($0 as NSString).lastPathComponent }
+        let what: String
+        switch names.count {
+        case 0:
+            guard case .unknown = run.outcome else { return "Run \(run.check) again\(how)." }
+            what = "its result is not known"
+        case 1, 2: what = "\(Self.list(names)) changed after it last ran"
+        default: what = "\(names[0]), \(names[1]) and \(names.count - 2) more \(names.count == 3 ? "file" : "files") changed after it last ran"
+        }
+        return "Run \(run.check) again\(how): \(what)."
+    }
+
+    /// The end of what a command printed, as it is: its last lines, without the empty ones after them.
+    static func tail(of output: String, lines count: Int = 12) -> (lines: [String], of: Int) {
+        var lines = output.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        while lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeLast() }
+        return (Array(lines.suffix(count)), lines.count)
     }
 
     static let unseenSubagent = "A subagent worked in this thread and what it ran was not recorded, so a check of its own is not on this page."
