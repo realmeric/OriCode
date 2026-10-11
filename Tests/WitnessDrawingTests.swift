@@ -381,8 +381,8 @@ struct WitnessDrawingTests {
         // b.swift has a line first and a line below, and is one file in the menu.
         let files = review.page.files
         #expect(files.map(\.file.path) == ["App/b.swift", "App/a.swift"])
-        #expect(WitnessHeader.place(of: nil, in: files) == "2 files")
-        #expect(WitnessHeader.place(of: review.book.units.first { $0.file.path == "App/a.swift" }, in: files) == "a.swift · 2 of 2")
+        #expect(WitnessHeader.place(of: nil, in: files) == (nil, "2 files"))
+        #expect(WitnessHeader.place(of: review.book.units.first { $0.file.path == "App/a.swift" }, in: files) == ("a.swift", "2 of 2"))
     }
 
     @Test func aTurnIsNamedByItsMessagesFirstWords() {

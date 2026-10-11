@@ -30,7 +30,7 @@ struct OriCodeCommands: Commands {
                 .keyboardShortcut(shortcuts.key(.close))
         }
         CommandGroup(before: .toolbar) {
-            Button(model.drawerPinned ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
+            Button(model.threadsOut ? "Hide Threads" : "Show Threads") { model.toggleDrawerPin() }
                 .keyboardShortcut(shortcuts.key(.toggleThreads))
             Button("Command Center…") { model.toggleCommandCenter() }
                 .keyboardShortcut(shortcuts.key(.commandCenter))

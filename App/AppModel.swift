@@ -386,6 +386,12 @@ final class AppModel {
     /// last laid it out. Under that a pair folds to the open thread.
     var roomForTwo = true
 
+    /// How wide the review's button is drawn, which the island's lane stops short of.
+    var reviewButtonWidth: CGFloat = 0
+    /// A pinned drawer put away for a review that had no room beside it; it comes back with the
+    /// review's going.
+    var drawerAside = false
+
     /// The thread beside, while it's drawn: there's room for two and the open thread has begun,
     /// a draft having the window to itself until its first message.
     var besideShown: Chat? {

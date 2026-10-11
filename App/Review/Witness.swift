@@ -8,6 +8,9 @@ enum ReviewDesign: String, CaseIterable, Sendable {
     static let key = "reviewDesign"
     /// Either review is this wide at most.
     static let width: CGFloat = 960
+    /// And never narrower than a column of a pair is: under this its buttons and a line of code
+    /// have no room, and a pinned drawer stands aside for it.
+    static let least: CGFloat = 440
 
     /// What's chosen, Witness until something is.
     static var chosen: ReviewDesign {

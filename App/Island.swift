@@ -14,6 +14,19 @@ struct Island: View {
 
     enum Piece: Hashable {
         case capsule, command, heads, files, side, pull, review
+
+        /// What VoiceOver calls the surface.
+        var name: String {
+            switch self {
+            case .capsule: "Title"
+            case .command: "Command center"
+            case .heads: "Heads"
+            case .files: "Files"
+            case .side: "Side question"
+            case .pull: "Pull request"
+            case .review: "Review"
+            }
+        }
     }
 
     /// Where the capsule's top sits in the toolbar's row, and every surface's with it.
@@ -22,6 +35,20 @@ struct Island: View {
     /// left and the review's button on the right.
     static let side: CGFloat = 130
     static let corner: CGFloat = 14
+    /// The review's button from the window's right edge.
+    static let edge: CGFloat = 14
+
+    static func lead(pinned: Bool) -> CGFloat {
+        pinned ? Drawer.width + Drawer.inset * 2 + Column.margin : side
+    }
+
+    /// The lane's right margin: `side`, or what the review's button takes once its counts have
+    /// outgrown that, with 8pt between them. While an update is out its circle hangs 30pt past
+    /// the capsule's end, and the margin has that much more to give before the button.
+    static func trail(button: CGFloat, update: Bool) -> CGFloat {
+        max(side, edge + button + 8 + (update ? UpdateCircle.side + 6 : 0))
+    }
+    static let over = "over"
 
     var body: some View {
         GeometryReader { area in
@@ -148,13 +175,24 @@ struct Island: View {
 extension View {
     /// A surface in the island: the frame the glass follows, or with Reduce Motion, its own glass.
     func surface(_ piece: Island.Piece, in island: Namespace.ID, glass: Bool) -> some View {
-        matchedGeometryEffect(id: piece, in: island, isSource: true)
+        over(named: piece.name)
+            .matchedGeometryEffect(id: piece, in: island, isSource: true)
             .background {
                 if glass {
                     let shape = RoundedRectangle(cornerRadius: Island.corner, style: .continuous)
                     shape.fill(.ultraThinMaterial).background(Surface.drawer, in: shape)
                 }
             }
+    }
+}
+
+extension View {
+    /// What opens over the conversation is one group to VoiceOver, with a name. OverlapTests
+    /// finds each by the identifier and reads where its edges are.
+    func over(named name: String) -> some View {
+        accessibilityElement(children: .contain)
+            .accessibilityLabel(name)
+            .accessibilityIdentifier(Island.over)
     }
 }
 
@@ -169,6 +207,9 @@ extension AppModel {
         sideShown = piece == .side
         pullShown = piece == .pull
         if piece != .review { review.noting = nil }
+        // The picker rises out of the composer into the review's place, as RootView closes the
+        // review under a picker that opens.
+        if piece == .review { modelPickerShown = false }
         reviewShown = piece == .review
     }
 }

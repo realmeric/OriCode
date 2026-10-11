@@ -129,45 +129,87 @@ struct ReviewHeader: View {
     var body: some View {
         let review = model.review
         let book = review.book
+        let some = review.diff.map { !$0.files.isEmpty } ?? false
         HStack(spacing: 8) {
-            Text("Review")
-                .font(Type.body.weight(.medium))
-                .foregroundStyle(Ink.primary)
-            if let info = model.currentBranch {
-                Text(info.branch).font(Type.mono).foregroundStyle(Ink.secondary)
-                if info.ahead > 0 { Text("↑\(info.ahead)").font(Type.mono).foregroundStyle(Ink.faint) }
+            // The buttons keep their words. The branch gives way in its middle, then the files
+            // and what's left to review go, then the branch, and the counts last.
+            ViewThatFits(in: .horizontal) {
+                ReviewWords(branch: .infinity, left: true)
+                ReviewWords(branch: 320, left: true)
+                ReviewWords(branch: 200, left: true)
+                ReviewWords(branch: 200)
+                ReviewWords(branch: 110)
+                ReviewWords(branch: nil)
+                ReviewWords(branch: nil, counts: false)
             }
-            if let diff = review.diff, !diff.files.isEmpty {
-                Text("\(diff.files.count) \(diff.files.count == 1 ? "file" : "files")")
-                    .font(Type.secondary)
-                    .foregroundStyle(Ink.faint)
-                Counts(added: book.added, deleted: book.deleted, quiet: true)
-                    .opacity(0.8)
-                let left = book.toReview
-                Text(left == 0 ? "all reviewed" : "\(left) to review")
-                    .font(Type.secondary)
-                    .foregroundStyle(left == 0 ? Ink.secondary : Ink.faint)
-            }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             if review.loading || review.asking {
                 ProgressView().controlSize(.mini)
             }
-            if let diff = review.diff, !diff.files.isEmpty {
+            if some {
                 Button("Ask for a Review") { model.askForReview() }
                     .buttonStyle(.action(small: true))
+                    .fixedSize()
                     .disabled(review.asking)
                     .help("The thread's agent reads the diff and comments on its lines. It joins no turn.")
             }
             if book.toReview > 0 {
                 Button("Mark All Reviewed") { model.setReviewed(book.units.filter { !$0.reviewed }, true) }
                     .buttonStyle(.action(small: true))
+                    .fixedSize()
             }
             Button("Close") { model.closeReview() }
                 .buttonStyle(.action(small: true))
+                .fixedSize()
                 .help("Close the review (⌘⇧D)")
         }
         .padding(.horizontal, 16)
         .frame(height: 40)
+    }
+}
+
+/// The words in either review's top row, on one line: Review, the branch in as much width as
+/// it's given, the counts, and in Legacy how many files and how many are left to review.
+struct ReviewWords: View {
+    @Environment(AppModel.self) private var model
+    /// The branch's room: all it wants, so much, or none, which leaves it out.
+    let branch: CGFloat?
+    var counts = true
+    var left = false
+
+    var body: some View {
+        let review = model.review
+        let book = review.book
+        HStack(spacing: 8) {
+            Text("Review")
+                .font(Type.body.weight(.medium))
+                .foregroundStyle(Ink.primary)
+            if let branch, let info = model.currentBranch {
+                Text(info.branch).font(Type.mono).foregroundStyle(Ink.secondary)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: branch, alignment: .leading)
+                    .help(info.branch)
+                if info.ahead > 0 { Text("↑\(info.ahead)").font(Type.mono).foregroundStyle(Ink.faint) }
+            }
+            if !book.units.isEmpty {
+                if left, let files = review.diff?.files.count {
+                    Text("\(files) \(files == 1 ? "file" : "files")")
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.faint)
+                }
+                if counts {
+                    Counts(added: book.added, deleted: book.deleted, quiet: true).opacity(0.8)
+                }
+                if left {
+                    let left = book.toReview
+                    Text(left == 0 ? "all reviewed" : "\(left) to review")
+                        .font(Type.secondary)
+                        .foregroundStyle(left == 0 ? Ink.secondary : Ink.faint)
+                }
+            }
+        }
+        .lineLimit(1)
+        .fixedSize(horizontal: branch == .infinity || branch == nil, vertical: false)
     }
 }
 
@@ -542,6 +584,45 @@ struct NoteEditor: View {
     }
 }
 
+/// The commit message beside its buttons where the row holds both at the widths they ask for,
+/// and over them where it doesn't. A layout and not two rows to pick from, so the field is one
+/// field either way and a resize across the line leaves what's typed, and the caret, alone.
+private struct MessageRow: Layout {
+    private static let spacing: CGFloat = 8
+
+    private func stacked(in width: CGFloat?, _ subviews: Subviews) -> Bool {
+        guard let width else { return false }
+        return subviews.reduce(Self.spacing) { $0 + $1.sizeThatFits(.unspecified).width } > width
+    }
+
+    private func sizes(in width: CGFloat?, _ subviews: Subviews) -> (message: CGSize, actions: CGSize, stacked: Bool) {
+        let actions = subviews[1].sizeThatFits(.unspecified)
+        let stacked = stacked(in: width, subviews)
+        let room = stacked ? width : width.map { $0 - Self.spacing - actions.width }
+        return (subviews[0].sizeThatFits(ProposedViewSize(width: room, height: nil)), actions, stacked)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+        let (message, actions, stacked) = sizes(in: proposal.width, subviews)
+        let width = proposal.width ?? message.width + Self.spacing + actions.width
+        return CGSize(width: width, height: stacked ? message.height + Self.spacing + actions.height : max(message.height, actions.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        let (message, actions, stacked) = sizes(in: bounds.width, subviews)
+        let foot = CGPoint(x: bounds.maxX, y: bounds.maxY)
+        subviews[1].place(at: foot, anchor: .bottomTrailing, proposal: ProposedViewSize(actions))
+        if stacked {
+            subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: message.height))
+        } else {
+            subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.maxY), anchor: .bottomLeading,
+                              proposal: ProposedViewSize(width: bounds.width - Self.spacing - actions.width, height: message.height))
+        }
+    }
+}
+
 /// Notes waiting to go, what was just taken back, and the commit.
 struct ReviewFooter: View {
     @Environment(AppModel.self) private var model
@@ -596,53 +677,11 @@ struct ReviewFooter: View {
                 .font(Type.secondary)
             }
             if !book.units.isEmpty {
-                HStack(alignment: .bottom, spacing: 8) {
-                    TextField(reviewedOnly ? "Message for what you reviewed" : "Commit message", text: $review.message, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(Type.body)
-                        .foregroundStyle(Ink.primary)
-                        .lineLimit(1...6)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Surface.card, in: .rect(cornerRadius: 10, style: .continuous))
-                        .onKeyPress(.return, phases: .down) { press in
-                            guard press.modifiers.contains(.command) else { return .ignored }
-                            commit(reviewedOnly)
-                            return .handled
-                        }
-                    if model.agent(for: model.chat).capabilities.commitMessage {
-                        Button(review.writing ? "Writing…" : "Write Message") { model.writeReviewMessage(reviewedOnly: reviewedOnly) }
-                            .disabled(review.writing)
-                            .help("Haiku writes a message from the diff")
-                            .buttonStyle(.action)
-                    }
-                    Button(Self.commitTitle(book, in: review.design)) { commit(reviewedOnly) }
-                        .buttonStyle(.action(prominent: true))
-                        .disabled(!canCommit)
-                        .help(reviewedOnly ? "Commit only the hunks you marked reviewed (⌘Return)" : "Commit every change here (⌘Return)")
-                    // The other way to commit, beside the one ⌘Return takes: a menu of the same
-                    // kind, since a menu drawn as the white button hides its arrow.
-                    Menu {
-                        if reviewedOnly {
-                            Button("Commit All Changes") { commit(false) }
-                        } else {
-                            Button("Commit Reviewed Only") { commit(true) }
-                                .disabled(!book.units.contains(where: \.reviewed))
-                        }
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .menuStyle(.button)
-                    .menuIndicator(.hidden)
-                    .buttonStyle(.action)
-                    .fixedSize()
-                    .disabled(!canCommit)
-                    .help(reviewedOnly ? "Commit all changes instead" : "Commit only the hunks you marked reviewed")
-                    .accessibilityLabel("Other ways to commit")
-                    Button("Push") { model.pushReview() }
-                        .disabled(review.busy != nil || (model.currentBranch.map { $0.upstream && $0.ahead == 0 } ?? true))
-                        .buttonStyle(.action)
+                // The buttons keep their words: where the row hasn't room for them and a message
+                // you can read as you type it, the message takes a row of its own over them.
+                MessageRow {
+                    message(reviewedOnly)
+                    actions(reviewedOnly)
                 }
             }
             if let busy = review.busy {
@@ -659,6 +698,68 @@ struct ReviewFooter: View {
             }
         }
         .padding(12)
+    }
+
+    private func message(_ reviewedOnly: Bool) -> some View {
+        @Bindable var review = model.review
+        return TextField(reviewedOnly ? "Message for what you reviewed" : "Commit message", text: $review.message, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(Type.body)
+            .foregroundStyle(Ink.primary)
+            .lineLimit(1...6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Surface.card, in: .rect(cornerRadius: 10, style: .continuous))
+            // The least a message is typed in beside the buttons, and what the row is measured
+            // with, whatever has been typed.
+            .frame(minWidth: Self.least, idealWidth: Self.least, maxWidth: .infinity)
+            .onKeyPress(.return, phases: .down) { press in
+                guard press.modifiers.contains(.command) else { return .ignored }
+                commit(reviewedOnly)
+                return .handled
+            }
+    }
+
+    private static let least: CGFloat = 220
+
+    private func actions(_ reviewedOnly: Bool) -> some View {
+        let review = model.review
+        let book = review.book
+        return HStack(spacing: 8) {
+            if model.agent(for: model.chat).capabilities.commitMessage {
+                Button(review.writing ? "Writing…" : "Write Message") { model.writeReviewMessage(reviewedOnly: reviewedOnly) }
+                    .disabled(review.writing)
+                    .help("Haiku writes a message from the diff")
+                    .buttonStyle(.action)
+            }
+            Button(Self.commitTitle(book, in: review.design)) { commit(reviewedOnly) }
+                .buttonStyle(.action(prominent: true))
+                .disabled(!canCommit)
+                .help(reviewedOnly ? "Commit only the hunks you marked reviewed (⌘Return)" : "Commit every change here (⌘Return)")
+            // The other way to commit, beside the one ⌘Return takes: a menu of the same
+            // kind, since a menu drawn as the white button hides its arrow.
+            Menu {
+                if reviewedOnly {
+                    Button("Commit All Changes") { commit(false) }
+                } else {
+                    Button("Commit Reviewed Only") { commit(true) }
+                        .disabled(!book.units.contains(where: \.reviewed))
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.action)
+            .disabled(!canCommit)
+            .help(reviewedOnly ? "Commit all changes instead" : "Commit only the hunks you marked reviewed")
+            .accessibilityLabel("Other ways to commit")
+            Button("Push") { model.pushReview() }
+                .disabled(review.busy != nil || (model.currentBranch.map { $0.upstream && $0.ahead == 0 } ?? true))
+                .buttonStyle(.action)
+        }
+        .fixedSize()
     }
 
     private var canCommit: Bool {

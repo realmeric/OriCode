@@ -51,6 +51,9 @@ struct HeadsSurface: View {
                     Text(tally(heads))
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
+                        .lineLimit(1)
+                        // The title gives way to it: a tally on two lines made the row taller.
+                        .fixedSize()
                         .contentTransition(.numericText())
                         .animation(Motion.fade, value: tally(heads))
                 }

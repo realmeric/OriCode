@@ -310,7 +310,7 @@ extension AppModel {
         items.append(command("thread.previous", "Previous thread", icon: "chevron.up", shortcut: shortcuts.label(.previousThread), unavailable: others) { [weak self] in
             self?.stepThread(-1)
         })
-        items.append(command("threads.toggle", drawerPinned ? "Hide threads" : "Show threads", icon: "sidebar.left", shortcut: shortcuts.label(.toggleThreads),
+        items.append(command("threads.toggle", threadsOut ? "Hide threads" : "Show threads", icon: "sidebar.left", shortcut: shortcuts.label(.toggleThreads),
                              keywords: ["drawer", "sidebar"]) { [weak self] in self?.toggleDrawerPin() })
 
         // Model, effort and permissions, which with no project are the next thread's

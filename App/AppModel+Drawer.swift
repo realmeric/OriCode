@@ -35,11 +35,36 @@ extension AppModel {
         }
     }
 
+    /// Pinned and in its place, so the conversation and everything over it move across for it.
+    /// One that stood aside for the review and is called back lies over the window instead, as
+    /// a drawer that isn't pinned does, and the review keeps its width.
+    var drawerDocked: Bool { drawerPinned && drawerShown && !drawerAside }
+
+    /// What the sidebar button and ⌘B would put away: the pinned drawer, unless it stands aside
+    /// out of sight.
+    var threadsOut: Bool { drawerPinned && (drawerShown || !drawerAside) }
+
     /// Unpinning puts the drawer away even with the pointer on it: the sidebar button sits in
-    /// its first row, so a click there always is.
+    /// its first row, so a click there always is. Pinned and standing aside, it's out of sight
+    /// and the same key asks for it: it comes over the review and stays pinned.
     func toggleDrawerPin() {
+        if drawerPinned, drawerAside, !drawerShown {
+            showDrawer()
+            return
+        }
         withAnimation(drawerPinned ? DrawerTiming.slideOut : DrawerTiming.slideIn) { drawerPinned.toggle() }
         if drawerPinned { showDrawer() } else { hideDrawer() }
+    }
+
+    /// A review in a window too narrow to hold it beside a pinned drawer: the drawer goes while
+    /// the review is up and is back, still pinned, when it closes or the window has the room.
+    /// Until then it comes over the review under the pointer and leaves with it, as a drawer
+    /// that isn't pinned does.
+    func standAside(_ aside: Bool) {
+        guard aside != drawerAside else { return }
+        drawerAside = aside
+        guard drawerPinned else { return }
+        if aside { hideDrawer() } else { showDrawer() }
     }
 
     /// ⌘1–9: select the thread and slide the drawer in just long enough to show which.
@@ -137,10 +162,10 @@ extension AppModel {
 
     func scheduleHide(after delay: Duration) {
         drawerTask?.cancel()
-        guard !drawerPinned else { return }
+        guard !drawerPinned || drawerAside else { return }
         drawerTask = Task {
             try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, !mouseInDrawer, !drawerPinned, renamingChatID == nil else { return }
+            guard !Task.isCancelled, !mouseInDrawer, !drawerPinned || drawerAside, renamingChatID == nil else { return }
             hideDrawer()
         }
     }

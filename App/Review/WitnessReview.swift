@@ -239,8 +239,22 @@ private struct RunRow: View {
     }
 
     private func row(selected: Bool) -> some View {
+        // What it heads is said whole or not at all, and goes first. Then the command gives way
+        // in its middle, so how it ended is never cut.
+        ViewThatFits(in: .horizontal) {
+            words(below: below)
+            words(below: nil)
+        }
+        .font(Type.secondary)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 30)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? Surface.selected : Surface.hover, in: .rect(cornerRadius: 8, style: .continuous))
+        .contentShape(.rect)
+    }
+
+    private func words(below: String?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            // In a narrow review the command gives way first, so how it ended is never cut.
             (Text("Ran ").foregroundStyle(Ink.secondary)
                 + Text(Self.line(run.command)).font(Type.mono).foregroundStyle(Ink.primary))
                 .lineLimit(1)
@@ -249,21 +263,14 @@ private struct RunRow: View {
             (Text(" · ").foregroundStyle(Ink.secondary)
                 + Text(WitnessPage.result(run)).foregroundStyle(Ink.primary))
                 .lineLimit(1)
-                .layoutPriority(2)
+                .layoutPriority(1)
             Spacer(minLength: 16)
             if let below {
                 Text(below)
                     .foregroundStyle(Ink.secondary)
                     .lineLimit(1)
-                    .layoutPriority(1)
             }
         }
-        .font(Type.secondary)
-        .padding(.horizontal, 12)
-        .frame(minHeight: 30)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(selected ? Surface.selected : Surface.hover, in: .rect(cornerRadius: 8, style: .continuous))
-        .contentShape(.rect)
     }
 
     /// The command on one line, as it was typed.
@@ -433,31 +440,46 @@ struct WitnessHeader: View {
         let files = review.page.files
         HStack(spacing: 8) {
             // The buttons keep their words. What's left of the row goes to the branch, which
-            // gives way in its middle, then goes, and the counts go after it.
+            // gives way in its middle, then goes, and the counts go after it. With only Review
+            // left, a long file's name gives way in its middle, and its place among the files
+            // stays.
             ViewThatFits(in: .horizontal) {
-                place(branch: .infinity)
-                place(branch: 320)
-                place(branch: 200)
-                place(branch: 110)
-                place(branch: nil)
-                place(branch: nil, counts: false)
+                ReviewWords(branch: .infinity)
+                ReviewWords(branch: 320)
+                ReviewWords(branch: 200)
+                ReviewWords(branch: 110)
+                ReviewWords(branch: nil)
+                ReviewWords(branch: nil, counts: false)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if review.loading || review.asking {
                 ProgressView().controlSize(.mini)
             }
             if !files.isEmpty {
-                Menu(Self.place(of: review.selectedUnit, in: files)) {
+                let place = Self.place(of: review.selectedUnit, in: files)
+                Menu {
                     ForEach(files, id: \.first) { entry in
                         Button(entry.file.path) {
                             review.select(book.units.first { $0.id == entry.first })
                             review.focusTick += 1
                         }
                     }
+                } label: {
+                    HStack(spacing: 0) {
+                        if let name = place.name {
+                            Text(name).truncationMode(.middle)
+                            Text(" · ").fixedSize()
+                        }
+                        Text(place.among).fixedSize()
+                    }
+                    // One button to VoiceOver, as it was while it was one text.
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel([place.name, place.among].compactMap { $0 }.joined(separator: ", "))
                 }
                 .menuStyle(.button)
                 .buttonStyle(.action(small: true))
-                .fixedSize()
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
                 .help("The file the keyboard is in, and the others (Tab, ⇧Tab)")
                 Menu {
                     WitnessActions(unit: review.selectedUnit)
@@ -498,33 +520,11 @@ struct WitnessHeader: View {
         .frame(height: 40)
     }
 
-    /// The row's words: Review, the branch in as much width as it's given, and the counts.
-    private func place(branch width: CGFloat?, counts: Bool = true) -> some View {
-        let book = model.review.book
-        return HStack(spacing: 8) {
-            Text("Review")
-                .font(Type.body.weight(.medium))
-                .foregroundStyle(Ink.primary)
-            if let width, let info = model.currentBranch {
-                Text(info.branch).font(Type.mono).foregroundStyle(Ink.secondary)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: width, alignment: .leading)
-                    .help(info.branch)
-                if info.ahead > 0 { Text("↑\(info.ahead)").font(Type.mono).foregroundStyle(Ink.faint) }
-            }
-            if counts, !book.units.isEmpty {
-                Counts(added: book.added, deleted: book.deleted, quiet: true).opacity(0.8)
-            }
-        }
-        .lineLimit(1)
-        .fixedSize(horizontal: width == .infinity || width == nil, vertical: false)
-    }
-
     /// "RootView.swift · 1 of 9": the keyboard's file among the page's, or how many there are.
-    static func place(of unit: ReviewUnit?, in files: [(file: FileDiff, first: String)]) -> String {
+    static func place(of unit: ReviewUnit?, in files: [(file: FileDiff, first: String)]) -> (name: String?, among: String) {
         guard let unit, let index = files.firstIndex(where: { $0.file.path == unit.file.path && $0.file.status == unit.file.status }) else {
-            return files.count == 1 ? "1 file" : "\(files.count) files"
+            return (nil, files.count == 1 ? "1 file" : "\(files.count) files")
         }
-        return "\((unit.file.path as NSString).lastPathComponent) · \(index + 1) of \(files.count)"
+        return ((unit.file.path as NSString).lastPathComponent, "\(index + 1) of \(files.count)")
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(Updates.self) private var updates
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
 
     var body: some View {
@@ -14,12 +15,15 @@ struct RootView: View {
                 // so the composer doesn't move for the moment it takes.
                 let started = conversation?.started ?? model.chat?.started ?? false
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
-                let pinned = model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0
+                let pinned = model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0
                 // Two threads take equal halves when each gets a column's least width. Under that
                 // the pair folds to the open thread, and the window is the one it was with one.
                 let room = window.size.width - pinned >= Column.least * 2
                 let beside = room ? model.besideShown : nil
                 let half = (window.size.width - pinned) / 2
+                // Beside a pinned drawer in a narrow window the review would be too narrow to
+                // read, so the drawer stands aside for as long as the review is up.
+                let cramped = model.reviewShown && window.size.width - Island.lead(pinned: true) - Island.side < ReviewDesign.least
                 let right = model.composerHalf == .right
                 // Left to right, the threads on the glass, each with a composer under it; with
                 // none begun, the window's one composer.
@@ -28,10 +32,10 @@ struct RootView: View {
                 // its half's composer, or the first message from the right half's draft would
                 // hand the composer it was typed in to the thread coming back on the left.
                 let halves: [AppModel.Half] = beside == nil && right ? [.right] : [.left, .right]
-                // An unpinned drawer passes over the conversation for a moment, and the left
+                // A drawer that isn't in its place passes over the conversation for a moment, and the left
                 // composer's left end draws back out from under it while it's out. Its right end,
                 // with the picker and Send, doesn't move, and nor does a composer in the right half.
-                let clear = model.drawerShown && !model.drawerPinned
+                let clear = model.drawerShown && !model.drawerDocked
                     ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
                 VStack(spacing: 0) {
                     if let chat = model.chat, started {
@@ -124,13 +128,14 @@ struct RootView: View {
                 .animation(started ? Motion.glide : Motion.glide.delay(0.1), value: started)
                 .padding(.leading, pinned)
                 .onChange(of: room, initial: true) { model.roomForTwo = room }
+                .onChange(of: cramped, initial: true) { model.standAside(cramped) }
                 // A thread beside that was folded away or behind a draft said what it had to in
                 // a notification. Drawn again, it's being read here.
                 .onChange(of: beside?.id) { _, drawn in
                     if let drawn { model.notifier.clear(chatID: drawn) }
                 }
                 .simultaneousGesture(TapGesture().onEnded {
-                    if !model.drawerPinned { model.hideDrawer() }
+                    if !model.drawerDocked { model.hideDrawer() }
                     if model.commandCenterShown { model.closeCommandCenter() }
                     if model.headsShown { model.closeHeads() }
                     if model.fileFinderShown { model.toggleFileFinder() }
@@ -216,8 +221,9 @@ struct RootView: View {
             // The toolbar has no trailing side of its own with the title hidden, so the review's
             // button is laid out on the lights' line the way the capsule is.
             ReviewButton()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { model.reviewButtonWidth = $0 }
                 .frame(height: TitleBar.height)
-                .padding(.trailing, 14)
+                .padding(.trailing, Island.edge)
                 .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
@@ -226,7 +232,10 @@ struct RootView: View {
                 // the composer however tall it has grown, rising out of the thread where its block
                 // is; under the other panels, which can open over it.
                 GeometryReader { area in
-                    let height = max(60, model.composerTop - area.frame(in: .global).minY - 24)
+                    // With two threads up, the column without the keyboard has its title on the
+                    // line under the toolbar's row, and the panel starts under that.
+                    let top = 12 + (model.besideShown == nil ? 0 : BesideTitle.height)
+                    let height = max(60, model.composerTop - area.frame(in: .global).minY - top - 12)
                     ZStack(alignment: .top) {
                         // Around the panel the transcript is blank scroll view, whose clicks never
                         // reach the conversation's tap that puts a block back, so this takes them.
@@ -237,15 +246,16 @@ struct RootView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHidden(true)
-                        .frame(height: height + 12)
+                        .frame(height: height + top)
                         BlockPanel(block: block)
+                            .over(named: "Terminal")
                             .id(block.id)
                             .frame(maxWidth: 900)
                             .frame(height: height)
-                            .padding(.top, 12)
+                            .padding(.top, top)
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 40)
-                            .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
+                            .padding(.leading, model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0)
                     }
                 }
                 .opacity(model.stagingBlock == block.id ? 0 : 1)
@@ -256,13 +266,22 @@ struct RootView: View {
         }
         .overlay(alignment: .top) {
             if let file = model.openFile {
-                FileViewer(file: file)
-                    .padding(.top, 20)
-                    .padding(.horizontal, 40)
-                    .padding(.bottom, 90)
-                    // A pinned drawer covers the left of the window; the file sits beside it.
-                    .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 : 0)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Down to 12pt above the composer however tall it has grown, as the review and a
+                // block stop; over a thread not begun, whose composer waits in the middle, down
+                // to where a one-line composer would be.
+                GeometryReader { area in
+                    let low = model.currentConversation?.started ?? model.chat?.started ?? false
+                    let top = area.frame(in: .global).minY + 20
+                    let bottom = low && model.composerTop > 0 ? model.composerTop - 12 : area.frame(in: .global).maxY - 90
+                    FileViewer(file: file)
+                        .over(named: file.path)
+                        .frame(height: max(120, bottom - top))
+                        .padding(.top, 20)
+                        .padding(.horizontal, 40)
+                        // A pinned drawer covers the left of the window; the file sits beside it.
+                        .padding(.leading, model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .overlay(alignment: .top) {
@@ -270,15 +289,16 @@ struct RootView: View {
             // open block or file, which ⌘K and ⌘P open over.
             Island()
                 // Clear of the lights and the sidebar button on the left, and of the review's
-                // button and its counts on the right; beside a pinned drawer, the column's margin
-                // from it.
-                .padding(.horizontal, Island.side)
-                .padding(.leading, model.drawerPinned && model.drawerShown ? Drawer.width + Drawer.inset * 2 + Column.margin - Island.side : 0)
+                // button on the right, however wide its counts have made it; beside a pinned
+                // drawer, the column's margin from it.
+                .padding(.leading, Island.lead(pinned: model.drawerDocked))
+                .padding(.trailing, Island.trail(button: model.reviewButtonWidth, update: updates.phase != .idle))
                 .ignoresSafeArea()
         }
         .overlay(alignment: .topLeading) {
             // Full height and under the title bar, so the traffic lights sit inside its first row.
             Drawer()
+                .over(named: "Threads")
                 .padding(Drawer.inset)
                 .offset(x: model.drawerShown ? 0 : -(Drawer.width + Drawer.inset * 3))
                 // Never quite gone once made: at nothing SwiftUI takes the thread list's table out
@@ -360,8 +380,8 @@ struct SidebarButton: View {
             hovering = inside
             model.hotZone(inside)
         }
-        .help((model.drawerPinned ? "Hide threads" : "Show threads") + " (\(model.shortcuts.label(.toggleThreads)))")
-        .accessibilityLabel(model.drawerPinned ? "Hide threads" : "Show threads")
+        .help((model.threadsOut ? "Hide threads" : "Show threads") + " (\(model.shortcuts.label(.toggleThreads)))")
+        .accessibilityLabel(model.threadsOut ? "Hide threads" : "Show threads")
     }
 }
 
@@ -455,7 +475,12 @@ struct EngineNote: View {
     var body: some View {
         Group {
             if let note = model.modeNote ?? model.note {
-                Text(note)
+                // git's own words come as several lines, a rejected push as four, and the gap
+                // under the composer holds one: they run on as one line that gives way at its
+                // end, and the pointer shows them whole.
+                Text(Self.line(note))
+                    .truncationMode(.tail)
+                    .help(note)
             } else if model.engineState == .ready || model.engineState == .starting, model.agentDown == nil,
                       let away = model.runningOutOfView {
                 RunningLine(block: away.block, more: away.more)
@@ -467,10 +492,18 @@ struct EngineNote: View {
         }
         .font(Type.secondary)
         .foregroundStyle(Ink.secondary)
+        .lineLimit(1)
+        .frame(maxWidth: Column.width - 40)
+        .padding(.horizontal, Column.margin)
         .animation(Motion.fade, value: model.engineState)
         .animation(Motion.fade, value: model.agentDown)
         .animation(Motion.fade, value: model.note)
         .animation(Motion.fade, value: model.modeNote)
+    }
+
+    /// A note's lines as one, each after the last, with one space where git lined its columns up.
+    static func line(_ note: String) -> String {
+        note.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     @ViewBuilder
