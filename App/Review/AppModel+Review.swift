@@ -132,15 +132,23 @@ final class ReviewState {
         let thread: UUID?
         let design: ReviewDesign
         var runs = 0
+        /// The project's own check, which a change of makes another book.
+        var check: String?
     }
 
-    /// Whether each command line seen so far holds a check, so a read cuts a line up once.
+    /// Whether each command line seen so far holds a check, so a read cuts a line up once, and
+    /// the project's own check they were cut up with.
     @ObservationIgnored private var checkLines: [String: Bool] = [:]
+    @ObservationIgnored private var checkLinesFor: String?
 
-    func isCheck(_ command: String?) -> Bool {
+    func isCheck(_ command: String?, own: String?) -> Bool {
         guard let command else { return false }
+        if own != checkLinesFor {
+            checkLines = [:]
+            checkLinesFor = own
+        }
         if let known = checkLines[command] { return known }
-        let found = !Provenance.recognise(command).isEmpty
+        let found = !Provenance.recognise(command, own: own).isEmpty
         checkLines[command] = found
         return found
     }
@@ -407,18 +415,36 @@ extension AppModel {
     private var building: ReviewState.Built {
         var built = ReviewState.Built(thread: review.thread, design: review.design)
         guard built.design == .witness, let chat else { return built }
-        built.runs = conversation(for: chat).items.count { item in
-            switch item {
-            case .tool(_, let call): call.kind == .run && call.result != nil && review.isCheck(call.shown("command"))
-            case .shell(_, let run): run.endedAt != nil && review.isCheck(run.command)
-            default: false
-            }
+        let own = chat.project?.check
+        built.check = own
+        // A background check counts once when it goes and again when its ending comes.
+        let ended = { (call: ToolCall) in
+            call.kind == .run && call.result != nil && self.review.isCheck(call.shown("command"), own: own) ? (call.ended == nil ? 1 : 2) : 0
         }
+        let conversation = conversation(for: chat)
+        built.runs = conversation.items.reduce(0) { count, item in
+            switch item {
+            case .tool(_, let call): count + ended(call)
+            case .shell(_, let run): count + (run.endedAt != nil && review.isCheck(run.command, own: own) ? 1 : 0)
+            default: count
+            }
+        } + conversation.under.values.joined().reduce(0) { $0 + ended($1) }
         return built
     }
 
-    /// Whether the thread's agent says how a command of its own ended: Claude Code's Bash and
-    /// Codex do, and an agent whose model API runs in Claude Code.
+    /// The project's own check, as Settings › Source Control's field leaves it: nothing typed is
+    /// no check. The open review reads again when it's that project's.
+    func setCheck(_ typed: String, for project: Project) {
+        let check = typed.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        guard check != project.check else { return }
+        project.check = check
+        save()
+        if chat?.project?.id == project.id { readReview() }
+    }
+
+    /// Whether the thread's agent's word that a command failed is the command's own ending:
+    /// Claude Code's Bash and Codex, and an agent whose model API runs in Claude Code. Any other
+    /// agent's run is known only by the exit code its call carries, when it carries one.
     private func reportsExitCodes(_ chat: Chat?) -> Bool {
         let id = providerID(for: chat)
         return id == "claude" || id == "codex" || agents.first { $0.id == id }?.route == "Claude Code"
@@ -429,10 +455,12 @@ extension AppModel {
     private func build(_ diff: WorkingDiff, in folder: String) async {
         let items = chat.map { conversation(for: $0).items } ?? []
         let rayEdits = chat.map { conversation(for: $0).rayEdits } ?? []
+        let under = chat.map { conversation(for: $0).under } ?? [:]
         let built = building
         let exits = reportsExitCodes(chat)
+        let own = chat?.project?.check
         let (base, page) = await Task.detached(priority: .userInitiated) {
-            let provenance = Provenance(items: items, rayEdits: rayEdits, exits: exits) { RepoPath.relative($0, cwd: folder, root: diff.root) }
+            let provenance = Provenance(items: items, under: under, rayEdits: rayEdits, exits: exits, own: own) { RepoPath.relative($0, cwd: folder, root: diff.root) }
             let base = ReviewBook(diff: diff, provenance: provenance)
             return (base, built.design == .witness ? WitnessPage(diff: diff, units: base.units, provenance: provenance) : WitnessPage())
         }.value

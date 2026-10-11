@@ -9,6 +9,9 @@ final class Project {
     var createdAt: Date
     /// Which of ProjectColor's colours its badge is; picked at random when the project is added.
     var colorIndex: Int?
+    /// A command of the project's own that checks its work, `./ci.sh`, which the review counts
+    /// as a build or a test beside the ones it knows. Typed in Settings › Source Control.
+    var check: String?
     @Relationship(deleteRule: .cascade, inverse: \Chat.project) var chats: [Chat] = []
 
     init(name: String, path: String) {

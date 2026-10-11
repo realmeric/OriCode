@@ -120,6 +120,8 @@ test("a turn in Accept edits starts agy with --mode accept-edits: a read, a refu
   assert.equal(run.kind, "run");
   assert.deepEqual(run.view, { command: "npm test" });
   assert.deepEqual([runResult.isError, runResult.content], [true, "run_command requires approval that headless mode cannot prompt for."]);
+  // A step that ends in an error has no exit code, refused or run.
+  assert.equal("exitCode" in runResult, false);
   assert.equal(edit.kind, "edit");
   assert.deepEqual(edit.view, { path: join(cwd, "hello.txt") });
   assert.deepEqual(editResult.patch, [{ oldStart: 1, newStart: 1, lines: [" zero", "-one", "+two", " end"] }]);

@@ -128,6 +128,21 @@ async function prompt(sessionId: string, text: string): Promise<object> {
     });
     return { stopReason: "end_turn" };
   }
+  if (text === "fails") {
+    // A command that exits 1, as three agents end one. Cursor 2026.09.02 completes the call
+    // and puts the code beside what it printed; OpenCode 1.18 completes it too, the code in its
+    // tool's metadata; an agent that keeps to ACP's own fields says only that the call failed.
+    const cursor = { toolCallId: "cu-fail", title: "`make test`", kind: "execute" };
+    update(sessionId, { sessionUpdate: "tool_call", ...cursor, status: "pending", rawInput: { command: "make test" } });
+    update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "cu-fail", status: "completed", rawOutput: { exitCode: 1, stdout: "", stderr: "1 failed\n" } });
+    const opencode = { toolCallId: "oc-fail", title: "make test", kind: "execute" };
+    update(sessionId, { sessionUpdate: "tool_call", ...opencode, status: "in_progress", rawInput: { command: "make test" } });
+    update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "oc-fail", status: "completed", rawOutput: { output: "1 failed\n", metadata: { exit: 1, truncated: false } } });
+    const plain = { toolCallId: "acp-fail", title: "make test", kind: "execute" };
+    update(sessionId, { sessionUpdate: "tool_call", ...plain, status: "pending", rawInput: { command: "make test" } });
+    update(sessionId, { sessionUpdate: "tool_call_update", toolCallId: "acp-fail", status: "failed", content: [{ type: "content", content: { type: "text", text: "1 failed\n" } }] });
+    return { stopReason: "end_turn" };
+  }
   if (text === "cursor") {
     // As Cursor 2026.09.02 sends a command: what it printed in its raw output, and after a Stop
     // an ask about the next one, once the turn is over.

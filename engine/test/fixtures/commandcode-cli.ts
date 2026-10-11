@@ -96,6 +96,11 @@ async function run(prompt: string): Promise<void> {
     case "crash":
       process.stderr.write("boom: the model client fell over\n");
       process.exit(1);
+    case "fails":
+      send({ type: "tool_queued", toolCallId: "t-test", toolName: "shell_command", input: { command: "make", args: ["test"] } });
+      send({ type: "tool_errored", toolCallId: "t-test", toolName: "shell_command", error: "Command failed with exit code 2: make test" });
+      send({ type: "text_delta", delta: "It fails." });
+      result({ sessionId, finalText: "It fails." });
     case "risky":
       send({ type: "tool_queued", toolCallId: "t-rm", toolName: "shell_command", input: { command: "rm", args: ["-rf", "/"] } });
       send({ type: "tool_denied", toolCallId: "t-rm", toolName: "shell_command" });

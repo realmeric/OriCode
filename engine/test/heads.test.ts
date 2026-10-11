@@ -105,7 +105,7 @@ test("heads come and go at once, each kind as the CLI's task says, and nothing a
   found.close();
 });
 
-test("a subagent's own tool call reaches its head while watched, and never the transcript", async () => {
+test("a subagent's own tool call reaches its head while watched, and what it read is not told to the app", async () => {
   const cli = standIn();
   const found = await thread(cli);
   cli.feed(started("a1", "local_agent", "agent1"));
@@ -124,6 +124,86 @@ test("a subagent's own tool call reaches its head while watched, and never the t
   await wait(300);
   assert.equal(events.length, 1);
   assert.deepEqual(heads()[0][0].step, { tool: "Read", detail: "App/A.swift" });
+  found.close();
+});
+
+test("a subagent's command and edit come with their results and its words don't; the call that starts one says its calls follow", async () => {
+  const cli = standIn();
+  const found = await thread(cli);
+  const assistant = (parent: string | null, content: unknown[]) => ({ type: "assistant", parent_tool_use_id: parent, session_id: "s", message: { id: `m-${Math.random()}`, content } });
+  const result = (parent: string | null, id: string, content: string, fields: Record<string, unknown> = {}, structured?: unknown) => ({
+    type: "user",
+    parent_tool_use_id: parent,
+    session_id: "s",
+    tool_use_result: structured,
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content, ...fields }] },
+  });
+  cli.feed(assistant(null, [{ type: "tool_use", id: "agent1", name: "Agent", input: { description: "Run the tests", prompt: "make test" } }]));
+  cli.feed(started("a1", "local_agent", "agent1"));
+  cli.feed(assistant("agent1", [{ type: "text", text: "Running them." }, { type: "tool_use", id: "sub-run", name: "Bash", input: { command: "make test" } }]));
+  cli.feed(result("agent1", "sub-run", "Exit code 2\n1 failed", { is_error: true }));
+  cli.feed(assistant("agent1", [{ type: "tool_use", id: "sub-edit", name: "Edit", input: { file_path: join(folder, "a.txt"), old_string: "two", new_string: "2" } }]));
+  cli.feed(result("agent1", "sub-edit", "Edited.", {}, { structuredPatch: [{ oldStart: 1, oldLines: 3, newStart: 1, newLines: 3, lines: [" one", "-two", "+2", " three"] }] }));
+  // What it read, searched or fetched is its own: stored, it would be a file's text nothing reads.
+  cli.feed(assistant("agent1", [{ type: "tool_use", id: "sub-read", name: "Read", input: { file_path: join(folder, "a.txt") } }]));
+  cli.feed(result("agent1", "sub-read", "one\n2\nthree"));
+  cli.feed(result(null, "agent1", "One test fails."));
+  await settle();
+  const told = events.filter((event) => event.event.startsWith("tool.") || event.event === "text");
+  assert.deepEqual(
+    told.map((event) => [event.event, event.toolUseId, event.parent]),
+    [
+      ["tool.use", "agent1", undefined],
+      ["tool.use", "sub-run", "agent1"],
+      ["tool.result", "sub-run", "agent1"],
+      ["tool.use", "sub-edit", "agent1"],
+      ["tool.result", "sub-edit", "agent1"],
+      ["tool.result", "agent1", undefined],
+    ],
+  );
+  assert.equal(told[0].subcalls, true);
+  assert.equal("subcalls" in told[1], false);
+  assert.deepEqual([told[2].isError, told[2].content], [true, "Exit code 2\n1 failed"]);
+  assert.equal(told[4].content, "");
+  assert.deepEqual(told[4].patch, [{ oldStart: 1, newStart: 1, lines: [" one", "-two", "+2", " three"] }]);
+  found.close();
+});
+
+test("a command sent to the background says so on its result, and how it ended when that comes", async () => {
+  const cli = standIn();
+  const found = await thread(cli);
+  const result = (id: string, content: string) => ({ type: "user", parent_tool_use_id: null, session_id: "s", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content }] } });
+  cli.feed(started("b1", "local_bash", "bash1", { is_backgrounded: true }));
+  cli.feed(result("bash1", "Command running in background with ID: b1. Output is being written to: /tmp/b1.output."));
+  // One the CLI moved to the background itself, its call never having asked for it.
+  cli.feed(started("b2", "local_bash", "bash2", { is_backgrounded: false }));
+  cli.feed(system("task_updated", { task_id: "b2", patch: { is_backgrounded: true } }));
+  cli.feed(result("bash2", "Command was manually backgrounded with ID: b2."));
+  // One in the foreground, whose result is its own ending.
+  cli.feed(started("b3", "local_bash", "bash3", { is_backgrounded: false }));
+  cli.feed(result("bash3", "ok"));
+  cli.feed(system("task_notification", { task_id: "b3", tool_use_id: "bash3", status: "completed", output_file: "", summary: "" }));
+  // The CLI stops listing a background task before it says how it ended, and the head goes then.
+  cli.feed(system("background_tasks_changed", { tasks: [] }));
+  cli.feed(system("task_notification", { task_id: "b1", tool_use_id: "bash1", status: "failed", output_file: "/tmp/b1.output", summary: "failed with exit code 1" }));
+  cli.feed(system("task_notification", { task_id: "b2", status: "completed", output_file: "", summary: "" }));
+  // One whose result comes before the CLI has said anything of its task.
+  cli.feed(result("bash4", "Command running in background with ID: b4. Output is being written to: /tmp/b4.output."));
+  cli.feed(system("task_notification", { task_id: "b4", tool_use_id: "bash4", status: "stopped", output_file: "", summary: "" }));
+  await settle();
+  const told = events.filter((event) => event.event === "tool.result" || event.event === "tool.ended");
+  assert.deepEqual(
+    told.map((event) => [event.event, event.toolUseId, event.background ?? event.status]),
+    [
+      ["tool.result", "bash1", true],
+      ["tool.result", "bash2", true],
+      ["tool.result", "bash3", undefined],
+      ["tool.ended", "bash1", "failed"],
+      ["tool.ended", "bash2", "completed"],
+      ["tool.result", "bash4", true],
+      ["tool.ended", "bash4", "stopped"],
+    ],
+  );
   found.close();
 });
 

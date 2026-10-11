@@ -508,6 +508,24 @@ test("Cursor's command shows what it printed, and an ask it sends after Stop is 
   assert.equal(events.slice(from).some((event) => event.event === "ask" && event.threadId === "late"), false);
 });
 
+test("a failing command: Cursor's and OpenCode's carry their exit code, and a call that only says it failed has none", async () => {
+  const { session, cwd } = await standIn("fails");
+  sessions.push(session);
+  const from = events.length;
+  await session.send({ threadId: "fails", cwd, text: "fails" });
+  await until(named("turn.done", "fails"), from);
+  const results = events.slice(from).filter((event) => event.event === "tool.result");
+  assert.deepEqual(
+    results.map((event) => [event.toolUseId, event.isError, event.exitCode, event.content]),
+    [
+      ["cu-fail", false, 1, "1 failed\n"],
+      ["oc-fail", false, 1, "1 failed\n"],
+      ["acp-fail", true, undefined, "1 failed\n"],
+    ],
+  );
+  assert.equal("exitCode" in results[2], false);
+});
+
 test("an ask's allow always says what the agent does with it", async () => {
   const { session, cwd } = await standIn("always", {}, { allowAlways: "Into the agent's own allowlist." });
   sessions.push(session);

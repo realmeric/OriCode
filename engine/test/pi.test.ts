@@ -102,6 +102,8 @@ test("a turn: thinking, text, a read, an edit with its diff, a write, a failed c
   assert.equal(bash.kind, "run");
   assert.deepEqual(bash.view, { command: "make test" });
   assert.deepEqual(bashResult, { event: "tool.result", threadId: "work", toolUseId: "call-4", content: "boom", isError: true });
+  // Pi says a failing command is an error and puts its code only in the words it printed.
+  assert.equal("exitCode" in bashResult, false);
   assert.equal(said[13].delta, "Done.");
   assert.equal(done.stopReason, "end_turn");
   assert.deepEqual(done.usage, { input: 2200, output: 50, cacheRead: 1800, cacheWrite: 0 });

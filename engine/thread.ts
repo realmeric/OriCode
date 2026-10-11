@@ -94,6 +94,13 @@ export class Thread implements Session {
   private heads: Heads;
   /// Workflows the thread started, by task, with the call that started them and their last snapshot.
   private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape }>();
+  /// The commands out in the background, by their task and by the call that started each,
+  /// until the CLI says how each ended. Kept here and not read off the heads, which let a
+  /// background task go as soon as the CLI stops listing it, before its notification.
+  private commandCalls = new Map<string, string>();
+  private backgroundCalls = new Set<string>();
+  /// A subagent's calls the app was told of and whose results it's owed, each with its tool.
+  private subcalls = new Map<string, string>();
   private costSoFar = 0;
   private lastContext = 0;
   private fast = false;
@@ -341,6 +348,9 @@ export class Thread implements Session {
     for (const taskId of this.workflows.keys()) this.tellWorkflow(taskId, "stopped");
     this.workflows.clear();
     this.heads.clear();
+    this.commandCalls.clear();
+    this.backgroundCalls.clear();
+    this.subcalls.clear();
   }
 
   private start(params: SendParams, key: string, env: Record<string, string | undefined>): void {
@@ -425,6 +435,21 @@ export class Thread implements Session {
     } catch {}
   }
 
+  /// Whether a call's result is a command's going to the background rather than its ending:
+  /// the CLI said so of its task, or the result is the CLI's line for it, which can come first.
+  private wentToBackground(toolUseId: string, result: string): boolean {
+    if (result.startsWith("Command running in background with ID:")) this.backgroundCalls.add(toolUseId);
+    return this.backgroundCalls.has(toolUseId);
+  }
+
+  /// A background command's own ending, which its call's result couldn't say. A command that
+  /// stayed in the foreground said it on its result, and is only forgotten here.
+  private commandEnded(taskId: string, toolUseId: string | undefined, status: string): void {
+    const call = this.commandCalls.get(taskId) ?? toolUseId;
+    this.commandCalls.delete(taskId);
+    if (call && this.backgroundCalls.delete(call)) event("tool.ended", { threadId: this.id, toolUseId: call, status });
+  }
+
   /// Keeps the heads and the workflows in step with the CLI's task messages.
   private trackTask(message: SDKMessage & { type: "system" }): boolean {
     switch (message.subtype) {
@@ -433,6 +458,10 @@ export class Thread implements Session {
           const name = message.workflow_name ?? message.description;
           this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] } });
           this.tellWorkflow(message.task_id, "running");
+        }
+        if (message.task_type === "local_bash" && message.tool_use_id) {
+          this.commandCalls.set(message.task_id, message.tool_use_id);
+          if (message.is_backgrounded) this.backgroundCalls.add(message.tool_use_id);
         }
         break;
       case "task_progress": {
@@ -446,12 +475,19 @@ export class Thread implements Session {
       }
       case "task_notification":
         if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
+        this.commandEnded(message.task_id, message.tool_use_id, message.status);
         this.tellWorkflow(message.task_id, message.status, message.summary);
         this.workflows.delete(message.task_id);
         break;
       case "task_updated":
+        if (message.patch.is_backgrounded) {
+          const call = this.commandCalls.get(message.task_id);
+          if (call) this.backgroundCalls.add(call);
+        }
         if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) {
-          this.tellWorkflow(message.task_id, message.patch.status === "killed" ? "stopped" : message.patch.status);
+          const status = message.patch.status === "killed" ? "stopped" : message.patch.status;
+          this.tellWorkflow(message.task_id, status);
+          this.commandEnded(message.task_id, undefined, status);
         }
         break;
     }
@@ -596,6 +632,14 @@ export class Thread implements Session {
       case "assistant": {
         if (message.parent_tool_use_id) {
           this.heads.frame(message.parent_tool_use_id, message.message.content);
+          // A subagent's commands, edits and subagents go to the app under the call that started
+          // it, where the review reads what it ran and what it edited. Its words stay its own,
+          // and so does what it read or searched, which nothing in the app would look at.
+          for (const block of message.message.content) {
+            if (block.type !== "tool_use" || !subagentKept.has(block.name)) continue;
+            this.subcalls.set(block.id, block.name);
+            event("tool.use", { threadId: this.id, toolUseId: block.id, name: block.name, input: block.input, parent: message.parent_tool_use_id, ...(subagentTools.has(block.name) ? { subcalls: true } : {}) });
+          }
           return;
         }
         const usage = message.message.usage;
@@ -615,7 +659,7 @@ export class Thread implements Session {
         const streamed = this.streamed.has(message.message.id);
         for (const block of message.message.content) {
           if (block.type === "tool_use") {
-            event("tool.use", { threadId: this.id, toolUseId: block.id, name: block.name, input: block.input });
+            event("tool.use", { threadId: this.id, toolUseId: block.id, name: block.name, input: block.input, ...(subagentTools.has(block.name) ? { subcalls: true } : {}) });
           } else if (block.type === "text" && !streamed) {
             event("text", { threadId: this.id, delta: block.text });
           }
@@ -628,16 +672,24 @@ export class Thread implements Session {
         for (const block of blocks) {
           if (block.type === "tool_result") this.heads.result(block.tool_use_id, resultText(block.content));
         }
-        if (message.parent_tool_use_id) return;
         const patch = patchOf(message.tool_use_result);
         for (const block of blocks) {
           if (block.type !== "tool_result") continue;
+          const tool = this.subcalls.get(block.tool_use_id);
+          if (message.parent_tool_use_id && !tool) continue;
+          this.subcalls.delete(block.tool_use_id);
+          // Of a subagent's results only a command's words are read; an edit's is its patch.
+          const content = !message.parent_tool_use_id || tool === "Bash" ? resultText(block.content) : "";
           event("tool.result", {
             threadId: this.id,
             toolUseId: block.tool_use_id,
-            content: resultText(block.content),
+            content,
             isError: block.is_error ?? false,
             patch,
+            // Sent to the background, by its call or by the CLI when it ran long: this result is
+            // only where its output goes, and how it ended comes later as `tool.ended`.
+            ...(this.wentToBackground(block.tool_use_id, content) ? { background: true } : {}),
+            ...(message.parent_tool_use_id ? { parent: message.parent_tool_use_id } : {}),
           });
         }
         return;
@@ -743,6 +795,11 @@ export class Thread implements Session {
     }
   }
 }
+
+/// The tools that start a subagent, whose own calls follow with `parent`.
+const subagentTools = new Set(["Task", "Agent"]);
+/// What of a subagent's calls the app is told: the rest would be stored and never read.
+const subagentKept = new Set(["Bash", "Edit", "MultiEdit", "Write", ...subagentTools]);
 
 const emptyUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 

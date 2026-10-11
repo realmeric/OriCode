@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
-import { diffHunks, diffOf, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
+import { diffHunks, diffOf, exitCode, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
 import { within } from "./child.ts";
 import { asks as registry, toolsServer } from "./provider.ts";
 import { lastLine } from "./shell.ts";
@@ -764,6 +764,7 @@ export class AcpSession {
         content: resultText(call.content, call.rawOutput),
         isError: call.status === "failed",
         patch: diff && call.status === "completed" ? (typeof unified === "string" ? unifiedHunks(unified) : diffHunks(diff)) : undefined,
+        exitCode: call.kind === "execute" ? exitCode(call.rawOutput) : undefined,
       });
     }
     return call;

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { drawing } from "../provider.ts";
-import { CodexSession, answer, availability, choiceOf, limitsOf, listModels, policy, unifiedHunks, unwrap, type CodexBinary } from "../codex.ts";
+import { CodexSession, answer, availability, choiceOf, limitsOf, listModels, policy, toolResults, unifiedHunks, unwrap, type CodexBinary } from "../codex.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
 const events: Record<string, any>[] = [];
@@ -152,7 +152,7 @@ test("a turn: reasoning, text, a read, a command asked and approved, a plan, a f
   assert.equal(read.kind, "read");
   assert.equal(read.name, "Shell");
   assert.deepEqual(read.view, { path: "/w/a.txt", command: "cat a.txt" });
-  assert.deepEqual(readResult, { event: "tool.result", threadId: "work", toolUseId: "exec-1", content: "one\ntwo\nthree\n", isError: false });
+  assert.deepEqual(readResult, { event: "tool.result", threadId: "work", toolUseId: "exec-1", content: "one\ntwo\nthree\n", isError: false, exitCode: 0 });
   assert.equal(plan.name, "TodoWrite");
   assert.equal(plan.kind, "plan");
   assert.deepEqual(plan.view.todos, [
@@ -162,7 +162,7 @@ test("a turn: reasoning, text, a read, a command asked and approved, a plan, a f
   ]);
   assert.equal(test.kind, "run");
   assert.deepEqual(test.input, { command: "make test", cwd });
-  assert.deepEqual(testResult, { event: "tool.result", threadId: "work", toolUseId: "exec-2", content: "ok\n", isError: false });
+  assert.deepEqual(testResult, { event: "tool.result", threadId: "work", toolUseId: "exec-2", content: "ok\n", isError: false, exitCode: 0 });
   assert.equal(change.kind, "edit");
   assert.equal(change.name, "Edit");
   assert.equal(added.kind, "write");
@@ -393,4 +393,11 @@ test("modes, decisions, commands, diffs and windows in the app's words", () => {
   assert.deepEqual(windows.windows.map((window) => window.label), ["5-hour window", "7-day window"]);
   assert.equal(windows.rateLimitType, "seven_day");
   assert.equal(windows.utilization, 0.7);
+});
+
+test("a command's result carries its exit code, and one that never ran has none", () => {
+  const ran = (fields: Record<string, unknown>) => toolResults({ type: "commandExecution", id: "c1", command: "/bin/zsh -lc 'make test'", ...fields });
+  assert.deepEqual(ran({ status: "completed", exitCode: 0, aggregatedOutput: "ok\n" }), [{ id: "c1", content: "ok\n", isError: false, exitCode: 0 }]);
+  assert.deepEqual(ran({ status: "failed", exitCode: 1, aggregatedOutput: "1 failed\n" }), [{ id: "c1", content: "1 failed\n", isError: true, exitCode: 1 }]);
+  assert.deepEqual(ran({ status: "declined", exitCode: null }), [{ id: "c1", content: "Declined.", isError: true, exitCode: undefined }]);
 });

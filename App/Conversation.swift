@@ -40,6 +40,14 @@ struct ToolCall: Hashable {
     var view: JSON = .null
     /// When its tool.use came, which for a command is when it began to run.
     var startedAt: Date?
+    /// A command's own exit code, from an agent that sends one.
+    var exitCode: Int?
+    /// A command sent to the background, whose result says only where its output goes.
+    var background = false
+    /// How a background command ended, once that came: completed, failed or stopped.
+    var ended: String?
+    /// On a call that starts a subagent: whether what the subagent calls is kept under it.
+    var keepsCalls = false
 
     var kind: ToolKind { declared ?? ToolKind(claude: name) }
 
@@ -287,6 +295,9 @@ final class Conversation {
     private(set) var workerCost: Double = 0
     /// The edits workers brought into the thread's folder, which the review credits to their rays.
     private(set) var rayEdits: [RayEdit] = []
+    /// What each subagent called, by the call that started it. The transcript draws none of
+    /// it; the review reads what a subagent ran and what it edited.
+    @ObservationIgnored private(set) var under: [String: [ToolCall]] = [:]
     /// "Trying again, 1 of 10…" while the CLI retries, which the transcript puts after "Can't
     /// reach" and the agent; a live line, never stored.
     private(set) var retrying: String?
@@ -697,6 +708,12 @@ final class Conversation {
             // A worker's turn: its cost is the thread's too, and its edits are credited to its ray.
             chat.costUSD += event.body["costUSD"]?.double ?? 0
             record(event.name, event.body)
+        case "tool.use" where event.body["parent"]?.string != nil:
+            keep("subagent.use", event.body)
+        case "tool.result" where event.body["parent"]?.string != nil:
+            keep("subagent.result", event.body)
+        case "tool.ended":
+            keep(event.name, event.body)
         case "tool.use", "tool.result", "ask", "ask.cancelled", "error", "note":
             if event.name == "error" { failed = true }
             record(event.name, event.body)
@@ -936,6 +953,41 @@ final class Conversation {
         return event
     }
 
+    /// Stores an event the transcript has no item for, a subagent's call or a background
+    /// command's ending, without closing the reply that may be streaming beside it. It's saved
+    /// with whatever is saved next.
+    private func keep(_ kind: String, _ body: JSON) {
+        let event = Event(turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
+        seq += 1
+        context.insert(event)
+        event.chat = chat
+        unsaved = true
+        apply(kind, body, id: event.id, at: event.createdAt)
+    }
+
+    /// A call as its tool.use tells it.
+    private func toolCall(_ body: JSON, at date: Date) -> ToolCall {
+        let name = body["name"]?.string ?? ""
+        return ToolCall(
+            toolUseId: body["toolUseId"]?.string ?? "", name: name, input: body["input"] ?? .null,
+            declared: ToolKind(body["kind"], tool: name), view: body["view"] ?? .null,
+            startedAt: body["untimed"]?.bool == true ? nil : date,
+            keepsCalls: body["subcalls"]?.bool ?? false)
+    }
+
+    /// What a tool.result says of its call.
+    private func finish(_ call: inout ToolCall, _ body: JSON, at date: Date) {
+        call.result = body["content"]?.string ?? ""
+        call.isError = body["isError"]?.bool ?? false
+        call.patch = Hunk.list(body["patch"])
+        call.exitCode = body["exitCode"]?.int
+        call.background = body["background"]?.bool ?? false
+        // A command whose result is as old as its call was read out of a transcript, by
+        // a build that didn't mark it, or came from an agent that tells of a call only
+        // once it's over: either way when it began isn't known.
+        if call.kind == .run, let started = call.startedAt, (0..<0.005).contains(date.timeIntervalSince(started)) { call.startedAt = nil }
+    }
+
     private func apply(_ kind: String, _ body: JSON, id: UUID, at date: Date) {
         switch kind {
         case "user":
@@ -946,11 +998,7 @@ final class Conversation {
         case "thinking":
             items.append(.thinking(id: id, text: body["delta"]?.string ?? ""))
         case "tool.use":
-            let name = body["name"]?.string ?? ""
-            var call = ToolCall(
-                toolUseId: body["toolUseId"]?.string ?? "", name: name, input: body["input"] ?? .null,
-                declared: ToolKind(body["kind"], tool: name), view: body["view"] ?? .null,
-                startedAt: body["untimed"]?.bool == true ? nil : date)
+            var call = toolCall(body, at: date)
             if call.kind == .plan { call.plan = planned(call.view["todos"] == nil ? call.input : call.view, at: id) }
             items.append(.tool(id: id, call: call))
         case "tool.result":
@@ -958,14 +1006,26 @@ final class Conversation {
             if let index = items.lastIndex(where: { if case .tool(_, let call) = $0 { call.toolUseId == toolUseId } else { false } }),
                case .tool(let itemId, var call) = items[index]
             {
-                call.result = body["content"]?.string ?? ""
-                call.isError = body["isError"]?.bool ?? false
-                call.patch = Hunk.list(body["patch"])
-                // A command whose result is as old as its call was read out of a transcript, by
-                // a build that didn't mark it, or came from an agent that tells of a call only
-                // once it's over: either way when it began isn't known.
-                if call.kind == .run, let started = call.startedAt, (0..<0.005).contains(date.timeIntervalSince(started)) { call.startedAt = nil }
+                finish(&call, body, at: date)
                 items[index] = .tool(id: itemId, call: call)
+            }
+        case "subagent.use":
+            guard let parent = body["parent"]?.string else { break }
+            under[parent, default: []].append(toolCall(body, at: date))
+        case "subagent.result":
+            let toolUseId = body["toolUseId"]?.string
+            guard let parent = body["parent"]?.string, let index = under[parent]?.lastIndex(where: { $0.toolUseId == toolUseId }) else { break }
+            finish(&under[parent]![index], body, at: date)
+        case "tool.ended":
+            let toolUseId = body["toolUseId"]?.string
+            let status = body["status"]?.string
+            if let index = items.lastIndex(where: { if case .tool(_, let call) = $0 { call.toolUseId == toolUseId } else { false } }),
+               case .tool(let itemId, var call) = items[index]
+            {
+                call.ended = status
+                items[index] = .tool(id: itemId, call: call)
+            } else if let (parent, index) = under.lazy.compactMap({ parent, calls in calls.lastIndex { $0.toolUseId == toolUseId }.map { (parent, $0) } }).first {
+                under[parent]![index].ended = status
             }
         case "workflow":
             let toolUseId = body["toolUseId"]?.string

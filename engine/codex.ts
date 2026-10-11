@@ -57,7 +57,7 @@ type Item = { type: string; id: string; [field: string]: any };
 
 type ToolCall = { id: string; name: string; input: Record<string, unknown>; kind: string; view: View };
 
-type ToolResult = { id: string; content: string; isError: boolean; patch?: Hunk[] };
+type ToolResult = { id: string; content: string; isError: boolean; patch?: Hunk[]; exitCode?: number };
 
 type Breakdown = { totalTokens: number; inputTokens: number; cachedInputTokens: number; cacheWriteInputTokens: number; outputTokens: number };
 
@@ -585,7 +585,7 @@ export class CodexSession implements Session {
     for (const result of toolResults(item)) {
       if (this.done.has(result.id)) continue;
       this.done.add(result.id);
-      event("tool.result", { threadId: this.id, toolUseId: result.id, content: result.content, isError: result.isError, patch: result.patch });
+      event("tool.result", { threadId: this.id, toolUseId: result.id, content: result.content, isError: result.isError, patch: result.patch, exitCode: result.exitCode });
     }
   }
 
@@ -719,7 +719,7 @@ export function toolCalls(item: Item): ToolCall[] {
 export function toolResults(item: Item): ToolResult[] {
   switch (item.type) {
     case "commandExecution":
-      return [{ id: item.id, content: item.aggregatedOutput ?? (item.status === "declined" ? "Declined." : ""), isError: item.status !== "completed" || (item.exitCode ?? 0) !== 0 }];
+      return [{ id: item.id, content: item.aggregatedOutput ?? (item.status === "declined" ? "Declined." : ""), isError: item.status !== "completed" || (item.exitCode ?? 0) !== 0, exitCode: typeof item.exitCode === "number" ? item.exitCode : undefined }];
     case "fileChange": {
       const changes: { path: string; kind: { type: string }; diff: string }[] = item.changes ?? [];
       const applied = item.status === "completed";

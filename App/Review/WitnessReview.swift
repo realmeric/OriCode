@@ -205,15 +205,18 @@ private struct RunRow: View {
     let below: String?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            // In a narrow review the command gives way first, so how it ended is never cut.
             (Text("Ran ").foregroundStyle(Ink.secondary)
-                + Text(Self.line(run.command)).font(Type.mono).foregroundStyle(Ink.primary)
-                + Text(" · ").foregroundStyle(Ink.secondary)
-                + Text(WitnessPage.result(run)).foregroundStyle(Ink.primary))
+                + Text(Self.line(run.command)).font(Type.mono).foregroundStyle(Ink.primary))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(run.command)
-            Spacer(minLength: 8)
+            (Text(" · ").foregroundStyle(Ink.secondary)
+                + Text(WitnessPage.result(run)).foregroundStyle(Ink.primary))
+                .lineLimit(1)
+                .layoutPriority(2)
+            Spacer(minLength: 16)
             if let below {
                 Text(below)
                     .foregroundStyle(Ink.secondary)

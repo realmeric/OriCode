@@ -350,7 +350,7 @@ extension AppModel {
         }
         // The count at the top right follows every turn in the open folder, and an open review
         // follows every edit.
-        if chat.cwd == self.chat?.cwd, event.name == "turn.done" || (reviewShown && event.name == "tool.result") {
+        if chat.cwd == self.chat?.cwd, event.name == "turn.done" || (reviewShown && (event.name == "tool.result" || event.name == "tool.ended")) {
             readReview(after: .milliseconds(event.name == "turn.done" ? 200 : 500))
         }
     }

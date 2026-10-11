@@ -99,7 +99,11 @@ struct WitnessPage: Sendable {
         let committed = diff.headAt.map { Date(timeIntervalSince1970: $0 / 1000) }
         // Each check's last run. One from before the last commit says nothing of what's here.
         var last: [String: Provenance.Run] = [:]
-        for run in provenance.runs { last[run.check] = run }
+        // A subagent's stand where its call does, so the later of two is told by their starts.
+        for run in provenance.runs {
+            if let had = last[run.check]?.startedAt, let started = run.startedAt, started < had { continue }
+            last[run.check] = run
+        }
         runs = last.values
             .filter { run in
                 guard let committed, let started = run.startedAt else { return true }
@@ -197,7 +201,15 @@ struct WitnessPage: Sendable {
             below = proseSince ? "everything below but prose last changed before \(it)" : "everything below last changed before \(it)"
         }
         sentence = Self.sentence(runs: runs, any: !provenance.runs.isEmpty, read: read, proseSince: proseSince)
+        // A subagent whose calls the thread doesn't hold may have run a check nobody saw.
+        let unseen = provenance.unseenAgents.contains { started in
+            guard let committed, let started else { return true }
+            return started >= committed
+        }
+        if unseen { sentence += " " + Self.unseenSubagent }
     }
+
+    static let unseenSubagent = "A subagent worked in this thread and what it ran was not recorded, so a check of its own is not on this page."
 
     /// Ranks from here on are files no recorded edit touched.
     private static let firstUnknown = 1_000_000

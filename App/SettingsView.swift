@@ -514,6 +514,14 @@ private struct SourceControlPane: View {
     @AppStorage(NewThreads.branchPrefix) private var prefix = NewThreads.defaultBranchPrefix
     @AppStorage(NewThreads.messageModel) private var messageModel = ""
     @AppStorage(ReviewDesign.key) private var review = ReviewDesign.witness
+    @Environment(AppModel.self) private var model
+    @State private var check = ""
+    @FocusState private var typingCheck: Bool
+
+    /// The open thread's project, whose check the field holds.
+    private var project: Project? {
+        (model.chat?.project ?? model.project).flatMap { $0.isNoFolder ? nil : $0 }
+    }
 
     var body: some View {
         PaneTitle(text: "Source control")
@@ -526,6 +534,21 @@ private struct SourceControlPane: View {
                     ForEach(ReviewDesign.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .menuRow()
+            }
+            SettingsRow(title: "This project's check", detail: project.map {
+                "A command of \($0.name)'s own that builds or tests it, such as ./ci.sh. Witness reads a run of it as it reads make test."
+            } ?? "Open a thread in a project to name the command that builds or tests it.") {
+                TextField("This project's check", text: $check, prompt: Text("None"))
+                    .textFieldStyle(.roundedBorder)
+                    .font(Type.mono)
+                    .frame(width: 180)
+                    .autocorrectionDisabled()
+                    .focused($typingCheck)
+                    .disabled(project == nil)
+                    .onSubmit(keepCheck)
+                    .onChange(of: typingCheck) { if !typingCheck { keepCheck() } }
+                    .onChange(of: project?.id, initial: true) { check = project?.check ?? "" }
+                    .onDisappear(perform: keepCheck)
             }
         }
         SectionHeading("Threads on their own branch")
@@ -550,6 +573,13 @@ private struct SourceControlPane: View {
                 .menuRow()
             }
         }
+    }
+}
+
+extension SourceControlPane {
+    private func keepCheck() {
+        guard let project else { return }
+        model.setCheck(check, for: project)
     }
 }
 

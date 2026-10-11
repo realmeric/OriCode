@@ -74,6 +74,14 @@ export function resultText(content: readonly ToolContent[] | null | undefined, r
   return text(output?.output) ?? text(output?.content) ?? text(output?.error) ?? printed;
 }
 
+/// The exit code a finished command carries, where its agent sends one: Cursor beside what it
+/// printed, OpenCode in its tool's metadata. No other agent's raw output has one.
+export function exitCode(rawOutput: unknown): number | undefined {
+  const output = rawOutput as { exitCode?: unknown; metadata?: { exit?: unknown } } | null | undefined;
+  const code = output?.exitCode ?? output?.metadata?.exit;
+  return typeof code === "number" ? code : undefined;
+}
+
 /// A plan an agent writes with a tool of its own rather than ACP's plan, as OpenCode's todowrite
 /// does: its input's todos, in TodoWrite's shape.
 export function todosIn(rawInput: unknown): Todo[] | undefined {

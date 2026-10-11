@@ -117,6 +117,16 @@ test("a turn in Don't ask runs with --yolo: a plan, a read, a command and an edi
   assert.ok(!run.args.includes("--permission-mode"));
 });
 
+test("a failing command arrives as an error in cmd's words, with no exit code", async () => {
+  const { session: cmd, cwd } = await session("fails");
+  const from = events.length;
+  await cmd.send({ threadId: "fails", cwd, text: "fails", permissionMode: "bypassPermissions" });
+  await until(named("turn.done", "fails"), from);
+  const [run, ended] = told("fails", from).filter((event) => event.event.startsWith("tool."));
+  assert.deepEqual([run.kind, run.view.command], ["run", "make test"]);
+  assert.deepEqual(ended, { event: "tool.result", threadId: "fails", toolUseId: "t-test", content: "Command failed with exit code 2: make test", isError: true });
+});
+
 test("without --yolo the headless gate refuses the command and the edit, and says so", async () => {
   const { session: cmd, cwd } = await session("gated");
   const from = events.length;
