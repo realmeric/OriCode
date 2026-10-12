@@ -33,6 +33,10 @@ final class MessageIndex {
     @ObservationIgnored private var said: [Said] = []
     @ObservationIgnored private var at: [UUID: Int] = [:]
     @ObservationIgnored private var reading = false
+    /// Replies that have grown since they were last folded, each with its text as it stands. A
+    /// delta only leaves the text here: folding the whole reply at every frame of a stream cost
+    /// more with each one, and nobody reads the fold until a search or the reply's end.
+    @ObservationIgnored private var grown: [UUID: String] = [:]
     /// The last search's words and every message that held them, which the next search looks
     /// through alone when it only adds to what was typed.
     @ObservationIgnored private var last: (words: [String], hits: [Int])?
@@ -44,10 +48,16 @@ final class MessageIndex {
     }
 
     func update(_ id: UUID, text: String) {
-        guard let index = at[id] else { return }
+        guard at[id] != nil else { return }
+        grown[id] = text
+        last = nil
+    }
+
+    /// A reply's latest text folded, when it stops growing or is written down.
+    func fold(_ id: UUID) {
+        guard let text = grown.removeValue(forKey: id), let index = at[id] else { return }
         let old = said[index]
         said[index] = Said(id: id, chat: old.chat, user: old.user, text: text)
-        last = nil
     }
 
     /// Reads the store's messages in, once. What this launch wrote is newer than the store's copy.
@@ -56,6 +66,7 @@ final class MessageIndex {
         reading = true
         Task {
             let stored = await Task.detached(priority: .userInitiated) { Self.stored(in: ModelContext(container)) }.value
+            for id in Array(grown.keys) { fold(id) }
             let written = said
             let fresh = Set(written.map(\.id))
             said = stored.filter { !fresh.contains($0.id) } + written
@@ -79,6 +90,8 @@ final class MessageIndex {
     /// The messages in `threads` that hold every word, newest first, `each` a thread at most and
     /// `limit` in all.
     func search(_ words: [String], in threads: Set<UUID>, each: Int = 3, limit: Int = 20) -> [Said] {
+        // A reply still streaming is searched as far as it has come.
+        for id in Array(grown.keys) { fold(id) }
         let folded = words.map(MessageSearch.fold)
         // Every message holding the new words holds the old ones when each old word is inside a new one.
         let narrows = last.map { last in

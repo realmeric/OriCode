@@ -87,6 +87,142 @@ struct ReplyTests {
         // a broken spacing rule is off by a block margin, 8pt or more.
         #expect(abs(whole - apart) < 2)
     }
+
+    @Test func aFencedBlockStopsGrowingAtItsClosingFence() {
+        #expect(!Reply.fenced("```swift\nlet a = 1\nlet b"))
+        #expect(!Reply.fenced("```swift\nlet a = 1\n``"))
+        #expect(Reply.fenced("```swift\nlet a = 1\n```"))
+        #expect(Reply.fenced("  ~~~\nlet a = 1\n~~~\n\n"))
+        #expect(!Reply.fenced("```swift\nlet a = 1\n~~~"))
+        #expect(!Reply.fenced("```swift"))
+        #expect(!Reply.fenced("A paragraph\nwith two lines"))
+        #expect(!Reply.fenced(""))
+    }
+
+    @Test func aBlocksCodeIsWhatTheHighlighterIsAskedFor() {
+        #expect(Reply.code(in: "```swift\nlet a = 1\nlet b = 2\n```\n\n")! == ("let a = 1\nlet b = 2", "swift"))
+        // A reply that ended inside its block.
+        #expect(Reply.code(in: "```swift\nlet a = 1\nlet")! == ("let a = 1\nlet", "swift"))
+        #expect(Reply.code(in: "~~~\nplain\n~~~")! == ("plain", ""))
+        // The last of a block's, which a list can hold several of.
+        #expect(Reply.code(in: "- one\n  ```sh\n  ls\n  ```\n- two\n  ```sh\n  pwd\n  ```")! == ("pwd", "sh"))
+        #expect(Reply.code(in: "A paragraph with `code` in it.") == nil)
+        #expect(Reply.code(in: "") == nil)
+    }
+
+    /// A reply in a window, and how many of its texts can be selected, which AppKit gives a view each.
+    @MainActor
+    private final class Shown {
+        let host: NSHostingView<AnyView>
+        let window: NSWindow
+
+        init(_ text: String, live: Bool) {
+            host = NSHostingView(rootView: Self.reply(text, live: live))
+            window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+        }
+
+        private static let id = UUID()
+
+        static func reply(_ text: String, live: Bool) -> AnyView {
+            AnyView(Reply(id: id, text: text, live: live).frame(width: 640).environment(\.colorScheme, .dark))
+        }
+
+        func become(_ text: String, live: Bool) { host.rootView = Self.reply(text, live: live) }
+
+        var selectable: Int {
+            host.layoutSubtreeIfNeeded()
+            func count(_ view: NSView) -> Int {
+                (String(describing: type(of: view)).contains("TextInteraction") ? 1 : 0) + view.subviews.map(count).reduce(0, +)
+            }
+            return count(host)
+        }
+
+        /// Whether it comes to have that many, in two seconds: a block is made selectable a frame
+        /// after it stops, and code once it's coloured.
+        func comes(to count: Int) async throws -> Bool {
+            for _ in 0..<100 {
+                if selectable == count { return true }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            return false
+        }
+
+        /// What it has after a moment in which nothing more would come.
+        func rests() async throws -> Int {
+            for _ in 0..<10 {
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            return selectable
+        }
+    }
+
+    @Test func everyBlockButTheOneStillGrowingCanBeSelected() async throws {
+        let text = "First paragraph.\n\nSecond paragraph.\n\nThe third is still"
+        let stored = Shown(text, live: false)
+        defer { stored.window.close() }
+        // A stored reply waits for nothing.
+        #expect(stored.selectable == 3)
+        let live = Shown(text, live: true)
+        defer { live.window.close() }
+        #expect(try await live.rests() == 2)
+        let only = Shown("Only this, still", live: true)
+        defer { only.window.close() }
+        #expect(try await only.rests() == 0)
+        let open = Shown("Here:\n\n```swift\nlet a = 1\nlet", live: true)
+        defer { open.window.close() }
+        #expect(try await open.rests() == 1)
+        let ended = Shown("Here:\n\n```swift\nlet a = 1\nlet", live: false)
+        defer { ended.window.close() }
+        #expect(ended.selectable == 2)
+    }
+
+    @Test func aBlockCanBeSelectedOnceItStops() async throws {
+        let shown = Shown("First paragraph.\n\nThe second is still", live: true)
+        defer { shown.window.close() }
+        #expect(try await shown.rests() == 1)
+        // The reply moves on to a third block, and the second has stopped.
+        shown.become("First paragraph.\n\nThe second is whole.\n\nA third", live: true)
+        #expect(try await shown.comes(to: 2))
+        // The turn ends.
+        shown.become("First paragraph.\n\nThe second is whole.\n\nA third", live: false)
+        #expect(try await shown.comes(to: 3))
+    }
+
+    /// Claude's last sentence before a long tool input is the reply's last block for as long as
+    /// the input takes to write. It has stopped, and reads so.
+    @Test func aBlockThatHasPausedCanBeSelectedUntilItGrowsAgain() async throws {
+        let shown = Shown("First paragraph.\n\nI'll write [the plan](PLAN.md) now.", live: true)
+        defer { shown.window.close() }
+        #expect(try await shown.rests() == 1)
+        #expect(try await shown.comes(to: 2))
+        // A word more and it is growing again, with nothing laid out over it at each delta.
+        shown.become("First paragraph.\n\nI'll write [the plan](PLAN.md) now. And", live: true)
+        #expect(try await shown.rests() == 1)
+        shown.become("First paragraph.\n\nI'll write [the plan](PLAN.md) now. And then", live: true)
+        #expect(try await shown.rests() == 1)
+        #expect(try await shown.comes(to: 2))
+        // The turn moves on and the block stays as it was made.
+        shown.become("First paragraph.\n\nI'll write [the plan](PLAN.md) now. And then", live: false)
+        #expect(try await shown.rests() == 2)
+    }
+
+    /// Code whose fence has closed has nothing left to gain, though the reply hasn't moved on, and
+    /// code the reply ended inside has stopped too. Each waits for its colours and no longer.
+    @Test func codeCanBeSelectedOnceItIsColoured() async throws {
+        let shown = Shown("Here:\n\n```swift\nlet growing = 1\nlet", live: true)
+        defer { shown.window.close() }
+        #expect(try await shown.rests() == 1)
+        shown.become("Here:\n\n```swift\nlet growing = 1\nlet b = 2\n```\n", live: true)
+        #expect(try await shown.comes(to: 2))
+        let ended = Shown("Here:\n\n```swift\nlet ended = 1\nlet", live: true)
+        defer { ended.window.close() }
+        #expect(try await ended.rests() == 1)
+        ended.become("Here:\n\n```swift\nlet ended = 1\nlet", live: false)
+        #expect(try await ended.comes(to: 2))
+    }
 }
 
 struct CodeCopyTests {

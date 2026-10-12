@@ -112,6 +112,117 @@ struct StreamingTests {
         #expect(index.search(["notch"], in: [chat.id]).map(\.text) == ["The capsule sits under the notch", "Tell me about the notch"])
     }
 
+    @Test func aReplyIsSearchedAsFarAsItHasComeWithNoSaveBetween() async throws {
+        let index = MessageIndex()
+        let conversation = Conversation(chat: chat, context: context, said: index)
+        conversation.userSent("Go")
+        delta("The capsule", in: conversation)
+        delta(" sits under", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(index.search(["under"], in: [chat.id]).map(\.text) == ["The capsule sits under"])
+        #expect(index.search(["notch"], in: [chat.id]).isEmpty)
+        delta(" the nötch", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        // Narrowing a search that found nothing still reads what came since, folded.
+        #expect(index.search(["notch"], in: [chat.id]).map(\.text) == ["The capsule sits under the nötch"])
+        // The store read in mid-reply keeps the reply as far as it has come.
+        index.read(from: container)
+        delta(" and grows", in: conversation)
+        for _ in 0..<100 where !index.ready { try await Task.sleep(for: .milliseconds(10)) }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(index.search(["grows"], in: [chat.id]).map(\.text) == ["The capsule sits under the nötch and grows"])
+        conversation.receive(EngineEvent(name: "tool.use", threadId: chat.id.uuidString,
+                                         body: ["event": "tool.use", "toolUseId": "t", "name": "Read", "input": ["file_path": "/tmp/alpha/a"]]))
+        #expect(index.search(["notch", "grows"], in: [chat.id]).count == 1)
+    }
+
+    /// The text's event as another context reads it from the store.
+    private func storedText(_ kind: String = "text") throws -> String? {
+        let events = try ModelContext(container).fetch(FetchDescriptor<Event>(predicate: #Predicate { $0.kind == kind }))
+        return events.last.flatMap { try? JSONDecoder().decode(JSON.self, from: $0.payload) }?["delta"]?.string
+    }
+
+    @Test func aDeltaLeavesTheStoreAloneUntilItsRead() async throws {
+        let conversation = Conversation(chat: chat, context: context)
+        conversation.userSent("Go")
+        delta("One", in: conversation)
+        conversation.flush()
+        #expect(try storedText() == "One")
+        delta(" two", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        delta(" three", in: conversation)
+        delta(" four", in: conversation)
+        // Shown, and nothing of the store's touched for it.
+        #expect(conversation.items.last?.text == "One two three")
+        #expect(!context.hasChanges)
+        // A thread reading this one takes what's held too, and the thread's date stays.
+        let was = chat.updatedAt
+        conversation.saveHeld()
+        #expect(try storedText() == "One two three four")
+        #expect(chat.updatedAt == was)
+        delta(" five", in: conversation)
+        conversation.saveHeld()
+        conversation.saveHeld()
+        #expect(try storedText() == "One two three four five")
+    }
+
+    /// The store saves what has changed on its own, so a reply's event is given its text every
+    /// so often as it streams, and a crash takes that much of it and no more.
+    @Test func aLongReplyIsPutOnItsEventAsItStreams() async throws {
+        let conversation = Conversation(chat: chat, context: context)
+        conversation.keeps = .milliseconds(150)
+        conversation.userSent("Go")
+        delta("One", in: conversation)
+        conversation.flush()
+        delta(" two", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        // Whatever the store saves now, the event still has what the flush gave it.
+        try context.save()
+        #expect(try storedText() == "One")
+        try await Task.sleep(for: .milliseconds(150))
+        delta(" three", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        try context.save()
+        #expect(try storedText() == "One two three")
+        // And not again at the next frame.
+        delta(" four", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(conversation.items.last?.text == "One two three four")
+        try context.save()
+        #expect(try storedText() == "One two three")
+    }
+
+    @Test func aQuitMidReplyStoresAllOfIt() async throws {
+        let conversation = Conversation(chat: chat, context: context)
+        conversation.userSent("Go")
+        conversation.receive(EngineEvent(name: "thinking", threadId: chat.id.uuidString, body: ["event": "thinking", "delta": "Weighing"]))
+        conversation.receive(EngineEvent(name: "thinking", threadId: chat.id.uuidString, body: ["event": "thinking", "delta": " it up"]))
+        delta("Half", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        delta(" of it", in: conversation)
+        delta(" and the rest", in: conversation)
+        conversation.quitting()
+        #expect(try storedText("thinking") == "Weighing it up")
+        #expect(try storedText() == "Half of it and the rest")
+        #expect(Conversation(chat: chat, context: ModelContext(container)).items.compactMap(\.text) == ["Go", "Weighing it up", "Half of it and the rest"])
+    }
+
+    @Test func aCommandStartedMidReplyLeavesTheReplyGrowing() async throws {
+        let index = MessageIndex()
+        let conversation = Conversation(chat: chat, context: context, said: index)
+        conversation.userSent("Go")
+        delta("Before", in: conversation)
+        delta(" the command", in: conversation)
+        let id = UUID()
+        conversation.shellStarted(ShellRun(command: "ls", folder: "/tmp/alpha"), id: id)
+        #expect(try storedText() == "Before the command")
+        delta(" and after", in: conversation)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(index.search(["after"], in: [chat.id]).count == 1)
+        conversation.flush()
+        #expect(try storedText() == "Before the command and after")
+    }
+
     @Test func theStoreIsReadInBehindWhatThisLaunchWrote() async throws {
         let stored = Conversation(chat: chat, context: context)
         stored.userSent("An island from before")

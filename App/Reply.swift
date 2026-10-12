@@ -41,7 +41,6 @@ struct Reply: View {
         .markdownTheme(.glass)
         .markdownSoftBreakMode(.lineBreak)
         .environment(\.softBreaksAreLines, true)
-        .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -120,6 +119,38 @@ struct Reply: View {
             String(text[starts[i]..<(i + 1 < starts.count ? starts[i + 1] : text.endIndex)])
         }
     }
+
+    /// How long the last block of a reply still streaming goes without a word before it's taken
+    /// as stopped. Longer than the gaps inside a sentence, so a block isn't made twice for one.
+    static let pause = Duration.milliseconds(500)
+
+    /// Whether the block is fenced code whose closing fence has come, after which it has nothing
+    /// left to gain.
+    static func fenced(_ source: String) -> Bool {
+        var rest = source[...]
+        while rest.last?.isWhitespace == true { rest = rest.dropLast() }
+        guard let newline = rest.lastIndex(of: "\n") else { return false }
+        let opening = rest.drop { $0 == " " }
+        let closing = rest[rest.index(after: newline)...].drop { $0 == " " }
+        return ["```", "~~~"].contains { opening.hasPrefix($0) && closing.hasPrefix($0) }
+    }
+
+    /// The last code block in a block and its fence's word, as MarkdownUI hands them to the
+    /// highlighter: the code without its last newline.
+    static func code(in source: String) -> (text: String, language: String?)? {
+        guard source.contains("```") || source.contains("~~~") || source.contains("    ") || source.contains("\t"),
+              let document = cmark_parse_document(source, source.utf8.count, CMARK_OPT_DEFAULT) else { return nil }
+        defer { cmark_node_free(document) }
+        guard let walk = cmark_iter_new(document) else { return nil }
+        defer { cmark_iter_free(walk) }
+        var found: (String, String?)?
+        while cmark_iter_next(walk) != CMARK_EVENT_DONE {
+            guard let node = cmark_iter_get_node(walk), cmark_node_get_type(node) == CMARK_NODE_CODE_BLOCK else { continue }
+            let text = cmark_node_get_literal(node).map(String.init(cString:)) ?? ""
+            found = (text.hasSuffix("\n") ? String(text.dropLast()) : text, cmark_node_get_fence_info(node).map(String.init(cString:)))
+        }
+        return found
+    }
 }
 
 /// One top-level block of a reply. Equatable, so a block that hasn't changed isn't parsed or laid
@@ -128,6 +159,19 @@ private struct ReplyBlock: View, Equatable {
     let source: String
     /// The block still growing, whose code shows plain.
     let open: Bool
+    /// Whether it has been made with its text selectable, as a stored reply's block is from the
+    /// start and a live reply's last block is once it has stopped growing.
+    @State private var made: Bool
+
+    init(source: String, open: Bool) {
+        self.source = source
+        self.open = open
+        _made = State(initialValue: !open)
+    }
+
+    nonisolated static func == (a: ReplyBlock, b: ReplyBlock) -> Bool {
+        a.source == b.source && a.open == b.open
+    }
 
     var body: some View {
         // An `svg` block is its drawing once its fence has closed, and says one is coming while it
@@ -140,11 +184,57 @@ private struct ReplyBlock: View, Equatable {
         }
     }
 
-    private var code: some View {
-        Markdown(source)
-            .markdownCodeSyntaxHighlighter(open ? StreamingCodeHighlighter(text: source) as CodeSyntaxHighlighter : TranscriptCodeHighlighter.shared)
-            // A block with no link in it does nothing about pointers, and one still growing
-            // waits: it's laid out again with every word.
-            .environment(\.linkPointers, .of(source, open: open))
+    /// Selection is laid out again over a block with every word it gains, a third of what a long
+    /// code block cost to stream, so the block still growing has none. `textSelection` takes a
+    /// type and can't be turned on in place: the block is made again, once, after it has stopped.
+    /// In place, with no fade as a tool call's row comes in under it.
+    @ViewBuilder private var code: some View {
+        if made {
+            Markdown(source)
+                .markdownCodeSyntaxHighlighter(open ? StreamingCodeHighlighter(text: source) as CodeSyntaxHighlighter : TranscriptCodeHighlighter.shared)
+                // A block with no link in it does nothing about pointers.
+                .environment(\.linkPointers, .of(source))
+                .textSelection(.enabled)
+                .transition(.identity)
+                // A block that had paused and has a word more is growing again.
+                .onChange(of: source) { if open, !Reply.fenced(source) { made = false } }
+        } else {
+            let fenced = Reply.fenced(source)
+            let growing = open && !fenced
+            let awaited = !growing && awaited
+            Markdown(source)
+                // Code that waits for its colours stays plain, or it would take them here first.
+                .markdownCodeSyntaxHighlighter(fenced ? .plainText as CodeSyntaxHighlighter : StreamingCodeHighlighter(text: source))
+                // A block still growing does nothing about pointers: it's laid out again with
+                // every word.
+                .environment(\.linkPointers, .of(source, open: true))
+                // Text that can't be selected opens its own links, which a growing block never did.
+                .environment(\.openURL, OpenURLAction { _ in .discarded })
+                .transition(.identity)
+                // Not in the frame it stops in, which has the next block or a tool call's row to
+                // make, and not before its code's colours are in hand: made at once it cost that
+                // frame 10 ms after a paragraph, and code was laid out twice, plain and coloured.
+                // The reply's last block has stopped when no word has come for `pause`, though
+                // the turn runs on: Claude writes a tool's input for tens of seconds after its
+                // last sentence, which reads as finished and is.
+                .task(id: Stop(length: growing ? source.utf8.count : nil, awaited: awaited)) {
+                    guard !awaited else { return }
+                    try? await Task.sleep(for: growing ? Reply.pause : Conversation.frame)
+                    if !Task.isCancelled { made = true }
+                }
+        }
+    }
+
+    /// What the wait to be made again starts over for: a word more, the block closing, its
+    /// colours coming.
+    private struct Stop: Equatable {
+        let length: Int?
+        let awaited: Bool
+    }
+
+    /// Whether the block's code is still being coloured.
+    private var awaited: Bool {
+        guard let code = Reply.code(in: source) else { return false }
+        return TranscriptCodeHighlighter.shared.colours(code.text, language: code.language) == nil
     }
 }

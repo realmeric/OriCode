@@ -160,12 +160,16 @@ final class TranscriptCodeHighlighter: CodeSyntaxHighlighter {
     private var uses = 0
 
     nonisolated func highlightCode(_ code: String, language: String?) -> Text {
-        MainActor.assumeIsolated {
-            let colours = entry(code, language: language)
-            uses += 1
-            colours.used = uses
-            return colours.text.map(Text.init) ?? Text(code)
-        }
+        MainActor.assumeIsolated { colours(code, language: language).map(Text.init) ?? Text(code) }
+    }
+
+    /// The block's colours, or nil while they're being made, which whoever asked from a view's
+    /// body is drawn again for.
+    func colours(_ code: String, language: String?) -> AttributedString? {
+        let colours = entry(code, language: language)
+        uses += 1
+        colours.used = uses
+        return colours.text
     }
 
     private func entry(_ code: String, language: String?) -> Colours {
@@ -185,7 +189,8 @@ final class TranscriptCodeHighlighter: CodeSyntaxHighlighter {
             let muted = await Task.detached(priority: .userInitiated) {
                 CodeHighlighter.render(code, as: name).flatMap(CodeHighlighter.mute)
             }.value
-            cache[key]?.text = muted ?? AttributedString(code)
+            // The entry itself and not the cache's, which may have let it go: a block waits on it.
+            colours.text = muted ?? AttributedString(code)
         }
         return colours
     }

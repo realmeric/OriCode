@@ -358,6 +358,13 @@ final class Conversation {
     private var holding = false
     private var shownAt = ContinuousClock.now
     private var unsaved = false
+    /// Whether the open item's text is ahead of its event and of ⌘K's fold of it.
+    @ObservationIgnored private var ahead = false
+    /// When the open item's text was last put on its event, and how long a stream goes before it
+    /// is again, which is the most of a reply a crash takes with it: the store saves what has
+    /// changed on its own, and a delta alone changes nothing of the store's.
+    @ObservationIgnored private var wroteAt = ContinuousClock.now
+    @ObservationIgnored var keeps = Duration.seconds(2)
     /// ⌘K's index of what was said, kept up as messages and replies are written.
     private let said: MessageIndex?
     /// Where the pictures you send are kept in full. Nil keeps nothing, as in a test.
@@ -876,9 +883,10 @@ final class Conversation {
         }
     }
 
-    private static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
+    static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
 
-    /// The held deltas onto the open item and its event, which the store takes at the next save.
+    /// The held deltas onto the open item, for the view. Its event and ⌘K's fold of it wait for
+    /// `writeHeld`: the whole reply encoded and folded at every frame cost more with each one.
     private func showHeld() {
         holding = false
         guard let open, !held.isEmpty else { return }
@@ -888,14 +896,31 @@ final class Conversation {
         shownAt = .now
         stored[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
         live.text = text
-        open.event.payload = (try? JSON.object(["event": .string(open.kind), "delta": .string(text)]).data()) ?? Data()
         if open.kind == "text" { said?.update(open.event.id, text: text) }
+        if !ahead { wroteAt = shownAt }
+        ahead = true
         unsaved = true
+        if wroteAt.duration(to: shownAt) >= keeps { write() }
+    }
+
+    /// The held deltas shown, and the open item's text onto its event, which the store takes at
+    /// the next save. Before every save of it and before anything takes the item's place.
+    private func writeHeld() {
+        showHeld()
+        write()
+    }
+
+    private func write() {
+        guard ahead, let open else { return }
+        ahead = false
+        let text = stored[open.item].text ?? ""
+        open.event.payload = (try? JSON.object(["event": .string(open.kind), "delta": .string(text)]).data()) ?? Data()
+        if open.kind == "text" { said?.fold(open.event.id) }
     }
 
     /// Streaming deltas only touch objects in memory; the store is written here.
     func flush() {
-        showHeld()
+        writeHeld()
         guard unsaved || context.hasChanges else { return }
         unsaved = false
         chat.updatedAt = .now
@@ -905,7 +930,7 @@ final class Conversation {
     /// The held deltas into the store for a thread that reads this one (read_thread). Being read
     /// isn't work, so the thread's date stays as it is.
     func saveHeld() {
-        showHeld()
+        writeHeld()
         if context.hasChanges { try? context.save() }
     }
 
@@ -936,7 +961,7 @@ final class Conversation {
 
     @discardableResult
     private func record(_ kind: String, _ body: JSON, keepOpen: Bool = false, id: UUID? = nil) -> Event {
-        showHeld()
+        writeHeld()
         let event = Event(turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
         if let id { event.id = id }
         seq += 1
