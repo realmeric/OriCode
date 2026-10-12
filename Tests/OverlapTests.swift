@@ -35,6 +35,8 @@ struct OverlapTests {
         // A tree with no words in it would pass whatever was drawn.
         #expect(stage.most > 40, "the accessibility tree had \(stage.most) words at most")
         #expect(states == (OverlapStage.whole ? 154 : 58))
+        // Under no pointer, so what was read doesn't turn on where one rests.
+        #expect(!stage.onScreen)
         for fault in stage.verdict() {
             Issue.record(Comment(rawValue: fault))
         }
@@ -225,18 +227,19 @@ final class OverlapStage {
                 .frame(minWidth: 720, minHeight: 480)
                 .preferredColorScheme(.dark)))
         host.sceneBridgingOptions = [.toolbars]
-        window = NSWindow(contentViewController: host)
+        window = Unplaced(contentViewController: host)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         // The app's window hides its title (OriCodeApp). A plain one is titled Untitled by AppKit
         // and the toolbar's row draws it, which aWindowsOwnTitleIsRead keeps.
         if !windowTitled { window.title = "" }
-        // The window is clear glass on the screen while the tests run, and a pointer resting
-        // where it is would light what only shows under a pointer.
+        // Off every screen, where no pointer is: one resting on the window lights what only shows
+        // under a pointer, Legacy's Mark Reviewed for one, whether or not the window takes the
+        // mouse, and the walk would then read whatever Meriç's hand had left lit.
         window.ignoresMouseEvents = true
         window.setContentSize(NSSize(width: 1180, height: 760))
-        window.setFrameOrigin(NSPoint(x: -6000, y: -6000))
+        window.setFrameOrigin(Self.away)
         window.alphaValue = 0
         window.orderFrontRegardless()
         dress(titled)
@@ -252,6 +255,16 @@ final class OverlapStage {
         UserDefaults.standard.set(pinnedBefore, forKey: "drawerPinned")
         withExtendedLifetime(container) {}
     }
+
+    private static let away = NSPoint(x: -6000, y: -6000)
+
+    /// AppKit brings a titled window back onto a screen wherever it's sent: this one came to
+    /// rest in the screen's bottom left corner, under any pointer left there.
+    private final class Unplaced: NSWindow {
+        override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+    }
+
+    var onScreen: Bool { NSScreen.screens.contains { $0.frame.intersects(window.frame) } }
 
     private static let enhanced = NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface")
 
