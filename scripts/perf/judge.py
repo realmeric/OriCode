@@ -67,6 +67,8 @@ MEASURES = [
     ('review.flick.dropped', 'review', r'REVIEWSCROLL big, witness, flick', r'frames dropped (\d+)', False),
     ('review.jwalk.worst.ms', 'jwalk', r'JWALK \d, big, witness', FRAME, False),
     ('review.jwalk.dropped', 'jwalk', r'JWALK \d, big, witness', r'frames dropped (\d+)', False),
+    ('review.backstep.witness.off', 'backstep-witness', r'BACKSTEP big, witness, 560pt: \d+ ends', r'off the page in (\d+)', False),
+    ('review.backstep.legacy.off', 'backstep-legacy', r'BACKSTEP big, legacy, 560pt: \d+ ends', r'off the page in (\d+)', False),
     ('memory.long.mb', 'mem', r'MEM the long thread open', r'([0-9.]+) MB', False),
     ('memory.threads.mb', 'mem', r'MEM after ten more threads', r'([0-9.]+) MB', False),
     ('memory.review10.mb', 'mem', r'MEM after the review opened and closed ten times', r'\(([+-][0-9.]+) on before\)', False),
@@ -88,6 +90,8 @@ for threads in ('one', 'pair'):
             (f'idle.{state}.{threads}.wakeups', config, r'IDLE app', r'idle wakeups ([0-9.]+)/s', False),
             (f'idle.{state}.{threads}.engine.over1', config, r'IDLE engine', r'seconds over 1%: (\d+)', False),
         ]
+# Counts of what must never happen: the runs are added up, since a median of three would pass one bad run.
+SUMMED = ('review.backstep.witness.off', 'review.backstep.legacy.off')
 EARLY = ['earlyj-witness-40', 'earlyj-witness-150', 'earlyj-legacy-40', 'earlyj-legacy-150']
 
 # Every line by config and run. A label is <config>-r<run>, or the config alone where there is one run.
@@ -106,7 +110,7 @@ for line in open(path, errors='replace') if os.path.exists(path) else []:
     if text.startswith('not run: the machine'):
         unquiet.add((config, run))
     # The bench died, was killed at its time limit, or a part of it gave up before it measured.
-    if re.match(r'run exit|no app|\w+ failed:|\w+: (the composer never|no transcript|the engine isn|no diff read)|REVIEWSCROLL: the review', text):
+    if re.match(r'run exit|no app|\w+ failed:|\w+: (the composer never|no transcript|the engine isn|no diff read|no page|the keyboard is on no change)|REVIEWSCROLL: the review', text):
         died[(config, run)] = text
     # Idle in front is idle with nobody at the Mac: another app coming forward is someone there.
     if config.startswith('idle-front') and text.startswith('IDLE ') and 'in front:' in text and '"OriCode Perf"' not in text:
@@ -145,6 +149,7 @@ def values(name, config, start, number):
 wanted = lambda config: re.search(only, config) or (config.split('-')[0] in ('launch', 'idle', 'size') and re.search(only, config.split('-')[0]))
 MEASURES = [m for m in MEASURES if wanted(m[1]) and (m[4] or mode != 'quick') and (not plan or m[1] in plan)]
 rows = [(name, values(name, config, start, number), config, quick) for name, config, start, number, quick in MEASURES]
+rows = [(name, [sum(got)] if got and name in SUMMED else got, config, quick) for name, got, config, quick in rows]
 # The early J has no number but whether the app was still running three seconds after it.
 crashed = []
 early = [config for config in EARLY if (config in plan if plan else wanted(config))]

@@ -49,6 +49,7 @@ enum PerfBench {
                     case "mem": try await memory()
                     case "seed": try await seedStore()
                     case "earlyj": try await earlyJ()
+                    case "backstep": try await backStep()
                     default: log("unknown part \(part)")
                     }
                 } catch {
@@ -864,6 +865,119 @@ enum PerfBench {
         }
         try await settle(3000)
         log("EARLYJ \(name), \(design): still running, keyboard on \(review.selected ?? "nothing")")
+    }
+
+    /// Two keys inside one glide, in a window short enough that the glide to the next change
+    /// takes the one before off the page: J then K and K then J, PERF_GAPS ms apart, Tab then
+    /// ⇧Tab in Witness, and J held for three seconds and let go. Each ends with the keyboard on
+    /// a change, and its line says whether the page came to rest with that change on it.
+    static func backStep() async throws {
+        let name = env["PERF_BOOK"] ?? "big"
+        let design = env["PERF_DESIGN"] ?? "witness"
+        let (stage, repo, _) = try await staged(name)
+        defer {
+            stage.window.close()
+            try? FileManager.default.removeItem(atPath: repo)
+        }
+        let model = stage.model, window = stage.window, review = model.review
+        let height = env["PERF_HEIGHT"].flatMap(Double.init) ?? 560
+        window.setContentSize(NSSize(width: 1180, height: height))
+        guard model.engineState == .ready else { return log("backstep: the engine isn't up") }
+        await front(window)
+        use(design, model)
+        try await settle(1200)
+        model.readReview()
+        guard await until(20, { review.diff != nil && !review.loading }) else { return log("backstep: no diff read") }
+        arrange(design, model)
+        let before = Set(stage.scrolls().map(ObjectIdentifier.init))
+        model.openReview()
+        try await settle(min(14_000, review.book.units.count * 2 * 17 + 3000))
+        guard let clip = stage.scrolls().filter({ !before.contains(ObjectIdentifier($0)) }).max(by: { $0.frame.height < $1.frame.height })?.contentView else {
+            return log("backstep: no page")
+        }
+        // Longer than PageFollow.glide, so a pair's first key is pressed with no ask before it
+        // still counted as inside a glide, the way a J after a pause is.
+        let slow = 700
+        let keys: [String: (String, UInt16, NSEvent.ModifierFlags)] = ["J": ("j", 38, []), "K": ("k", 40, []), "Tab": ("\t", 48, []), "⇧Tab": ("\u{19}", 48, .shift)]
+        func press(_ key: String) {
+            guard let (characters, code, flags) = keys[key] else { return }
+            stage.pressApp(characters, code: code, flags: flags)
+        }
+        func offset() -> Double { clip.bounds.origin.y }
+        func change() -> Int { (review.visibleUnits.firstIndex { $0.id == review.selected } ?? -1) + 1 }
+        func put(_ unit: ReviewUnit) async throws {
+            review.select(unit)
+            try await settle(slow)
+        }
+        /// Whether the page rests with the selected change on it: asked for the change again,
+        /// with nothing moving, a page that has it stays where it is.
+        func judged() async throws -> (Bool, String) {
+            let rest = offset(), at = change()
+            guard let unit = review.selectedUnit else { return (false, "the keyboard on no change") }
+            review.selected = nil
+            try await settle(120)
+            let cleared = offset()
+            try await put(unit)
+            let on = abs(offset() - rest) <= 1 && abs(cleared - rest) <= 1
+            return (on, "\(at)@\(Int(rest)), and asked for again the page \(on ? "stays: on" : "goes to \(Int(offset())): OFF")")
+        }
+        for _ in 0..<5 {
+            press("J")
+            try await settle(slow)
+        }
+        guard let start = review.selectedUnit else { return log("backstep: the keyboard is on no change") }
+        let h = Int(height)
+        log("BACKSTEP \(name), \(design), \(h)pt, page \(Int(clip.bounds.height))pt tall: after 5 J at rest \(change())@\(Int(offset()))")
+        var ends = 0
+        var off: [String] = []
+        let gaps = (env["PERF_GAPS"] ?? "0 20 50 100 200 300").split(separator: " ").compactMap { Int($0) }
+        var pairs = [("J", "K"), ("K", "J")]
+        // Tab's glide runs many screens, the lazy stack measures rows on the way and the page's
+        // offsets shift under it, so its ends are judged from PERF_SHOTS' pictures, not counted.
+        if env["PERF_TAB"] != nil { pairs.append(("Tab", "⇧Tab")) }
+        for round in 1...(Int(env["PERF_ROUNDS"] ?? "") ?? 1) {
+            for (first, second) in pairs {
+                for gap in gaps {
+                    // From where a slow J leaves the page, the change's last line at the page's.
+                    try await put(start)
+                    press("K")
+                    try await settle(slow)
+                    press("J")
+                    try await settle(slow)
+                    let from = "\(change())@\(Int(offset()))"
+                    press(first)
+                    if gap > 0 { try await settle(gap) }
+                    let mid = Int(offset())
+                    press(second)
+                    var seen: [Int] = []
+                    for _ in 0..<(env["PERF_TRACE"] == nil ? 0 : 24) {
+                        try await settle(16)
+                        seen.append(Int(offset()))
+                    }
+                    try await settle(1100)
+                    if env["PERF_SHOTS"] != nil { screenshot(window, "\(label)-\(first)-\(second)-\(gap)-r\(round)") }
+                    let (on, said) = try await judged()
+                    if first != "Tab" {
+                        ends += 1
+                        if !on { off.append("\(first) \(second) \(gap) ms") }
+                    }
+                    log("BACKSTEP \(name), \(design), \(h)pt, round \(round): from \(from), \(first), \(gap) ms (page at \(mid)), \(second)\(seen.isEmpty ? "" : ", every 16 ms " + seen.map(String.init).joined(separator: " ")): rest \(said)\(first == "Tab" ? ", not counted" : "")")
+                }
+            }
+            try await put(start)
+            for _ in 0..<90 {
+                press("J")
+                try await settle(33)
+            }
+            let lifted = "\(change())@\(Int(offset()))"
+            try await settle(1500)
+            let (on, said) = try await judged()
+            ends += 1
+            if !on { off.append("J held") }
+            log("BACKSTEP \(name), \(design), \(h)pt, round \(round): 90 J 33 ms apart, as the key lifts \(lifted): rest \(said)")
+        }
+        screenshot(window, "\(label)-backstep")
+        log("BACKSTEP \(name), \(design), \(h)pt: \(ends) ends, the selected change off the page in \(off.count)\(off.isEmpty ? "" : ": " + off.joined(separator: "; "))")
     }
 
     // MARK: Memory

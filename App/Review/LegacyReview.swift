@@ -16,6 +16,9 @@ private struct ReviewScroll: View {
     /// the first two, the chapter and its file, come with the panel and the rest one to a frame after; a row asked for
     /// by the keyboard is made at once.
     @State private var made = MadeRows(count: 2)
+    @State private var follow = PageFollow()
+    /// The ask for the selected change that waits to be made again by the clock.
+    @State private var again: Task<Void, Never>?
 
     private enum Row: Identifiable {
         case chapter(ReviewChapter)
@@ -81,6 +84,17 @@ private struct ReviewScroll: View {
             .onChange(of: model.review.selected) { _, selected in
                 guard let selected else { return }
                 made.makeAll()
+                withAnimation(Motion.move) { proxy.scrollTo(selected) }
+                again?.cancel()
+                guard follow.asked() else { return }
+                again = Task {
+                    try? await Task.sleep(for: PageFollow.glide)
+                    guard !Task.isCancelled, follow.waited(), let selected = model.review.selected else { return }
+                    withAnimation(Motion.move) { proxy.scrollTo(selected) }
+                }
+            }
+            .onScrollPhaseChange { _, phase in
+                guard follow.rests(at: phase), let selected = model.review.selected else { return }
                 withAnimation(Motion.move) { proxy.scrollTo(selected) }
             }
             .task {

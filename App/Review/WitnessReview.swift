@@ -26,6 +26,9 @@ private struct WitnessScroll: View {
     /// rest at once, which the lazy stack lays out only as they come into view. A row to a frame
     /// to the end costs a long page a frame's work for every row it has.
     @State private var made: MadeRows
+    @State private var follow = PageFollow()
+    /// The ask for the selected change that waits to be made again by the clock.
+    @State private var again: Task<Void, Never>?
     /// How many plain characters a line of code has room for, which says what can't wrap.
     @State private var columns = 100
     private static let firstScreen = 16
@@ -135,6 +138,17 @@ private struct WitnessScroll: View {
             .onChange(of: model.review.selected) { _, selected in
                 guard let selected else { return }
                 made.makeAll()
+                withAnimation(Motion.move) { proxy.scrollTo(selected) }
+                again?.cancel()
+                guard follow.asked() else { return }
+                again = Task {
+                    try? await Task.sleep(for: PageFollow.glide)
+                    guard !Task.isCancelled, follow.waited(), let selected = model.review.selected else { return }
+                    withAnimation(Motion.move) { proxy.scrollTo(selected) }
+                }
+            }
+            .onScrollPhaseChange { _, phase in
+                guard follow.rests(at: phase), let selected = model.review.selected else { return }
                 withAnimation(Motion.move) { proxy.scrollTo(selected) }
             }
             .onChange(of: model.review.noting) { _, noting in

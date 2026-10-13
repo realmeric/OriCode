@@ -432,6 +432,30 @@
       "date": "2026-10-13",
       "sessions": 5
     },
+    "review.backstep.witness.off": {
+      "what": "the review, two keys inside one glide and J held: ends off the page of 13 a run, the runs added up",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-14",
+      "sessions": 1
+    },
+    "review.backstep.legacy.off": {
+      "what": "the same in Legacy: ends off the page of 13 a run, the runs added up",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-14",
+      "sessions": 1
+    },
     "memory.long.mb": {
       "what": "footprint with the 100-turn thread open",
       "unit": "MB",

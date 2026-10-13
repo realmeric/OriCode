@@ -50,6 +50,8 @@ rest=(
   "switch|switch|120|PERF_POINTER=away PERF_PAIR=0"
   "review|review|300|PERF_POINTER=over PERF_BOOK=big PERF_DESIGN=witness"
   "jwalk|jwalk|300|PERF_POINTER=away PERF_BOOK=big PERF_DESIGN=witness"
+  "backstep-witness|backstep|300|PERF_POINTER=away PERF_BOOK=big PERF_DESIGN=witness"
+  "backstep-legacy|backstep|300|PERF_POINTER=away PERF_BOOK=big PERF_DESIGN=legacy"
   "mem|mem|300|PERF_POINTER=away PERF_DESIGN=witness"
 )
 configs=($quick); [ $mode = full ] && configs+=($rest)
