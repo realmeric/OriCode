@@ -10,8 +10,7 @@ struct HeadsTests {
     private let chat: Chat
 
     init() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         context = ModelContext(container)
         let project = Project(name: "alpha", path: "/tmp/alpha")
         context.insert(project)

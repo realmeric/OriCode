@@ -55,16 +55,22 @@ test("a child answers with what it printed, or fails as execFile does", async ()
 
 test("a child that never answers fails at its deadline, and its group goes with it", async () => {
   const bin = await mkdtemp(join(tmpdir(), "oricode-bin-"));
-  const git = await hanging(bin);
-  const started = Date.now();
-  // Long enough for the stand-in to have started both: with every test file running at once, a
-  // shell can take over 300 ms to reach its first line.
-  const failed = (await run(git.path, ["rev-parse", "HEAD"], { timeout: 1500 }).catch((error) => error)) as RunError;
-  assert.ok(Date.now() - started < 4000);
-  assert.equal(failed.killed, true);
-  assert.match(failed.message, /didn't finish in 1\.5s\.$/);
-  assert.equal(git.pids().length, 2);
-  assert.deepEqual(await gone(git.pids()), []);
+  // What's checked is a stand-in that had started its own child when the deadline came. With
+  // every test file running at once a shell can be slower to its second line than any one
+  // deadline, so a deadline that came first is tried again at twice the length: what it left
+  // is still checked to be gone, and the last try is held to all of it.
+  for (let timeout = 1500; ; timeout *= 2) {
+    const git = await hanging(bin);
+    const started = Date.now();
+    const failed = (await run(git.path, ["rev-parse", "HEAD"], { timeout }).catch((error) => error)) as RunError;
+    assert.ok(Date.now() - started < timeout + 2500);
+    assert.equal(failed.killed, true);
+    assert.equal(failed.message.endsWith(`didn't finish in ${timeout / 1000}s.`), true, failed.message);
+    const pids = git.pids();
+    assert.deepEqual(await gone(pids), []);
+    if (pids.length === 2) break;
+    assert.ok(timeout < 12000, `the stand-in had written ${pids.length} of its 2 pids ${timeout} ms in`);
+  }
 });
 
 test("a wait that's too long gives up with its timer gone", async () => {

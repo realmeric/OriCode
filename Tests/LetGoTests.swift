@@ -12,7 +12,7 @@ struct LetGoTests {
     private let second: Chat
 
     init() throws {
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         first = Chat(project: project)

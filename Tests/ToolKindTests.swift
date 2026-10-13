@@ -13,8 +13,7 @@ struct ToolKindTests {
     private static let root = "/tmp/alpha"
 
     init() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         context = ModelContext(container)
         let project = Project(name: "alpha", path: Self.root)
         context.insert(project)

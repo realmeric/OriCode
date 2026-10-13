@@ -267,8 +267,7 @@ struct TranscriptEndTests {
 
     @MainActor
     @Test func theCommandCenterHasTheWayToTheEnd() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
         // After the model, whose launch clears threads that never started.

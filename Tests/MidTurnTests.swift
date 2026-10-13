@@ -12,8 +12,7 @@ struct MidTurnTests {
     private let chat: Chat
 
     init() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         context = ModelContext(container)
         let project = Project(name: "alpha", path: "/tmp/alpha")
         context.insert(project)
@@ -255,8 +254,7 @@ struct MidTurnTests {
 
     /// A model with one thread open, on an in-memory store.
     private func thread() throws -> (AppModel, Chat, ModelContainer) {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
         let model = AppModel(container: container)

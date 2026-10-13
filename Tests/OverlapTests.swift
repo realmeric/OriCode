@@ -84,7 +84,7 @@ struct OverlapTests {
     }
 
     @Test func aPinnedDrawerStandsAsideForANarrowReview() throws {
-        let container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         // The model writes its pin through to the app's own setting.
         let before = UserDefaults.standard.bool(forKey: "drawerPinned")
@@ -188,7 +188,7 @@ final class OverlapStage {
     private static let note = "To github.com:realmeric/OriCode.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'github.com:realmeric/OriCode.git'\nhint: Updates were rejected because the remote contains work that you do not have locally."
 
     init(titled windowTitled: Bool = false) throws {
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         let project = Project(name: "alpha", path: FileManager.default.temporaryDirectory.path)
         container.mainContext.insert(project)
         titled = Chat(project: project, title: "Keep the composer's draft with its thread when another opens")

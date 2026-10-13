@@ -7,6 +7,8 @@ DERIVED := $(BUILD)/DerivedData
 # The Debug build is OriCode Molten, which runs beside the installed OriCode.
 DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
+# OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
+PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
 # Signed with the OriCode certificate where this Mac has it, so every release keeps the same
 # designated requirement and macOS knows it for the same app; ad hoc where it doesn't.
 SIGN := $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"OriCode"' && echo OriCode || echo -)
@@ -14,7 +16,7 @@ SIGN := $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"Or
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
-.PHONY: run engine test app release project icon
+.PHONY: run engine test app release project icon perf perf-quick perf-build
 
 # A SIGTERM quits OriCode the way ⌘Q does, marking the threads still working, which takes a
 # moment; `open` before it has gone would only bring the quitting app forward. Five seconds at most.
@@ -58,6 +60,27 @@ app: project
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
+
+# The budget (rule 6). OriCode Perf is built as make app builds OriCode, with the bench in it, and
+# scripts/perf/perf.sh drives it in a window in front: every measure three times, the launch ten,
+# idle for three minutes in each state, about an hour in all. It prints the table and perf.sh
+# exits 1 naming each number over its budget in Perf/budgets.json and each run that died, which
+# make shows as Error 1. When another process holds a core it stops there, judges what it had
+# measured and, if none of that failed, exits 3 naming what went unjudged. OriCode itself is built
+# beside it, for its size on disk and to see the bench isn't in it. Not in make test: it needs
+# a window in front, a 60 Hz display and a Mac nobody is using.
+perf-build: project
+	xcodebuild -project OriCode.xcodeproj -scheme "OriCode Perf" -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	scripts/prune.sh "$(PERF_APP)"
+	codesign --force --deep --sign - "$(PERF_APP)"
+
+perf: perf-build
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	BUILD=$(BUILD) scripts/perf/perf.sh full
+
+# The parts a card can run while it works: keys, one stream, ⌘K and the early J, three runs each.
+perf-quick: perf-build
+	BUILD=$(BUILD) scripts/perf/perf.sh quick
 
 # A release on GitHub, offered to every installed OriCode through appcast.xml (scripts/release.sh).
 # Meriç runs it, in Terminal, once the version's CHANGELOG entry is committed and pushed.

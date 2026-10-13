@@ -93,8 +93,7 @@ struct SentPicturesTests {
     }
 
     @Test func aMessageSentIntoATurnKeepsItsPicturesUnderTheIdItKeeps() async throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let context = ModelContext(container)
         let project = Project(name: "alpha", path: "/tmp/alpha")
         context.insert(project)

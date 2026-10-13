@@ -43,8 +43,7 @@ struct WorkflowTests {
 
     @MainActor
     @Test func restartingTheEngineStopsTheWorkflowsItRan() async throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         let model = AppModel(container: container)

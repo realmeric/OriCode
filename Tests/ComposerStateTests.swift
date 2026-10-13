@@ -15,7 +15,7 @@ struct ComposerStateTests {
     private let second: Chat
 
     init() throws {
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
         first = Chat(project: project, title: "First")

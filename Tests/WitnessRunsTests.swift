@@ -251,8 +251,7 @@ struct WitnessRunsTests {
     // MARK: What the thread keeps
 
     private func model() throws -> (AppModel, Chat, Project) {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "repo", path: Self.root)
         container.mainContext.insert(project)
         let chat = Chat(project: project)

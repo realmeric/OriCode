@@ -13,8 +13,7 @@ struct SuggestedThreadsTests {
     private let prompt = "README.md says npm install; the repo uses pnpm. Fix the install line."
 
     init() throws {
-        container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         project = Project(name: "alpha", path: "/tmp/alpha")
         other = Project(name: "beta", path: "/tmp/beta")
         container.mainContext.insert(project)

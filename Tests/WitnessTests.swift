@@ -421,8 +421,7 @@ struct WitnessTests {
     // MARK: The shared state
 
     private func model() throws -> AppModel {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         model.review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-marks-\(UUID().uuidString).json"))
         return model
@@ -541,8 +540,7 @@ struct WitnessTests {
     }
 
     @Test func aCommandEndingBuildsThePageAgainThoughNoFileMoved() async throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "repo", path: Self.root)
         container.mainContext.insert(project)
         let chat = Chat(project: project)
@@ -595,8 +593,7 @@ struct WitnessTests {
     }
 
     @Test func aStoredCallComesBackWithTheTimeItStarted() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let context = ModelContext(container)
         let project = Project(name: "repo", path: Self.root)
         context.insert(project)
@@ -620,8 +617,7 @@ struct WitnessTests {
     }
 
     @Test func aThreadOpenedFromATerminalSessionHasNoTimesForItsRuns() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "repo", path: Self.root)
         container.mainContext.insert(project)
         try container.mainContext.save()

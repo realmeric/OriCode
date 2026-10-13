@@ -40,8 +40,7 @@ struct PullTests {
     }
 
     @Test func aReadingIsKeptAndWatchedOnlyWhileChecksRun() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         model.took(pull(["pending"]), in: "/tmp/alpha", for: nil)
         #expect(model.pulls["/tmp/alpha"]?.pending == 1)

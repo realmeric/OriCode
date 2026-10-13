@@ -66,8 +66,7 @@ struct ReviewTests {
     }
 
     @Test func theAgentsCommentsLandOnTheirLinesToKeepOrDismiss() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         let diff = WorkingDiff(root: Self.root, head: nil, files: [
             file("a.swift", [hunk(["+let one = 1"], at: 1), hunk(["+let forty = 40", "+let more = 41"], at: 40)]),
@@ -444,8 +443,7 @@ struct ReviewTests {
     }
 
     @Test func aReadThatFoundNothingMovedBuildsNothingAndAClosedReviewColoursNothing() async throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         let review = model.review
         review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-marks-\(UUID().uuidString).json"))
@@ -476,8 +474,7 @@ struct ReviewTests {
     }
 
     @Test func aCircleMovesOnAndFoldsWhatItLeaves() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         let review = model.review
         review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-marks-\(UUID().uuidString).json"))

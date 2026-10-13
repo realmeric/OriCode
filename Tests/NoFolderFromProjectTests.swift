@@ -15,8 +15,7 @@ struct NoFolderFromProjectTests {
     private let other: Chat
 
     init() throws {
-        container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         support = FileManager.default.temporaryDirectory.appending(path: "oricode-nofolder-from-\(UUID().uuidString)", directoryHint: .isDirectory)
         alpha = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(alpha)

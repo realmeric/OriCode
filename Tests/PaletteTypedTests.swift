@@ -16,7 +16,7 @@ struct PaletteTypedTests {
 
     init() throws {
         defaults = try #require(UserDefaults(suiteName: suite))
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         var made: [Chat] = []

@@ -48,6 +48,8 @@ let streaming = false;
 let joined: ((prompt: any) => void) | undefined;
 let aborted: (() => void) | undefined;
 let settled: (() => void) | undefined;
+/// Whoever waits on an extension's dialog being answered.
+let answered: (() => void) | undefined;
 const queue: string[] = [];
 
 const usage = (input: number, output: number, cacheRead: number, cost: number) => ({
@@ -127,7 +129,10 @@ async function run(text: string): Promise<void> {
     send({ type: "message_update", usage: usage(0, 0, 0, 0), assistantMessageEvent: { type: "text_delta", contentIndex: 1, delta: "Let me look." } });
     send({ type: "message_end", message: assistant([], "toolUse", usage(1000, 20, 800, 0.01)) });
     tool("call-1", "read", { path: "a.txt" }, { content: [{ type: "text", text: "one\ntwo\nthree\n" }], details: {} });
+    // Pi holds the run on an extension's dialog until it's answered.
+    const answer = new Promise<void>((resolve) => (answered = resolve));
     send({ type: "extension_ui_request", id: "ui-1", method: "confirm", title: "Allow?", message: "An extension asks" });
+    await answer;
     tool(
       "call-2",
       "edit",
@@ -229,6 +234,6 @@ async function handle(command: any): Promise<void> {
 createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
   record(message);
-  if (message.type === "extension_ui_response") return;
+  if (message.type === "extension_ui_response") return answered?.();
   void handle(message);
 });

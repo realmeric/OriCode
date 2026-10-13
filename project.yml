@@ -32,8 +32,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.10.0
-targets:
-  OriCode:
+# What OriCode and its measuring build share: the app's sources, packages, Info.plist and engine.
+targetTemplates:
+  App:
     type: application
     platform: macOS
     sources:
@@ -115,6 +116,31 @@ targets:
             rsync -a --delete --exclude .stamp "$HOME/Library/Developer/OriCode/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
           fi
         basedOnDependencyAnalysis: false
+targets:
+  OriCode:
+    templates: [App]
+  # OriCode with the bench in it (Perf/), for make perf: an app of its own beside the other two,
+  # with its own bundle id, folders and store. PERF is what compiles its two hooks into the
+  # app's sources; no other target sets it, so OriCode never carries the bench.
+  OriCode Perf:
+    templates: [App]
+    sources:
+      - path: Perf
+        excludes: ["*.json"]
+    settings:
+      base:
+        PRODUCT_NAME: OriCode Perf
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.perf
+        INFOPLIST_KEY_CFBundleDisplayName: OriCode Perf
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF
+        # No feed, so it never updates itself into OriCode.
+        ORICODE_FEED_URL: ""
+      configs:
+        Debug:
+          PRODUCT_NAME: OriCode Perf
+          PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.perf
+          INFOPLIST_KEY_CFBundleDisplayName: OriCode Perf
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   OriCodeTests:
     type: bundle.unit-test
     platform: macOS
@@ -137,3 +163,10 @@ schemes:
     test:
       targets:
         - OriCodeTests
+  # make perf's build, kept out of OriCode's scheme so make run, make test and make app never build it.
+  OriCode Perf:
+    build:
+      targets:
+        OriCode Perf: all
+    run:
+      config: Release

@@ -12,8 +12,7 @@ struct QueueTests {
     private let chat: Chat
 
     init() throws {
-        container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         context = ModelContext(container)
         let project = Project(name: "alpha", path: "/tmp/alpha")
         context.insert(project)

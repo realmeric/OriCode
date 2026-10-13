@@ -13,8 +13,7 @@ struct MarkPaletteTests {
     private let project: Project
 
     init() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         context = ModelContext(container)
         project = Project(name: "alpha", path: "/tmp/alpha")
         context.insert(project)
@@ -234,8 +233,7 @@ struct MarkPaletteTests {
     /// The picker's rail burns in the thread's agent's ink: silver in a Codex thread, whose maker
     /// draws in white, and Claude's orange in a Claude one.
     @Test func theRailIsInTheThreadsAgentsInk() async throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         let model = AppModel(container: container)

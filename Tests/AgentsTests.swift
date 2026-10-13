@@ -11,8 +11,7 @@ struct AgentsTests {
     private let suite = "OriCodeTests.agents.\(UUID().uuidString)"
 
     init() throws {
-        container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         chat = Chat(project: project)

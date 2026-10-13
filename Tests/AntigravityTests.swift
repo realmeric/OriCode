@@ -41,8 +41,7 @@ struct AntigravityTests {
     ]
 
     init() throws {
-        container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         chat = Chat(project: project)

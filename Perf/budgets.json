@@ -1,0 +1,1014 @@
+{
+  "about": "One entry a measure of make perf: what it is, the median of make perf on 2026-10-13 (three runs a measure, ten launches, one idle run a state), the least and most of the medians of every session of that day that measured it, how many sessions that is, and the budget the median of three runs is judged against. A budget is the worst session's median plus a margin, never a single reading's: 10% for time inside a key, a delta or a launch and never less than 0.05 ms, 15% for a worst frame or a p95, a third or two frames for a count, 2% or 2 MB for memory, a quarter or 0.25 ms for time by the clock. Idle is held to rule 6 and not to the day: no second over 1%, a mean under 0.02% and under a wakeup every ten seconds. MacBook Air M5, macOS 27.0.1, built-in display at 60 Hz. A row marked ceiling is over rule 6's bar today: its budget keeps it from getting worse unseen and is no pass.",
+  "measures": {
+    "key.ms": {
+      "what": "a key in the composer, inside the key",
+      "unit": "ms",
+      "measured": 1.78,
+      "range": [
+        1.59,
+        1.8
+      ],
+      "budget": 1.98,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "key.frame.ms": {
+      "what": "a key, the longest frame after it",
+      "unit": "ms",
+      "measured": 2.88,
+      "range": [
+        2.6,
+        3.64
+      ],
+      "budget": 4.2,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "key.streaming.ms": {
+      "what": "a key while the reply streams, inside the key",
+      "unit": "ms",
+      "measured": 0.76,
+      "range": [
+        0.68,
+        0.76
+      ],
+      "budget": 0.84,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "key.pair.ms": {
+      "what": "a key with a pair in view, inside the key",
+      "unit": "ms",
+      "measured": 1.69,
+      "range": [
+        1.61,
+        1.78
+      ],
+      "budget": 1.96,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "key.pair.streaming.ms": {
+      "what": "a key while the thread beside streams, inside the key",
+      "unit": "ms",
+      "measured": 0.73,
+      "range": [
+        0.66,
+        0.82
+      ],
+      "budget": 0.9,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "stream.delta.ms": {
+      "what": "one stream, main thread a delta",
+      "unit": "ms",
+      "measured": 4.41,
+      "range": [
+        4.41,
+        5.28
+      ],
+      "budget": 5.81,
+      "date": "2026-10-13",
+      "note": "Read beside the frames dropped: a delta's work is done once a frame shown, so it reads 4.6 when the compositor drops twenty frames of a stream and 5.2 when it drops six. Both were seen on 2026-10-13 with the same build.",
+      "sessions": 6
+    },
+    "stream.over16": {
+      "what": "one stream, frames over 16.7 ms of about 215",
+      "unit": "count",
+      "measured": 5.0,
+      "range": [
+        3.0,
+        5.0
+      ],
+      "budget": 7,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "A stream still has frames over 16.7 ms (K-165, the lazy stack measuring its rows): a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "stream.settle.worst.ms": {
+      "what": "the settle after a stream, worst frame",
+      "unit": "ms",
+      "measured": 29.7,
+      "range": [
+        15.5,
+        29.7
+      ],
+      "budget": 34.2,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Over a frame today (K-165): a ceiling, not a pass. 26 with the settle in two frames and 15 with it in ten, the same two states of the display.",
+      "sessions": 6
+    },
+    "stream2.delta.ms": {
+      "what": "two streams at once, main thread a delta",
+      "unit": "ms",
+      "measured": 5.75,
+      "range": [
+        5.75,
+        6.38
+      ],
+      "budget": 7.02,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Two transcripts streaming at once don't hold 8.3 ms a frame (K-246): a ceiling, not a pass.",
+      "sessions": 5
+    },
+    "stream2.over16": {
+      "what": "two streams at once, frames over 16.7 ms of about 205",
+      "unit": "count",
+      "measured": 9.0,
+      "range": [
+        6.0,
+        10.0
+      ],
+      "budget": 14,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Two streams at once drop frames (K-246): a ceiling, not a pass.",
+      "sessions": 5
+    },
+    "codesettle.ms": {
+      "what": "the settle after a 120-line code block, main thread",
+      "unit": "ms",
+      "measured": 70.1,
+      "range": [
+        70.1,
+        82.4
+      ],
+      "budget": 90.6,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Four frames gone when a reply ending in a long code block settles (K-165): a ceiling, not a pass.",
+      "sessions": 5
+    },
+    "codesettle.worst.ms": {
+      "what": "the settle after a 120-line code block, worst frame",
+      "unit": "ms",
+      "measured": 56.6,
+      "range": [
+        33.7,
+        57.5
+      ],
+      "budget": 66.1,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "K-165's settle, over a frame: a ceiling, not a pass.",
+      "sessions": 5
+    },
+    "scroll.wheel.p95.ms": {
+      "what": "100 turns, wheel at 90pt a frame, p95 frame",
+      "unit": "ms",
+      "measured": 15.5,
+      "range": [
+        15.3,
+        18.2
+      ],
+      "budget": 20.9,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "scroll.wheel.dropped": {
+      "what": "100 turns, wheel at 90pt a frame, frames dropped of 122",
+      "unit": "count",
+      "measured": 2.5,
+      "range": [
+        1.5,
+        8.0
+      ],
+      "budget": 11,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "A hard wheel through 100 turns drops a frame or two today: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "scroll.flick.worst.ms": {
+      "what": "100 turns, a flick, worst frame",
+      "unit": "ms",
+      "measured": 21.6,
+      "range": [
+        20.6,
+        22.8
+      ],
+      "budget": 26.2,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Over a frame on a flick's first frames: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "scroll.flick.dropped": {
+      "what": "100 turns, a flick, frames dropped of 92",
+      "unit": "count",
+      "measured": 2.5,
+      "range": [
+        0.5,
+        3.5
+      ],
+      "budget": 6,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "A flick through 100 turns drops a frame today: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "edits.wheel.over8": {
+      "what": "ninety edits, wheel at 40pt a frame, frames over 8.3 ms of 242",
+      "unit": "count",
+      "measured": 28.5,
+      "range": [
+        27.5,
+        29.0
+      ],
+      "budget": 39,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "REA-216 asked 15 of 242 and K-260 found a card's arrival is SwiftUI making the row: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "edits.wheel.p95.ms": {
+      "what": "ninety edits, wheel at 40pt a frame, p95 frame",
+      "unit": "ms",
+      "measured": 10.1,
+      "range": [
+        10.1,
+        10.3
+      ],
+      "budget": 11.8,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "edits.wheel.dropped": {
+      "what": "ninety edits, wheel at 40pt a frame, frames dropped",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 2,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "edits.flick.worst.ms": {
+      "what": "ninety edits, a flick, worst frame",
+      "unit": "ms",
+      "measured": 16.2,
+      "range": [
+        16.2,
+        17.1
+      ],
+      "budget": 19.7,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "At a frame's edge today: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "edits.flick.dropped": {
+      "what": "ninety edits, a flick, frames dropped of 92",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 2,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "switch.worst.ms": {
+      "what": "a thread switch, worst frame",
+      "unit": "ms",
+      "measured": 70.4,
+      "range": [
+        67.1,
+        75.6
+      ],
+      "budget": 86.9,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Over rule 6's frame today and SwiftUI's making of rows: a ceiling so it can't grow unseen, not a pass.",
+      "sessions": 5
+    },
+    "palette.letter.ms": {
+      "what": "a letter in ⌘K, inside the letter",
+      "unit": "ms",
+      "measured": 0.22,
+      "range": [
+        0.19,
+        0.23
+      ],
+      "budget": 0.28,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "palette.letter.frame.ms": {
+      "what": "a letter in ⌘K, the longest frame after it",
+      "unit": "ms",
+      "measured": 18.5,
+      "range": [
+        15.1,
+        18.5
+      ],
+      "budget": 21.3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "REA-216 asked 14 ms and K-261 reached about 16: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "palette.open.worst.ms": {
+      "what": "⌘K opening, worst frame",
+      "unit": "ms",
+      "measured": 22.7,
+      "range": [
+        18.1,
+        33.0
+      ],
+      "budget": 37.9,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Over a frame today: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "review.open.worst.ms": {
+      "what": "the review opening on 276 changes, worst frame",
+      "unit": "ms",
+      "measured": 15.2,
+      "range": [
+        14.1,
+        15.6
+      ],
+      "budget": 17.9,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "review.wheel.worst.ms": {
+      "what": "the review, wheel at 160pt a frame, worst frame",
+      "unit": "ms",
+      "measured": 11.8,
+      "range": [
+        11.7,
+        12.2
+      ],
+      "budget": 14.0,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "review.wheel.dropped": {
+      "what": "the review, wheel at 160pt a frame, frames dropped of 182",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 2,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "review.flick.worst.ms": {
+      "what": "the review, a flick, worst frame",
+      "unit": "ms",
+      "measured": 19.7,
+      "range": [
+        19.2,
+        21.2
+      ],
+      "budget": 24.4,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Over a frame on a flick's first frames, none dropped: a ceiling, not a pass.",
+      "sessions": 6
+    },
+    "review.flick.dropped": {
+      "what": "the review, a flick, frames dropped of 92",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 2,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "review.jwalk.worst.ms": {
+      "what": "the review, J sixty times, worst frame",
+      "unit": "ms",
+      "measured": 36.9,
+      "range": [
+        35.6,
+        37.3
+      ],
+      "budget": 42.9,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "Two frames on the walk's worst key (K-259): a ceiling, not a pass.",
+      "sessions": 5
+    },
+    "review.jwalk.dropped": {
+      "what": "the review, J sixty times, frames dropped of 362",
+      "unit": "count",
+      "measured": 2.0,
+      "range": [
+        1.0,
+        2.0
+      ],
+      "budget": 4,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The walk drops frames today (K-259): a ceiling, not a pass.",
+      "sessions": 5
+    },
+    "review.earlyj.crashes": {
+      "what": "J in the review's first quarter second, crashes of four",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "sessions": 5
+    },
+    "memory.long.mb": {
+      "what": "footprint with the 100-turn thread open",
+      "unit": "MB",
+      "measured": 81.8,
+      "range": [
+        79.8,
+        81.8
+      ],
+      "budget": 83.8,
+      "date": "2026-10-13",
+      "sessions": 5
+    },
+    "memory.review10.mb": {
+      "what": "footprint kept after the review ten times",
+      "unit": "MB",
+      "measured": 1.6,
+      "range": [
+        -1.9,
+        1.6
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "sessions": 5
+    },
+    "launch.warm.ms": {
+      "what": "launch to the window up, warm",
+      "unit": "ms",
+      "measured": 330.0,
+      "range": [
+        330.0,
+        352.0
+      ],
+      "budget": 390,
+      "date": "2026-10-13",
+      "sessions": 5
+    },
+    "launch.fresh.ms": {
+      "what": "launch to the window up, a fresh copy of the bundle",
+      "unit": "ms",
+      "measured": 473.0,
+      "range": [
+        473.0,
+        492.0
+      ],
+      "budget": 545,
+      "date": "2026-10-13",
+      "note": "One launch in ten of a fresh copy reads 650 to 700 ms, the rest 467 to 500.",
+      "sessions": 5
+    },
+    "launch.footprint.one.mb": {
+      "what": "footprint fifteen seconds after launch, one thread",
+      "unit": "MB",
+      "measured": 79.0,
+      "range": [
+        79.0,
+        79.0
+      ],
+      "budget": 81.0,
+      "date": "2026-10-13",
+      "sessions": 1
+    },
+    "launch.footprint.pair.mb": {
+      "what": "footprint fifteen seconds after launch, a pair",
+      "unit": "MB",
+      "measured": 101.0,
+      "range": [
+        101.0,
+        101.0
+      ],
+      "budget": 103.0,
+      "date": "2026-10-13",
+      "sessions": 1
+    },
+    "launch.footprint.engine.mb": {
+      "what": "the engine's footprint fifteen seconds after launch",
+      "unit": "MB",
+      "measured": 56.0,
+      "range": [
+        56.0,
+        56.0
+      ],
+      "budget": 58.0,
+      "date": "2026-10-13",
+      "note": "One launch in ten is read before V8's first collection, at 83 to 87 MB.",
+      "sessions": 1
+    },
+    "size.app.kb": {
+      "what": "OriCode.app on disk",
+      "unit": "KB",
+      "measured": 14012.0,
+      "range": [
+        14012.0,
+        14012.0
+      ],
+      "budget": 14080,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "size.bench.symbols": {
+      "what": "the bench's symbols in OriCode.app",
+      "unit": "count",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "note": "PerfBench in OriCode's binary or its dSYM: the bench is OriCode Perf's alone.",
+      "sessions": 3
+    },
+    "idle.front.one.cpu": {
+      "what": "idle in front, one thread, CPU mean over 180 s",
+      "unit": "%",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0.02,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.front.one.over1": {
+      "what": "idle in front, one thread, seconds over 1% CPU",
+      "unit": "s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "note": "Rule 6's bar is none, and none was measured. The second is for a change of focus made by the machine, which costs the app a redraw.",
+      "sessions": 3
+    },
+    "idle.front.one.wakeups": {
+      "what": "idle in front, one thread, idle wakeups a second",
+      "unit": "/s",
+      "measured": 0.03,
+      "range": [
+        0.0,
+        0.03
+      ],
+      "budget": 0.1,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.front.one.engine.over1": {
+      "what": "idle in front, one thread, the engine's seconds over 1% CPU",
+      "unit": "s",
+      "measured": 2.0,
+      "range": [
+        2.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The engine's two collections after launch, V8's memory reducer at about 60 s and 150 s: a ceiling, not a pass. Rule 6's bar is none.",
+      "sessions": 3
+    },
+    "idle.hidden.one.cpu": {
+      "what": "idle hidden, one thread, CPU mean over 180 s",
+      "unit": "%",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.001
+      ],
+      "budget": 0.02,
+      "date": "2026-10-13",
+      "sessions": 4
+    },
+    "idle.hidden.one.over1": {
+      "what": "idle hidden, one thread, seconds over 1% CPU",
+      "unit": "s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "note": "Rule 6's bar is none, and none was measured. The second is for a change of focus made by the machine, which costs the app a redraw.",
+      "sessions": 4
+    },
+    "idle.hidden.one.wakeups": {
+      "what": "idle hidden, one thread, idle wakeups a second",
+      "unit": "/s",
+      "measured": 0.02,
+      "range": [
+        0.01,
+        0.02
+      ],
+      "budget": 0.1,
+      "date": "2026-10-13",
+      "sessions": 4
+    },
+    "idle.hidden.one.engine.over1": {
+      "what": "idle hidden, one thread, the engine's seconds over 1% CPU",
+      "unit": "s",
+      "measured": 2.0,
+      "range": [
+        2.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The engine's two collections after launch, V8's memory reducer at about 60 s and 150 s: a ceiling, not a pass. Rule 6's bar is none.",
+      "sessions": 4
+    },
+    "idle.background.one.cpu": {
+      "what": "idle in the background, one thread, CPU mean over 180 s",
+      "unit": "%",
+      "measured": 0.001,
+      "range": [
+        0.001,
+        0.001
+      ],
+      "budget": 0.02,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.background.one.over1": {
+      "what": "idle in the background, one thread, seconds over 1% CPU",
+      "unit": "s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "note": "Rule 6's bar is none, and none was measured. The second is for a change of focus made by the machine, which costs the app a redraw.",
+      "sessions": 3
+    },
+    "idle.background.one.wakeups": {
+      "what": "idle in the background, one thread, idle wakeups a second",
+      "unit": "/s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.01
+      ],
+      "budget": 0.1,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.background.one.engine.over1": {
+      "what": "idle in the background, one thread, the engine's seconds over 1% CPU",
+      "unit": "s",
+      "measured": 2.0,
+      "range": [
+        2.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The engine's two collections after launch, V8's memory reducer at about 60 s and 150 s: a ceiling, not a pass. Rule 6's bar is none.",
+      "sessions": 3
+    },
+    "idle.front.pair.cpu": {
+      "what": "idle in front, a pair, CPU mean over 180 s",
+      "unit": "%",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0.02,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "idle.front.pair.over1": {
+      "what": "idle in front, a pair, seconds over 1% CPU",
+      "unit": "s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "note": "Rule 6's bar is none, and none was measured. The second is for a change of focus made by the machine, which costs the app a redraw.",
+      "sessions": 2
+    },
+    "idle.front.pair.wakeups": {
+      "what": "idle in front, a pair, idle wakeups a second",
+      "unit": "/s",
+      "measured": 0.01,
+      "range": [
+        0.0,
+        0.01
+      ],
+      "budget": 0.1,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "idle.front.pair.engine.over1": {
+      "what": "idle in front, a pair, the engine's seconds over 1% CPU",
+      "unit": "s",
+      "measured": 2.0,
+      "range": [
+        2.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The engine's two collections after launch, V8's memory reducer at about 60 s and 150 s: a ceiling, not a pass. Rule 6's bar is none.",
+      "sessions": 2
+    },
+    "idle.hidden.pair.cpu": {
+      "what": "idle hidden, a pair, CPU mean over 180 s",
+      "unit": "%",
+      "measured": 0.001,
+      "range": [
+        0.0,
+        0.001
+      ],
+      "budget": 0.02,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.hidden.pair.over1": {
+      "what": "idle hidden, a pair, seconds over 1% CPU",
+      "unit": "s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.0
+      ],
+      "budget": 0,
+      "date": "2026-10-13",
+      "note": "Rule 6's bar is none, and none was measured. The second is for a change of focus made by the machine, which costs the app a redraw.",
+      "sessions": 3
+    },
+    "idle.hidden.pair.wakeups": {
+      "what": "idle hidden, a pair, idle wakeups a second",
+      "unit": "/s",
+      "measured": 0.05,
+      "range": [
+        0.0,
+        0.05
+      ],
+      "budget": 0.1,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.hidden.pair.engine.over1": {
+      "what": "idle hidden, a pair, the engine's seconds over 1% CPU",
+      "unit": "s",
+      "measured": 2.0,
+      "range": [
+        2.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The engine's two collections after launch, V8's memory reducer at about 60 s and 150 s: a ceiling, not a pass. Rule 6's bar is none.",
+      "sessions": 3
+    },
+    "idle.background.pair.cpu": {
+      "what": "idle in the background, a pair, CPU mean over 180 s",
+      "unit": "%",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        0.054
+      ],
+      "budget": 0.1,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.background.pair.over1": {
+      "what": "idle in the background, a pair, seconds over 1% CPU",
+      "unit": "s",
+      "measured": 0.0,
+      "range": [
+        0.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "note": "Rule 6's bar is none. Two seconds at 3 to 6% about 80 s after launch in one run of two here and one of three on 2026-10-12, cause not found (K-211): a ceiling, not a pass.",
+      "ceiling": true,
+      "sessions": 3
+    },
+    "idle.background.pair.wakeups": {
+      "what": "idle in the background, a pair, idle wakeups a second",
+      "unit": "/s",
+      "measured": 0.03,
+      "range": [
+        0.0,
+        0.16
+      ],
+      "budget": 0.3,
+      "date": "2026-10-13",
+      "sessions": 3
+    },
+    "idle.background.pair.engine.over1": {
+      "what": "idle in the background, a pair, the engine's seconds over 1% CPU",
+      "unit": "s",
+      "measured": 2.0,
+      "range": [
+        2.0,
+        2.0
+      ],
+      "budget": 3,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "note": "The engine's two collections after launch, V8's memory reducer at about 60 s and 150 s: a ceiling, not a pass. Rule 6's bar is none.",
+      "sessions": 3
+    },
+    "key.clock.ms": {
+      "what": "a key in the composer, inside the key by the clock",
+      "unit": "ms",
+      "measured": 3.08,
+      "range": [
+        2.28,
+        3.08
+      ],
+      "budget": 3.9,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "key.dropped": {
+      "what": "frames dropped over 45 keys",
+      "unit": "count",
+      "measured": 4.0,
+      "range": [
+        3.0,
+        5.0
+      ],
+      "budget": 7,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "sessions": 6
+    },
+    "key.streaming.clock.ms": {
+      "what": "a key while the reply streams, by the clock",
+      "unit": "ms",
+      "measured": 1.99,
+      "range": [
+        1.99,
+        2.01
+      ],
+      "budget": 2.5,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "key.pair.clock.ms": {
+      "what": "a key with a pair in view, by the clock",
+      "unit": "ms",
+      "measured": 2.25,
+      "range": [
+        2.25,
+        2.39
+      ],
+      "budget": 3.0,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "key.pair.streaming.clock.ms": {
+      "what": "a key while the thread beside streams, by the clock",
+      "unit": "ms",
+      "measured": 1.95,
+      "range": [
+        1.95,
+        2.02
+      ],
+      "budget": 2.5,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "stream.delta.clock.ms": {
+      "what": "one stream, inside a delta by the clock",
+      "unit": "ms",
+      "measured": 0.042,
+      "range": [
+        0.042,
+        0.043
+      ],
+      "budget": 0.29,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "stream.dropped": {
+      "what": "one stream, frames dropped in three seconds",
+      "unit": "count",
+      "measured": 26.0,
+      "range": [
+        7.0,
+        29.0
+      ],
+      "budget": 39,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "sessions": 6
+    },
+    "stream.empty.over16": {
+      "what": "one stream into an empty thread, frames over 16.7 ms",
+      "unit": "count",
+      "measured": 4.0,
+      "range": [
+        1.0,
+        5.0
+      ],
+      "budget": 7,
+      "date": "2026-10-13",
+      "sessions": 6
+    },
+    "edits.end.ms": {
+      "what": "ninety edits, back to the end, main thread",
+      "unit": "ms",
+      "measured": 182.0,
+      "range": [
+        180.0,
+        193.0
+      ],
+      "budget": 212.0,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "sessions": 6
+    },
+    "edits.end.p95.ms": {
+      "what": "ninety edits, back to the end, p95 frame",
+      "unit": "ms",
+      "measured": 15.7,
+      "range": [
+        15.5,
+        16.1
+      ],
+      "budget": 18.5,
+      "date": "2026-10-13",
+      "ceiling": true,
+      "sessions": 6
+    },
+    "palette.letter.clock.ms": {
+      "what": "a letter in ⌘K, inside the letter by the clock",
+      "unit": "ms",
+      "measured": 0.22,
+      "range": [
+        0.2,
+        0.22
+      ],
+      "budget": 0.47,
+      "date": "2026-10-13",
+      "sessions": 2
+    },
+    "memory.threads.mb": {
+      "what": "footprint after ten more threads opened",
+      "unit": "MB",
+      "measured": 88.1,
+      "range": [
+        84.6,
+        88.1
+      ],
+      "budget": 90.1,
+      "date": "2026-10-13",
+      "sessions": 5
+    },
+    "launch.warm.pair.ms": {
+      "what": "launch with a pair kept, warm, window up",
+      "unit": "ms",
+      "measured": 405.0,
+      "range": [
+        405.0,
+        451.0
+      ],
+      "budget": 500,
+      "date": "2026-10-13",
+      "sessions": 4
+    }
+  }
+}

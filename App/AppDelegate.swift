@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         source.resume()
         terminationSignal = source
+#if PERF
+        PerfBench.startIfAsked()
+#endif
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

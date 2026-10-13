@@ -317,6 +317,13 @@ struct LinkPointersTests {
         var urls: [String] = []
     }
 
+    /// Waits for a click to have opened its link, three seconds at most. The tests share the
+    /// main actor, and a pause of any one length can end before a click made ahead of it has
+    /// been heard, when another suite's test held the actor meanwhile.
+    private func opened(_ seen: Seen, _ count: Int = 1) async throws {
+        for _ in 0..<150 where seen.urls.count < count { try await Task.sleep(for: .milliseconds(20)) }
+    }
+
     /// The titles of the menu a right-click at the point would open. A right-click sent would
     /// open it and wait in it for a pointer that isn't coming, so the view it would go to is
     /// asked for its menu instead.
@@ -367,6 +374,10 @@ struct LinkPointersTests {
         let rect = try #require(try await layout(markdown, width: 600).rects?.first).frame
         let seen = Seen()
         let window = try await window(markdown, live: live) { seen.urls.append($0.relativeString) }
+        // The area is laid over the words a pass after the text is, so a click waits for it.
+        if !live {
+            for _ in 0..<150 where try !linked(window, x: rect.midX, y: rect.midY) { try await Task.sleep(for: .milliseconds(20)) }
+        }
         return (rect, window, seen)
     }
 
@@ -398,7 +409,7 @@ struct LinkPointersTests {
             #expect(try linked(window, x: rect.frame.midX, y: rect.frame.midY))
         }
         send([.leftMouseDown, .leftMouseUp], to: window, x: rects[1].frame.midX, y: rects[1].frame.midY)
-        try await Task.sleep(for: .milliseconds(250))
+        try await opened(seen)
         #expect(seen.urls == ["https://example.com"])
     }
 
@@ -409,7 +420,7 @@ struct LinkPointersTests {
         let (rect, window, seen) = try await reply()
         defer { close(window) }
         send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        try await Task.sleep(for: .milliseconds(250))
+        try await opened(seen)
         #expect(seen.urls == ["App/Foo.swift"])
 
         let (_, growing, none) = try await reply(live: true)
@@ -427,11 +438,12 @@ struct LinkPointersTests {
         defer { close(window) }
         send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
         send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY, clicks: 2)
+        try await opened(seen)
         try await Task.sleep(for: .milliseconds(250))
         #expect(seen.urls == ["App/Foo.swift"])
         try await Task.sleep(for: .seconds(NSEvent.doubleClickInterval + 0.2))
         send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        try await Task.sleep(for: .milliseconds(250))
+        try await opened(seen, 2)
         #expect(seen.urls == ["App/Foo.swift", "App/Foo.swift"])
     }
 
@@ -447,7 +459,7 @@ struct LinkPointersTests {
         #expect(seen.urls == [])
         // And the next click there still opens it.
         send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        try await Task.sleep(for: .milliseconds(250))
+        try await opened(seen)
         #expect(seen.urls == ["App/Foo.swift"])
     }
 
@@ -461,7 +473,7 @@ struct LinkPointersTests {
             #expect(seen.urls == [], "\(x) \(y)")
         }
         send([.leftMouseDown, .leftMouseUp], to: window, x: rect.minX + 2, y: rect.midY)
-        try await Task.sleep(for: .milliseconds(250))
+        try await opened(seen)
         #expect(seen.urls == ["App/Foo.swift"])
     }
 
@@ -472,7 +484,7 @@ struct LinkPointersTests {
         let menu = try #require(try menu(window, x: rect.midX, y: rect.midY))
         #expect(menu.items.map(\.title) == Self.linkMenu)
         menu.performActionForItem(at: 0)
-        try await Task.sleep(for: .milliseconds(100))
+        try await opened(seen)
         #expect(seen.urls == ["App/Foo.swift"])
     }
 

@@ -29,7 +29,7 @@ struct RaysPageTests {
     }
 
     init() throws {
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         model = AppModel(container: container)
@@ -185,6 +185,7 @@ struct RaysPageTests {
         let id: UUID
         do {
             let container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(url: url))
+            container.mainContext.autosaveEnabled = false
             let project = Project(name: "alpha", path: "/tmp/alpha")
             container.mainContext.insert(project)
             let chat = Chat(project: project)
@@ -194,6 +195,7 @@ struct RaysPageTests {
             model.setRay(ModelRef(provider: ProviderInfo.claudeID, id: "sonnet"), true, for: chat)
         }
         let again = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(url: url))
+        again.mainContext.autosaveEnabled = false
         let read = try #require(try again.mainContext.fetch(FetchDescriptor<Chat>()).first { $0.id == id })
         #expect(read.rays == ["codex/gpt-2", "sonnet"])
         #expect(model.raySlots(for: read) == [ModelRef(provider: "codex", id: "gpt-2"): 0, ModelRef(provider: ProviderInfo.claudeID, id: "sonnet"): 1])

@@ -191,8 +191,7 @@ struct WitnessCardTests {
     // MARK: The review opened from a card
 
     private func model() throws -> AppModel {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         model.review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-marks-\(UUID().uuidString).json"))
         model.review.design = .witness

@@ -144,8 +144,7 @@ struct ShellTests {
     }
 
     @Test func commandJTogglesThePromptAndPutsAnOpenBlockBack() async throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
         let model = AppModel(container: container)
@@ -303,8 +302,7 @@ struct ShellTests {
 
     /// A model with one thread open.
     private func thread() throws -> (AppModel, Chat, ModelContainer) {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
         // After the model, whose launch clears threads that never started.
@@ -319,8 +317,7 @@ struct ShellTests {
 
     /// A model on an in-memory store with a thread that has a session, open in `folder`.
     private func handOffThread(in folder: URL) throws -> (AppModel, Chat, ModelContainer) {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: folder.path)
         container.mainContext.insert(project)
         let model = AppModel(container: container)

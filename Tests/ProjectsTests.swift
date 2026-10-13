@@ -6,8 +6,7 @@ import Testing
 @MainActor
 struct ProjectsTests {
     @Test func aFolderWithoutGitIsAProject() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         let folder = FileManager.default.temporaryDirectory.appending(path: "oricode-plain-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -22,8 +21,7 @@ struct ProjectsTests {
     }
 
     @Test func anArchivedThreadLeavesTheListAndComesBackWhole() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let context = container.mainContext
         let alpha = Project(name: "alpha", path: "/tmp/alpha")
         let beta = Project(name: "beta", path: "/tmp/beta")
@@ -62,8 +60,7 @@ struct ProjectsTests {
     }
 
     @Test func aSessionFromTerminalOpensAsAThreadWithItsTranscript() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         try container.mainContext.save()
@@ -87,8 +84,7 @@ struct ProjectsTests {
     }
 
     @Test func theArchivedFilterListsWhatIsPutAwayAndAMessageBringsAThreadBack() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")
         container.mainContext.insert(project)
         let kept = Chat(project: project, title: "Kept")
@@ -114,8 +110,7 @@ struct ProjectsTests {
     }
 
     @Test func aCommandRunsByItsIdAsAnActionOfYourOwnWouldRunIt() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         let defaults = UserDefaults.standard
         let before = defaults.object(forKey: TranscriptSettings.showThinking)
@@ -137,8 +132,7 @@ struct ProjectsTests {
     }
 
     @Test func anActionsKeyIsRefusedWhenSomethingElseHasIt() throws {
-        let container = try ModelContainer(
-            for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try TestStore.memory()
         let model = AppModel(container: container)
         let action = CustomAction(name: "Open archive", command: "threads.archived", runs: .builtIn)
         #expect(model.refusal(KeyCombo("a", []), for: action) == "A key of your own needs ⌘ or ⌃")
