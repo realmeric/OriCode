@@ -25,14 +25,14 @@ private struct WitnessScroll: View {
     /// to a frame while they fill the first screen, as Legacy makes its own, and then all the
     /// rest at once, which the lazy stack lays out only as they come into view. A row to a frame
     /// to the end costs a long page a frame's work for every row it has.
-    @State private var made: Int
+    @State private var made: MadeRows
     /// How many plain characters a line of code has room for, which says what can't wrap.
     @State private var columns = 100
     private static let firstScreen = 16
     private static let side: CGFloat = 16
 
     init(placed: Bool) {
-        _made = State(initialValue: placed ? .max : 3)
+        _made = State(initialValue: placed ? .all : MadeRows(count: 3))
     }
 
     private enum Row: Identifiable {
@@ -91,7 +91,7 @@ private struct WitnessScroll: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(rows.prefix(made))) { row in
+                    ForEach(Array(rows.prefix(made.count))) { row in
                         switch row {
                         case .sentence(let text):
                             Text(text)
@@ -134,7 +134,7 @@ private struct WitnessScroll: View {
             }
             .onChange(of: model.review.selected) { _, selected in
                 guard let selected else { return }
-                made = .max
+                made.makeAll()
                 withAnimation(Motion.move) { proxy.scrollTo(selected) }
             }
             .onChange(of: model.review.noting) { _, noting in
@@ -154,11 +154,12 @@ private struct WitnessScroll: View {
                 }
             }
             .task {
-                while made < min(rows.count, Self.firstScreen) {
+                let first = min(rows.count, Self.firstScreen)
+                while made.count < first {
                     try? await Task.sleep(for: .milliseconds(17))
-                    made += 1
+                    made.makeOne(of: first)
                 }
-                made = .max
+                made.makeAll()
             }
         }
     }

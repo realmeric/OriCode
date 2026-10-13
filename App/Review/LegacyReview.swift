@@ -15,7 +15,7 @@ private struct ReviewScroll: View {
     /// How many rows are made. A hunk is a row, and each costs a frame or more of text layout, so
     /// the first two, the chapter and its file, come with the panel and the rest one to a frame after; a row asked for
     /// by the keyboard is made at once.
-    @State private var made = 2
+    @State private var made = MadeRows(count: 2)
 
     private enum Row: Identifiable {
         case chapter(ReviewChapter)
@@ -57,7 +57,7 @@ private struct ReviewScroll: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(rows.prefix(made))) { row in
+                    ForEach(Array(rows.prefix(made.count))) { row in
                         switch row {
                         case .chapter(let chapter):
                             ChapterHeader(chapter: chapter)
@@ -80,14 +80,16 @@ private struct ReviewScroll: View {
             .scrollIndicators(.automatic)
             .onChange(of: model.review.selected) { _, selected in
                 guard let selected else { return }
-                made = .max
+                made.makeAll()
                 withAnimation(Motion.move) { proxy.scrollTo(selected) }
             }
             .task {
-                while made < rows.count {
+                while made.count < rows.count {
                     try? await Task.sleep(for: .milliseconds(17))
-                    made += 1
+                    made.makeOne(of: rows.count)
                 }
+                // A file opened after this adds rows, and they are past a count left where it stood.
+                made.makeAll()
             }
         }
     }
