@@ -200,12 +200,19 @@ final class AppModel {
     /// What was said in every thread, for ⌘K, and the rows it gave the last query.
     let said = MessageIndex()
     @ObservationIgnored var paletteFound: (query: String, revision: Int, ready: Bool, items: [PaletteItem])?
+    /// What ⌘K reaches as it was last made, and the count that moves once something it read then
+    /// has changed. Let go whenever ⌘K opens or closes. Seven of its rows read UserDefaults, which
+    /// Observation never hears of, so what those keys held is kept with it.
+    @ObservationIgnored var paletteKept: (turn: Int, defaults: [String], reach: PaletteReach)?
+    var paletteTurn = 0
     var branches: [UUID: BranchInfo] = [:]
     /// ⌘⇧D's review, and what it has read of the open thread's folder, which the button at
     /// the top right counts from even while it's closed.
     var reviewShown = false
     let review = ReviewState()
-    var commandCenterShown = false
+    var commandCenterShown = false {
+        didSet { paletteKept = nil }
+    }
     /// ⌘I's heads, for the open thread.
     var headsShown = false {
         didSet { watchHeads() }
@@ -506,7 +513,10 @@ final class AppModel {
         colourProjects()
         startingSeen = startingValues
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.startingDefaultsMoved() }
+            MainActor.assumeIsolated {
+                self?.startingDefaultsMoved()
+                self?.paletteDefaultsMoved()
+            }
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) { [weak self] note in
             guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }

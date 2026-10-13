@@ -180,8 +180,9 @@ enum MessageSearch {
     }
 
     /// The text on one line, about `length` characters of it around the match, cut between words
-    /// with … where it's cut; nil when a word isn't there.
-    static func snippet(_ words: [String], in text: String, length: Int = 40) -> String? {
+    /// with … where it's cut; nil when a word isn't there. `piece` says the text is a piece of a
+    /// longer one, cut at that end, and then it's nil too when the line would reach the cut.
+    static func snippet(_ words: [String], in text: String, length: Int = 40, piece: (left: Bool, right: Bool) = (false, false)) -> String? {
         let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !words.isEmpty, let found = match(words, in: line) else { return nil }
         let characters = Array(line)
@@ -190,8 +191,30 @@ enum MessageSearch {
         // A few words before the match and the rest after it, since a line reads on from there.
         var lower = max(0, min(from - 12, characters.count - length))
         var upper = min(characters.count, max(lower + length, to))
+        if piece.left, lower < 1 { return nil }
+        if piece.right, characters.count < max(lower + length, to) + 2 { return nil }
         if lower > 0, characters[lower - 1] != " ", let space = characters[lower..<from].firstIndex(of: " ") { lower = space + 1 }
         if upper < characters.count, characters[upper] != " ", let space = characters[to..<upper].lastIndex(of: " ") { upper = space }
         return (lower > 0 ? "…" : "") + String(characters[lower..<upper]) + (upper < characters.count ? "…" : "")
+    }
+
+    /// The same line for a message of the index, read from the text near the match alone: a long
+    /// reply was put on one line whole for each row it gave, at every letter.
+    static func snippet(_ words: [String], in text: NSString, folded: NSString?, length: Int = 40) -> String? {
+        let whole = { snippet(words, in: text as String, length: length) }
+        // Folding keeps a character's place unless it was a dotted İ written as two.
+        let searched = folded ?? text
+        guard searched.length == text.length else { return whole() }
+        var first: (word: String, at: NSRange)?
+        for word in words {
+            let at = searched.range(of: fold(word), options: [.caseInsensitive, .diacriticInsensitive])
+            guard at.location != NSNotFound else { return nil }
+            if first.map({ at.location < $0.at.location }) ?? true { first = (word, at) }
+        }
+        guard let first else { return nil }
+        let reach = length * 2
+        let from = max(0, first.at.location - reach)
+        let near = text.rangeOfComposedCharacterSequences(for: NSRange(location: from, length: min(text.length, NSMaxRange(first.at) + reach) - from))
+        return snippet([first.word], in: text.substring(with: near), length: length, piece: (near.location > 0, NSMaxRange(near) < text.length)) ?? whole()
     }
 }

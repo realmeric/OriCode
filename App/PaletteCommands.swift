@@ -2,6 +2,19 @@ import AppKit
 import SwiftData
 import SwiftUI
 
+/// Everything ⌘K reaches, with the two parts its top level lists on their own.
+struct PaletteReach {
+    let commands: [PaletteItem]
+    let threads: [PaletteItem]
+    let all: [PaletteItem]
+}
+
+/// A line of ⌘K's list: a heading, or a row and its place among the rows.
+enum PaletteLine {
+    case heading(String)
+    case item(PaletteItem, index: Int)
+}
+
 /// What the command center offers: every command the app has, the threads and projects, and
 /// the lists behind Model…, Effort…, Permissions…, Switch project… and the Settings panes.
 extension AppModel {
@@ -115,25 +128,97 @@ extension AppModel {
 
     /// With nothing typed: what's worth doing now, what was used lately, the latest threads, then
     /// every command that can run.
-    func paletteSections() -> [(title: String, items: [PaletteItem])] {
-        let commands = paletteCommands()
-        let reachable = commands + paletteThreads + paletteProjects + paletteChoices
-        let recent = paletteRecents.compactMap { id in reachable.first { $0.id == id && $0.unavailable == nil } }.prefix(5)
-        let threads = paletteThreads.filter { $0.id != "thread." + (chat?.id.uuidString ?? "") }.prefix(6)
+    func paletteSections(of reach: PaletteReach) -> [(title: String, items: [PaletteItem])] {
+        let recent = paletteRecents.compactMap { id in reach.all.first { $0.id == id && $0.unavailable == nil } }.prefix(5)
+        let threads = reach.threads.filter { $0.id != "thread." + (chat?.id.uuidString ?? "") }.prefix(6)
         let sections: [(String, [PaletteItem])] = [
             ("Now", paletteNow),
             ("Recent", Array(recent)),
             ("Threads", Array(threads)),
-            ("Commands", commands.filter { $0.unavailable == nil }),
+            ("Commands", reach.commands.filter { $0.unavailable == nil }),
         ]
         return sections.filter { !$0.1.isEmpty }.map { (title: $0.0, items: $0.1) }
     }
 
-    /// With something typed: every command, thread and project, and the choices inside the lists.
-    /// `whole` keeps what ⌘K leaves out of a thread without a folder, for a list that isn't the
-    /// open thread's.
+    /// Every command, thread and project, and the choices inside the lists. `whole` keeps what
+    /// ⌘K leaves out of a thread without a folder, for a list that isn't the open thread's.
+    func paletteReach(whole: Bool = false) -> PaletteReach {
+        let commands = paletteCommands(whole: whole)
+        let threads = paletteThreads
+        return PaletteReach(commands: commands, threads: threads, all: commands + threads + paletteProjects + paletteChoices)
+    }
+
+    /// With something typed: all of it.
     func paletteSearchable(whole: Bool = false) -> [PaletteItem] {
-        paletteCommands(whole: whole) + paletteThreads + paletteProjects + paletteChoices
+        paletteReach(whole: whole).all
+    }
+
+    /// The same list from one letter to the next. Making it was most of a letter's work, and
+    /// what's typed changes none of it, so it's made when ⌘K first asks and again only once
+    /// something it read has changed, which moves `paletteTurn` for whoever is watching the rows.
+    func paletteReachKept() -> PaletteReach {
+        let turn = paletteTurn
+        if let kept = paletteKept, kept.turn == turn { return kept.reach }
+        let reach = withObservationTracking {
+            paletteReach()
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
+                if let self, self.paletteTurn == turn { self.paletteTurn += 1 }
+            }
+        }
+        paletteKept = (turn, paletteDefaults, reach)
+        return reach
+    }
+
+    /// The keys the list's rows read: the footer's two, notifications, the editor, where a new
+    /// thread works, thinking and concise replies.
+    private static let paletteKeys = [
+        TranscriptSettings.showTime, TranscriptSettings.showCost, TranscriptSettings.showThinking, TranscriptSettings.concise,
+        "notify", Editor.key, NewThreads.workspace,
+    ]
+
+    private var paletteDefaults: [String] {
+        Self.paletteKeys.map { "\(UserDefaults.standard.object(forKey: $0) ?? "")" }
+    }
+
+    /// Settings changed one of them beside an open ⌘K: the list is made again, as for any change
+    /// Observation tells of. With ⌘K closed there's no list and nothing is read.
+    func paletteDefaultsMoved() {
+        if let kept = paletteKept, kept.turn == paletteTurn, kept.defaults != paletteDefaults { paletteTurn += 1 }
+    }
+
+    /// The level's rows for what's typed, under their headings.
+    func paletteLines(for level: PaletteState.Level, of reach: @autoclosure () -> PaletteReach) -> [PaletteLine] {
+        var index = 0
+        func numbered(_ items: [PaletteItem]) -> [PaletteLine] {
+            items.map { item in
+                defer { index += 1 }
+                return .item(item, index: index)
+            }
+        }
+        switch level.kind {
+        case .root:
+            if level.query.trimmingCharacters(in: .whitespaces).isEmpty {
+                return paletteSections(of: reach()).flatMap { section in [.heading(section.title)] + numbered(section.items) }
+            }
+            let messages = paletteMessages(for: level.query)
+            // Fewer ranked rows over messages, so the Messages heading is still in view.
+            let ranked = numbered(Array(Palette.rank(reach().all, by: level.query, recents: paletteRecents)
+                .prefix(messages.isEmpty ? 40 : 6)))
+            return messages.isEmpty ? ranked : ranked + [.heading("Messages")] + numbered(messages)
+        case .list(let list):
+            var items = Palette.rank(level.items, by: level.query, recents: paletteRecents)
+            let typed = level.query.trimmingCharacters(in: .whitespaces)
+            let named = level.items.contains { list.typedFirst ? $0.title == typed : $0.title.caseInsensitiveCompare(typed) == .orderedSame }
+            if !typed.isEmpty, !named, let made = list.typed?(typed) {
+                if list.typedFirst { items.insert(made, at: 0) } else { items.append(made) }
+            } else if list.typedFirst, let exact = items.firstIndex(where: { $0.title == typed }) {
+                items.insert(items.remove(at: exact), at: 0)
+            }
+            return numbered(items)
+        case .input:
+            return []
+        }
     }
 
     /// Only what the moment calls for: Stop while a turn runs, Compact near the context's end, and
@@ -177,10 +262,10 @@ extension AppModel {
         guard !words.isEmpty else { return [] }
         said.read(from: context.container)
         if let found = paletteFound, (found.query, found.revision, found.ready) == (query, revision, said.ready) { return found.items }
-        let threads = Dictionary(uniqueKeysWithValues: chats.map { ($0.id, $0) })
+        let threads = Dictionary(uniqueKeysWithValues: listedChats.map { ($0.id, $0) })
         let items = said.search(words, in: Set(threads.keys)).compactMap { message -> PaletteItem? in
             guard let chat = threads[message.chat], let project = chat.project,
-                  let snippet = MessageSearch.snippet(words, in: message.text as String)
+                  let snippet = MessageSearch.snippet(words, in: message.text, folded: message.folded)
             else { return nil }
             let chatID = chat.id, eventID = message.id
             return PaletteItem(id: "message." + eventID.uuidString, kind: .message, title: snippet, subtitle: chat.title,
@@ -296,7 +381,7 @@ extension AppModel {
         items.append(command("thread.close", "Close thread", icon: "xmark", shortcut: shortcuts.label(.close), unavailable: noThread) { [weak self] in
             self?.close()
         })
-        let others: String? = chats.count > 1 ? nil : "No other thread"
+        let others: String? = listedChats.count > 1 ? nil : "No other thread"
         // Its list is every project's threads whatever the drawer is filtered to, so it's counted, not the drawer's rows.
         items.append(PaletteItem(id: "thread.beside", kind: .command, title: "Open beside…", keywords: ["side by side", "split", "two", "pair", "second"],
                                  icon: "rectangle.split.2x1", unavailable: unsent ?? (besideable.isEmpty ? "No other thread" : nil), action: .list(besideList)))

@@ -14,7 +14,7 @@ struct CommandCenter: View {
     /// The level's rows, made by `remake` and not by the body: they read the threads, the
     /// commands and the model's own state, and the body ran them all again for any change once it
     /// had gone, on the frame that closes it.
-    @State private var made: [Line] = []
+    @State private var made: [PaletteLine] = []
     private static let last = 6
     /// How many lines each stage shows.
     private static let lines = [0, 0, 4, 8, 12, 16]
@@ -26,18 +26,6 @@ struct CommandCenter: View {
     private static let tallest: CGFloat = 380
     /// The field's row, so what stands in for it is as tall.
     private static let header: CGFloat = 41
-
-    private enum Line: Identifiable {
-        case heading(String)
-        case item(PaletteItem, index: Int)
-
-        var id: String {
-            switch self {
-            case .heading(let title): "heading." + title
-            case .item(let item, _): item.id
-            }
-        }
-    }
 
     var body: some View {
         let palette = model.palette
@@ -93,7 +81,7 @@ struct CommandCenter: View {
     private func remake() {
         let model = model
         made = withObservationTracking {
-            lines(for: model.palette.level)
+            model.paletteLines(for: model.palette.level, of: model.paletteReachKept())
         } onChange: {
             DispatchQueue.main.async { if model.commandCenterShown { remake() } }
         }
@@ -146,19 +134,21 @@ struct CommandCenter: View {
     /// A scroll view of lazy rows rather than a List: a List makes an outline view with its own
     /// scroll view and reads every row's identity as it opens, which was most of ⌘K's first
     /// frame. The rows draw their own selection and are all one height, so it gives up nothing.
-    private func height(of lines: [Line]) -> CGFloat {
+    private func height(of lines: [PaletteLine]) -> CGFloat {
         lines.reduce(CGFloat(8)) { total, line in
             if case .heading = line { return total + Self.heading }
             return total + Self.row
         }
     }
 
-    private func list(_ lines: [Line], height: CGFloat, selected: Int) -> some View {
+    private func list(_ lines: [PaletteLine], height: CGFloat, selected: Int) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(lines) { line in
-                        switch line {
+                    // A line is known by its place, not by what's in it: a letter changes the rows
+                    // standing there, where rows known by their item were taken down and made again.
+                    ForEach(lines.indices, id: \.self) { at in
+                        switch lines[at] {
                         case .heading(let title):
                             Text(title)
                                 .font(.system(size: 11, weight: .medium))
@@ -170,7 +160,6 @@ struct CommandCenter: View {
                                 model.palette.level.selected = index
                                 model.activate(item)
                             }
-                            .id(item.id)
                         }
                     }
                 }
@@ -180,11 +169,11 @@ struct CommandCenter: View {
             }
             .frame(height: min(height, Self.tallest))
             .onChange(of: selected) { _, index in
-                let items = lines.compactMap { line -> PaletteItem? in
-                    if case .item(let item, _) = line { return item }
-                    return nil
+                let at = lines.firstIndex { line in
+                    if case .item(_, index) = line { return true }
+                    return false
                 }
-                if items.indices.contains(index) { proxy.scrollTo(items[index].id) }
+                if let at { proxy.scrollTo(at) }
             }
         }
     }
@@ -253,39 +242,6 @@ struct CommandCenter: View {
             model.palette.level.query = text
             model.palette.level.selected = 0
             model.palette.problem = nil
-        }
-    }
-
-    private func lines(for level: PaletteState.Level) -> [Line] {
-        var index = 0
-        func numbered(_ items: [PaletteItem]) -> [Line] {
-            items.map { item in
-                defer { index += 1 }
-                return .item(item, index: index)
-            }
-        }
-        switch level.kind {
-        case .root:
-            if level.query.trimmingCharacters(in: .whitespaces).isEmpty {
-                return model.paletteSections().flatMap { section in [.heading(section.title)] + numbered(section.items) }
-            }
-            let messages = model.paletteMessages(for: level.query)
-            // Fewer ranked rows over messages, so the Messages heading is still in view.
-            let ranked = numbered(Array(Palette.rank(model.paletteSearchable(), by: level.query, recents: model.paletteRecents)
-                .prefix(messages.isEmpty ? 40 : 6)))
-            return messages.isEmpty ? ranked : ranked + [.heading("Messages")] + numbered(messages)
-        case .list(let list):
-            var items = Palette.rank(level.items, by: level.query, recents: model.paletteRecents)
-            let typed = level.query.trimmingCharacters(in: .whitespaces)
-            let named = level.items.contains { list.typedFirst ? $0.title == typed : $0.title.caseInsensitiveCompare(typed) == .orderedSame }
-            if !typed.isEmpty, !named, let made = list.typed?(typed) {
-                if list.typedFirst { items.insert(made, at: 0) } else { items.append(made) }
-            } else if list.typedFirst, let exact = items.firstIndex(where: { $0.title == typed }) {
-                items.insert(items.remove(at: exact), at: 0)
-            }
-            return numbered(items)
-        case .input:
-            return []
         }
     }
 

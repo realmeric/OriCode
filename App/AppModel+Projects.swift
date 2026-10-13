@@ -24,14 +24,19 @@ extension AppModel {
     /// Under the drawer's filter, when it has one.
     var chats: [Chat] {
         // The archived ones, when they're what's asked for, the latest worked on first.
-        if drawerFilter == .archived { return archivedChats }
-        let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }.sorted(by: Chat.drawerOrder)
+        drawerFilter == .archived ? archivedChats : listedChats.sorted(by: Chat.drawerOrder)
+    }
+
+    /// The same threads in no order, for whoever asks only which they are or how many: the
+    /// drawer's order reads three stored values of two threads at every comparison.
+    var listedChats: [Chat] {
+        let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
         switch drawerFilter {
         case .all: return all
         case .project(let id): return all.filter { $0.project?.id == id }
         case .working: return all.filter { conversations[$0.id]?.working == true }
         case .waiting: return all.filter { conversations[$0.id]?.waitingAsk != nil }
-        case .archived: return []
+        case .archived: return archivedChats
         }
     }
 
