@@ -344,6 +344,8 @@ extension AppModel {
         if event.name == "limited" { scheduleResumes() }
         if event.name == "limits" { takeLimits(event.body, for: chat.providerID) }
         if event.name == "turn.done" {
+            // A thread out of view is counted when it comes into view.
+            if inView(chat.id) { readWater(for: chat, turnEnded: true) }
             tellOpener(of: chat)
             pushedMaybe(in: chat.cwd)
             refreshBranch(for: chat)

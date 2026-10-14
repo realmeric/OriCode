@@ -127,7 +127,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
         case .mcp: ["mcp", "server", "servers", "connector", "tools", "linear"]
-        case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "limit", "usage", "session", "weekly", "reset", "go on"]
+        case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "water", "litres", "liters", "fun", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .activity: ["tokens", "usage", "activity", "daily", "weekly", "cumulative", "chart"]
         case .archive: ["archived", "threads", "restore", "delete"]
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
@@ -590,6 +590,7 @@ private struct ConversationPane: View {
     @AppStorage(Limit.goOnKey) private var goOn = true
     @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
     @AppStorage(TranscriptSettings.concise) private var concise = false
+    @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
     var body: some View {
         PaneTitle(text: "Conversation")
@@ -609,6 +610,12 @@ private struct ConversationPane: View {
             }
             SettingsRow(title: "What it cost", detail: "What the turn would cost on the metered API, not a bill.") {
                 Toggle("What it cost", isOn: $showCost).labelsHidden().toggleStyle(.switch)
+            }
+        }
+        SectionHeading("For fun")
+        SettingsCard {
+            SettingsRow(title: "Water", detail: "How much water the thread is estimated to have used so far, under its latest turn and in the usage card with where the number comes from. Counted from the session Claude Code keeps, so on its threads only.") {
+                Toggle("Water", isOn: $showWater).labelsHidden().toggleStyle(.switch)
             }
         }
         // Only agents whose limits reach the app, and that can pick a thread back up, wait them out.

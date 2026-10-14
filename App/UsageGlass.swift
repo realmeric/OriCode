@@ -77,11 +77,13 @@ struct GlassLevel: View {
     }
 }
 
-/// Each window as a bar with when it rolls over, then this thread's context.
-private struct UsageCard: View {
+/// Each window as a bar with when it rolls over, then this thread's context, and its water when
+/// Settings asks for that.
+struct UsageCard: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     @State private var appeared = false
+    @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -115,6 +117,10 @@ private struct UsageCard: View {
                 Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
                 ContextBar(used: chat.contextUsed, window: chat.contextWindow, appeared: appeared)
                     .animation(Motion.reading.delay(0.18), value: appeared)
+            }
+            if showWater, let chat, let water = model.conversations[chat.id]?.water.reading {
+                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                WaterLines(water: water)
             }
         }
         .padding(14)
@@ -165,6 +171,29 @@ private struct ContextBar: View {
             Bar(fraction: appeared ? fraction : 0, color: Ink.secondary)
             Text("of its context in use").font(Type.secondary).foregroundStyle(Ink.secondary)
         }
+    }
+}
+
+/// The thread's water once more, with what the footer leaves out: the glasses, the coefficient
+/// and the source it comes from by name.
+private struct WaterLines: View {
+    let water: Water.Reading
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Water").foregroundStyle(Ink.primary)
+                Spacer(minLength: 8)
+                Text("≈ \(water.volume), estimated").foregroundStyle(Ink.secondary)
+            }
+            Text((water.hasGlasses ? "\(water.glasses) glasses of \(water.glassMl), at " : "At ") + water.coefficient)
+                .foregroundStyle(Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(water.source)
+                .foregroundStyle(Ink.faint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(Type.secondary)
     }
 }
 

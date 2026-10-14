@@ -19,6 +19,7 @@ struct TranscriptView: View {
     /// What the scroll view last said of itself, kept where reading it draws nothing.
     @State private var content = Measured()
     @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
+    @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
     private final class Measured {
         /// How tall the laid-out thread is.
@@ -78,10 +79,15 @@ struct TranscriptView: View {
                 // Not while a block is open: Return typed there mustn't answer the card.
                 let listening = !active || model.openShell != nil ? nil : conversation.waitingAsk?.requestId
                 let lastLimit = conversation.lastLimit
+                // The thread's water so far, under its latest turn; read only when Settings asks.
+                let water = showWater ? conversation.water.reading?.footer : nil
+                let watered = water == nil ? nil : conversation.lastFooter
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     // One view a row, whatever the item draws: an item that can draw nothing, a footer
                     // with nothing to say, would have the lazy stack make every row to count them.
-                    VStack(alignment: .leading, spacing: 0) { view(of: entry, listening: listening, lastLimit: lastLimit) }
+                    VStack(alignment: .leading, spacing: 0) {
+                        view(of: entry, listening: listening, lastLimit: lastLimit, water: entry.id == watered ? water : nil)
+                    }
                         .background {
                             // An item in a run is lit where it stands, in the run opened for it.
                             if lit == entry.id, case .item = entry {
@@ -148,6 +154,9 @@ struct TranscriptView: View {
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear(perform: takeReveal)
         .onChange(of: model.reveal) { takeReveal() }
+        // Its water is counted as the thread comes into view and as Settings turns water on;
+        // after that a turn's end counts it (AppModel.receive).
+        .task(id: showWater) { model.readWater(for: conversation.chat) }
         // Once a view, the active one or not. A transcript built while the app is hidden, as it
         // comes forward, or behind another app can show its foot with the rows it made laid out
         // screens above and none ever appearing, and it would go on taking itself to be at the end.
@@ -318,7 +327,7 @@ struct TranscriptView: View {
     private static let settling = Duration.milliseconds(400)
 
     @ViewBuilder
-    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?) -> some View {
+    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?, water: String?) -> some View {
         let streaming = conversation.live.id
         switch entry {
         case .item(let item):
@@ -328,7 +337,7 @@ struct TranscriptView: View {
                 limitCard: item.id == lastLimit,
                 resumes: conversation.resumeAt != nil && item.id == lastLimit,
                 waiting: conversation.waiting.contains { $0.id == item.id },
-                stream: item.id == streaming ? conversation.live : nil)
+                stream: item.id == streaming ? conversation.live : nil, water: water)
         case .run(let items):
             ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id,
                        stream: items.contains { $0.id == streaming } ? conversation.live : nil,
@@ -639,6 +648,8 @@ struct ItemView: View {
     var waiting = false
     /// The text streaming into this item, which it reads in place of its own.
     var stream: LiveText?
+    /// The thread's water so far, on the footer under its latest turn.
+    var water: String?
     /// The picture Quick Look shows, and the message's others to step through.
     @State private var shown: URL?
     @State private var files: [URL] = []
@@ -723,7 +734,7 @@ struct ItemView: View {
         case .ask(_, let ask):
             AskCard(ask: ask, cwd: cwd, thread: thread, listens: ask.requestId == listening)
         case .footer(_, let footer):
-            FooterLine(footer: footer)
+            FooterLine(footer: footer, water: water)
         case .note(_, let text):
             Text(text)
                 .font(Type.secondary)
@@ -935,25 +946,50 @@ struct ThinkingLine: View {
 }
 
 /// What a turn did. Its files always; how long it took and what it cost only when
-/// Settings › Transcript asks, and nothing at all when there's nothing to say.
+/// Settings › Conversation asks, and nothing at all when there's nothing to say. The thread's
+/// latest turn has the thread's water after it, when Settings asks for that: on the turn's line
+/// where the column has room for both, and under it where it hasn't.
 struct FooterLine: View {
     let footer: TurnFooter
+    var water: String?
     @AppStorage(TranscriptSettings.showTime) private var showTime = false
     @AppStorage(TranscriptSettings.showCost) private var showCost = false
 
     var body: some View {
         let words = footer.words(time: showTime, cost: showCost)
-        if !words.isEmpty || footer.files > 0 {
-            HStack(spacing: 5) {
-                if !words.isEmpty { Text(words) }
-                if footer.files > 0 {
-                    Text((words.isEmpty ? "" : "· ") + "\(footer.files) \(footer.files == 1 ? "file" : "files") ·")
-                    Counts(added: footer.added, deleted: footer.deleted)
-                        .opacity(0.8)
+        let turn = !words.isEmpty || footer.files > 0
+        Group {
+            if let water, turn {
+                ViewThatFits(in: .horizontal) {
+                    // Parted as the turn's own words are, by a dot with a space each side.
+                    HStack(spacing: 3.5) {
+                        self.turn(words)
+                        Text("·")
+                        Text(water).foregroundStyle(Ink.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        self.turn(words)
+                        Text(water).foregroundStyle(Ink.secondary)
+                    }
                 }
+            } else if let water {
+                Text(water).foregroundStyle(Ink.secondary)
+            } else if turn {
+                self.turn(words)
             }
-            .font(Type.secondary)
-            .foregroundStyle(Ink.faint)
+        }
+        .font(Type.secondary)
+        .foregroundStyle(Ink.faint)
+    }
+
+    private func turn(_ words: String) -> some View {
+        HStack(spacing: 5) {
+            if !words.isEmpty { Text(words) }
+            if footer.files > 0 {
+                Text((words.isEmpty ? "" : "· ") + "\(footer.files) \(footer.files == 1 ? "file" : "files") ·")
+                Counts(added: footer.added, deleted: footer.deleted)
+                    .opacity(0.8)
+            }
         }
     }
 }
@@ -961,6 +997,8 @@ struct FooterLine: View {
 enum TranscriptSettings {
     static let showTime = "showTurnTime"
     static let showCost = "showTurnCost"
+    /// The thread's estimated water, under its latest turn and in the usage card. Off until asked for.
+    static let showWater = "showWater"
     static let showThinking = "showThinking"
     /// Replies asked to be short, which the engine tells the agent.
     static let concise = "conciseReplies"

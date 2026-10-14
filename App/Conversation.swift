@@ -290,6 +290,8 @@ final class Conversation {
     private(set) var running = false
     /// Subagents, commands and workflows out for this thread, as the engine last listed them.
     let heads = Heads()
+    /// What its session is estimated to have used in water, when Settings asks for that.
+    let water = WaterMeter()
     /// What the head's workers have cost, which the thread's cost has in it and its own session
     /// never spent.
     private(set) var workerCost: Double = 0
@@ -433,6 +435,11 @@ final class Conversation {
 
     private var latestLimit: Item? {
         items.last { if case .limited = $0 { true } else { false } }
+    }
+
+    /// The footer under the thread's latest turn, where its water stands.
+    var lastFooter: UUID? {
+        items.last { if case .footer = $0 { true } else { false } }?.id
     }
 
     /// The limit that stopped the thread's latest turn, when one did.

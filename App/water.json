@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "source": {
+    "name": "Mistral AI, life-cycle analysis of Mistral Large 2 (2025)",
+    "url": "https://mistral.ai/news/our-contribution-to-a-global-environmental-standard-for-ai",
+    "quote": "the marginal impacts of inference, more precisely the use of our AI assistant Le Chat for a 400-token response - excluding users’ terminals: 1.14 gCO₂e, 45 mL of water, and 0.16 mg of Sb eq."
+  },
+  "mlPerThousandTokens": {
+    "input": 0,
+    "output": 112.5,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "usageFields": {
+    "input": "input_tokens",
+    "output": "output_tokens",
+    "cacheRead": "cache_read_input_tokens",
+    "cacheWrite": "cache_creation_input_tokens"
+  },
+  "glassMl": 250,
+  "display": {
+    "litresFromMl": 1000,
+    "millilitreUnit": "ml",
+    "litreUnit": "L",
+    "litreDecimals": 2,
+    "glassDecimals": 1,
+    "decimalSeparator": "."
+  },
+  "formula": [
+    "A session is one Claude Code transcript: the file <session id>.jsonl in the session's project folder under the Claude config folder's projects folder (~/.claude/projects unless CLAUDE_CONFIG_DIR moves it). Only that file is read. The files under <session id>/subagents/ are not read, so a subagent's tokens do not count.",
+    "The file is read as UTF-8 and split on the line feed. Each line is one JSON value. A line that does not parse, the unfinished last line of a file still being written included, is skipped.",
+    "A line counts when it is an object whose type is \"assistant\", whose isSidechain is not true, whose message.id is a non-empty string and whose message.usage is an object. Every other line is skipped.",
+    "The four token kinds are input, output, cacheRead and cacheWrite, read from message.usage under the names in usageFields. A field that is missing, or is not a finite number of zero or more, reads as 0.",
+    "Claude Code writes one line per content block of a reply, so one assistant message is on several lines that share a message.id. Lines are grouped by message.id and the message counts once: for each kind, the largest value among its lines.",
+    "A session's tokens of a kind are the sum of that kind over its messages. Everything the transcript holds counts, the messages a resumed or forked session carried over included.",
+    "ml = (input * mlPerThousandTokens.input + output * mlPerThousandTokens.output + cacheRead * mlPerThousandTokens.cacheRead + cacheWrite * mlPerThousandTokens.cacheWrite) / 1000, in IEEE 754 double precision, the four products added left to right in that order and the sum divided once.",
+    "Rounding is half up everywhere: round(x) = floor(x + 0.5).",
+    "The volume is shown in one of two units. If round(ml) is less than display.litresFromMl, the text is round(ml) in decimal digits, a space, display.millilitreUnit. Otherwise it is fixed(ml, display.litresFromMl, display.litreDecimals), a space, display.litreUnit.",
+    "fixed(x, per, d): n = round(x * 10^d / per), multiplied before it is divided. The text is the whole part of n / 10^d in decimal digits, then display.decimalSeparator, then the remainder of n / 10^d padded with leading zeros to d digits. No digit grouping, no exponent, and nothing is taken from the locale.",
+    "Glasses are fixed(ml, glassMl, display.glassDecimals). The host words the unit.",
+    "The figure is an estimate and is labelled as one wherever it is shown, with source.name readable beside it or one step away."
+  ],
+  "derivation": [
+    "The source gives one figure per reply: the volume in source.quote for a 400-token Le Chat response. Divided by 400 and multiplied by 1000 it is mlPerThousandTokens.output.",
+    "It is the only first-party figure that states a token count next to the water volume, so it needs one division and no guess at a reply's length. The page was published on 22 July 2025; the study was done with Carbone 4 and ADEME and peer-reviewed by Resilio and Hubblo.",
+    "Input, cache read and cache write are 0. The source says nothing about prompt length or input tokens, and whatever prompt processing a typical exchange involved is already inside its one figure, so charging input separately would count it twice.",
+    "The figure is a life-cycle one (Water Consumption Potential): data-centre cooling, the electricity behind it and the manufacture of the servers. It leaves out the user's device and training.",
+    "It sits at the top of the published range. Google's median Gemini prompt (0.26 mL, arXiv 2508.15734) and Sam Altman's average ChatGPT query (0.000085 gallons) are over a hundred times lower per reply, count cooling water only or give no scope, and state no token count."
+  ],
+  "assumptions": [
+    "A 400-token response means 400 generated (output) tokens.",
+    "Water scales linearly with output tokens.",
+    "A Mistral token and a Claude token are the same size.",
+    "Claude costs what Mistral Large 2 on Le Chat cost in 2024-25. It is a different model on other hardware in other data centres; this is the largest unknown and the reason the figure is called an estimate.",
+    "Thinking tokens count, since Claude Code reports them inside output_tokens."
+  ],
+  "examples": {
+    "transcript": {
+      "lines": [
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}",
+        "{\"type\":\"assistant\",\"isSidechain\":false,\"message\":{\"id\":\"msg_a\",\"usage\":{\"input_tokens\":3,\"output_tokens\":10,\"cache_read_input_tokens\":1000,\"cache_creation_input_tokens\":200}}}",
+        "{\"type\":\"assistant\",\"isSidechain\":false,\"message\":{\"id\":\"msg_a\",\"usage\":{\"input_tokens\":3,\"output_tokens\":40,\"cache_read_input_tokens\":1000,\"cache_creation_input_tokens\":200}}}",
+        "{\"type\":\"assistant\",\"isSidechain\":true,\"message\":{\"id\":\"msg_b\",\"usage\":{\"input_tokens\":9,\"output_tokens\":900,\"cache_read_input_tokens\":9,\"cache_creation_input_tokens\":9}}}",
+        "{\"type\":\"assistant\",\"message\":{\"usage\":{\"input_tokens\":7,\"output_tokens\":700}}}",
+        "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_c\",\"usage\":{\"input_tokens\":2,\"output_tokens\":60,\"cache_read_input_tokens\":null,\"cache_creation_input_tokens\":-5}}}",
+        "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_d\",\"usage\":{\"input_tokens\":1,\"output_tok"
+      ],
+      "tokens": { "input": 5, "output": 100, "cacheRead": 1000, "cacheWrite": 200 }
+    },
+    "figures": [
+      { "tokens": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "ml": 0, "volume": "0 ml", "glasses": "0.0" },
+      { "tokens": { "input": 5, "output": 100, "cacheRead": 1000, "cacheWrite": 200 }, "ml": 11.25, "volume": "11 ml", "glasses": "0.0" },
+      { "tokens": { "input": 0, "output": 1000, "cacheRead": 0, "cacheWrite": 0 }, "ml": 112.5, "volume": "113 ml", "glasses": "0.5" },
+      { "tokens": { "input": 0, "output": 8884, "cacheRead": 0, "cacheWrite": 0 }, "ml": 999.45, "volume": "999 ml", "glasses": "4.0" },
+      { "tokens": { "input": 0, "output": 8885, "cacheRead": 0, "cacheWrite": 0 }, "ml": 999.5625, "volume": "1.00 L", "glasses": "4.0" },
+      { "tokens": { "input": 500000, "output": 10000, "cacheRead": 9000000, "cacheWrite": 100000 }, "ml": 1125, "volume": "1.13 L", "glasses": "4.5" },
+      { "tokens": { "input": 0, "output": 1234567, "cacheRead": 0, "cacheWrite": 0 }, "ml": 138888.7875, "volume": "138.89 L", "glasses": "555.6" }
+    ]
+  }
+}
