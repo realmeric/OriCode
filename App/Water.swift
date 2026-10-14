@@ -55,8 +55,7 @@ enum Water {
         }
 
         struct Display: Decodable, Sendable {
-            let litresFromMl: Double
-            let millilitreUnit: String
+            let mlPerLitre: Double
             let litreUnit: String
             let litreDecimals: Int
             let glassDecimals: Int
@@ -123,12 +122,10 @@ enum Water {
             + String(repeating: "0", count: max(0, decimals - remainder.count)) + remainder
     }
 
-    /// "113 ml" below the file's litre line, "1.13 L" from it.
+    /// In litres at every size, as a water meter keeps one unit: "0.0003 L", "1.1250 L".
     static func volume(_ ml: Double, by definition: Definition) -> String {
         let display = definition.display
-        return round(ml) < display.litresFromMl
-            ? "\(digits(round(ml))) \(display.millilitreUnit)"
-            : "\(fixed(ml, per: display.litresFromMl, decimals: display.litreDecimals, by: definition)) \(display.litreUnit)"
+        return "\(fixed(ml, per: display.mlPerLitre, decimals: display.litreDecimals, by: definition)) \(display.litreUnit)"
     }
 
     static func glasses(_ ml: Double, by definition: Definition) -> String {
@@ -251,7 +248,7 @@ enum Water {
     struct Reading: Equatable, Sendable {
         let tokens: Tokens
         let ml: Double
-        /// "16 ml", "1.13 L".
+        /// "0.0160 L", "1.1250 L".
         let volume: String
         let glasses: String
         /// Whether it is a glass's first decimal yet, which is when the mod names glasses.
@@ -267,9 +264,9 @@ enum Water {
             volume = Water.volume(ml, by: definition)
             glasses = Water.glasses(ml, by: definition)
             hasGlasses = glasses != Water.glasses(0, by: definition)
-            glassMl = "\(Water.plain(definition.glassMl)) \(definition.display.millilitreUnit)"
+            glassMl = "\(Water.plain(definition.glassMl)) \(Water.millilitre)"
             coefficient = Kind.allCases.filter { definition.mlPerThousandTokens[$0] != 0 }.map {
-                "\(Water.plain(definition.mlPerThousandTokens[$0])) \(definition.display.millilitreUnit) per thousand \($0.name) tokens"
+                "\(Water.plain(definition.mlPerThousandTokens[$0])) \(Water.millilitre) per thousand \($0.name) tokens"
             }.joined(separator: ", ")
             source = definition.source.name
         }
@@ -277,6 +274,10 @@ enum Water {
         /// Under the thread's latest turn.
         var footer: String { "≈ \(volume) of water so far, estimated" }
     }
+
+    /// The unit glassMl and mlPerThousandTokens are in by their names. The file words the litre
+    /// alone and leaves this one to its host, and the mod's `/water` says "ml" too.
+    private static let millilitre = "ml"
 
     /// A number from the file as it's written there: 112.5, 250.
     private static func plain(_ x: Double) -> String {

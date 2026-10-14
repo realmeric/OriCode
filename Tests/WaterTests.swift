@@ -20,8 +20,8 @@ struct WaterTests {
       },
       "glassMl": 500,
       "display": {
-        "litresFromMl": 100, "millilitreUnit": "ml", "litreUnit": "L",
-        "litreDecimals": 1, "glassDecimals": 1, "decimalSeparator": ","
+        "mlPerLitre": 100, "litreUnit": "L",
+        "litreDecimals": 2, "glassDecimals": 1, "decimalSeparator": ","
       }
     }
     """.utf8)
@@ -44,8 +44,8 @@ struct WaterTests {
     /// ~/Developer/ori-water/water.json, raises its version, and is copied here with its hash.
     @Test func theCopyIsTheModsFile() throws {
         let hash = SHA256.hash(data: try Self.bundledFile()).map { String(format: "%02x", $0) }.joined()
-        #expect(hash == "04ac033ed79cc73a45cbdbd55149742e1438995534f6fd57668809cf5c7cec2f")
-        #expect(Water.Definition.bundled?.version == 1)
+        #expect(hash == "674402d84f40f157a9ce574341503149b7c924c92ecd6deb9ac4e1fb4d7c6e9a")
+        #expect(Water.Definition.bundled?.version == 2)
     }
 
     /// water.json's examples, which the mod's vectors.check.mts holds its own code to.
@@ -63,7 +63,7 @@ struct WaterTests {
         #expect(tally.tokens == Water.Tokens(input: 5, output: 100, cacheRead: 1000, cacheWrite: 200))
 
         let figures = try #require(examples["figures"] as? [[String: Any]])
-        #expect(figures.count == 7)
+        #expect(figures.count == 8)
         for figure in figures {
             let tokens = Self.tokens(try #require(figure["tokens"] as? [String: Any]))
             let ml = Water.millilitres(tokens, by: definition)
@@ -76,15 +76,16 @@ struct WaterTests {
     /// The same examples written out, so a reader sees the strings without opening the file.
     @Test func theFigureIsWrittenAsTheModWritesIt() throws {
         let definition = try #require(Water.Definition.bundled)
-        let written = [(0.0, "0 ml", "0.0"), (100, "11 ml", "0.0"), (1000, "113 ml", "0.5"), (8884, "999 ml", "4.0"),
-                       (8885, "1.00 L", "4.0"), (10000, "1.13 L", "4.5"), (1_234_567, "138.89 L", "555.6")]
+        let written = [(0.0, "0.0000 L", "0.0"), (1, "0.0001 L", "0.0"), (3, "0.0003 L", "0.0"), (100, "0.0113 L", "0.0"),
+                       (1000, "0.1125 L", "0.5"), (8885, "0.9996 L", "4.0"), (10000, "1.1250 L", "4.5"),
+                       (1_234_567, "138.8888 L", "555.6")]
         for (output, volume, glasses) in written {
             let reading = Water.Reading(Water.Tokens(input: 500_000, output: output, cacheRead: 9_000_000, cacheWrite: 100_000), by: definition)
             #expect(reading.volume == volume)
             #expect(reading.glasses == glasses)
         }
         let reading = Water.Reading(Water.Tokens(output: 142), by: definition)
-        #expect(reading.footer == "≈ 16 ml of water so far, estimated")
+        #expect(reading.footer == "≈ 0.0160 L of water so far, estimated")
         #expect(reading.hasGlasses)
         #expect(reading.glassMl == "250 ml")
         #expect(reading.coefficient == "112.5 ml per thousand output tokens")
@@ -92,22 +93,26 @@ struct WaterTests {
         #expect(!Water.Reading(Water.Tokens(output: 100), by: definition).hasGlasses)
     }
 
-    /// The mod's own test, step for step: one reply on two lines and the head of a line still
-    /// being written, then the rest of it.
+    /// The mod's own test, step for step: a reply of one token, which moves the line, then one
+    /// reply on two lines and the head of a line still being written, then the rest of it.
     @Test func theModsTestGivesTheModsStrings() throws {
         let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
         var tally = Water.Tally()
-        #expect(Water.volume(Water.millilitres(tally.tokens, by: definition), by: definition) == "0 ml")
+        #expect(Water.volume(Water.millilitres(tally.tokens, by: definition), by: definition) == "0,00 L")
+
+        tally.take(Data(Self.reply("msg_0", 1).utf8), by: definition)
+        var reading = Water.Reading(tally.tokens, by: definition)
+        #expect(reading.volume == "0,02 L")
 
         let unfinished = Self.reply("msg_2", 40)
         tally.take(Data((Self.reply("msg_1", 10) + Self.reply("msg_1", 10) + unfinished.prefix(30)).utf8), by: definition)
-        var reading = Water.Reading(tally.tokens, by: definition)
-        #expect(reading.volume == "20 ml")
+        reading = Water.Reading(tally.tokens, by: definition)
+        #expect(reading.volume == "0,22 L")
         #expect(!reading.hasGlasses)
 
         tally.take(Data(unfinished.dropFirst(30).utf8), by: definition)
         reading = Water.Reading(tally.tokens, by: definition)
-        #expect(reading.volume == "1,0 L")
+        #expect(reading.volume == "1,02 L")
         #expect(reading.glasses == "0,2")
         #expect(reading.hasGlasses)
         #expect(reading.coefficient == "2000 ml per thousand output tokens")
@@ -192,14 +197,14 @@ struct WaterTests {
         try Data(Self.reply("msg_1", 10).utf8).write(to: project.appending(path: "one.jsonl"))
         meter.read(session: "one", cwd: "/tmp/alpha", again: true, definition: definition, config: config)
         await meter.settled()
-        #expect(meter.reading?.volume == "20 ml")
-        #expect(meter.reading?.footer == "≈ 20 ml of water so far, estimated")
+        #expect(meter.reading?.volume == "0,20 L")
+        #expect(meter.reading?.footer == "≈ 0,20 L of water so far, estimated")
 
         // Another session is another transcript, counted from nothing.
         try Data(Self.reply("msg_1", 40).utf8).write(to: project.appending(path: "two.jsonl"))
         meter.read(session: "two", cwd: "/tmp/alpha", definition: definition, config: config)
         await meter.settled()
-        #expect(meter.reading?.volume == "80 ml")
+        #expect(meter.reading?.volume == "0,80 L")
 
         meter.read(session: nil, cwd: "/tmp/alpha", definition: definition, config: config)
         #expect(meter.reading == nil)

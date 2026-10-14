@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "source": {
     "name": "Mistral AI, life-cycle analysis of Mistral Large 2 (2025)",
     "url": "https://mistral.ai/news/our-contribution-to-a-global-environmental-standard-for-ai",
@@ -19,10 +19,9 @@
   },
   "glassMl": 250,
   "display": {
-    "litresFromMl": 1000,
-    "millilitreUnit": "ml",
+    "mlPerLitre": 1000,
     "litreUnit": "L",
-    "litreDecimals": 2,
+    "litreDecimals": 4,
     "glassDecimals": 1,
     "decimalSeparator": "."
   },
@@ -35,7 +34,7 @@
     "A session's tokens of a kind are the sum of that kind over its messages. Everything the transcript holds counts, the messages a resumed or forked session carried over included.",
     "ml = (input * mlPerThousandTokens.input + output * mlPerThousandTokens.output + cacheRead * mlPerThousandTokens.cacheRead + cacheWrite * mlPerThousandTokens.cacheWrite) / 1000, in IEEE 754 double precision, the four products added left to right in that order and the sum divided once.",
     "Rounding is half up everywhere: round(x) = floor(x + 0.5).",
-    "The volume is shown in one of two units. If round(ml) is less than display.litresFromMl, the text is round(ml) in decimal digits, a space, display.millilitreUnit. Otherwise it is fixed(ml, display.litresFromMl, display.litreDecimals), a space, display.litreUnit.",
+    "The volume is shown in litres at every size, the way a water meter keeps one unit: the text is fixed(ml, display.mlPerLitre, display.litreDecimals), a space, display.litreUnit.",
     "fixed(x, per, d): n = round(x * 10^d / per), multiplied before it is divided. The text is the whole part of n / 10^d in decimal digits, then display.decimalSeparator, then the remainder of n / 10^d padded with leading zeros to d digits. No digit grouping, no exponent, and nothing is taken from the locale.",
     "Glasses are fixed(ml, glassMl, display.glassDecimals). The host words the unit.",
     "The figure is an estimate and is labelled as one wherever it is shown, with source.name readable beside it or one step away."
@@ -45,6 +44,7 @@
     "It is the only first-party figure that states a token count next to the water volume, so it needs one division and no guess at a reply's length. The page was published on 22 July 2025; the study was done with Carbone 4 and ADEME and peer-reviewed by Resilio and Hubblo.",
     "Input, cache read and cache write are 0. The source says nothing about prompt length or input tokens, and whatever prompt processing a typical exchange involved is already inside its one figure, so charging input separately would count it twice.",
     "The figure is a life-cycle one (Water Consumption Potential): data-centre cooling, the electricity behind it and the manufacture of the servers. It leaves out the user's device and training.",
+    "display.litreDecimals is 4 so that the figure moves with every reply. One step of the fourth decimal is 0.1 ml and one output token is 0.1125 ml, so a reply of a single token changes the text. At three decimals, whole millilitres, a reply under nine tokens could leave it standing.",
     "It sits at the top of the published range. Google's median Gemini prompt (0.26 mL, arXiv 2508.15734) and Sam Altman's average ChatGPT query (0.000085 gallons) are over a hundred times lower per reply, count cooling water only or give no scope, and state no token count."
   ],
   "assumptions": [
@@ -68,13 +68,14 @@
       "tokens": { "input": 5, "output": 100, "cacheRead": 1000, "cacheWrite": 200 }
     },
     "figures": [
-      { "tokens": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "ml": 0, "volume": "0 ml", "glasses": "0.0" },
-      { "tokens": { "input": 5, "output": 100, "cacheRead": 1000, "cacheWrite": 200 }, "ml": 11.25, "volume": "11 ml", "glasses": "0.0" },
-      { "tokens": { "input": 0, "output": 1000, "cacheRead": 0, "cacheWrite": 0 }, "ml": 112.5, "volume": "113 ml", "glasses": "0.5" },
-      { "tokens": { "input": 0, "output": 8884, "cacheRead": 0, "cacheWrite": 0 }, "ml": 999.45, "volume": "999 ml", "glasses": "4.0" },
-      { "tokens": { "input": 0, "output": 8885, "cacheRead": 0, "cacheWrite": 0 }, "ml": 999.5625, "volume": "1.00 L", "glasses": "4.0" },
-      { "tokens": { "input": 500000, "output": 10000, "cacheRead": 9000000, "cacheWrite": 100000 }, "ml": 1125, "volume": "1.13 L", "glasses": "4.5" },
-      { "tokens": { "input": 0, "output": 1234567, "cacheRead": 0, "cacheWrite": 0 }, "ml": 138888.7875, "volume": "138.89 L", "glasses": "555.6" }
+      { "tokens": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "ml": 0, "volume": "0.0000 L", "glasses": "0.0" },
+      { "tokens": { "input": 0, "output": 1, "cacheRead": 0, "cacheWrite": 0 }, "ml": 0.1125, "volume": "0.0001 L", "glasses": "0.0" },
+      { "tokens": { "input": 0, "output": 3, "cacheRead": 0, "cacheWrite": 0 }, "ml": 0.3375, "volume": "0.0003 L", "glasses": "0.0" },
+      { "tokens": { "input": 5, "output": 100, "cacheRead": 1000, "cacheWrite": 200 }, "ml": 11.25, "volume": "0.0113 L", "glasses": "0.0" },
+      { "tokens": { "input": 0, "output": 1000, "cacheRead": 0, "cacheWrite": 0 }, "ml": 112.5, "volume": "0.1125 L", "glasses": "0.5" },
+      { "tokens": { "input": 0, "output": 8885, "cacheRead": 0, "cacheWrite": 0 }, "ml": 999.5625, "volume": "0.9996 L", "glasses": "4.0" },
+      { "tokens": { "input": 500000, "output": 10000, "cacheRead": 9000000, "cacheWrite": 100000 }, "ml": 1125, "volume": "1.1250 L", "glasses": "4.5" },
+      { "tokens": { "input": 0, "output": 1234567, "cacheRead": 0, "cacheWrite": 0 }, "ml": 138888.7875, "volume": "138.8888 L", "glasses": "555.6" }
     ]
   }
 }
