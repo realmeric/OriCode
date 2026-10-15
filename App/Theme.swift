@@ -35,6 +35,9 @@ enum Motion {
     static let glide = Animation.spring(response: 0.5, dampingFraction: 0.86)
     /// kullanym-notch's reading spring: a gauge that snaps to a new value reads as a glitch.
     static let reading = Animation.spring(response: 0.9, dampingFraction: 0.9)
+    /// The keyboard crossing between two threads: the capsules running into each other and out
+    /// again, and the titles riding them, slow enough to see the drop leave and land.
+    static let cross = Animation.spring(duration: 0.55, bounce: 0.18)
 }
 
 enum Glass {

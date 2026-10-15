@@ -329,7 +329,12 @@ final class AppModel {
             // or a thread that's gone has no half to keep, and the picked one is alone again.
             if let selectedChatID, selectedChatID == besideChatID {
                 let other = oldValue.flatMap { staysInView($0) ? $0 : nil }
-                if other != nil { composerHalf = composerHalf == .left ? .right : .left }
+                if other != nil {
+                    if roomForTwo, capsuleFrame.width > 0, besideCapsuleFrame.width > 0 {
+                        crossing = Crossing(capsule: capsuleFrame, beside: besideCapsuleFrame)
+                    }
+                    composerHalf = composerHalf == .left ? .right : .left
+                }
                 besideChatID = other
             }
             // With no thread open there's no pair: an empty project picked shows its empty state.
@@ -383,6 +388,20 @@ final class AppModel {
     /// opened any other way takes the capsule's title at once.
     var keyboardSide: Half? {
         besideShown == nil ? nil : composerHalf
+    }
+
+    /// Where the window's capsule and the other column's are drawn, in the window: what the
+    /// crossing's goo runs between.
+    var capsuleFrame = CGRect.zero
+    var besideCapsuleFrame = CGRect.zero
+    /// The keyboard crossing to the thread beside while its goo is out, with the two capsules
+    /// where they were as it began; where they're going is wherever they're drawn next.
+    var crossing: Crossing?
+
+    struct Crossing: Equatable {
+        let id = UUID()
+        let capsule: CGRect
+        let beside: CGRect
     }
 
     /// At launch: the thread that was beside the open one is beside it again, each in the half it

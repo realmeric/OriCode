@@ -62,6 +62,7 @@ struct TitleCapsule: View {
                 .background(glass ? hovering ? Surface.selected : Surface.drawer : .clear, in: .capsule)
                 .contentShape(.capsule)
                 .matchedGeometryEffect(id: Island.Piece.capsule, in: island, isSource: true)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.capsuleFrame = $0 }
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
@@ -75,9 +76,9 @@ struct TitleCapsule: View {
                         mark(conversation)
                     }
                 }
-                .animation(reduceMotion ? Motion.fade : Motion.move, value: model.chat?.id)
+                .animation(reduceMotion ? Motion.fade : Motion.cross, value: model.chat?.id)
             }
-            .animation(reduceMotion ? Motion.fade : Motion.move, value: model.keyboardSide)
+            .animation(reduceMotion ? Motion.fade : Motion.cross, value: model.keyboardSide)
             .animation(Motion.move, value: working)
             .overlay(alignment: .trailing) {
                 if updates.phase != .idle {
@@ -143,4 +144,91 @@ extension View {
 /// A thread's title in the ring, apart from its mark, which is keyed by the thread's id alone.
 private struct TravellingTitle: Hashable {
     let thread: UUID
+}
+
+/// The keyboard crossing between two threads, drawn as the capsules' tint running like a liquid:
+/// the other column's capsule rises into the window's and runs into it, and the one being left
+/// comes out of it as a drop and falls into the other column's place. Each capsule is blurred and
+/// the blur cut at half, as metaballs are drawn, so two that near each other draw a neck between
+/// them and one that leaves draws one out. The real capsules' tint stands aside while it's out,
+/// and the titles and marks ride over it on the same curve. With Reduce Motion there's no goo,
+/// and the crossing ends as it begins.
+struct CrossingGoo: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let crossing: AppModel.Crossing
+    @State private var progress = 0.0
+
+    var body: some View {
+        GeometryReader { area in
+            if !reduceMotion {
+                Goo(progress: progress, from: (crossing.capsule, crossing.beside),
+                    to: (model.capsuleFrame, model.besideCapsuleFrame), origin: area.frame(in: .global).origin)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else {
+                model.crossing = nil
+                return
+            }
+            withAnimation(Motion.cross) { progress = 1 } completion: {
+                if model.crossing == crossing { model.crossing = nil }
+            }
+        }
+    }
+}
+
+private struct Goo: View, Animatable {
+    nonisolated var progress: Double
+    let from: (capsule: CGRect, beside: CGRect)
+    /// Read as the goo is drawn, since the capsules take their new places a layout after the
+    /// crossing begins.
+    let to: (capsule: CGRect, beside: CGRect)
+    let origin: CGPoint
+
+    /// Wide enough that two capsules a few points apart run together, and narrower than the gap
+    /// between the window's capsule and the column's at rest, which stay apart.
+    private static let blur: CGFloat = 8
+
+    nonisolated var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        Canvas { context, _ in
+            context.addFilter(.alphaThreshold(min: 0.5, color: Surface.drawer))
+            context.addFilter(.blur(radius: Self.blur))
+            context.drawLayer { layer in
+                for drop in drops {
+                    layer.fill(Capsule().path(in: drop.offsetBy(dx: -origin.x, dy: -origin.y)), with: .color(.white))
+                }
+            }
+        }
+    }
+
+    /// The window's capsule taking its new title's width, the column's rising into it, and the
+    /// one being left falling out of it. The two in flight draw in toward a drop halfway, so they
+    /// read as liquid rather than as bars sliding.
+    private var drops: [CGRect] {
+        let squeeze = sin(min(max(progress, 0), 1) * .pi) * 0.6
+        return [
+            Self.between(from.capsule, to.capsule, progress),
+            Self.drop(Self.between(from.beside, to.capsule, progress), squeeze),
+            Self.drop(Self.between(from.capsule, to.beside, progress), squeeze),
+        ]
+    }
+
+    private static func between(_ a: CGRect, _ b: CGRect, _ t: Double) -> CGRect {
+        CGRect(x: a.minX + (b.minX - a.minX) * t, y: a.minY + (b.minY - a.minY) * t,
+               width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
+    }
+
+    /// A capsule drawn in toward a round drop of its own height by `squeeze`, about its middle.
+    private static func drop(_ rect: CGRect, _ squeeze: Double) -> CGRect {
+        let width = rect.width - (rect.width - rect.height) * squeeze
+        return CGRect(x: rect.midX - width / 2, y: rect.minY, width: width, height: rect.height)
+    }
 }

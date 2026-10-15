@@ -78,7 +78,7 @@ struct Island: View {
                     }
                     // The keyboard crossing brings the capsule the other thread's title on this
                     // curve, so the glass keeps to its width as the title travels in.
-                    .animation(Motion.move, value: model.keyboardSide)
+                    .animation(Motion.cross, value: model.keyboardSide)
                 }
                 // Outside the mask, which would cut off the update circle hanging off its end.
                 if shown == .capsule {
@@ -166,13 +166,15 @@ struct Island: View {
     }
 
     /// The capsule's tint, and a surface's material under it; a capsule 24pt tall draws the
-    /// surface's corners as its round ends.
+    /// surface's corners as its round ends. While the keyboard crosses, the capsule's tint is the
+    /// crossing's goo.
     private func glass(open: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
+        let tint = open ? Surface.drawer : model.crossing != nil ? .clear : capsuleHovered ? Surface.selected : Surface.drawer
         return shape
             .fill(.ultraThinMaterial)
             .opacity(open ? 1 : 0)
-            .background(open ? Surface.drawer : capsuleHovered ? Surface.selected : Surface.drawer, in: shape)
+            .background(tint, in: shape)
     }
 }
 

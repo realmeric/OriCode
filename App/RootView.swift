@@ -69,7 +69,7 @@ struct RootView: View {
                                                 .transition(.opacity)
                                         }
                                     }
-                                    .animation(reduceMotion ? Motion.fade : Motion.move, value: open)
+                                    .animation(reduceMotion ? Motion.fade : Motion.cross, value: open)
                                 }
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                             }
@@ -291,6 +291,14 @@ struct RootView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .overlay {
+            // Under the island, so the window capsule's title rides over it.
+            if let crossing = model.crossing {
+                CrossingGoo(crossing: crossing)
+                    .id(crossing.id)
+                    .ignoresSafeArea()
+            }
+        }
         .overlay(alignment: .top) {
             // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
             // open block or file, which ⌘K and ⌘P open over.
@@ -451,7 +459,9 @@ struct BesideTitle: View {
                 .padding(.leading, working ? 12 + TitleCapsule.mark + 6 : Self.cross + 8)
                 .padding(.trailing, Self.cross + 8)
                 .frame(height: Self.height)
-                .background(hovering ? Surface.selected : Surface.drawer, in: .capsule)
+                // While the keyboard crosses, its tint is the crossing's goo.
+                .background(model.crossing != nil ? .clear : hovering ? Surface.selected : Surface.drawer, in: .capsule)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.besideCapsuleFrame = $0 }
                 .overlay(alignment: .leading) {
                     if working, let conversation {
                         ThreadMark(conversation: conversation)
