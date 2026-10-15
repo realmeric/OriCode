@@ -197,6 +197,8 @@ final class AppModel {
     @ObservationIgnored var fetched: (revision: Int, projects: [Project])?
     @ObservationIgnored var selected: (revision: Int, project: UUID?, id: UUID, chat: Chat?)?
     var conversations: [UUID: Conversation] = [:]
+    /// Claude Code's water on this Mac today, this week and this month, for the usage card.
+    let waterTotals = WaterTotals()
     /// What was said in every thread, for ⌘K, and the rows it gave the last query.
     let said = MessageIndex()
     @ObservationIgnored var paletteFound: (query: String, revision: Int, ready: Bool, items: [PaletteItem])?

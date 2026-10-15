@@ -131,6 +131,8 @@ struct WaterTests {
         let none = Water.Tokens()
         #expect(counted(#"{"type":"assistant","message":{"id":"a","usage":{"output_tokens":7}}}"#).output == 7)
         #expect(counted(#"{"type":"user","message":{"id":"a","usage":{"output_tokens":7}}}"#) == none)
+        // Spelled in escapes, it's still an assistant's: lines are only left unparsed when they can't be.
+        #expect(counted(#"{"t\u0079pe":"\u0061ssist\u0061nt","message":{"id":"a","usage":{"output_tokens":7}}}"#).output == 7)
         #expect(counted(#"{"type":"assistant","isSidechain":true,"message":{"id":"a","usage":{"output_tokens":7}}}"#) == none)
         // Only `true` is a sidechain, as in the mod.
         #expect(counted(#"{"type":"assistant","isSidechain":1,"message":{"id":"a","usage":{"output_tokens":7}}}"#).output == 7)
@@ -274,6 +276,131 @@ struct WaterTests {
         await conversation.water.settled()
         try await Task.sleep(for: WaterMeter.writeWait * 2)
         #expect(conversation.water.reading == nil)
+    }
+
+    /// A Friday in a week that began in September, in a zone eight hours from UTC at its widest
+    /// and with a summer time, where weeks begin on Sunday: Sunday 27 September to Saturday
+    /// 3 October, and the month from 1 October.
+    private static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        calendar.locale = Locale(identifier: "en_US")
+        calendar.firstWeekday = 1
+        return calendar
+    }()
+    private static let friday = ISO8601DateFormatter().date(from: "2026-10-02T16:00:00Z")!
+
+    private static func reply(_ id: String, _ output: Int, at time: String, sidechain: Bool = false) -> String {
+        #"{"type":"assistant","isSidechain":\#(sidechain),"timestamp":"\#(time)","message":{"id":"\#(id)","usage":{"output_tokens":\#(output)}}}"# + "\n"
+    }
+
+    private static func projects() throws -> (config: URL, alpha: URL, beta: URL) {
+        let config = FileManager.default.temporaryDirectory.appending(path: "water-\(UUID().uuidString)")
+        let alpha = config.appending(path: "projects/-tmp-alpha")
+        let beta = config.appending(path: "projects/-tmp-beta")
+        try FileManager.default.createDirectory(at: alpha.appending(path: "s1/subagents"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: beta, withIntermediateDirectories: true)
+        return (config, alpha, beta)
+    }
+
+    private static func append(_ text: String, to file: URL) throws {
+        guard FileManager.default.fileExists(atPath: file.path) else { return try Data(text.utf8).write(to: file) }
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(text.utf8))
+        try handle.close()
+    }
+
+    /// Every session on this Mac by the calendar: each message once by its id, on its
+    /// lines and in a session that carried it over, in the day, week and month its earliest line's
+    /// time falls in, in the calendar's zone; no subagent's, by line or by file; and nothing from
+    /// a transcript last written before the week began.
+    @Test func theCalendarCountsEachMessageOnceWhereItsTimeFalls() async throws {
+        let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
+        let (config, alpha, beta) = try Self.projects()
+        defer { try? FileManager.default.removeItem(at: config) }
+
+        try Data([
+            // Friday at midnight in New York, 04:00 in UTC: today. Its second line is later, and bigger.
+            Self.reply("today", 1, at: "2026-10-02T04:00:00.000Z"),
+            Self.reply("today", 3, at: "2026-10-02T04:00:01.000Z"),
+            // Saturday in UTC and still Friday in New York.
+            Self.reply("late", 10, at: "2026-10-03T02:00:00.000Z"),
+            // A moment before Friday: this week and this month.
+            Self.reply("thursday", 100, at: "2026-10-02T03:59:59.999Z"),
+            // September, in this week.
+            Self.reply("monday", 1000, at: "2026-09-28T12:00:00.000Z"),
+            // Saturday before the week began.
+            Self.reply("before", 7, at: "2026-09-27T03:59:59.999Z"),
+            Self.reply("aside", 7, at: "2026-10-02T12:00:00.000Z", sidechain: true),
+            #"{"type":"assistant","message":{"id":"timeless","usage":{"output_tokens":7}}}"# + "\n",
+        ].joined().utf8).write(to: alpha.appending(path: "s1.jsonl"))
+        // A fork of s1, which carried Thursday's message over with its time.
+        try Data((Self.reply("thursday", 100, at: "2026-10-02T03:59:59.999Z") + Self.reply("fork", 20000, at: "2026-10-02T15:00:00.000Z")).utf8)
+            .write(to: beta.appending(path: "s2.jsonl"))
+        try Data(Self.reply("agent", 7, at: "2026-10-02T12:00:00.000Z").utf8).write(to: alpha.appending(path: "s1/subagents/agent-a.jsonl"))
+        let old = beta.appending(path: "old.jsonl")
+        try Data(Self.reply("old", 7, at: "2026-10-02T12:00:00.000Z").utf8).write(to: old)
+        try FileManager.default.setAttributes([.modificationDate: Self.friday.addingTimeInterval(-6 * 86_400)], ofItemAtPath: old.path)
+
+        let totals = WaterTotals()
+        totals.read(definition: definition, config: config, now: Self.friday, calendar: Self.calendar)
+        await totals.settled()
+        let periods = try #require(totals.periods)
+        #expect(periods.today.tokens == Water.Tokens(output: 20013))
+        #expect(periods.week.tokens == Water.Tokens(output: 21113))
+        #expect(periods.month.tokens == Water.Tokens(output: 20113))
+        // Two millilitres a token and a hundred to the litre, in the made-up definition.
+        #expect(periods.today.volume == "400,26 L")
+        #expect(periods.week.volume == "422,26 L")
+        #expect(periods.month.volume == "402,26 L")
+        #expect(periods.month.source == "A made-up source")
+    }
+
+    /// A ledger read as the transcripts grow, a line cut in two and a session started between
+    /// readings included, comes to what one reading of the finished files does.
+    @Test func readingAsTheyGrowCountsWhatOneReadingDoes() throws {
+        let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
+        let (config, alpha, beta) = try Self.projects()
+        defer { try? FileManager.default.removeItem(at: config) }
+        let bounds = Water.Periods.Bounds(Self.friday, calendar: Self.calendar)
+        let s1 = alpha.appending(path: "s1.jsonl")
+        let s2 = beta.appending(path: "s2.jsonl")
+        let cut = Self.reply("b", 40, at: "2026-10-02T13:00:00.000Z")
+        let steps: [(URL, String)] = [
+            (s1, Self.reply("a", 1, at: "2026-09-29T13:00:00.000Z") + Self.reply("a", 5, at: "2026-09-29T13:00:02.000Z")),
+            (s1, String(cut.prefix(40))),
+            (s2, Self.reply("a", 5, at: "2026-09-29T13:00:00.000Z") + Self.reply("c", 300, at: "2026-10-01T13:00:00.000Z")),
+            (s1, String(cut.dropFirst(40)) + Self.reply("d", 2000, at: "2026-10-02T14:00:00.000Z")),
+            (s2, Self.reply("c", 400, at: "2026-10-01T13:00:01.000Z")),
+        ]
+        var growing = Water.Ledger()
+        for (file, text) in steps {
+            try Self.append(text, to: file)
+            growing.read(config: config, by: definition, periods: bounds)
+        }
+        var once = Water.Ledger()
+        once.read(config: config, by: definition, periods: bounds)
+
+        let grown = growing.tokens(in: bounds)
+        let whole = once.tokens(in: bounds)
+        #expect(grown.today == whole.today && grown.week == whole.week && grown.month == whole.month)
+        #expect(whole.today == Water.Tokens(output: 2040))
+        #expect(whole.week == Water.Tokens(output: 2445))
+        #expect(whole.month == Water.Tokens(output: 2440))
+        #expect(Water.Periods(growing, in: bounds, by: definition) == Water.Periods(once, in: bounds, by: definition))
+        #expect(growing.tallies.values.map(\.offset).sorted() == once.tallies.values.map(\.offset).sorted())
+    }
+
+    /// The calendar's periods themselves, in the zone and the week it's handed.
+    @Test func thePeriodsAreTheCalendarsOwn() {
+        let bounds = Water.Periods.Bounds(Self.friday, calendar: Self.calendar)
+        // Midnight in New York's summer time is 04:00 in UTC, 1 November's too: its clocks go back at two.
+        let midnight = ISO8601DateFormatter()
+        #expect(bounds.today == midnight.date(from: "2026-10-02T04:00:00Z")!..<midnight.date(from: "2026-10-03T04:00:00Z")!)
+        #expect(bounds.week == midnight.date(from: "2026-09-27T04:00:00Z")!..<midnight.date(from: "2026-10-04T04:00:00Z")!)
+        #expect(bounds.month == midnight.date(from: "2026-10-01T04:00:00Z")!..<midnight.date(from: "2026-11-01T04:00:00Z")!)
+        #expect(bounds.earliest == bounds.week.lowerBound)
     }
 
     /// Mid-turn, the tools' results in one moment share one reading, a moment after the first.

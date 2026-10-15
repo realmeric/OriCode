@@ -591,6 +591,7 @@ private struct ConversationPane: View {
     @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
     @AppStorage(TranscriptSettings.concise) private var concise = false
     @AppStorage(TranscriptSettings.showWater) private var showWater = false
+    @AppStorage(TranscriptSettings.waterGlass) private var waterGlass = false
 
     var body: some View {
         PaneTitle(text: "Conversation")
@@ -616,6 +617,10 @@ private struct ConversationPane: View {
         SettingsCard {
             SettingsRow(title: "Water", detail: "How much water the thread is estimated to have used so far, under its latest turn and in the usage card with where the number comes from. Counted from the session Claude Code keeps, so on its threads only.") {
                 Toggle("Water", isOn: $showWater).labelsHidden().toggleStyle(.switch)
+            }
+            SettingsRow(title: "A glass of water", detail: "The usage circle left of Send as a glass whose water rises as the plan's session goes, and in its card what Claude Code on this Mac used today, this week and this month. Goes with Water.") {
+                Toggle("A glass of water", isOn: $waterGlass).labelsHidden().toggleStyle(.switch)
+                    .disabled(!showWater)
             }
         }
         // Only agents whose limits reach the app, and that can pick a thread back up, wait them out.

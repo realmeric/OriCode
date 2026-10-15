@@ -45,6 +45,10 @@ enum Water {
                 }
             }
         }
+
+        static func += (sum: inout Tokens, more: Tokens) {
+            for kind in Kind.allCases { sum[kind] += more[kind] }
+        }
     }
 
     struct Definition: Decodable, Sendable {
@@ -132,12 +136,26 @@ enum Water {
         fixed(ml, per: definition.glassMl, decimals: definition.display.glassDecimals, by: definition)
     }
 
+    /// One assistant message as its lines have it so far: each kind at the largest value among
+    /// them, and the earliest of their timestamps, which is when the calendar counts it. A
+    /// message whose lines carry none counts in its session and in no day.
+    struct Message: Sendable {
+        var tokens = Tokens()
+        var time: Date?
+
+        /// The same message read again, on another line or in a transcript that carried it over.
+        mutating func merge(_ other: Message) {
+            for kind in Kind.allCases { tokens[kind] = max(tokens[kind], other.tokens[kind]) }
+            if let time = other.time, self.time.map({ time < $0 }) ?? true { self.time = time }
+        }
+    }
+
     /// A transcript's count so far: each message's tokens by its id, their sum, and how far into
     /// the file it has read, so a turn's end reads only what the turn appended.
     struct Tally: Sendable {
         private(set) var tokens = Tokens()
         private(set) var offset: UInt64 = 0
-        private var messages: [String: Tokens] = [:]
+        private(set) var messages: [String: Message] = [:]
         /// The head of a line whose line feed hasn't been written yet. It counts once it has one.
         private var unfinished = Data()
 
@@ -146,7 +164,7 @@ enum Water {
         /// Takes the file's next bytes, counting each line they finish.
         mutating func take(_ bytes: Data, by definition: Definition) {
             var start = bytes.startIndex
-            while let feed = bytes[start...].firstIndex(of: Self.lineFeed) {
+            while let feed = Self.lineFeed(in: bytes, from: start) {
                 if unfinished.isEmpty {
                     count(line: bytes[start..<feed], by: definition)
                 } else {
@@ -160,11 +178,22 @@ enum Water {
             offset += UInt64(bytes.count)
         }
 
+        /// By memchr: a byte at a time, the search was most of a month's first reading.
+        private static func lineFeed(in bytes: Data, from start: Data.Index) -> Data.Index? {
+            bytes.withUnsafeBytes { buffer in
+                let skipped = start - bytes.startIndex
+                guard let base = buffer.baseAddress, skipped < buffer.count,
+                      let found = memchr(base + skipped, Int32(lineFeed), buffer.count - skipped)
+                else { return nil }
+                return bytes.startIndex + (UnsafeRawPointer(found) - base)
+            }
+        }
+
         /// One line of a transcript. It counts when it is an assistant's, not a sidechain's, with
         /// a message id and a usage; the lines of one message count once, each kind at the largest
         /// value among them.
         mutating func count(line: Data, by definition: Definition) {
-            guard let row = Self.object(in: line), row["type"] as? String == "assistant",
+            guard Self.mayBeAssistant(line), let row = Self.object(in: line), row["type"] as? String == "assistant",
                   !Self.isTrue(row["isSidechain"]),
                   let message = row["message"] as? [String: Any],
                   let id = message["id"] as? String, !id.isEmpty
@@ -176,17 +205,35 @@ enum Water {
             case is [Any]: usage = [:]
             default: return
             }
-            var counted = messages[id] ?? Tokens()
+            var line = Message(time: (row["timestamp"] as? String).flatMap { try? Date($0, strategy: Self.timestamp) })
             for kind in Kind.allCases {
                 guard let number = usage[definition.usageFields[kind]] as? NSNumber, !Self.isBoolean(number) else { continue }
                 let value = number.doubleValue
-                if value.isFinite, value > counted[kind] {
-                    tokens[kind] += value - counted[kind]
-                    counted[kind] = value
-                }
+                if value.isFinite, value > 0 { line.tokens[kind] = value }
             }
+            var counted = messages[id] ?? Message()
+            let before = counted.tokens
+            counted.merge(line)
+            for kind in Kind.allCases { tokens[kind] += counted.tokens[kind] - before[kind] }
             messages[id] = counted
         }
+
+        /// Claude Code's, as JavaScript's toISOString writes it: "2026-10-15T09:41:07.123Z".
+        private static let timestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+
+        /// A line whose type is "assistant" has the word in it, or an escape that could spell it.
+        /// Most of a transcript's bytes are tool results with neither, six in seven of this
+        /// month's on one Mac, and those aren't parsed.
+        private static func mayBeAssistant(_ line: Data) -> Bool {
+            line.withUnsafeBytes { bytes in
+                [assistantWord, escape].contains { needle in
+                    needle.withUnsafeBytes { memmem(bytes.baseAddress, bytes.count, $0.baseAddress, $0.count) != nil }
+                }
+            }
+        }
+
+        private static let assistantWord = Data("assistant".utf8)
+        private static let escape = Data(#"\u"#.utf8)
 
         /// A line that doesn't parse is skipped. One that isn't UTF-8 is read as the mod reads
         /// it, with the bytes that aren't replaced.
@@ -243,6 +290,92 @@ enum Water {
 
     /// A long session's transcript is hundreds of megabytes; it's never held whole.
     private static let chunkBytes: UInt64 = 4 * 1024 * 1024
+
+    /// Every Claude Code session on this Mac, for today, this week and this month. Each
+    /// session is counted by the formula's own rule, its file and nothing under
+    /// `<session id>/subagents/`, and its sidechain lines skipped, so a subagent's tokens count
+    /// in no period as they count in no session. A message a resumed or forked session carried
+    /// over is in two files with the same id and its first timestamp; it counts once, by its id
+    /// across the files, as the formula counts a message once within one.
+    ///
+    /// The projects folder is gigabytes, so only transcripts written to since the earliest of
+    /// the periods began are read, each from where the last reading left it.
+    struct Ledger: Sendable {
+        /// A tally per transcript path.
+        private(set) var tallies: [String: Tally] = [:]
+
+        /// Reads what each session written to since `periods` began has gained. A transcript
+        /// last written before then holds nothing they count, and is let go.
+        mutating func read(config: URL, by definition: Definition, periods: Periods.Bounds) {
+            let projects = config.appending(path: "projects", directoryHint: .isDirectory)
+            let keys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey]
+            let folders = (try? FileManager.default.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil)) ?? []
+            var kept: [String: Tally] = [:]
+            for folder in folders {
+                let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys))) ?? []
+                for file in files where file.pathExtension == "jsonl" {
+                    guard let values = try? file.resourceValues(forKeys: keys), let written = values.contentModificationDate,
+                          written >= periods.earliest
+                    else { continue }
+                    var tally = tallies[file.path] ?? Tally()
+                    if UInt64(values.fileSize ?? 0) != tally.offset, (try? Water.read(file, into: &tally, by: definition)) == nil { continue }
+                    kept[file.path] = tally
+                }
+            }
+            tallies = kept
+        }
+
+        /// Each period's tokens: its messages, each once, in the period its time falls in.
+        func tokens(in periods: Periods.Bounds) -> (today: Tokens, week: Tokens, month: Tokens) {
+            var messages: [String: Message] = [:]
+            for tally in tallies.values {
+                for (id, message) in tally.messages { messages[id, default: message].merge(message) }
+            }
+            var sums = (today: Tokens(), week: Tokens(), month: Tokens())
+            for message in messages.values {
+                guard let time = message.time else { continue }
+                if periods.today.contains(time) { sums.today += message.tokens }
+                if periods.week.contains(time) { sums.week += message.tokens }
+                if periods.month.contains(time) { sums.month += message.tokens }
+            }
+            return sums
+        }
+    }
+
+    /// Today's, this week's and this month's water on this Mac, as the usage card words them.
+    struct Periods: Equatable, Sendable {
+        /// The calendar's day, week and month around a moment, in the user's locale and time zone
+        /// unless a test hands it another.
+        struct Bounds: Sendable {
+            let today: Range<Date>
+            let week: Range<Date>
+            let month: Range<Date>
+
+            init(_ now: Date, calendar: Calendar = .autoupdatingCurrent) {
+                func range(_ component: Calendar.Component) -> Range<Date> {
+                    let interval = calendar.dateInterval(of: component, for: now) ?? DateInterval(start: now, duration: 0)
+                    return interval.start..<interval.end
+                }
+                today = range(.day)
+                week = range(.weekOfYear)
+                month = range(.month)
+            }
+
+            /// A week that began in the month before begins before the month.
+            var earliest: Date { min(week.lowerBound, month.lowerBound) }
+        }
+
+        let today: Reading
+        let week: Reading
+        let month: Reading
+
+        init(_ ledger: Ledger, in bounds: Bounds, by definition: Definition) {
+            let tokens = ledger.tokens(in: bounds)
+            today = Reading(tokens.today, by: definition)
+            week = Reading(tokens.week, by: definition)
+            month = Reading(tokens.month, by: definition)
+        }
+    }
 
     /// What the window says of a session: the figure, and the words the usage card puts by it.
     struct Reading: Equatable, Sendable {
@@ -378,6 +511,41 @@ final class WaterMeter {
         file = nil
         tally = Water.Tally()
         if reading != nil { reading = nil }
+    }
+}
+
+/// This Mac's water by the calendar, read off the main thread when the usage card opens with the
+/// glass of water on, and at no other time. The first reading goes through the month's
+/// transcripts; each after it reads only what they gained.
+@MainActor
+@Observable
+final class WaterTotals {
+    /// Nil until the first reading has come back.
+    private(set) var periods: Water.Periods?
+    @ObservationIgnored private var ledger = Water.Ledger()
+    @ObservationIgnored private var reading: Task<Void, Never>?
+
+    /// A card that opens while a reading is on its way takes that one.
+    func read(definition: Water.Definition? = .bundled, config: URL = Water.configFolder, now: Date = .now, calendar: Calendar = .autoupdatingCurrent) {
+        guard let definition, reading == nil else { return }
+        let counted = ledger
+        reading = Task { [weak self] in
+            let read = await Task.detached(priority: .utility) { () -> (ledger: Water.Ledger, periods: Water.Periods) in
+                var ledger = counted
+                let bounds = Water.Periods.Bounds(now, calendar: calendar)
+                ledger.read(config: config, by: definition, periods: bounds)
+                return (ledger, Water.Periods(ledger, in: bounds, by: definition))
+            }.value
+            guard let self else { return }
+            ledger = read.ledger
+            if read.periods != periods { periods = read.periods }
+            reading = nil
+        }
+    }
+
+    /// The reading asked for, for a test to wait on.
+    func settled() async {
+        await reading?.value
     }
 }
 

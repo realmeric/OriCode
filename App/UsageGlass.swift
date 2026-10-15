@@ -3,11 +3,14 @@ import SwiftUI
 /// Left of send: a disc of the send button's tint that fills from the bottom as the plan's session
 /// window goes, white while there's room and in kullanym-notch's amber and red as a limit nears.
 /// Its rim is the same tint, so even a full one reads as a glass rather than a dot. Hovering opens
-/// the card.
+/// the card. With Water and A glass of water on, on a thread of Claude Code's, it is a glass of
+/// water at the same level, since water.json counts Claude Code's transcripts alone.
 struct UsageGlass: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
 
+    @AppStorage(TranscriptSettings.showWater) private var showWater = false
+    @AppStorage(TranscriptSettings.waterGlass) private var waterGlass = false
     @State private var shown = false
     @State private var overGlass = false
     @State private var overCard = false
@@ -17,8 +20,11 @@ struct UsageGlass: View {
         let used = model.usage?.headline?.used
         // Empty until the first reading, which it rises to.
         let level = min(max(used ?? 0, 0), 1)
-        GlassLevel(level: level)
-            .animation(Motion.reading, value: level)
+        let ofWater = showWater && waterGlass && model.providerID(for: chat) == ProviderInfo.claudeID
+        Group {
+            if ofWater { WaterGlass(level: level) } else { GlassLevel(level: level) }
+        }
+        .animation(Motion.reading, value: level)
         .opacity(model.usageStale ? 0.45 : 1)
         .padding(6)
         // Lit while its card is out, as the model button is while its picker is.
@@ -30,7 +36,7 @@ struct UsageGlass: View {
             settle()
         }
         .popover(isPresented: $shown, arrowEdge: .top) {
-            UsageCard(chat: chat)
+            UsageCard(chat: chat, ofWater: ofWater)
                 .onHover { inside in
                     overCard = inside
                     settle()
@@ -77,11 +83,110 @@ struct GlassLevel: View {
     }
 }
 
+/// The glass as a tumbler of water, a little taller than wide in the disc's place: the send
+/// button's tint for the glass, a thicker foot, and water in the band's colour up to the level.
+/// The surface ripples and settles when the level moves and when the mouse arrives, and is
+/// still otherwise: between the two nothing is drawn again, and with Reduce Motion it never
+/// ripples.
+private struct WaterGlass: View {
+    let level: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var stirs = 0
+
+    private static let size = CGSize(width: 13, height: 17)
+    private static let wall: CGFloat = 1.5
+    private static let foot: CGFloat = 2.5
+
+    var body: some View {
+        let tumbler = Tumbler()
+        let water = Tumbler(sides: Self.wall, bottom: Self.foot)
+        KeyframeAnimator(initialValue: Ripple(), trigger: reduceMotion ? 0 : stirs) { ripple in
+            ZStack {
+                tumbler.fill(Surface.selected)
+                WaterLevel(level: level, ripple: ripple)
+                    .fill(Band.of(level).color)
+                    .clipShape(water)
+            }
+        } keyframes: { _ in
+            KeyframeTrack(\.height) {
+                CubicKeyframe(1.2, duration: 0.25)
+                CubicKeyframe(0, duration: 1.4)
+            }
+            KeyframeTrack(\.phase) {
+                // Still at the start, so the jump back doesn't show.
+                MoveKeyframe(0)
+                LinearKeyframe(.pi * 5, duration: 1.65)
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: 18, height: 18)
+        .onChange(of: level) { stirs += 1 }
+        .onHover { inside in if inside { stirs += 1 } }
+    }
+
+    private struct Ripple {
+        /// How far the surface rises and falls, in points.
+        var height = 0.0
+        var phase = 0.0
+    }
+
+    /// Open at the top and narrower at the foot, whose corners are round; inset by the glass's
+    /// wall and foot, the water inside it.
+    private struct Tumbler: Shape {
+        var sides: CGFloat = 0
+        var bottom: CGFloat = 0
+
+        func path(in rect: CGRect) -> Path {
+            let rect = CGRect(x: rect.minX + sides, y: rect.minY, width: rect.width - sides * 2, height: rect.height - bottom)
+            let taper = rect.width * 0.12
+            let foot = CGPoint(x: rect.maxX - taper, y: rect.maxY)
+            let heel = CGPoint(x: rect.minX + taper, y: rect.maxY)
+            var path = Path()
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addArc(tangent1End: foot, tangent2End: heel, radius: rect.width * 0.2)
+            path.addArc(tangent1End: heel, tangent2End: CGPoint(x: rect.minX, y: rect.minY), radius: rect.width * 0.2)
+            path.closeSubpath()
+            return path
+        }
+    }
+
+    /// The water up to the level, its surface a wave of the ripple's height. Only the level
+    /// animates by itself; the ripple comes from the keyframes.
+    private struct WaterLevel: Shape {
+        var level: Double
+        let ripple: Ripple
+
+        var animatableData: Double {
+            get { level }
+            set { level = newValue }
+        }
+
+        private static let steps = 12
+
+        func path(in rect: CGRect) -> Path {
+            guard level > 0 else { return Path() }
+            // A sliver at least, so a live 1% is visible.
+            let top = rect.maxY - WaterGlass.foot - max(1.5, (rect.height - WaterGlass.foot) * level)
+            var path = Path()
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            for step in 0...Self.steps {
+                let along = Double(step) / Double(Self.steps)
+                path.addLine(to: CGPoint(x: rect.minX + rect.width * along, y: top + ripple.height * sin(.pi * 2 * along + ripple.phase)))
+            }
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.closeSubpath()
+            return path
+        }
+    }
+}
+
 /// Each window as a bar with when it rolls over, then this thread's context, and its water when
-/// Settings asks for that.
+/// Settings asks for that: the thread's, and from a glass of water this Mac's by the calendar too.
 struct UsageCard: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
+    let ofWater: Bool
     @State private var appeared = false
     @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
@@ -118,9 +223,14 @@ struct UsageCard: View {
                 ContextBar(used: chat.contextUsed, window: chat.contextWindow, appeared: appeared)
                     .animation(Motion.reading.delay(0.18), value: appeared)
             }
-            if showWater, let chat, let water = model.conversations[chat.id]?.water.reading {
+            let thread = chat.flatMap { model.conversations[$0.id]?.water.reading }
+            if ofWater {
                 Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
-                WaterLines(water: water)
+                WaterByPeriod(thread: thread, periods: model.waterTotals.periods)
+                    .task { model.waterTotals.read() }
+            } else if showWater, let thread {
+                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                WaterLines(water: thread)
             }
         }
         .padding(14)
@@ -194,6 +304,51 @@ private struct WaterLines: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(Type.secondary)
+    }
+}
+
+/// The water in litres for the thread, today, this week and this month, with the coefficient and
+/// its source's name under them. The thread's is its session's; the calendar's are every Claude
+/// Code session on this Mac, counted by the same rule.
+private struct WaterByPeriod: View {
+    let thread: Water.Reading?
+    /// Nil until the first reading of the month's transcripts comes back.
+    let periods: Water.Periods?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Water").foregroundStyle(Ink.primary)
+                Spacer(minLength: 8)
+                Text("estimated").foregroundStyle(Ink.secondary)
+            }
+            if let thread { row("This thread", thread) }
+            if let periods {
+                row("Today", periods.today)
+                row("This week", periods.week)
+                row("This month", periods.month)
+            } else {
+                Text("Counting this Mac's sessions…").foregroundStyle(Ink.secondary)
+            }
+            if let figure = periods?.month ?? thread {
+                Text("Today, this week and this month: every Claude Code session on this Mac, at \(figure.coefficient).")
+                    .foregroundStyle(Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(figure.source)
+                    .foregroundStyle(Ink.faint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .font(Type.secondary)
+    }
+
+    private func row(_ label: String, _ water: Water.Reading) -> some View {
+        HStack {
+            Text(label).foregroundStyle(Ink.secondary)
+            Spacer(minLength: 8)
+            Text("≈ \(water.volume)").monospacedDigit().foregroundStyle(Ink.primary)
+                .contentTransition(.numericText())
+        }
     }
 }
 
