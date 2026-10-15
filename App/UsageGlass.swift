@@ -317,9 +317,10 @@ private struct ContextBar: View {
     }
 }
 
-/// The water in litres for the thread, today, this week and this month, then the usual day the
-/// glass is full at, with the coefficient and its source's name under them. The thread's is its
-/// session's; the calendar's are every Claude Code session on this Mac, counted by the same rule.
+/// The water in litres for the thread, today, this week and this month, and nothing else: the
+/// rate and its source are one step away, under the pointer on "estimated", as water.json asks.
+/// The thread's is its session's; the calendar's are every Claude Code session on this Mac,
+/// counted by the same rule.
 private struct WaterByPeriod: View {
     let thread: Water.Reading?
     /// Nil until the first reading of the month's transcripts comes back.
@@ -331,26 +332,15 @@ private struct WaterByPeriod: View {
                 Text("Water").foregroundStyle(Ink.primary)
                 Spacer(minLength: 8)
                 Text("estimated").foregroundStyle(Ink.secondary)
+                    .help((periods?.month ?? thread).map { "At \($0.coefficient), from \($0.source)" } ?? "")
             }
             if let thread { row("This thread", thread) }
             if let periods {
                 row("Today", periods.today)
                 row("This week", periods.week)
                 row("This month", periods.month)
-                Text(periods.usualDay.map { "The glass is full at a usual day, ≈ \($0.volume) over the \(Water.Periods.Bounds.usualDays) days before today." }
-                    ?? "No water in the \(Water.Periods.Bounds.usualDays) days before today to go by, so today's fills the glass.")
-                    .foregroundStyle(Ink.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Counting this Mac's sessions…").foregroundStyle(Ink.secondary)
-            }
-            if let figure = periods?.month ?? thread {
-                Text("Today, this week and this month: every Claude Code session on this Mac, at \(figure.coefficient).")
-                    .foregroundStyle(Ink.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(figure.source)
-                    .foregroundStyle(Ink.faint)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .font(Type.secondary)
