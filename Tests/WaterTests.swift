@@ -314,7 +314,7 @@ struct WaterTests {
     /// Every session on this Mac by the calendar: each message once by its id, on its
     /// lines and in a session that carried it over, in the day, week and month its earliest line's
     /// time falls in, in the calendar's zone; no subagent's, by line or by file; and nothing from
-    /// a transcript last written before the week began.
+    /// a transcript last written before the 30 days before today began.
     @Test func theCalendarCountsEachMessageOnceWhereItsTimeFalls() async throws {
         let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
         let (config, alpha, beta) = try Self.projects()
@@ -341,7 +341,7 @@ struct WaterTests {
         try Data(Self.reply("agent", 7, at: "2026-10-02T12:00:00.000Z").utf8).write(to: alpha.appending(path: "s1/subagents/agent-a.jsonl"))
         let old = beta.appending(path: "old.jsonl")
         try Data(Self.reply("old", 7, at: "2026-10-02T12:00:00.000Z").utf8).write(to: old)
-        try FileManager.default.setAttributes([.modificationDate: Self.friday.addingTimeInterval(-6 * 86_400)], ofItemAtPath: old.path)
+        try FileManager.default.setAttributes([.modificationDate: Self.friday.addingTimeInterval(-31 * 86_400)], ofItemAtPath: old.path)
 
         let totals = WaterTotals()
         totals.read(definition: definition, config: config, now: Self.friday, calendar: Self.calendar)
@@ -355,6 +355,8 @@ struct WaterTests {
         #expect(periods.week.volume == "422,26 L")
         #expect(periods.month.volume == "402,26 L")
         #expect(periods.month.source == "A made-up source")
+        // Thursday's, Monday's and the Saturday before the week's, over 30.
+        #expect(periods.usualDay?.tokens == Water.Tokens(output: 1107.0 / 30))
     }
 
     /// A ledger read as the transcripts grow, a line cut in two and a session started between
@@ -400,7 +402,78 @@ struct WaterTests {
         #expect(bounds.today == midnight.date(from: "2026-10-02T04:00:00Z")!..<midnight.date(from: "2026-10-03T04:00:00Z")!)
         #expect(bounds.week == midnight.date(from: "2026-09-27T04:00:00Z")!..<midnight.date(from: "2026-10-04T04:00:00Z")!)
         #expect(bounds.month == midnight.date(from: "2026-10-01T04:00:00Z")!..<midnight.date(from: "2026-11-01T04:00:00Z")!)
-        #expect(bounds.earliest == bounds.week.lowerBound)
+        #expect(bounds.usual == midnight.date(from: "2026-09-02T04:00:00Z")!..<bounds.today.lowerBound)
+        #expect(bounds.earliest == bounds.usual.lowerBound)
+        // Thirty calendar days, one of them 25 hours long: 21 October began at 04:00 in UTC.
+        let late = Water.Periods.Bounds(midnight.date(from: "2026-11-20T17:00:00Z")!, calendar: Self.calendar)
+        #expect(late.usual == midnight.date(from: "2026-10-21T04:00:00Z")!..<midnight.date(from: "2026-11-20T05:00:00Z")!)
+    }
+
+    /// The glass of water stands at today's water over a usual day's, the 30 days before today
+    /// over 30: today isn't one of them, a day with none counts as a day of none, and a day
+    /// past a usual one stays full.
+    @Test func theGlassIsTodayAgainstAUsualDay() throws {
+        let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
+        let (config, alpha, _) = try Self.projects()
+        defer { try? FileManager.default.removeItem(at: config) }
+        let bounds = Water.Periods.Bounds(Self.friday, calendar: Self.calendar)
+        let s1 = alpha.appending(path: "s1.jsonl")
+        try Data([
+            // The first moment of the 30 days, and a moment before it.
+            Self.reply("first", 600, at: "2026-09-02T04:00:00.000Z"),
+            Self.reply("before", 7000, at: "2026-09-02T03:59:59.999Z"),
+            // Thursday in New York, Friday in UTC.
+            Self.reply("thursday", 300, at: "2026-10-02T03:00:00.000Z"),
+            Self.reply("today", 15, at: "2026-10-02T12:00:00.000Z"),
+        ].joined().utf8).write(to: s1)
+        var ledger = Water.Ledger()
+        ledger.read(config: config, by: definition, periods: bounds)
+        var periods = Water.Periods(ledger, in: bounds, by: definition)
+        // 900 over 30 days, two of which had any.
+        #expect(periods.usualDay?.tokens == Water.Tokens(output: 30))
+        #expect(periods.today.tokens == Water.Tokens(output: 15))
+        #expect(periods.level == 0.5)
+        #expect(!periods.overflowing)
+
+        try Self.append(Self.reply("more", 45, at: "2026-10-02T13:00:00.000Z"), to: s1)
+        ledger.read(config: config, by: definition, periods: bounds)
+        periods = Water.Periods(ledger, in: bounds, by: definition)
+        #expect(periods.today.tokens == Water.Tokens(output: 60))
+        #expect(periods.level == 1)
+        #expect(periods.overflowing)
+    }
+
+    /// With no water in the 30 days before today there's no usual day, and none is made up:
+    /// today goes by itself, so any water fills the glass, and none leaves it empty.
+    @Test func withNoUsualDayTodayFillsTheGlass() throws {
+        let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
+        let (config, alpha, _) = try Self.projects()
+        defer { try? FileManager.default.removeItem(at: config) }
+        let bounds = Water.Periods.Bounds(Self.friday, calendar: Self.calendar)
+        var ledger = Water.Ledger()
+        ledger.read(config: config, by: definition, periods: bounds)
+        var periods = Water.Periods(ledger, in: bounds, by: definition)
+        #expect(periods.usualDay == nil)
+        #expect(periods.level == 0)
+
+        try Data(Self.reply("today", 1, at: "2026-10-02T12:00:00.000Z").utf8).write(to: alpha.appending(path: "s1.jsonl"))
+        ledger.read(config: config, by: definition, periods: bounds)
+        periods = Water.Periods(ledger, in: bounds, by: definition)
+        #expect(periods.usualDay == nil)
+        #expect(periods.level == 1)
+        #expect(!periods.overflowing)
+    }
+
+    /// From a glass of water the card is the water alone, whatever else the thread has; without
+    /// one it is the plan first, as before.
+    @Test func theGlassOfWatersCardHasNothingOfThePlan() {
+        for context in [false, true] {
+            for water in [false, true] {
+                #expect(UsageCard.parts(ofWater: true, context: context, water: water) == [.waterByPeriod])
+            }
+        }
+        #expect(UsageCard.parts(ofWater: false, context: true, water: true) == [.plan, .context, .water])
+        #expect(UsageCard.parts(ofWater: false, context: false, water: false) == [.plan])
     }
 
     /// Mid-turn, the tools' results in one moment share one reading, a moment after the first.

@@ -291,7 +291,7 @@ enum Water {
     /// A long session's transcript is hundreds of megabytes; it's never held whole.
     private static let chunkBytes: UInt64 = 4 * 1024 * 1024
 
-    /// Every Claude Code session on this Mac, for today, this week and this month. Each
+    /// Every Claude Code session on this Mac, for today, this week, this month and the usual day. Each
     /// session is counted by the formula's own rule, its file and nothing under
     /// `<session id>/subagents/`, and its sidechain lines skipped, so a subagent's tokens count
     /// in no period as they count in no session. A message a resumed or forked session carried
@@ -299,7 +299,8 @@ enum Water {
     /// across the files, as the formula counts a message once within one.
     ///
     /// The projects folder is gigabytes, so only transcripts written to since the earliest of
-    /// the periods began are read, each from where the last reading left it.
+    /// the periods began, nearly always the usual day's 30, are read, each from where the last
+    /// reading left it.
     struct Ledger: Sendable {
         /// A tally per transcript path.
         private(set) var tallies: [String: Tally] = [:]
@@ -326,30 +327,36 @@ enum Water {
         }
 
         /// Each period's tokens: its messages, each once, in the period its time falls in.
-        func tokens(in periods: Periods.Bounds) -> (today: Tokens, week: Tokens, month: Tokens) {
+        func tokens(in periods: Periods.Bounds) -> (today: Tokens, week: Tokens, month: Tokens, usual: Tokens) {
             var messages: [String: Message] = [:]
             for tally in tallies.values {
                 for (id, message) in tally.messages { messages[id, default: message].merge(message) }
             }
-            var sums = (today: Tokens(), week: Tokens(), month: Tokens())
+            var sums = (today: Tokens(), week: Tokens(), month: Tokens(), usual: Tokens())
             for message in messages.values {
                 guard let time = message.time else { continue }
                 if periods.today.contains(time) { sums.today += message.tokens }
                 if periods.week.contains(time) { sums.week += message.tokens }
                 if periods.month.contains(time) { sums.month += message.tokens }
+                if periods.usual.contains(time) { sums.usual += message.tokens }
             }
             return sums
         }
     }
 
-    /// Today's, this week's and this month's water on this Mac, as the usage card words them.
+    /// Today's, this week's and this month's water on this Mac, as the usage card words them, and
+    /// today's against a usual day, which is how full the glass of water stands.
     struct Periods: Equatable, Sendable {
-        /// The calendar's day, week and month around a moment, in the user's locale and time zone
-        /// unless a test hands it another.
+        /// The calendar's day, week and month around a moment, and the 30 days before the day, in
+        /// the user's locale and time zone unless a test hands it another.
         struct Bounds: Sendable {
             let today: Range<Date>
             let week: Range<Date>
             let month: Range<Date>
+            /// Calendar days, so one with a change of the clocks in it is a day too.
+            let usual: Range<Date>
+
+            static let usualDays = 30
 
             init(_ now: Date, calendar: Calendar = .autoupdatingCurrent) {
                 func range(_ component: Calendar.Component) -> Range<Date> {
@@ -359,21 +366,44 @@ enum Water {
                 today = range(.day)
                 week = range(.weekOfYear)
                 month = range(.month)
+                let before = calendar.date(byAdding: .day, value: -Self.usualDays, to: today.lowerBound) ?? today.lowerBound
+                usual = before..<today.lowerBound
             }
 
-            /// A week that began in the month before begins before the month.
-            var earliest: Date { min(week.lowerBound, month.lowerBound) }
+            /// A week that began in the month before begins before the month, and the usual day's
+            /// 30 begin before both, or with the month on its 31st.
+            var earliest: Date { min(week.lowerBound, month.lowerBound, usual.lowerBound) }
         }
 
         let today: Reading
         let week: Reading
         let month: Reading
+        /// The 30 days before today over 30, a day with no water a day of none. Nil when none of
+        /// them had any: there's no usual day to tell, and none is made up.
+        let usualDay: Reading?
 
         init(_ ledger: Ledger, in bounds: Bounds, by definition: Definition) {
             let tokens = ledger.tokens(in: bounds)
             today = Reading(tokens.today, by: definition)
             week = Reading(tokens.week, by: definition)
             month = Reading(tokens.month, by: definition)
+            var day = tokens.usual
+            for kind in Kind.allCases { day[kind] /= Double(Bounds.usualDays) }
+            let usual = Reading(day, by: definition)
+            usualDay = usual.ml > 0 ? usual : nil
+        }
+
+        /// How full the glass stands: today's water over a usual day's, full at a usual day and
+        /// still full past it. With no usual day, today is measured against itself, so any water
+        /// at all fills it.
+        var level: Double {
+            guard let usualDay else { return today.ml > 0 ? 1 : 0 }
+            return min(today.ml / usualDay.ml, 1)
+        }
+
+        /// Today has gone past a usual day.
+        var overflowing: Bool {
+            usualDay.map { today.ml > $0.ml } ?? false
         }
     }
 
@@ -514,9 +544,11 @@ final class WaterMeter {
     }
 }
 
-/// This Mac's water by the calendar, read off the main thread when the usage card opens with the
-/// glass of water on, and at no other time. The first reading goes through the month's
-/// transcripts; each after it reads only what they gained.
+/// This Mac's water by the calendar, read off the main thread with the glass of water on: when a
+/// glass of water comes into a composer, when its card opens, and a moment after a turn of a
+/// Claude Code thread in view ends; at no other time, and never while the switch is off. The
+/// first reading goes through the transcripts of the last 30 days and the month; each after it
+/// reads only what they gained.
 @MainActor
 @Observable
 final class WaterTotals {
@@ -524,12 +556,20 @@ final class WaterTotals {
     private(set) var periods: Water.Periods?
     @ObservationIgnored private var ledger = Water.Ledger()
     @ObservationIgnored private var reading: Task<Void, Never>?
+    @ObservationIgnored private var again = false
 
-    /// A card that opens while a reading is on its way takes that one.
-    func read(definition: Water.Definition? = .bundled, config: URL = Water.configFolder, now: Date = .now, calendar: Calendar = .autoupdatingCurrent) {
-        guard let definition, reading == nil else { return }
+    /// Asked while a reading is on its way, it reads once more when that one is back, since the
+    /// transcripts may have grown past where it began; however many ask meanwhile share that one.
+    /// `wait` lets a turn's last lines be written first.
+    func read(after wait: Duration = .zero, definition: Water.Definition? = .bundled, config: URL = Water.configFolder, now: Date = .now, calendar: Calendar = .autoupdatingCurrent) {
+        guard let definition else { return }
+        guard reading == nil else {
+            again = true
+            return
+        }
         let counted = ledger
         reading = Task { [weak self] in
+            try? await Task.sleep(for: wait)
             let read = await Task.detached(priority: .utility) { () -> (ledger: Water.Ledger, periods: Water.Periods) in
                 var ledger = counted
                 let bounds = Water.Periods.Bounds(now, calendar: calendar)
@@ -540,12 +580,16 @@ final class WaterTotals {
             ledger = read.ledger
             if read.periods != periods { periods = read.periods }
             reading = nil
+            if again {
+                again = false
+                self.read(definition: definition, config: config, now: now, calendar: calendar)
+            }
         }
     }
 
-    /// The reading asked for, for a test to wait on.
+    /// The readings asked for, for a test to wait on.
     func settled() async {
-        await reading?.value
+        while let reading { await reading.value }
     }
 }
 
@@ -556,6 +600,10 @@ extension AppModel {
     func readWater(for chat: Chat, turnEnded: Bool = false) {
         guard UserDefaults.standard.bool(forKey: TranscriptSettings.showWater), let conversation = conversations[chat.id] else { return }
         conversation.water.read(session: chat.providerID == ProviderInfo.claudeID ? chat.sessionId : nil, cwd: chat.cwd, again: turnEnded)
+        // The glass of water stands at today's water, which the turn has just added to.
+        if turnEnded, chat.providerID == ProviderInfo.claudeID, UserDefaults.standard.bool(forKey: TranscriptSettings.waterGlass) {
+            waterTotals.read(after: WaterMeter.writeWait)
+        }
     }
 
     /// A tool's result in a thread in view: its figure moves within the turn, once for however

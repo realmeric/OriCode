@@ -3,8 +3,12 @@ import SwiftUI
 /// Left of send: a disc of the send button's tint that fills from the bottom as the plan's session
 /// window goes, white while there's room and in kullanym-notch's amber and red as a limit nears.
 /// Its rim is the same tint, so even a full one reads as a glass rather than a dot. Hovering opens
-/// the card. With Water and A glass of water on, on a thread of Claude Code's, it is a glass of
-/// water at the same level, since water.json counts Claude Code's transcripts alone.
+/// the card.
+///
+/// With Water and A glass of water on, it is a glass of water instead, and says nothing of the
+/// plan: its water stands at today's water on this Mac against a usual day, and its card is the
+/// water alone. That is on a thread whose agent has a water figure, which is Claude Code's, since
+/// water.json counts its transcripts alone; on any other the circle and its card stay as they are.
 struct UsageGlass: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
@@ -17,22 +21,28 @@ struct UsageGlass: View {
     @State private var pending: Task<Void, Never>?
 
     var body: some View {
-        let used = model.usage?.headline?.used
-        // Empty until the first reading, which it rises to.
-        let level = min(max(used ?? 0, 0), 1)
         let ofWater = showWater && waterGlass && model.providerID(for: chat) == ProviderInfo.claudeID
+        let periods = ofWater ? model.waterTotals.periods : nil
+        let used = ofWater ? nil : model.usage?.headline?.used
+        // Empty until the first reading, which it rises to.
+        let level = ofWater ? periods?.level ?? 0 : min(max(used ?? 0, 0), 1)
         Group {
-            if ofWater { WaterGlass(level: level) } else { GlassLevel(level: level) }
+            if ofWater {
+                WaterGlass(level: level, overflowing: periods?.overflowing ?? false)
+                    .task { model.waterTotals.read() }
+            } else {
+                GlassLevel(level: level)
+            }
         }
         .animation(Motion.reading, value: level)
-        .opacity(model.usageStale ? 0.45 : 1)
+        .opacity(!ofWater && model.usageStale ? 0.45 : 1)
         .padding(6)
         // Lit while its card is out, as the model button is while its picker is.
         .background(shown ? Surface.hover : .clear, in: .circle)
         .contentShape(.rect)
         .onHover { inside in
             overGlass = inside
-            if inside { model.refreshUsage() }
+            if inside, !ofWater { model.refreshUsage() }
             settle()
         }
         .popover(isPresented: $shown, arrowEdge: .top) {
@@ -43,7 +53,13 @@ struct UsageGlass: View {
                 }
         }
         .accessibilityElement()
-        .accessibilityLabel(used.map { "Plan usage, \(Int(($0 * 100).rounded()))% of the session" } ?? "Plan usage")
+        .accessibilityLabel(ofWater ? waterLabel(periods) : used.map { "Plan usage, \(Int(($0 * 100).rounded()))% of the session" } ?? "Plan usage")
+    }
+
+    private func waterLabel(_ periods: Water.Periods?) -> String {
+        guard let periods else { return "Water today" }
+        guard let usualDay = periods.usualDay else { return "Water today, ≈ \(periods.today.volume)" }
+        return "Water today, ≈ \(periods.today.volume), \(Int((periods.today.ml / usualDay.ml * 100).rounded()))% of a usual day"
     }
 
     /// Opens a quarter second after the mouse arrives, so passing over it doesn't flash a
@@ -84,12 +100,14 @@ struct GlassLevel: View {
 }
 
 /// The glass as a tumbler of water, a little taller than wide in the disc's place: the send
-/// button's tint for the glass, a thicker foot, and water in the band's colour up to the level.
-/// The surface ripples and settles when the level moves and when the mouse arrives, and is
-/// still otherwise: between the two nothing is drawn again, and with Reduce Motion it never
-/// ripples.
+/// button's tint for the glass, a thicker foot, and water up to the level in one ink, not the
+/// plan's bands, since a full glass is a usual day and no limit. Past a usual day it brims, the
+/// water a shade brighter and as still. The surface ripples and settles when the level moves and
+/// when the mouse arrives, and is still otherwise: between the two nothing is drawn again, and
+/// with Reduce Motion it never ripples.
 private struct WaterGlass: View {
     let level: Double
+    let overflowing: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var stirs = 0
 
@@ -104,7 +122,7 @@ private struct WaterGlass: View {
             ZStack {
                 tumbler.fill(Surface.selected)
                 WaterLevel(level: level, ripple: ripple)
-                    .fill(Band.of(level).color)
+                    .fill(overflowing ? Ink.primary : Ink.secondary)
                     .clipShape(water)
             }
         } keyframes: { _ in
@@ -182,7 +200,8 @@ private struct WaterGlass: View {
 }
 
 /// Each window as a bar with when it rolls over, then this thread's context, and its water when
-/// Settings asks for that: the thread's, and from a glass of water this Mac's by the calendar too.
+/// Settings asks for that. From a glass of water it is the water alone: the thread's and this
+/// Mac's by the calendar, and nothing of the plan or the context.
 struct UsageCard: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
@@ -190,52 +209,70 @@ struct UsageCard: View {
     @State private var appeared = false
     @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
+    enum Part: Hashable {
+        case plan, context, water, waterByPeriod
+    }
+
+    /// What the card holds, top to bottom.
+    static func parts(ofWater: Bool, context: Bool, water: Bool) -> [Part] {
+        if ofWater { return [.waterByPeriod] }
+        return [.plan] + (context ? [.context] : []) + (water ? [.water] : [])
+    }
+
     var body: some View {
+        let thread = chat.flatMap { model.conversations[$0.id]?.water.reading }
+        let parts = Self.parts(ofWater: ofWater, context: (chat?.contextWindow ?? 0) > 0, water: showWater && thread != nil)
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                AgentMark(agent: model.providerID(for: chat)).frame(width: 14, height: 14)
-                Text(model.agent(for: chat).agent).font(Type.body.weight(.semibold)).foregroundStyle(Ink.primary)
-                if let plan = model.usage?.plan {
-                    Text(plan.capitalized).font(Type.secondary).foregroundStyle(Ink.secondary)
-                }
-                Spacer(minLength: 8)
-                if model.usageStale, let at = model.usageAt {
-                    Text("as of \(ResetCopy.span(Date.now.timeIntervalSince(at))) ago")
-                        .font(Type.secondary).foregroundStyle(Ink.faint)
-                }
-            }
-            if let usage = model.usage {
-                if usage.available {
-                    ForEach(Array(usage.windows.enumerated()), id: \.element.id) { index, window in
-                        WindowBar(window: window, appeared: appeared)
-                            .animation(Motion.reading.delay(min(Double(index) * 0.045, 0.18)), value: appeared)
+            ForEach(Array(parts.enumerated()), id: \.element) { index, part in
+                if index > 0 { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
+                switch part {
+                case .plan: plan
+                case .context:
+                    if let chat {
+                        ContextBar(used: chat.contextUsed, window: chat.contextWindow, appeared: appeared)
+                            .animation(Motion.reading.delay(0.18), value: appeared)
                     }
-                } else {
-                    Text("Plan limits don't apply to this login.")
-                        .font(Type.secondary).foregroundStyle(Ink.secondary)
+                case .water:
+                    if let thread { WaterLines(water: thread) }
+                case .waterByPeriod:
+                    WaterByPeriod(thread: thread, periods: model.waterTotals.periods)
+                        .task { model.waterTotals.read() }
                 }
-            } else {
-                Text(model.usageLoading ? "Checking usage…" : "Usage isn't available right now.")
-                    .font(Type.secondary).foregroundStyle(Ink.secondary)
-            }
-            if let chat, chat.contextWindow > 0 {
-                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
-                ContextBar(used: chat.contextUsed, window: chat.contextWindow, appeared: appeared)
-                    .animation(Motion.reading.delay(0.18), value: appeared)
-            }
-            let thread = chat.flatMap { model.conversations[$0.id]?.water.reading }
-            if ofWater {
-                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
-                WaterByPeriod(thread: thread, periods: model.waterTotals.periods)
-                    .task { model.waterTotals.read() }
-            } else if showWater, let thread {
-                Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
-                WaterLines(water: thread)
             }
         }
         .padding(14)
         .frame(width: 270)
         .onAppear { appeared = true }
+    }
+
+    /// The agent and its plan, and each window as a bar.
+    @ViewBuilder private var plan: some View {
+        HStack(spacing: 8) {
+            AgentMark(agent: model.providerID(for: chat)).frame(width: 14, height: 14)
+            Text(model.agent(for: chat).agent).font(Type.body.weight(.semibold)).foregroundStyle(Ink.primary)
+            if let plan = model.usage?.plan {
+                Text(plan.capitalized).font(Type.secondary).foregroundStyle(Ink.secondary)
+            }
+            Spacer(minLength: 8)
+            if model.usageStale, let at = model.usageAt {
+                Text("as of \(ResetCopy.span(Date.now.timeIntervalSince(at))) ago")
+                    .font(Type.secondary).foregroundStyle(Ink.faint)
+            }
+        }
+        if let usage = model.usage {
+            if usage.available {
+                ForEach(Array(usage.windows.enumerated()), id: \.element.id) { index, window in
+                    WindowBar(window: window, appeared: appeared)
+                        .animation(Motion.reading.delay(min(Double(index) * 0.045, 0.18)), value: appeared)
+                }
+            } else {
+                Text("Plan limits don't apply to this login.")
+                    .font(Type.secondary).foregroundStyle(Ink.secondary)
+            }
+        } else {
+            Text(model.usageLoading ? "Checking usage…" : "Usage isn't available right now.")
+                .font(Type.secondary).foregroundStyle(Ink.secondary)
+        }
     }
 }
 
@@ -307,9 +344,9 @@ private struct WaterLines: View {
     }
 }
 
-/// The water in litres for the thread, today, this week and this month, with the coefficient and
-/// its source's name under them. The thread's is its session's; the calendar's are every Claude
-/// Code session on this Mac, counted by the same rule.
+/// The water in litres for the thread, today, this week and this month, then the usual day the
+/// glass is full at, with the coefficient and its source's name under them. The thread's is its
+/// session's; the calendar's are every Claude Code session on this Mac, counted by the same rule.
 private struct WaterByPeriod: View {
     let thread: Water.Reading?
     /// Nil until the first reading of the month's transcripts comes back.
@@ -327,6 +364,10 @@ private struct WaterByPeriod: View {
                 row("Today", periods.today)
                 row("This week", periods.week)
                 row("This month", periods.month)
+                Text(periods.usualDay.map { "The glass is full at a usual day, ≈ \($0.volume) over the \(Water.Periods.Bounds.usualDays) days before today." }
+                    ?? "No water in the \(Water.Periods.Bounds.usualDays) days before today to go by, so today's fills the glass.")
+                    .foregroundStyle(Ink.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Counting this Mac's sessions…").foregroundStyle(Ink.secondary)
             }

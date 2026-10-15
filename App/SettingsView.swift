@@ -618,7 +618,7 @@ private struct ConversationPane: View {
             SettingsRow(title: "Water", detail: "How much water the thread is estimated to have used so far, under its latest turn and in the usage card with where the number comes from. Counted from the session Claude Code keeps, so on its threads only.") {
                 Toggle("Water", isOn: $showWater).labelsHidden().toggleStyle(.switch)
             }
-            SettingsRow(title: "A glass of water", detail: "The usage circle left of Send as a glass whose water rises as the plan's session goes, and in its card what Claude Code on this Mac used today, this week and this month. Goes with Water.") {
+            SettingsRow(title: "A glass of water", detail: "On Claude Code's threads, the usage circle left of Send as a glass of water in place of the plan's usage: full at a usual day, the average of the 30 days before today, and filled as far as today's water has gone. Its card says the water of the thread, today, this week and this month on this Mac. Goes with Water.") {
                 Toggle("A glass of water", isOn: $waterGlass).labelsHidden().toggleStyle(.switch)
                     .disabled(!showWater)
             }
