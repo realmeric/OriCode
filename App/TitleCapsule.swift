@@ -106,25 +106,25 @@ struct TitleCapsule: View {
 }
 
 
-/// The keyboard crossing between two threads, as two drops of the capsules' tint: the capsule
-/// clicked draws itself into a drop where it stands, the drop runs up into the window's capsule
-/// and the two flow together, the window's swelling as it takes it in; and the thread being left
-/// comes out of the window's capsule as a drop of its own, falls to the other column and spreads
-/// into that column's capsule. Each shape is blurred and the blur cut at half, as metaballs are
-/// drawn, so a drop nearing the capsule draws a neck to it and one leaving draws one out. The
-/// blur is all but none at either end, so the goo starts and ends as the capsules it stands in
-/// for. Their tint, titles and marks stand aside while it's out, and the titles fade in where
-/// the drops have landed. With Reduce Motion there's no goo, and the crossing ends as it begins.
+/// The keyboard crossing between two threads, as drops of the capsules' tint joining and parting
+/// the way water does. The capsule clicked draws itself into a drop where it stands, runs up to
+/// the window capsule's end facing it until the two touch, and flows in, the end reaching out to
+/// take it. The thread being left buds out of the other end, stretches it, pinches off, falls to
+/// its column and spreads into that column's capsule. Each shape is blurred and the blur cut at
+/// half, as metaballs are drawn, which is what draws the necks between them; the blur is all but
+/// none at either end, so the goo starts and ends as the capsules it stands in for. Their tint,
+/// titles and marks stand aside while it's out, and the titles fade in where the drops have
+/// landed. With Reduce Motion there's no goo, and the crossing ends as it begins.
 struct CrossingGoo: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let crossing: AppModel.Crossing
     @State private var progress = 0.0
 
-    static let duration = 0.9
+    static let duration = 1.0
     /// How far into the crossing the drop has flowed into the window's capsule, which is when
     /// the title arriving there shows.
-    static let merged = 0.72
+    static let merged = 0.82
 
     /// A title or mark as the crossing changes it: out at once, and in once its drop has landed.
     /// Anything else changes it at once.
@@ -174,8 +174,8 @@ private struct Goo: View, Animatable {
     }
 
     var body: some View {
-        // Widest mid-flight, where the necks are drawn, and next to none at either end.
-        let blur = 1 + 8 * sin(min(max(progress, 0), 1) * .pi)
+        // Wide for all but the ends, where the necks are drawn, and next to none at either end.
+        let blur = 1 + 8 * min(1, 2.5 * sin(min(max(progress, 0), 1) * .pi))
         Canvas { context, _ in
             context.addFilter(.alphaThreshold(min: 0.5, color: Surface.drawer))
             context.addFilter(.blur(radius: blur))
@@ -190,23 +190,47 @@ private struct Goo: View, Animatable {
     private var shapes: [CGRect] {
         let p = progress
         let round = CGSize(width: Self.drop, height: Self.drop)
-        // The capsule clicked: drawn into a drop where it stands, then up into the window's.
-        let rounding = Self.ease(Self.stage(p, 0, 0.3))
-        let rising = Self.ease(Self.stage(p, 0.18, 0.78))
-        let arriving = Self.rect(center: Self.mix(from.beside.center, to.capsule.center, rising),
-                                 size: Self.mix(from.beside.size, round, rounding))
-        // The thread being left: out of the window's capsule as a drop, down, and spread wide.
-        let falling = Self.ease(Self.stage(p, 0.12, 0.7))
-        let spreading = Self.ease(Self.stage(p, 0.66, 1))
-        let leaving = Self.rect(center: Self.mix(from.capsule.center, to.beside.center, falling),
-                                size: Self.mix(round, to.beside.size, spreading))
-        // The window's capsule, taking its new title's width, swelling a little as a drop leaves
-        // it and more as the other flows in.
-        let width = Self.ease(Self.stage(p, 0.25, 0.85))
-        let swell = 3 * Self.bump(p, at: 0.24, over: 0.14) + 5 * Self.bump(p, at: CrossingGoo.merged, over: 0.18)
-        let size = Self.mix(from.capsule.size, to.capsule.size, width)
-        let capsule = Self.rect(center: Self.mix(from.capsule.center, to.capsule.center, width),
-                                size: CGSize(width: size.width + swell * 2, height: size.height + swell))
+        // The window's capsule, taking its new title's width in the middle of it all.
+        let widening = Self.ease(Self.stage(p, 0.35, 0.75))
+        let body = Self.rect(center: Self.mix(from.capsule.center, to.capsule.center, widening),
+                             size: Self.mix(from.capsule.size, to.capsule.size, widening))
+        // Which end of it each drop meets: the one facing the column it comes from or goes to.
+        let inSide: CGFloat = from.beside.midX > to.capsule.midX ? 1 : -1
+        let outSide: CGFloat = to.beside.midX > from.capsule.midX ? 1 : -1
+        func end(_ side: CGFloat) -> CGFloat { side > 0 ? body.maxX : body.minX }
+
+        // The thread being left buds out of the end facing its column, the bud stretching the
+        // capsule's end after it, then pinches off, falls and spreads into its column's capsule.
+        let budding = Self.ease(Self.stage(p, 0.04, 0.3))
+        let pinching = Self.ease(Self.stage(p, 0.3, 0.42))
+        let falling = Self.ease(Self.stage(p, 0.38, 0.8))
+        let spreading = Self.ease(Self.stage(p, 0.76, 1))
+        let tip = end(outSide) + outSide * Self.drop * (0.5 * budding + 0.6 * pinching) - outSide * body.height / 2 * (1 - budding)
+        let budded = CGPoint(x: tip, y: body.midY)
+        let leaving = Self.rect(center: Self.mix(budded, to.beside.center, falling),
+                                size: Self.mix(Self.mix(CGSize(width: body.height, height: body.height), round, budding), to.beside.size, spreading))
+
+        // The capsule clicked draws itself into a drop where it stands, runs up to the end facing
+        // it until the two touch, and flows in, the drop going into the end as the end reaches out
+        // to take it, as two drops join.
+        let rounding = Self.ease(Self.stage(p, 0, 0.25))
+        let rising = Self.ease(Self.stage(p, 0.12, 0.6))
+        let joining = Self.ease(Self.stage(p, 0.6, 0.88))
+        let docked = CGPoint(x: end(inSide) + inSide * Self.drop * 0.45, y: body.midY)
+        let inside = CGPoint(x: end(inSide) - inSide * body.height / 2, y: body.midY)
+        let arriving = Self.rect(center: Self.mix(Self.mix(from.beside.center, docked, rising), inside, joining),
+                                 size: Self.mix(Self.mix(from.beside.size, round, rounding), CGSize(width: body.height, height: body.height), joining))
+
+        // Each end reaching after its drop, and the capsule filling out a little as the drop
+        // that joins it settles.
+        var capsule = body
+        let reachOut = 14 * Self.bump(p, at: 0.24, over: 0.16)
+        let reachIn = 12 * Self.bump(p, at: 0.7, over: 0.14)
+        for (side, reach) in [(outSide, reachOut), (inSide, reachIn)] {
+            if side > 0 { capsule.size.width += reach } else { capsule.origin.x -= reach; capsule.size.width += reach }
+        }
+        let fill = 3 * Self.bump(p, at: CrossingGoo.merged, over: 0.12)
+        capsule = capsule.insetBy(dx: 0, dy: -fill / 2)
         return [capsule, arriving, leaving]
     }
 
