@@ -5,23 +5,22 @@ import SwiftUI
 /// Its rim is the same tint, so even a full one reads as a glass rather than a dot. Hovering opens
 /// the card.
 ///
-/// With Water and A glass of water on, it is a glass of water instead, and says nothing of the
-/// plan: its water stands at today's water on this Mac against a usual day, and its card is the
-/// water alone. That is on a thread whose agent has a water figure, which is Claude Code's, since
-/// water.json counts its transcripts alone; on any other the circle and its card stay as they are.
+/// With Water on, it is a glass of water instead, and says nothing of the plan: its water stands
+/// at today's water on this Mac against a usual day, and its card is the water alone. That is on
+/// a thread whose agent has a water figure, which is Claude Code's, since water.json counts its
+/// transcripts alone; on any other the circle and its card stay as they are.
 struct UsageGlass: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
 
     @AppStorage(TranscriptSettings.showWater) private var showWater = false
-    @AppStorage(TranscriptSettings.waterGlass) private var waterGlass = false
     @State private var shown = false
     @State private var overGlass = false
     @State private var overCard = false
     @State private var pending: Task<Void, Never>?
 
     var body: some View {
-        let ofWater = showWater && waterGlass && model.providerID(for: chat) == ProviderInfo.claudeID
+        let ofWater = showWater && model.providerID(for: chat) == ProviderInfo.claudeID
         let periods = ofWater ? model.waterTotals.periods : nil
         let used = ofWater ? nil : model.usage?.headline?.used
         // Empty until the first reading, which it rises to.
@@ -199,29 +198,28 @@ private struct WaterGlass: View {
     }
 }
 
-/// Each window as a bar with when it rolls over, then this thread's context, and its water when
-/// Settings asks for that. From a glass of water it is the water alone: the thread's and this
-/// Mac's by the calendar, and nothing of the plan or the context.
+/// Each window as a bar with when it rolls over, then this thread's context. From a glass of
+/// water it is the water alone: the thread's and this Mac's by the calendar, and nothing of the
+/// plan or the context.
 struct UsageCard: View {
     @Environment(AppModel.self) private var model
     let chat: Chat?
     let ofWater: Bool
     @State private var appeared = false
-    @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
     enum Part: Hashable {
-        case plan, context, water, waterByPeriod
+        case plan, context, waterByPeriod
     }
 
     /// What the card holds, top to bottom.
-    static func parts(ofWater: Bool, context: Bool, water: Bool) -> [Part] {
+    static func parts(ofWater: Bool, context: Bool) -> [Part] {
         if ofWater { return [.waterByPeriod] }
-        return [.plan] + (context ? [.context] : []) + (water ? [.water] : [])
+        return [.plan] + (context ? [.context] : [])
     }
 
     var body: some View {
         let thread = chat.flatMap { model.conversations[$0.id]?.water.reading }
-        let parts = Self.parts(ofWater: ofWater, context: (chat?.contextWindow ?? 0) > 0, water: showWater && thread != nil)
+        let parts = Self.parts(ofWater: ofWater, context: (chat?.contextWindow ?? 0) > 0)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(parts.enumerated()), id: \.element) { index, part in
                 if index > 0 { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
@@ -232,8 +230,6 @@ struct UsageCard: View {
                         ContextBar(used: chat.contextUsed, window: chat.contextWindow, appeared: appeared)
                             .animation(Motion.reading.delay(0.18), value: appeared)
                     }
-                case .water:
-                    if let thread { WaterLines(water: thread) }
                 case .waterByPeriod:
                     WaterByPeriod(thread: thread, periods: model.waterTotals.periods)
                         .task { model.waterTotals.read() }
@@ -318,29 +314,6 @@ private struct ContextBar: View {
             Bar(fraction: appeared ? fraction : 0, color: Ink.secondary)
             Text("of its context in use").font(Type.secondary).foregroundStyle(Ink.secondary)
         }
-    }
-}
-
-/// The thread's water once more, with what the footer leaves out: the glasses, the coefficient
-/// and the source it comes from by name.
-private struct WaterLines: View {
-    let water: Water.Reading
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Water").foregroundStyle(Ink.primary)
-                Spacer(minLength: 8)
-                Text("≈ \(water.volume), estimated").foregroundStyle(Ink.secondary)
-            }
-            Text((water.hasGlasses ? "\(water.glasses) glasses of \(water.glassMl), at " : "At ") + water.coefficient)
-                .foregroundStyle(Ink.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(water.source)
-                .foregroundStyle(Ink.faint)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(Type.secondary)
     }
 }
 

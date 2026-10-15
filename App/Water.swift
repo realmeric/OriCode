@@ -601,7 +601,7 @@ extension AppModel {
         guard UserDefaults.standard.bool(forKey: TranscriptSettings.showWater), let conversation = conversations[chat.id] else { return }
         conversation.water.read(session: chat.providerID == ProviderInfo.claudeID ? chat.sessionId : nil, cwd: chat.cwd, again: turnEnded)
         // The glass of water stands at today's water, which the turn has just added to.
-        if turnEnded, chat.providerID == ProviderInfo.claudeID, UserDefaults.standard.bool(forKey: TranscriptSettings.waterGlass) {
+        if turnEnded, chat.providerID == ProviderInfo.claudeID {
             waterTotals.read(after: WaterMeter.writeWait)
         }
     }

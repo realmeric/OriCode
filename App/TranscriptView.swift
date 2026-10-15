@@ -1038,9 +1038,6 @@ enum TranscriptSettings {
     static let showCost = "showTurnCost"
     /// The thread's estimated water, under its latest turn and in the usage card. Off until asked for.
     static let showWater = "showWater"
-    /// The usage glass drawn as a glass of water, today's against a usual day, and its card the
-    /// water by the thread, day, week and month. It goes with `showWater`: on alone, it does nothing.
-    static let waterGlass = "waterGlass"
     static let showThinking = "showThinking"
     /// Replies asked to be short, which the engine tells the agent.
     static let concise = "conciseReplies"

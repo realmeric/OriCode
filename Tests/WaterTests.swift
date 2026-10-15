@@ -468,12 +468,10 @@ struct WaterTests {
     /// one it is the plan first, as before.
     @Test func theGlassOfWatersCardHasNothingOfThePlan() {
         for context in [false, true] {
-            for water in [false, true] {
-                #expect(UsageCard.parts(ofWater: true, context: context, water: water) == [.waterByPeriod])
-            }
+            #expect(UsageCard.parts(ofWater: true, context: context) == [.waterByPeriod])
         }
-        #expect(UsageCard.parts(ofWater: false, context: true, water: true) == [.plan, .context, .water])
-        #expect(UsageCard.parts(ofWater: false, context: false, water: false) == [.plan])
+        #expect(UsageCard.parts(ofWater: false, context: true) == [.plan, .context])
+        #expect(UsageCard.parts(ofWater: false, context: false) == [.plan])
     }
 
     /// Mid-turn, the tools' results in one moment share one reading, a moment after the first.
