@@ -39,7 +39,7 @@ enum MarkPalette {
     static let makers: [String: UInt32] = [
         ProviderInfo.claudeID: 0xD97757,
         "codex": 0xFFFFFF, "cursor": 0xFFFFFF, "opencode": 0xFFFFFF, "grok": 0xFFFFFF, "devin": 0xFFFFFF, "zai": 0xFFFFFF,
-        "commandcode": 0xFFFFFF,
+        "commandcode": 0xFFFFFF, "anthropic": 0xFFFFFF,
         "copilot": 0x8534F3,
         // Pi's mark is three blocks, coral, blue and yellow; coral is its top.
         "pi": 0xF09082,
@@ -62,14 +62,7 @@ enum MarkPalette {
         "meta": (0xD4E5FF, 0xF4F8FE),
     ]
 
-    /// The agent whose mark an agent draws: its own, or Claude's for the Anthropic API, whose maker's
-    /// mark Claude's already is.
-    static func mark(of agent: String) -> String {
-        agent == "anthropic" ? ProviderInfo.claudeID : agent
-    }
-
     static func ink(for agent: String) -> AgentInk {
-        let agent = mark(of: agent)
         if agent == ProviderInfo.claudeID { return .claude }
         guard let mark = makers[agent], let heat = heat[agent] else { return .silver }
         return AgentInk(base: rgb(mark), ember: rgb(heat.ember), whiteHot: rgb(heat.whiteHot))
@@ -77,7 +70,7 @@ enum MarkPalette {
 
     /// The agent's logo, its dot while it works and a worker's ray.
     static func color(for agent: String) -> Color {
-        Color(rgb(makers[mark(of: agent)] ?? 0xFFFFFF))
+        Color(rgb(makers[agent] ?? 0xFFFFFF))
     }
 
     /// The colour of each lit ray, from the agent that holds it.

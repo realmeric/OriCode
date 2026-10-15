@@ -20,7 +20,7 @@ struct MarkPaletteTests {
     }
 
     private static let agents = ["codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "zai", "deepseek",
-                                 "openrouter", "meta", "commandcode"]
+                                 "openrouter", "meta", "commandcode", "anthropic"]
 
     private func thread(on agent: String?) -> Conversation {
         let chat = Chat(project: project)
@@ -74,7 +74,7 @@ struct MarkPaletteTests {
     private static let makers: [String: UInt32] = [
         "claude": 0xD97757, "codex": 0xFFFFFF, "cursor": 0xFFFFFF, "copilot": 0x8534F3, "opencode": 0xFFFFFF, "grok": 0xFFFFFF,
         "devin": 0xFFFFFF, "pi": 0xF09082, "antigravity": 0x3186FF, "zai": 0xFFFFFF, "deepseek": 0x4D6BFE, "openrouter": 0xC8FF00,
-        "meta": 0x0064E0, "commandcode": 0xFFFFFF,
+        "meta": 0x0064E0, "commandcode": 0xFFFFFF, "anthropic": 0xFFFFFF,
     ]
 
     private static var coloured: [String] {
@@ -120,16 +120,6 @@ struct MarkPaletteTests {
             #expect(AgentMark.hasLogo(agent))
         }
         #expect(!AgentMark.hasLogo("someone-new"))
-    }
-
-    /// The Anthropic API draws Claude's mark, Anthropic's, from Claude's asset and in Claude's ink,
-    /// rather than a second copy of it.
-    @Test func theAnthropicAPIDrawsClaudesMark() {
-        #expect(MarkPalette.mark(of: "anthropic") == ProviderInfo.claudeID)
-        #expect(NSImage(named: "anthropic") == nil)
-        #expect(AgentMark.hasLogo("anthropic"))
-        #expect(MarkPalette.ink(for: "anthropic") == .claude)
-        #expect(components(MarkPalette.color(for: "anthropic")) == components(MarkPalette.color(for: ProviderInfo.claudeID)))
     }
 
     @Test func aHeadIsOnTheThreadsAgentUnlessTheEngineNamesAnother() {
