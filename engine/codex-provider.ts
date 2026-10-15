@@ -1,7 +1,8 @@
 import { agent, binary, isOn, versionOf } from "./agents.ts";
-import { availability, CodexSession, listModels, usage } from "./codex.ts";
+import { availability, CodexSession, listModels, threadEvents, threadsIn, usage } from "./codex.ts";
 import type { Model } from "./models.ts";
-import type { Availability, Provider } from "./provider.ts";
+import { client, type Availability, type Provider } from "./provider.ts";
+import { perSource, type Found, type Source } from "./sessions.ts";
 
 // Codex behind the Provider seam: the user's own codex, found by the one login shell agents.ts
 // runs, and a thread's session one `codex app-server` of its own.
@@ -59,4 +60,27 @@ export const codex: Provider = {
   listModels: models,
   session: (threadId, cli) => new CodexSession(threadId, { command: cli }),
   usage: (cli) => usage({ command: cli }),
+};
+
+/// The user's Codex threads, from its CLI's and its app's alike, while Codex is turned on in
+/// Settings › Agents. Each picks up on Codex by its id. OriCode's own are threads already.
+export const codexThreads: Source = {
+  id: entry.id,
+  name: entry.name,
+  async list(folder) {
+    const cli = await binary(entry.id);
+    if (!cli) return [];
+    const found: Found[] = [];
+    for (const thread of await threadsIn({ command: cli }, [folder.path, folder.real], perSource)) {
+      if (thread.originator === client || !(await folder.holds(thread.cwd))) continue;
+      const title = thread.name?.trim() || thread.preview.split("\n").find((line) => line.trim())?.trim() || "Untitled thread";
+      found.push({ id: thread.id, agent: entry.id, sessionId: thread.id, title, modified: thread.updatedAt * 1000, branch: thread.gitInfo?.branch ?? null });
+    }
+    return found;
+  },
+  async read(id) {
+    const cli = await binary(entry.id);
+    if (!cli) throw new Error(`${entry.name} is off in Settings › Agents, or isn't installed.`);
+    return threadEvents({ command: cli }, id);
+  },
 };

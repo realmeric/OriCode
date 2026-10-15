@@ -79,6 +79,9 @@ final class Chat {
     /// The thread that opened it, through open_thread, when one did: its first turn's end is told
     /// to that thread, and it never opens a thread itself.
     var openedBy: UUID?
+    /// The session in another tool it was imported from, as `source/id`, so Import sessions knows
+    /// it's here already after its session id has changed or it moved to another agent.
+    var importedFrom: String?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

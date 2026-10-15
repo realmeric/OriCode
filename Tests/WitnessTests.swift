@@ -627,7 +627,9 @@ struct WitnessTests {
             ["event": "tool.use", "toolUseId": "t1", "name": "Bash", "input": ["command": "make test"]],
             ["event": "tool.result", "toolUseId": "t1", "content": "ok", "isError": false],
         ]
-        let chat = model.adopt(CLISession(id: "s-1", title: "Run the tests", modified: 0, branch: nil), events: events, in: project)
+        let session = OutsideSession(source: "claude", sourceName: "Claude Code", id: "s-1", agent: "claude", sessionId: "s-1",
+                                     title: "Run the tests", modified: 0, branch: nil)
+        let chat = model.adopt(session, events: events, in: project)
         let runs = Provenance(items: model.conversation(for: chat).items) { $0 }.runs
         #expect(runs.map(\.check) == ["make test"])
         // The moment it was opened is no run's start: every file would read as older than it.

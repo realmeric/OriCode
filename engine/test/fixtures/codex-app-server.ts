@@ -2,11 +2,13 @@
 // over NDJSON with no "jsonrpc" on its lines, as Codex 0.157.1 writes them, a scripted turn for
 // each prompt, and no model anywhere. Every message it's sent goes to CODEX_LOG, one per line.
 // CODEX_SIGNED_OUT=1 makes it signed out.
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const signedOut = process.env.CODEX_SIGNED_OUT === "1";
+/// The user's history its thread/list and thread/read give, made up.
+const history = JSON.parse(readFileSync(new URL("./sessions/codex-threads.json", import.meta.url), "utf8"));
 
 if (process.argv[2] === "login") {
   process.stdout.write(signedOut ? "Not logged in\n" : "Logged in using ChatGPT\n");
@@ -224,6 +226,10 @@ async function handle(message: any): Promise<void> {
       return send({ id, result: { rateLimits: { limitId: "codex", primary: { usedPercent: 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null } } });
     case "model/list":
       return send({ id, result: params.cursor ? { data: [models[1]], nextCursor: null } : { data: [models[0]], nextCursor: "page-2" } });
+    case "thread/list":
+      return send({ id, result: { data: history.threads, nextCursor: null, backwardsCursor: null } });
+    case "thread/read":
+      return send({ id, result: { thread: { ...history.threads.find((thread: { id: string }) => thread.id === params.threadId), turns: params.includeTurns ? history.turns : [] } } });
     case "thread/start":
       threadId = "t-1";
       return send({ id, result: { thread: { id: threadId }, model: params.model ?? "gpt-small", cwd: params.cwd, approvalPolicy: params.approvalPolicy } });

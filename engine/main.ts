@@ -4,13 +4,13 @@ import { agent, change, check, isOn, lookUp, registry, turnedOn, turnOn, unasked
 import { antigravity } from "./antigravity-provider.ts";
 import { claude } from "./claude.ts";
 import { anthropic, deepseek, meta, openrouter, zai } from "./claude-compatible.ts";
-import { codex } from "./codex-provider.ts";
+import { codex, codexThreads } from "./codex-provider.ts";
 import { commandcode } from "./commandcode-provider.ts";
-import { copilot } from "./copilot.ts";
-import { cursor } from "./cursor.ts";
+import { copilot, copilotSessions } from "./copilot.ts";
+import { cursor, cursorChats } from "./cursor.ts";
 import { devin } from "./devin.ts";
 import { grok } from "./grok.ts";
-import { opencode } from "./opencode.ts";
+import { opencode, opencodeSessions } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
@@ -24,7 +24,8 @@ import { addWorktree, branch, branches, create, previous, pull, push, remote, re
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
 import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
-import { sessionEvents, sessionsIn } from "./sessions.ts";
+import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
+import { t3Code } from "./t3code.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
 import { version } from "./version.ts";
@@ -32,6 +33,10 @@ import { emit, event, log, type Request } from "./wire.ts";
 
 // The compile cache is for this engine's own modules; the CLIs and servers it starts don't inherit it.
 delete process.env.NODE_COMPILE_CACHE;
+
+/// Where sessions come in from. T3 Code first: its threads run on Claude Code or Codex, which list
+/// the same sessions again, and the listing keeps the first, which has T3's title.
+const sources = [t3Code, claudeCode, codexThreads, opencodeSessions, copilotSessions, cursorChats];
 
 const providers = new Map<string, Provider>([
   [claude.id, claude],
@@ -445,14 +450,13 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { ok: true };
   },
 
-  /// Claude Code's own sessions for a folder, started with `claude` in Terminal, and one of them
-  /// as the events a thread stores.
+  /// The sessions a folder had in other tools, and one of them as the events a thread stores.
   async "sessions.list"({ cwd }: { cwd: string }) {
-    return { sessions: await sessionsIn(cwd) };
+    return { sessions: await sessionsIn(cwd, sources) };
   },
 
-  async "sessions.read"({ cwd, sessionId }: { cwd: string; sessionId: string }) {
-    return { events: await sessionEvents(cwd, sessionId) };
+  async "sessions.read"({ source, id }: { source: string; id: string }) {
+    return { events: await sessionEvents(sources, source, id) };
   },
 
   /// The MCP servers Claude Code loads for a folder, for Settings › MCP: listed, switched on or

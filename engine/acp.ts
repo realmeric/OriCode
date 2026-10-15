@@ -5,7 +5,7 @@ import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { diffHunks, diffOf, exitCode, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
 import { within } from "./child.ts";
-import { asks as registry, toolsServer } from "./provider.ts";
+import { asks as registry, client, toolsServer } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
@@ -439,7 +439,7 @@ export class AcpSession {
     const asked = this.request("initialize", {
       protocolVersion: 1,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-      clientInfo: { name: "oricode", title: "OriCode", version },
+      clientInfo: { name: client, title: "OriCode", version },
     });
     // An agent that never says hello would hold the turn, or the check, and its process for good.
     const init: {

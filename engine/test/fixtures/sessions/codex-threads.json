@@ -1,0 +1,62 @@
+{
+  "threads": [
+    {
+      "id": "019a-tui",
+      "name": null,
+      "preview": "\nWhy does the drawer flicker?\nIt happens on launch.",
+      "cwd": "/w/p",
+      "updatedAt": 1790000300,
+      "originator": "codex-tui",
+      "gitInfo": { "sha": null, "branch": "main", "originUrl": null }
+    },
+    {
+      "id": "019a-oricode",
+      "name": null,
+      "preview": "A thread OriCode opened",
+      "cwd": "/w/p",
+      "updatedAt": 1790000200,
+      "originator": "oricode",
+      "gitInfo": null
+    },
+    {
+      "id": "019a-app",
+      "name": "Rename the store",
+      "preview": "rename it",
+      "cwd": "/w/p",
+      "updatedAt": 1790000100,
+      "originator": "Codex Desktop",
+      "gitInfo": null
+    },
+    {
+      "id": "019a-elsewhere",
+      "name": null,
+      "preview": "another folder",
+      "cwd": "/w/q",
+      "updatedAt": 1790000000,
+      "originator": "codex-tui",
+      "gitInfo": null
+    }
+  ],
+  "turns": [
+    {
+      "id": "turn-1",
+      "items": [
+        { "type": "userMessage", "id": "u1", "clientId": null, "content": [{ "type": "text", "text": "Why does the drawer flicker?", "text_elements": [] }] },
+        { "type": "reasoning", "id": "r1", "summary": ["Looking at the drawer."], "content": [] },
+        { "type": "agentMessage", "id": "a1", "text": "Reading it.", "phase": null },
+        {
+          "type": "commandExecution",
+          "id": "c1",
+          "command": "/bin/zsh -lc 'cat Drawer.swift'",
+          "cwd": "/w/p",
+          "commandActions": [{ "type": "read", "path": "Drawer.swift" }],
+          "aggregatedOutput": "struct Drawer {}",
+          "exitCode": 0,
+          "status": "completed"
+        },
+        { "type": "agentMessage", "id": "a2", "text": "It redraws on every scroll.", "phase": null },
+        { "type": "agentMessage", "id": "a3", "text": "Fixed by keeping its height.", "phase": null }
+      ]
+    }
+  ]
+}

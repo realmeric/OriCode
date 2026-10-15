@@ -65,6 +65,10 @@ export function told(instructions?: string): string {
   return instructions ? `${drawing}\n\n${instructions}` : drawing;
 }
 
+/// The name OriCode gives itself to the agents it starts, which Codex and Copilot keep with each
+/// session OriCode opens.
+export const client = "oricode";
+
 /// The name OriCode's own tools go by among a head's MCP servers, and how long one call may take:
 /// worker_result waits up to five minutes for a worker, and this leaves it room.
 export const toolsServer = "oricode";

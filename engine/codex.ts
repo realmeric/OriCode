@@ -7,7 +7,8 @@ import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
 import { runSettled, within } from "./child.ts";
-import { asks as registry, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
+import { asks as registry, client, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
+import { replied } from "./sessions.ts";
 import { lastLine } from "./shell.ts";
 import type { Usage } from "./usage.ts";
 import { version } from "./version.ts";
@@ -864,6 +865,44 @@ export async function usage(binary: CodexBinary = { command: "codex" }): Promise
   return result;
 }
 
+/// A thread as Codex's own list gives it, with what an import needs of it.
+export type CodexThread = { id: string; name: string | null; preview: string; cwd: string; updatedAt: number; originator: string | null; gitInfo: { branch: string | null } | null };
+
+/// The threads Codex keeps for a folder, latest first, as `codex resume` would list them: every
+/// interactive client's, its CLI's, its app's and OriCode's own, which have OriCode's `client`
+/// name as their originator. Codex takes each path as the folder's, symlink or not. Asked of a
+/// short-lived app-server, which reaches no model.
+export async function threadsIn(binary: CodexBinary, paths: string[], limit: number): Promise<CodexThread[]> {
+  const page: { data: CodexThread[] } = await withServer(binary, (server) => server.request("thread/list", { cwd: paths, limit, sortKey: "updated_at" }));
+  return page.data;
+}
+
+/// A thread's transcript as Codex reads it from its history.
+export async function threadEvents(binary: CodexBinary, threadId: string): Promise<Record<string, unknown>[]> {
+  const read: { thread: { turns: { items: Item[] }[] } } = await withServer(binary, (server) => server.request("thread/read", { threadId, includeTurns: true }));
+  return transcriptOf(read.thread.turns);
+}
+
+/// Turns as the events a live thread on Codex leaves: the items its turns told as they ran, and
+/// nothing of a plan, which a live thread hears beside them.
+export function transcriptOf(turns: { items: Item[] }[]): Record<string, unknown>[] {
+  const events: Record<string, unknown>[] = [];
+  for (const item of turns.flatMap((turn) => turn.items)) {
+    if (item.type === "userMessage") {
+      const text = (item.content as { type: string; text?: string }[]).flatMap((part) => (part.type === "text" && part.text ? [part.text] : [])).join("\n");
+      if (text.trim()) events.push({ event: "user", text });
+    } else if (item.type === "agentMessage") {
+      replied(events, item.text);
+    } else if (item.type === "reasoning") {
+      const parts: string[] = item.summary?.length ? item.summary : (item.content ?? []);
+      if (parts.join("").trim()) events.push({ event: "thinking", delta: parts.join("\n\n") });
+    }
+    for (const call of toolCalls(item)) events.push({ event: "tool.use", toolUseId: call.id, name: call.name, input: call.input, kind: call.kind, view: call.view });
+    for (const result of toolResults(item)) events.push({ event: "tool.result", toolUseId: result.id, content: result.content, isError: result.isError, patch: result.patch, exitCode: result.exitCode });
+  }
+  return events;
+}
+
 export type CodexAvailability = { state: "ready" | "signedOut" | "missing"; plan: string | null; hint: string | null };
 
 /// Whether the user's codex is there and signed in, asked the way Terminal would, with the plan
@@ -921,7 +960,7 @@ class AppServer {
 
   async initialize(): Promise<void> {
     await this.request("initialize", {
-      clientInfo: { name: "oricode", title: "OriCode", version },
+      clientInfo: { name: client, title: "OriCode", version },
       capabilities: { experimentalApi: false, requestAttestation: false, optOutNotificationMethods: quiet },
     });
     this.write({ jsonrpc: "2.0", method: "initialized" });

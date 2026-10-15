@@ -66,6 +66,10 @@ Some agents can sign in with an account whose maker keeps that login to its own 
 - Pi signed into xAI. xAI's terms couldn't be read when this was built, so the switch quotes nothing and links to them.
 - Pi signed into Meta. Meta says a Muse Code credential is for Muse Code only.
 
+## Sessions from other tools
+
+⌘K's Import sessions… lists the project's sessions from the other tools on your Mac: Claude Code's from Terminal and Claude's app, Codex's from its CLI and its app, OpenCode's, Copilot's, Cursor's chats from `cursor-agent`, and T3 Code's threads. Each shows its tool's name and its agent's mark, and Import all brings in every one that isn't a thread yet. A session comes in on the agent that ran it and goes on in the same session, where that agent is turned on in Settings › Agents and can pick a session up by its id; T3 Code's go on in the Claude, Codex or Cursor session underneath them. The rest, Cursor's chats among them, come in with their transcript, and your next message hands it over to the agent a new thread starts on. So does a Claude Code session begun under another path to the folder, through a symlink, since Claude Code picks a session up only from the path it began in. Codex's and OpenCode's are asked of their own CLIs, so they're listed only while those agents are on. OriCode reads the other tools' files and writes nothing into them.
+
 ## Rays
 
 A thread's model is its head, and its rays are the models it sends workers out on, any agent's. The model page picks the head, and its Rays line under the models picks the rays from every ready agent's models the model menu shows: Opus as the head with GPT-6-Luna as its ray, say. The model button shows each ray's mark beside the head's name. With rays picked, OriCode tells the head which it has, in its own instructions rather than your prompt, so it hands them the parts of a task that suit them without being asked. With none, the head works alone.

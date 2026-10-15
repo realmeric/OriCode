@@ -1,0 +1,9 @@
+{"type":"session.start","data":{"sessionId":"0c6b1f2e-cli","producer":"copilot-agent"},"id":"e1","timestamp":"2026-09-19T09:00:00.000Z","parentId":null}
+{"type":"user.message","data":{"content":"List the tests\nand count them"},"id":"e2","timestamp":"2026-09-19T09:00:01.000Z","parentId":"e1"}
+{"type":"assistant.reasoning","data":{"reasoningId":"r1","content":"Glob for them."},"id":"e3","timestamp":"2026-09-19T09:00:02.000Z","parentId":"e2"}
+{"type":"assistant.message_delta","data":{"messageId":"m1","deltaContent":"Look"},"ephemeral":true,"id":"e4","timestamp":"2026-09-19T09:00:03.000Z","parentId":"e3"}
+{"type":"assistant.message","data":{"messageId":"m1","content":"Looking.","toolRequests":[{"toolCallId":"tc1","name":"glob","arguments":{"pattern":"test/*.ts"}}]},"id":"e5","timestamp":"2026-09-19T09:00:03.000Z","parentId":"e3"}
+{"type":"tool.execution_start","data":{"toolCallId":"tc1","toolName":"glob","arguments":{"pattern":"test/*.ts"}},"id":"e6","timestamp":"2026-09-19T09:00:04.000Z","parentId":"e5"}
+{"type":"assistant.message","data":{"messageId":"m2","content":"A subagent's."},"agentId":"sub-1","id":"e7","timestamp":"2026-09-19T09:00:04.500Z","parentId":"e6"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tc1","success":true,"result":{"content":"test/a.test.ts\ntest/b.test.ts"}},"id":"e8","timestamp":"2026-09-19T09:00:05.000Z","parentId":"e6"}
+{"type":"assistant.message","data":{"messageId":"m3","content":"Two."},"id":"e9","timestamp":"2026-09-19T09:00:06.000Z","parentId":"e8"}

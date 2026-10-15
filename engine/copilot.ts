@@ -1,8 +1,14 @@
 import { spawn } from "node:child_process";
+import { createReadStream, existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { acpProvider } from "./acp-provider.ts";
 import { agent } from "./agents.ts";
-import type { Availability } from "./provider.ts";
+import { client, type Availability } from "./provider.ts";
+import { called, perSource, replied, type Found, type Folder, type Source, type Transcript } from "./sessions.ts";
 
 // GitHub Copilot through `copilot --acp`. Whether it's signed in, and whether that GitHub account
 // has a Copilot plan at all, comes from its headless server (`copilot --headless --stdio`, the
@@ -90,6 +96,95 @@ function headless(cli: string, env: Record<string, string>) {
     },
   };
 }
+
+/// Where Copilot's CLI keeps its sessions, ACP's among them: a folder each, with a workspace.yaml
+/// saying where it ran and which client opened it, and events.jsonl, the session's log, which is
+/// what Copilot replays to resume it.
+function sessionState(home: string): string {
+  return join(home, ".copilot", "session-state");
+}
+
+/// workspace.yaml's `key: value` lines, which are all it holds.
+export function workspace(yaml: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const line of yaml.split("\n")) {
+    const [, key, value] = /^(\w+):\s*(.*?)\s*$/.exec(line) ?? [];
+    if (key) fields[key] = value.startsWith('"') ? JSON.parse(value) : value.replace(/^'(.*)'$/, "$1");
+  }
+  return fields;
+}
+
+/// The first thing the user typed in a session's log, or nothing for a session where nothing was.
+async function firstTyped(log: string): Promise<string | undefined> {
+  if (!existsSync(log)) return undefined;
+  const lines = createInterface({ input: createReadStream(log), crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      if (!line.includes('"user.message"')) continue;
+      const entry = JSON.parse(line);
+      if (entry.type === "user.message" && !entry.agentId && entry.data?.content?.trim()) return entry.data.content;
+    }
+  } finally {
+    lines.close();
+  }
+  return undefined;
+}
+
+export async function copilotSessionsIn(folder: Folder, home = homedir()): Promise<Found[]> {
+  const root = sessionState(home);
+  const found: Found[] = [];
+  for (const id of await readdir(root).catch(() => [])) {
+    const yaml = await readFile(join(root, id, "workspace.yaml"), "utf8").catch(() => undefined);
+    if (yaml === undefined) continue;
+    const fields = workspace(yaml);
+    if (fields.client_name === client || !(await folder.holds(fields.cwd))) continue;
+    const typed = await firstTyped(join(root, id, "events.jsonl"));
+    if (typed === undefined) continue;
+    const title = fields.summary || fields.name || typed.split("\n").find((line) => line.trim())?.trim() || "Untitled session";
+    found.push({ id, agent: "copilot", sessionId: id, title, modified: Date.parse(fields.updated_at) || 0, branch: fields.branch || null });
+  }
+  return found.sort((a, b) => b.modified - a.modified).slice(0, perSource);
+}
+
+/// Copilot's tools by name, as the kinds the app draws.
+const kinds: Record<string, string> = {
+  bash: "run",
+  view: "read",
+  edit: "edit",
+  str_replace: "edit",
+  create: "write",
+  grep: "search",
+  glob: "search",
+  web_fetch: "fetch",
+  task: "agent",
+  update_todo: "plan",
+};
+
+/// A session's transcript from its log, the events GitHub's SDK documents as persisted. What a
+/// subagent said is left out, as it is from a live thread.
+export async function copilotEvents(id: string, home = homedir()): Promise<Transcript> {
+  const events: Transcript = [];
+  for (const line of (await readFile(join(sessionState(home), id, "events.jsonl"), "utf8")).split("\n")) {
+    if (!line.trim()) continue;
+    const { type, data, agentId, ephemeral } = JSON.parse(line);
+    if (agentId || ephemeral || data?.parentToolCallId) continue;
+    if (type === "user.message" && data.content?.trim()) events.push({ event: "user", text: data.content });
+    if (type === "assistant.reasoning" && data.content?.trim()) events.push({ event: "thinking", delta: data.content });
+    if (type === "assistant.message") replied(events, data.content);
+    if (type === "tool.execution_start") events.push(called(data.toolCallId, data.toolName, data.arguments, kinds[data.toolName] ?? "other"));
+    if (type === "tool.execution_complete") events.push({ event: "tool.result", toolUseId: data.toolCallId, content: data.result?.content ?? data.error?.message ?? "", isError: data.success === false });
+  }
+  return events;
+}
+
+/// Copilot's sessions from its CLI and any other client but OriCode, whose own are threads
+/// already. Each picks up over ACP by its id.
+export const copilotSessions: Source = {
+  id: "copilot",
+  name: "Copilot",
+  list: (folder) => copilotSessionsIn(folder),
+  read: (id) => copilotEvents(id),
+};
 
 export const copilot = acpProvider({
   id: "copilot",

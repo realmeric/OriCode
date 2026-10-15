@@ -73,8 +73,10 @@ struct ProjectsTests {
             ["event": "user", "text": "And the tests?"],
             ["event": "text", "delta": "They pass."],
         ]
-        let chat = model.adopt(CLISession(id: "s-9", title: "Read the Makefile", modified: 0, branch: nil), events: events, in: project)
-        #expect(chat.sessionId == "s-9" && chat.started && chat.cwd == "/tmp/alpha")
+        let session = OutsideSession(source: "claude", sourceName: "Claude Code", id: "s-9", agent: "claude", sessionId: "s-9",
+                                     title: "Read the Makefile", modified: 0, branch: nil)
+        let chat = model.adopt(session, events: events, in: project)
+        #expect(chat.sessionId == "s-9" && chat.providerID == "claude" && chat.started && chat.cwd == "/tmp/alpha" && !chat.handover)
         #expect(model.chats.map(\.id) == [chat.id])
         let conversation = model.conversation(for: chat)
         #expect(conversation.items.count == 5)

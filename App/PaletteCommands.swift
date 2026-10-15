@@ -322,8 +322,9 @@ extension AppModel {
             items.append(command("thread.branch", startsOnBranch ? "New thread in the project's folder" : "New thread on its own branch",
                                  icon: startsOnBranch ? "folder" : "arrow.triangle.branch", shortcut: shortcuts.label(.newThreadOnBranch),
                                  keywords: ["worktree", "branch", "local"], unavailable: noProject) { [weak self] in self?.openOtherThread() })
-            items.append(PaletteItem(id: "thread.session", kind: .command, title: "Open a Claude Code session…", keywords: ["cli", "terminal", "resume", "import", "claude"],
-                                     icon: "terminal", unavailable: noProject ?? (engineState == .ready ? nil : "The engine isn't running"), action: .list(sessionList)))
+            items.append(PaletteItem(id: "thread.session", kind: .command, title: "Import sessions…",
+                                     keywords: ["open", "session", "resume", "history", "terminal", "cli", "claude", "codex", "t3", "cursor", "opencode", "copilot"],
+                                     icon: "square.and.arrow.down", unavailable: noProject ?? (engineState == .ready ? nil : "The engine isn't running"), action: .list(sessionList)))
         }
         items.append(command("thread.noFolder", "New thread without a folder", icon: "laptopcomputer",
                              keywords: ["no folder", "no project", "laptop", "scratch", "anywhere"]) { [weak self] in self?.openThreadWithoutFolder() })

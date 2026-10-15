@@ -429,10 +429,7 @@ extension AppModel {
         let moved = chat.providerID != ref.provider
         if moved {
             chat.provider = ref.provider
-            let modes = agent(for: chat).permissionModes
-            if let first = modes.first, !modes.contains(where: { $0.rawValue == chat.permissionMode }) {
-                chat.permissionMode = first.rawValue
-            }
+            fitPermissionMode(of: chat)
         }
         chat.model = ref.id
         if let levels = option(ref)?.efforts, let effort = chat.effort, !levels.contains(effort) {
@@ -441,6 +438,14 @@ extension AppModel {
         if moved, chat.started { changedAgent(chat, to: ref) }
         save()
         if fastMode(of: chat) { checkFast(chat) }
+    }
+
+    /// A thread's mode as one its agent has: its own, or else the agent's first.
+    func fitPermissionMode(of chat: Chat) {
+        let modes = agent(for: chat).permissionModes
+        if let first = modes.first, !modes.contains(where: { $0.rawValue == chat.permissionMode }) {
+            chat.permissionMode = first.rawValue
+        }
     }
 
     /// A thread that has begun took another agent's model: the old agent's session is let go, the

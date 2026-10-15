@@ -2,9 +2,12 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { agentEnvironment, type Reach } from "./acp.ts";
+import { unifiedHunks } from "./acp-map.ts";
 import { acpProvider } from "./acp-provider.ts";
+import { binary } from "./agents.ts";
 import { run } from "./child.ts";
 import type { Model } from "./models.ts";
+import { called, perSource, replied, type Found, type Source, type Transcript } from "./sessions.ts";
 
 // OpenCode through `opencode acp`. It asks before nothing unless its permission config says to,
 // so each thread's process is started with OPENCODE_PERMISSION for the thread's mode, and the
@@ -95,6 +98,86 @@ async function models(cli: string): Promise<Model[]> {
     ultraBlocked: null,
   }));
 }
+
+/// OpenCode's tools by name, as the kinds the app draws.
+const kinds: Record<string, string> = {
+  bash: "run",
+  read: "read",
+  edit: "edit",
+  patch: "edit",
+  multiedit: "edit",
+  write: "write",
+  glob: "search",
+  grep: "search",
+  list: "list",
+  webfetch: "fetch",
+  websearch: "web",
+  task: "agent",
+  todowrite: "plan",
+};
+
+type Part = { type: string; text?: string; synthetic?: boolean; callID?: string; tool?: string; state?: { status?: string; input?: unknown; output?: string; error?: string; metadata?: { exit?: number; diff?: string } } };
+
+/// A session as `opencode export` writes it: its messages, each with its parts.
+export type Exported = { messages: { info: { role: string }; parts: Part[] }[] };
+
+/// A session's transcript from its export: what the user typed, without what OpenCode added to
+/// it, and each reply's text, reasoning and tool calls.
+export function transcriptOf(exported: Exported): Transcript {
+  const events: Transcript = [];
+  for (const { info, parts } of exported.messages) {
+    if (info.role === "user") {
+      const text = parts.flatMap((part) => (part.type === "text" && !part.synthetic && part.text ? [part.text] : [])).join("\n");
+      if (text.trim()) events.push({ event: "user", text });
+      continue;
+    }
+    for (const part of parts) {
+      if (part.type === "text" && !part.synthetic) replied(events, part.text);
+      if (part.type === "reasoning" && part.text?.trim()) events.push({ event: "thinking", delta: part.text });
+      if (part.type !== "tool" || !part.callID || !part.tool) continue;
+      const state = part.state ?? {};
+      events.push(called(part.callID, part.tool, state.input, kinds[part.tool] ?? "other"));
+      if (state.status !== "completed" && state.status !== "error") continue;
+      const diff = state.metadata?.diff;
+      events.push({
+        event: "tool.result",
+        toolUseId: part.callID,
+        content: state.output ?? state.error ?? "",
+        isError: state.status === "error",
+        patch: typeof diff === "string" && state.status === "completed" ? unifiedHunks(diff) : undefined,
+        exitCode: typeof state.metadata?.exit === "number" ? state.metadata.exit : undefined,
+      });
+    }
+  }
+  return events;
+}
+
+/// The user's OpenCode sessions, while OpenCode is turned on in Settings › Agents, as its own
+/// commands give them: `opencode session list` run in the folder lists its project's, and
+/// `opencode export` writes one out. Each picks up over ACP by its id.
+export const opencodeSessions: Source = {
+  id: "opencode",
+  name: "OpenCode",
+  async list(folder) {
+    const cli = await binary("opencode");
+    if (!cli) return [];
+    const { stdout } = await run(cli, ["session", "list", "--format", "json", "--max-count", String(perSource)], { cwd: folder.path, env: agentEnvironment(), timeout: 20_000, maxBuffer: 16 * 1024 * 1024 });
+    // With no sessions it prints nothing at all.
+    const listed: { id: string; title?: string; updated: number; directory?: string }[] = stdout.trim() ? JSON.parse(stdout) : [];
+    const found: Found[] = [];
+    for (const session of listed) {
+      if (!(await folder.holds(session.directory))) continue;
+      found.push({ id: session.id, agent: "opencode", sessionId: session.id, title: session.title?.trim() || "Untitled session", modified: session.updated, branch: null });
+    }
+    return found;
+  },
+  async read(id) {
+    const cli = await binary("opencode");
+    if (!cli) throw new Error("OpenCode is off in Settings › Agents, or isn't installed.");
+    const { stdout } = await run(cli, ["export", id], { env: agentEnvironment(), timeout: 30_000, maxBuffer: 256 * 1024 * 1024 });
+    return transcriptOf(JSON.parse(stdout));
+  },
+};
 
 export const opencode = acpProvider({
   id: "opencode",
