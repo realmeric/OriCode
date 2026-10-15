@@ -17,7 +17,7 @@ OriCode's own code is under the MIT license in LICENSE. It builds on the followi
 
 ## Marks
 
-- The Claude logo in `App/Assets.xcassets/claude.imageset` comes from [Simple Icons](https://simpleicons.org), whose icon files are CC0. Claude and its logo are trademarks of Anthropic PBC. OriCode shows the logo only to mark Claude's models and isn't made or endorsed by Anthropic.
+- The Claude logo in `App/Assets.xcassets/claude.imageset` comes from [Simple Icons](https://simpleicons.org), whose icon files are CC0. Claude and its logo are trademarks of Anthropic PBC. OriCode shows the logo only to mark Claude's models, in Claude Code and on the Anthropic API alike, and isn't made or endorsed by Anthropic.
 
 Every other agent's logo sits in `App/Assets.xcassets/<agent>.imageset` as a one-colour SVG, the mark alone without its wordmark, and belongs to its maker. OriCode draws each in its maker's own colour, or in white where the maker's mark is black or white, to mark that agent's models, and isn't made or endorsed by any of them. Taken on 2026-09-27 from:
 

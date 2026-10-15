@@ -65,7 +65,7 @@ class Inbox implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-/// A thread's Claude Code pointed at another maker's Anthropic-compatible endpoint.
+/// A thread's Claude Code pointed at a model API's endpoint with its key, Anthropic's or another maker's.
 export type Elsewhere = {
   /// The maker, as the thread's error lines name it.
   agent: string;
@@ -140,7 +140,7 @@ export class Thread implements Session {
   /// An interrupt on its way to the CLI, which may land on the turn after the one it was for.
   private stopping = false;
   private launch: typeof query;
-  /// Another maker's endpoint the CLI is pointed at, or none for Claude's own.
+  /// The model API the CLI is pointed at, or none for Claude Code as the user signed it in.
   private elsewhere: Elsewhere | undefined;
   /// Settled once that endpoint's environment is read, so a send that arrives meanwhile joins the
   /// CLI it starts.
@@ -699,7 +699,7 @@ export class Thread implements Session {
         return;
       }
       case "rate_limit_event": {
-        // Claude's plan's limits, which another maker's endpoint has nothing to do with.
+        // Claude's plan's limits, which a model API's key has nothing to do with.
         if (this.elsewhere) return;
         this.limit = message.rate_limit_info;
         const limits = limitsOf(message.rate_limit_info);

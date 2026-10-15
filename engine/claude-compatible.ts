@@ -1,16 +1,17 @@
 import type { query } from "@anthropic-ai/claude-agent-sdk";
 import { agent, check, isOn, keyFor } from "./agents.ts";
-import { claude, cleanEnvironment, oneShot } from "./claude.ts";
+import { claude, claudeModels, cleanEnvironment, fastCheck, oneShot } from "./claude.ts";
 import type { Model } from "./models.ts";
 import { openRouterModels } from "./openrouter.ts";
 import type { Provider } from "./provider.ts";
 import { Thread } from "./thread.ts";
 
-// A model API whose maker publishes an Anthropic-compatible endpoint for Claude Code: a thread on
-// it is the user's own Claude Code, all of it, started with the maker's endpoint and the key
-// from the Keychain. The key outranks the claude.ai login, so the login is never sent to the
-// maker: Claude Code's credential order puts ANTHROPIC_AUTH_TOKEN second, the subscription's
-// OAuth last (code.claude.com/docs/en/authentication).
+// A model API Claude Code can run on, Anthropic's own or another maker's Anthropic-compatible
+// endpoint: a thread on it is the user's own Claude Code, all of it, started with the maker's
+// endpoint and the key from the Keychain. The key outranks the claude.ai login, so the login is
+// never sent to the maker or billed: Claude Code's credential order puts the cloud providers'
+// switches first, which are CLAUDE_ variables and never reach it, ANTHROPIC_AUTH_TOKEN second,
+// ANTHROPIC_API_KEY third and the subscription's OAuth last (code.claude.com/docs/en/authentication).
 
 export type Maker = {
   id: string;
@@ -104,6 +105,22 @@ export const metaMaker: Maker = {
   levels: ["low", "medium", "high", "xhigh"],
 };
 
+/// Anthropic's own API on a Claude Console key, billed to the key's organization. Claude Code takes
+/// that key in ANTHROPIC_API_KEY and sends it as X-Api-Key; ANTHROPIC_AUTH_TOKEN is a gateway's
+/// bearer token, which would outrank it, and on one alone Claude Code keeps fast mode off
+/// (code.claude.com/docs/en/authentication, code.claude.com/docs/en/fast-mode). The models and
+/// levels are the ones Claude Code lists, fast mode included, which a Console organization can
+/// have. Ultracode is OriCode's, on Rays: the Claude list's own was read under the claude.ai login
+/// and says nothing of the key.
+export const anthropicMaker: Maker = {
+  id: "anthropic",
+  url: "https://api.anthropic.com",
+  env: {},
+  models: [],
+  list: async () => claudeModels().map((model) => ({ ...model, ultra: false, ultraBlocked: null })),
+  levels: claude.levels.filter((level) => level !== "ultracode"),
+};
+
 function models(maker: Maker): Promise<Model[]> {
   return maker.list ? maker.list() : Promise.resolve(maker.models);
 }
@@ -111,14 +128,17 @@ function models(maker: Maker): Promise<Model[]> {
 /// Claude Code's environment with every Anthropic credential and endpoint taken out, and the
 /// maker's put in. Without a key it refuses: the endpoint alone would carry the claude.ai login.
 async function environment(maker: Maker, name: string, security?: string, model?: string): Promise<Record<string, string | undefined>> {
-  const key = (await keyFor(maker.id, security)).ANTHROPIC_AUTH_TOKEN;
+  const credential = agent(maker.id)!.key!;
+  const key = (await keyFor(maker.id, security))[credential];
   if (!key) throw new Error(`No ${name} key was found in your Keychain. Add it again in Settings › Agents.`);
   const env = cleanEnvironment();
   for (const variable of Object.keys(env)) if (variable.startsWith("ANTHROPIC_")) delete env[variable];
   // A thread that names no model gets the maker's first rather than the one the user's settings name.
   const chosen = model ?? (await models(maker))[0].id;
   const own = typeof maker.env === "function" ? maker.env(chosen) : maker.env;
-  return { ...env, ANTHROPIC_MODEL: chosen, ...own, ANTHROPIC_BASE_URL: maker.url, ANTHROPIC_AUTH_TOKEN: key };
+  // ANTHROPIC_MODEL would send Claude Code's Default row by its id, `default`; left out, Claude
+  // Code picks the model, as on a Claude thread that names none.
+  return { ...env, ANTHROPIC_MODEL: chosen === "default" ? undefined : chosen, ...own, ANTHROPIC_BASE_URL: maker.url, [credential]: key };
 }
 
 /// Tests stand in for /usr/bin/security and for the SDK's query.
@@ -155,11 +175,13 @@ export function claudeCompatible(maker: Maker, { security, launch }: { security?
     models: async (ready) => (ready.state === "ready" ? models(maker) : []),
     listModels: () => models(maker),
     session: (threadId, cli) => new Thread(threadId, cli, launch, { agent: entry.agent, environment: (model) => environment(maker, entry.name, security, model) }),
+    fastCheck: async (cli, model) => fastCheck(cli, model, await environment(maker, entry.name, security, model)),
     folderCommands: claude.folderCommands,
     oneShot: async (cli, cwd, prompt, model) => oneShot(cli, cwd, prompt, await environment(maker, entry.name, security, model), model),
   };
 }
 
+export const anthropic = claudeCompatible(anthropicMaker);
 export const zai = claudeCompatible(zaiMaker);
 export const deepseek = claudeCompatible(deepseekMaker);
 export const openrouter = claudeCompatible(openRouterMaker);

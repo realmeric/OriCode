@@ -3,7 +3,7 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { agent, change, check, isOn, lookUp, registry, turnedOn, turnOn, unasked, type Setting } from "./agents.ts";
 import { antigravity } from "./antigravity-provider.ts";
 import { claude } from "./claude.ts";
-import { deepseek, meta, openrouter, zai } from "./claude-compatible.ts";
+import { anthropic, deepseek, meta, openrouter, zai } from "./claude-compatible.ts";
 import { codex } from "./codex-provider.ts";
 import { commandcode } from "./commandcode-provider.ts";
 import { copilot } from "./copilot.ts";
@@ -36,6 +36,7 @@ delete process.env.NODE_COMPILE_CACHE;
 const providers = new Map<string, Provider>([
   [claude.id, claude],
   [codex.id, codex],
+  [anthropic.id, anthropic],
   [zai.id, zai],
   [deepseek.id, deepseek],
   [openrouter.id, openrouter],

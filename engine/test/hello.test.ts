@@ -399,13 +399,13 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
   assert.deepEqual(off.result, { provider: null });
   assert.equal(checkedOff.error, "Codex is off in Settings › Agents.");
   assert.equal(devin.result.provider.state, "missing");
-  assert.equal(listed.result.agents.length, 14);
+  assert.equal(listed.result.agents.length, 15);
   // Hello asked Claude only; each check asked its own agent.
   assert.deepEqual(await claude.ran(), ["--version", "auth status"]);
   assert.deepEqual((await readFile(ran, "utf8")).trim().split("\n").sort(), ["codex --version", "codex login status", "cursor-agent --version", "cursor-agent status --format json"]);
 });
 
-test("Z.ai, DeepSeek, OpenRouter and Meta run in Claude Code: ready once a key is kept, signed out or not, and their models listed without starting it", async () => {
+test("the Anthropic API, Z.ai, DeepSeek, OpenRouter and Meta run in Claude Code: ready once a key is kept, signed out or not, and their models listed without starting it", async () => {
   const claude = await standIn(false);
   // OpenRouter's public list, asked with no key.
   const asked: (string | undefined)[] = [];
@@ -416,8 +416,8 @@ test("Z.ai, DeepSeek, OpenRouter and Meta run in Claude Code: ready once a key i
   });
   await new Promise<void>((listening) => catalog.listen(0, "127.0.0.1", listening));
   const env = { ORICODE_CLAUDE: claude.path, ORICODE_OPENROUTER_MODELS: `http://127.0.0.1:${(catalog.address() as AddressInfo).port}/api/v1/models` };
-  const [hello, zai, deepseek, kept, checked, openrouter, openrouterModels, meta, metaModels] = await replies(env, [
-    { method: "hello", params: { agents: { zai: { key: true }, deepseek: {}, openrouter: { key: true }, meta: {} } } },
+  const [hello, zai, deepseek, kept, checked, openrouter, openrouterModels, meta, metaModels, anthropic] = await replies(env, [
+    { method: "hello", params: { agents: { anthropic: { key: true }, zai: { key: true }, deepseek: {}, openrouter: { key: true }, meta: {} } } },
     { method: "models.list", params: { provider: "zai" } },
     { method: "models.list", params: { provider: "deepseek" } },
     { method: "agent.set", params: { provider: "deepseek", on: true, key: true } },
@@ -426,9 +426,11 @@ test("Z.ai, DeepSeek, OpenRouter and Meta run in Claude Code: ready once a key i
     { method: "models.list", params: { provider: "openrouter" } },
     { method: "agent.set", params: { provider: "meta", on: true, key: true } },
     { method: "models.list", params: { provider: "meta" } },
+    { method: "models.list", params: { provider: "anthropic" } },
   ]);
   catalog.close();
   assert.deepEqual(hello.result.providers.slice(1), [
+    { ...compatibleEntry("anthropic", "Anthropic API", "ready", claude.path, null, ["low", "medium", "high", "xhigh", "max"]), agent: "Anthropic" },
     compatibleEntry("zai", "Z.ai", "ready", claude.path, null, []),
     compatibleEntry("deepseek", "DeepSeek", "signedOut", null, "Add your DeepSeek key in Settings › Agents.", ["low", "high", "max"]),
     compatibleEntry("openrouter", "OpenRouter", "ready", claude.path, null, ["low", "medium", "high", "xhigh", "max"]),
@@ -461,6 +463,16 @@ test("Z.ai, DeepSeek, OpenRouter and Meta run in Claude Code: ready once a key i
   assert.deepEqual(
     metaModels.result.models.map((model: any) => [model.id, model.name, model.efforts]),
     [["muse-spark-1.3[1m]", "Muse Spark 1.3", ["low", "medium", "high", "xhigh"]]],
+  );
+  // Claude Code's own list, the fallback while it's signed out, each with OriCode's Ultracode.
+  assert.deepEqual(
+    anthropic.result.models.map((model: any) => [model.id, model.ultra, model.ultraRays ?? false]),
+    [
+      ["default", true, true],
+      ["opus", true, true],
+      ["sonnet", true, true],
+      ["haiku", false, false],
+    ],
   );
   // Claude Code was asked what hello always asks, and nothing on their behalf.
   assert.deepEqual(await claude.ran(), ["--version", "auth status"]);

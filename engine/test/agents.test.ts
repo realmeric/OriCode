@@ -22,12 +22,14 @@ async function script(path: string, body: string): Promise<string> {
 test("every agent is in the registry once, the model APIs by a key, and the logins their makers forbid with the maker's own words", () => {
   assert.deepEqual(
     agents.map((entry) => entry.id),
-    ["claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "commandcode", "zai", "deepseek", "openrouter", "meta"],
+    ["claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "commandcode", "anthropic", "zai", "deepseek", "openrouter", "meta"],
   );
   const keyed = agents.filter((entry) => entry.key).map((entry) => [entry.id, entry.key, entry.binaries]);
   assert.deepEqual(keyed, [
     ["antigravity", "GEMINI_API_KEY", ["agy"]],
     ["commandcode", "COMMAND_CODE_API_KEY", ["cmd"]],
+    // A Console key, which Claude Code sends as X-Api-Key; the other makers' go as a bearer token.
+    ["anthropic", "ANTHROPIC_API_KEY", []],
     ["zai", "ANTHROPIC_AUTH_TOKEN", []],
     ["deepseek", "ANTHROPIC_AUTH_TOKEN", []],
     ["openrouter", "ANTHROPIC_AUTH_TOKEN", []],

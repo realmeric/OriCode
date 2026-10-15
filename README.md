@@ -49,12 +49,13 @@ These come in through their own binary and keep their own login, which OriCode n
 
 These run by an API key you type into Settings › Agents. It's kept in your login Keychain and handed only to the process that calls that API:
 
+- The Anthropic API runs inside Claude Code, on a key from the Claude Console, billed to that key's organization rather than your Claude subscription. Claude Code takes the key as `ANTHROPIC_API_KEY`, which outranks your Claude login, and OriCode hands it no other Anthropic credential, so the subscription is never used on those threads. They offer the models, levels and fast mode Claude Code lists, and show what each turn cost, but no plan usage or limits, since a key has none, and no Continue in Terminal, where `claude` would run on your subscription. They need Claude Code installed, not logged in; logged out, the model menu offers Default, Opus, Sonnet and Haiku.
 - Z.ai, DeepSeek, OpenRouter and Meta run inside Claude Code, pointed at each maker's Anthropic-compatible endpoint. The key takes the place of your Claude login in that thread's process, so your Claude subscription is never sent to them, and Claude's plan usage, limits and fast mode don't show on those threads. They need Claude Code installed, not logged in.
 - Command Code runs its own `cmd`, headless, with your Command Code key, or with the login `cmd login` made.
 
 A thread offers only what its agent can do: no effort rail on an agent without levels, no permission tiles on one that never asks, no usage glass where the agent reports none.
 
-Claude Code is what OriCode was built on. Codex, Cursor and OpenCode have run real threads in it. Copilot's check has run against the real CLI, on an account without a plan. Grok Build, Devin, Pi, Command Code, Antigravity and the four model APIs are built to their makers' protocols and tested against stand-ins, and haven't had a real turn yet, so expect rough edges there.
+Claude Code is what OriCode was built on. Codex, Cursor and OpenCode have run real threads in it. Copilot's check has run against the real CLI, on an account without a plan. Grok Build, Devin, Pi, Command Code, Antigravity and the five model APIs are built to their makers' protocols and tested against stand-ins, and haven't had a real turn yet, so expect rough edges there.
 
 ## Logins that stay off
 
@@ -77,7 +78,7 @@ Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP o
 
 ## The marks in the model menu
 
-The model menu lists each agent's models under its name and its maker's logo, drawn in the colour its maker draws it in on a dark background, white where the maker's mark is black or white, which the effort rail and the thread's mark take too. Claude's logo is Anthropic's. The logos of OpenAI (Codex), Anysphere (Cursor), GitHub (Copilot), OpenCode, xAI (Grok Build), Cognition (Devin), Pi, Google (Antigravity), Z.ai, DeepSeek, OpenRouter, Meta and Command Code belong to their makers, as each agent's name does. OriCode shows them only to mark each agent's models, none of those makers made or endorsed it, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where each came from.
+The model menu lists each agent's models under its name and its maker's logo, drawn in the colour its maker draws it in on a dark background, white where the maker's mark is black or white, which the effort rail and the thread's mark take too. Claude's logo is Anthropic's, and marks the Anthropic API's models too. The logos of OpenAI (Codex), Anysphere (Cursor), GitHub (Copilot), OpenCode, xAI (Grok Build), Cognition (Devin), Pi, Google (Antigravity), Z.ai, DeepSeek, OpenRouter, Meta and Command Code belong to their makers, as each agent's name does. OriCode shows them only to mark each agent's models, none of those makers made or endorsed it, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where each came from.
 
 ## Building
 

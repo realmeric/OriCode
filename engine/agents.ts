@@ -236,6 +236,18 @@ export const agents: Agent[] = [
     availability: async (cli, env) => (await import("./commandcode.ts")).availability({ command: cli, env }),
   },
   {
+    id: "anthropic",
+    name: "Anthropic API",
+    agent: "Anthropic",
+    route: "Claude Code",
+    binaries: [],
+    install: null,
+    login: "Add your Anthropic API key in Settings › Agents.",
+    key: "ANTHROPIC_API_KEY",
+    through: "claude",
+    forbidden: [],
+  },
+  {
     id: "zai",
     name: "Z.ai",
     agent: "Z.ai",

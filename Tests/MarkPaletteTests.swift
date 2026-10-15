@@ -122,6 +122,16 @@ struct MarkPaletteTests {
         #expect(!AgentMark.hasLogo("someone-new"))
     }
 
+    /// The Anthropic API draws Claude's mark, Anthropic's, from Claude's asset and in Claude's ink,
+    /// rather than a second copy of it.
+    @Test func theAnthropicAPIDrawsClaudesMark() {
+        #expect(MarkPalette.mark(of: "anthropic") == ProviderInfo.claudeID)
+        #expect(NSImage(named: "anthropic") == nil)
+        #expect(AgentMark.hasLogo("anthropic"))
+        #expect(MarkPalette.ink(for: "anthropic") == .claude)
+        #expect(components(MarkPalette.color(for: "anthropic")) == components(MarkPalette.color(for: ProviderInfo.claudeID)))
+    }
+
     @Test func aHeadIsOnTheThreadsAgentUnlessTheEngineNamesAnother() {
         let codex = thread(on: "codex")
         receive("heads", ["heads": [head("a"), head("b", agent: "cursor")]], in: codex)

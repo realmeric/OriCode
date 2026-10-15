@@ -2,15 +2,16 @@ import AppKit
 import SwiftUI
 
 /// An agent's mark beside its models, in the agent's colour: its maker's logo, a template image
-/// in the asset catalog named by the agent's id, from the maker's own site or press kit, or Simple
-/// Icons' drawing where the maker has none to take. An agent with no logo gets its initial.
+/// in the asset catalog named by the id of the agent whose mark it draws (`MarkPalette.mark(of:)`),
+/// from the maker's own site or press kit, or Simple Icons' drawing where the maker has none to
+/// take. An agent with no logo gets its initial.
 struct AgentMark: View {
     let agent: String
 
     var body: some View {
         Group {
             if Self.hasLogo(agent) {
-                Image(agent).resizable()
+                Image(MarkPalette.mark(of: agent)).resizable()
             } else {
                 Image(nsImage: Self.letter(agent.prefix(1).uppercased())).resizable()
             }
@@ -24,7 +25,7 @@ struct AgentMark: View {
 
     static func hasLogo(_ agent: String) -> Bool {
         if let known = logos[agent] { return known }
-        let found = NSImage(named: agent) != nil
+        let found = NSImage(named: MarkPalette.mark(of: agent)) != nil
         logos[agent] = found
         return found
     }

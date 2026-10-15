@@ -140,6 +140,12 @@ async function list(ready: Availability, tell: (models: ModelsEvent) => void): P
       return undefined;
     });
   }
+  return claudeModels();
+}
+
+/// Hello's list as last read, or the fallback until it is: Claude Code's models, whichever
+/// credential it runs them on.
+export function claudeModels(): Model[] {
   return models ?? fallback;
 }
 
@@ -267,11 +273,12 @@ async function learnDefaults(claude: string, base: Model[], tell: (models: Model
 }
 
 /// Whether the user's CLI would serve a model fast, asked without sending it anything: the
-/// initialize handshake carries the state, and the reason when it can't be on.
-async function fastCheck(claude: string, model: string | undefined): Promise<{ state: FastModeState; reason: FastModeDisabledReason | null }> {
+/// initialize handshake carries the state, and the reason when it can't be on. `env` is the
+/// thread's, which on a model API's key answers for that key.
+export async function fastCheck(claude: string, model: string | undefined, env = cleanEnvironment()): Promise<{ state: FastModeState; reason: FastModeDisabledReason | null }> {
   const probe = query({
     prompt: idle,
-    options: { cwd: homedir(), model, pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment(), settings: { fastMode: true } },
+    options: { cwd: homedir(), model, pathToClaudeCodeExecutable: claude, settingSources: [], env, settings: { fastMode: true } },
   });
   try {
     const init = await within(probe.initializationResult(), 20_000, "Claude Code's fast mode");

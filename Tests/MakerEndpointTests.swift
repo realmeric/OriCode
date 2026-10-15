@@ -119,4 +119,42 @@ struct MakerEndpointTests {
             #expect(rows.contains("effort.list"))
         }
     }
+
+    /// The Anthropic API runs Claude's own models on a Console key: their levels and fast mode
+    /// stay, and Claude's plan, its usage, its limits and Continue in Terminal, which would run on
+    /// the subscription, don't.
+    @Test func anAnthropicAPIThreadKeepsFastModeAndHidesThePlan() throws {
+        model.engineState = .ready
+        let levels: [JSON] = ["low", "medium", "high", "xhigh", "max"]
+        var entry = Self.zaiEntry
+        if case .object(var fields) = entry {
+            fields["id"] = "anthropic"
+            fields["name"] = "Anthropic API"
+            fields["agent"] = "Anthropic"
+            fields["levels"] = .array(levels + ["ultracode"])
+            entry = .object(fields)
+        }
+        let listed: JSON = [
+            ["id": "opus", "name": "Opus 5.5", "description": "Most capable", "efforts": .array(levels), "fast": true,
+             "defaultEffort": "high", "ultra": true, "ultraBlocked": .null, "ultraRays": true],
+        ]
+        model.modelsByAgent["anthropic"] = try listed.decode([ModelOption].self)
+        model.providers = [.claude, try entry.decode(ProviderInfo.self)]
+        chat.provider = "anthropic"
+        chat.model = "opus"
+        chat.fastMode = true
+
+        let agent = model.agent(for: chat)
+        #expect(agent.name == "Anthropic API")
+        #expect(!agent.capabilities.usage && !agent.capabilities.limits && agent.capabilities.handoff == nil)
+        model.refreshUsage()
+        #expect(model.usage == nil)
+        #expect(model.providers.filter { $0.capabilities.limits && $0.capabilities.resume }.map(\.id) == ["claude"])
+        let state = PickerState(model: model, chat: chat)
+        #expect(state.option?.efforts == levels.compactMap(\.string))
+        #expect(model.fastMode(of: chat))
+        let rows = Set(model.paletteSearchable().map(\.id))
+        #expect(rows.contains("fast.toggle") && rows.contains("effort.list") && rows.contains("workflows.toggle"))
+        #expect(!rows.contains("terminal.claude"))
+    }
 }

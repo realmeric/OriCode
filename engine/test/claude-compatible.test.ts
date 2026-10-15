@@ -1,6 +1,7 @@
-// Z.ai, DeepSeek, OpenRouter and Meta in Claude Code: the key from a stand-in `security`, the
-// maker's endpoint a local stand-in that speaks just enough of the Messages API to stream one
-// reply, serves OpenRouter's model list, and writes down every request's headers. Nothing reaches
+// The Anthropic API, Z.ai, DeepSeek, OpenRouter and Meta in Claude Code: the key from a stand-in
+// `security`, the maker's endpoint a local stand-in that speaks just enough of the Messages API to
+// stream one reply, serves OpenRouter's model list, and writes down every request's headers. It's
+// the proxy too where a test asks, and turns away whatever would leave this Mac. Nothing reaches
 // a model, a maker or the real Keychain. The tests that run the user's own claude do so with the
 // claude.ai login it keeps, which is the point: the key has to outrank it on the wire.
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -12,12 +13,14 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { binary, turnOn } from "../agents.ts";
-import { claudeCompatible, deepseekMaker, metaMaker, openRouterMaker, zaiMaker, type Maker } from "../claude-compatible.ts";
+import { claudeModels } from "../claude.ts";
+import { anthropicMaker, claudeCompatible, deepseekMaker, metaMaker, openRouterMaker, zaiMaker, type Maker } from "../claude-compatible.ts";
+import type { Model } from "../models.ts";
 import { openRouterModels } from "../openrouter.ts";
 import { errorText, Thread } from "../thread.ts";
 
 const key = "zai-stand-in-key-188";
-const keys: Record<string, string> = { zai: key, openrouter: "sk-or-stand-in-key-189", meta: "meta-stand-in-key-189" };
+const keys: Record<string, string> = { zai: key, openrouter: "sk-or-stand-in-key-189", meta: "meta-stand-in-key-189", anthropic: "sk-ant-api03-stand-in-key-190" };
 
 /// OpenRouter's public list as its programming category gives it, cut to three shapes: a 1M
 /// model with levels, a 262K one without, and one that calls no tools.
@@ -73,6 +76,8 @@ const server = createServer((req, res) => {
     res.end();
   });
 });
+/// As a proxy it turns every host away, so a stand-in key goes nowhere but here.
+server.on("connect", (_req, socket) => socket.end("HTTP/1.1 403 Forbidden\r\n\r\n"));
 
 let security = "";
 
@@ -89,7 +94,7 @@ before(async () => {
   );
   await chmod(security, 0o755);
   process.env.ORICODE_OPENROUTER_MODELS = `${endpoint}/api/v1/models`;
-  turnOn({ zai: { key: true }, deepseek: { key: true }, openrouter: { key: true }, meta: { key: true } });
+  turnOn({ zai: { key: true }, deepseek: { key: true }, openrouter: { key: true }, meta: { key: true }, anthropic: { key: true } });
 });
 after(() => server.close());
 
@@ -111,7 +116,10 @@ const planted = {
   ANTHROPIC_AUTH_TOKEN: "sk-ant-planted-token",
   ANTHROPIC_BASE_URL: "https://api.anthropic.com",
   ANTHROPIC_OAUTH_TOKEN: "sk-ant-oat-planted",
+  ANTHROPIC_PROFILE: "planted",
   CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-planted-2",
+  // Above every key in Claude Code's order.
+  CLAUDE_CODE_USE_BEDROCK: "1",
 };
 
 async function withPlanted<T>(run: () => Promise<T>): Promise<T> {
@@ -263,6 +271,68 @@ test("an OpenRouter thread's CLI gets its endpoint with ANTHROPIC_API_KEY empty 
   assert.ok(!JSON.stringify(process.env).includes(keys.openrouter) && !JSON.stringify(process.env).includes(keys.meta));
 });
 
+test("an Anthropic API thread's CLI gets the Console key in ANTHROPIC_API_KEY and Anthropic's endpoint, and no other credential, login or cloud provider of the engine's", async () => {
+  const cli = capturing();
+  const anthropic = claudeCompatible(anthropicMaker, { security, launch: cli.launch });
+  await withPlanted(async () => {
+    await anthropic.session("a", "claude").send(params("a", "opus"));
+    // A thread that names none, or Default, leaves the model to Claude Code.
+    await anthropic.session("a2", "claude").send(params("a2"));
+  });
+  const [onAnthropic, onDefault] = cli.launched;
+  assert.equal(onAnthropic.model, "opus");
+  assert.deepEqual(onAnthropic.settingSources, ["user", "project", "local"]);
+  const anthropicVariables = (env: Record<string, string | undefined>) => Object.fromEntries(Object.entries(env).filter(([name, value]) => name.startsWith("ANTHROPIC_") && value !== undefined));
+  assert.deepEqual(anthropicVariables(onAnthropic.env), {
+    ANTHROPIC_MODEL: "opus",
+    ANTHROPIC_BASE_URL: "https://api.anthropic.com",
+    ANTHROPIC_API_KEY: keys.anthropic,
+  });
+  assert.deepEqual(
+    // CLAUDE_CONFIG_DIR is the user's own, where they have one.
+    Object.keys(onAnthropic.env).filter((name) => name.startsWith("CLAUDE") && name !== "CLAUDE_CONFIG_DIR"),
+    ["CLAUDE_AGENT_SDK_CLIENT_APP"],
+  );
+  assert.deepEqual(anthropicVariables(onDefault.env), { ANTHROPIC_BASE_URL: "https://api.anthropic.com", ANTHROPIC_API_KEY: keys.anthropic });
+  assert.equal(onDefault.model, undefined);
+  assert.ok(!JSON.stringify(process.env).includes(keys.anthropic));
+});
+
+test("the Anthropic API lists Claude Code's own models, levels and fast mode as the Claude list has them, OriCode's Ultracode in place of Claude Code's, and no plan, limits or Terminal handoff", async () => {
+  const anthropic = claudeCompatible(anthropicMaker, { security });
+  const listed = await anthropic.listModels!("claude");
+  const shown = (models: Model[]) => models.map((model) => [model.id, model.name, model.description, model.efforts, model.fast, model.defaultEffort]);
+  assert.deepEqual(shown(listed), shown(claudeModels()));
+  assert.deepEqual(
+    listed.map((model) => [model.id, model.efforts, model.ultra, model.ultraBlocked]),
+    [
+      ["default", ["low", "medium", "high", "xhigh", "max"], false, null],
+      ["opus", ["low", "medium", "high", "xhigh", "max"], false, null],
+      ["sonnet", ["low", "medium", "high", "xhigh", "max"], false, null],
+      ["haiku", [], false, null],
+    ],
+  );
+  assert.deepEqual(anthropic.levels, ["low", "medium", "high", "xhigh", "max"]);
+  assert.equal(anthropic.name, "Anthropic API");
+  assert.equal(anthropic.agent, "Anthropic");
+  assert.deepEqual(anthropic.capabilities, {
+    steer: true,
+    resume: true,
+    modeLive: true,
+    attachments: true,
+    heads: false,
+    stopTask: false,
+    limits: false,
+    usage: false,
+    commands: true,
+    compact: true,
+    commitMessage: true,
+    handoff: null,
+    workers: true,
+  });
+  assert.ok(anthropic.fastCheck && !anthropic.usage);
+});
+
 test("OpenRouter's models are its coding list, only those that call tools, read with no key once a day and kept when OpenRouter can't be reached", async () => {
   const folder = await mkdtemp(join(tmpdir(), "oricode-openrouter-"));
   const day = 24 * 60 * 60_000;
@@ -360,4 +430,23 @@ test("on Meta the user's own Claude Code sends Muse Spark and the thread's level
   // Meta answers thinking that's disabled with a 400.
   assert.equal(turn.body.thinking?.type, "adaptive");
   onlyTheKey(keys.meta, turn);
+});
+
+test("on the Anthropic API the user's own Claude Code sends Opus and the thread's level with the Console key as X-Api-Key, and nothing of the claude.ai login", async (t) => {
+  const claude = await binary("claude");
+  if (!claude) return t.skip("Claude Code isn't installed here");
+  // On a Console key Claude Code also asks api.anthropic.com itself, past the endpoint: its fast
+  // mode check among others. Those go to the stand-in as its proxy, which turns them away.
+  const offline = { HTTPS_PROXY: endpoint, HTTP_PROXY: endpoint, NO_PROXY: "127.0.0.1" };
+  const { turn } = await turnAt(claude, { ...anthropicMaker, env: offline }, "", "opus", "high");
+  assert.match(turn.body.model, /^claude-opus-/);
+  assert.equal(turn.body.output_config?.effort, "high");
+  for (const request of requests) {
+    assert.equal(request.headers["x-api-key"], keys.anthropic, request.url);
+    assert.equal(request.headers.authorization, undefined, request.url);
+    assert.equal(request.headers.cookie, undefined, request.url);
+    assert.doesNotMatch(JSON.stringify(request.headers), /sk-ant-api-planted|sk-ant-oat|planted-token|oauth/i, request.url);
+    if (request.body) assert.doesNotMatch(JSON.stringify(request.body), /sk-ant-/, request.url);
+  }
+  assert.equal(JSON.parse(turn.body.metadata.user_id).account_uuid, "");
 });
