@@ -76,6 +76,9 @@ struct Island: View {
                         RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                             .matchedGeometryEffect(id: shown, in: island, isSource: false)
                     }
+                    // The keyboard crossing brings the capsule the other thread's title on this
+                    // curve, so the glass keeps to its width as the title travels in.
+                    .animation(Motion.move, value: model.keyboardSide)
                 }
                 // Outside the mask, which would cut off the update circle hanging off its end.
                 if shown == .capsule {

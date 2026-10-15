@@ -40,10 +40,18 @@ struct TitleCapsule: View {
                     }
                     if let chat = model.chat {
                         Text("·").foregroundStyle(Ink.faint)
+                        // One title a thread, as with its mark: the keyboard crossing brings the
+                        // title up from its column's capsule, whole, over the copy there fading
+                        // with that capsule, and sends this one down to its own, fading, so it's
+                        // drawn for the one down there to start from. A thread opened any other
+                        // way changes the title at once, with nothing to animate it.
                         Text(chat.title)
                             .foregroundStyle(Ink.primary)
                             .truncationMode(.tail)
+                            .titleTravels(chat.id, in: ring, unless: reduceMotion)
                             .layoutPriority(-1)
+                            .id(chat.id)
+                            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
                     }
                 }
                 .font(Type.secondary)
@@ -60,7 +68,7 @@ struct TitleCapsule: View {
             .help("Command center (\(model.shortcuts.label(.commandCenter)))")
             // While the thread works, its mark at the capsule's left end, which opens its heads.
             // One mark a thread, so the keyboard crossing to the thread beside brings that
-            // thread's mark in from its column's title line, and sends this one back to its own.
+            // thread's mark in from its column's capsule, and sends this one back to its own.
             .overlay(alignment: .leading) {
                 ZStack {
                     if working, let conversation = model.currentConversation {
@@ -69,6 +77,7 @@ struct TitleCapsule: View {
                 }
                 .animation(reduceMotion ? Motion.fade : Motion.move, value: model.chat?.id)
             }
+            .animation(reduceMotion ? Motion.fade : Motion.move, value: model.keyboardSide)
             .animation(Motion.move, value: working)
             .overlay(alignment: .trailing) {
                 if updates.phase != .idle {
@@ -117,4 +126,21 @@ extension View {
             matchedGeometryEffect(id: thread, in: ring)
         }
     }
+
+    /// A thread's title that glides between the window's capsule and the capsule over its column,
+    /// as its mark does; with Reduce Motion it only fades. Only its place travels: the text keeps
+    /// the width it has where it's going, so it doesn't truncate differently on the way.
+    @ViewBuilder
+    func titleTravels(_ thread: UUID, in ring: Namespace.ID, unless still: Bool) -> some View {
+        if still {
+            self
+        } else {
+            matchedGeometryEffect(id: TravellingTitle(thread: thread), in: ring, properties: .position)
+        }
+    }
+}
+
+/// A thread's title in the ring, apart from its mark, which is keyed by the thread's id alone.
+private struct TravellingTitle: Hashable {
+    let thread: UUID
 }

@@ -3,9 +3,10 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
-    /// A working thread's mark, which travels between its column's title line and the capsule
-    /// as the keyboard crosses.
+    /// A thread's mark and title, which travel between its column's capsule and the window's as
+    /// the keyboard crosses.
     @Namespace private var ring
 
     var body: some View {
@@ -54,12 +55,13 @@ struct RootView: View {
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 // A click in a column puts the keyboard in its thread. Its title
-                                // line is laid over this, so the cross there closes its own side.
+                                // capsule is laid over this, so the cross there closes its own side.
                                 .simultaneousGesture(TapGesture().onEnded {
                                     if !open { model.select(thread) }
                                 })
                                 // It fades out of the column the keyboard comes to and into the
-                                // one it left.
+                                // one it left, on the window capsule's curve, so the title leaving
+                                // it and the one coming down into it travel with the capsule's.
                                 .overlay(alignment: .top) {
                                     ZStack(alignment: .top) {
                                         if !open {
@@ -67,7 +69,7 @@ struct RootView: View {
                                                 .transition(.opacity)
                                         }
                                     }
-                                    .animation(Motion.fade, value: open)
+                                    .animation(reduceMotion ? Motion.fade : Motion.move, value: open)
                                 }
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                             }
@@ -274,12 +276,14 @@ struct RootView: View {
                 // to where a one-line composer would be.
                 GeometryReader { area in
                     let low = model.currentConversation?.started ?? model.chat?.started ?? false
-                    let top = area.frame(in: .global).minY + 20
+                    // Under the other column's capsule with two threads up, as a block is.
+                    let inset: CGFloat = model.besideShown == nil ? 20 : 12 + BesideTitle.height
+                    let top = area.frame(in: .global).minY + inset
                     let bottom = low && model.composerTop > 0 ? model.composerTop - 12 : area.frame(in: .global).maxY - 90
                     FileViewer(file: file)
                         .over(named: file.path)
                         .frame(height: max(120, bottom - top))
-                        .padding(.top, 20)
+                        .padding(.top, inset)
                         .padding(.horizontal, 40)
                         // A pinned drawer covers the left of the window; the file sits beside it.
                         .padding(.leading, model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0)
@@ -414,8 +418,11 @@ extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
-/// The line over the column the keyboard isn't in: its thread's title, its mark while it works,
-/// and a cross while the pointer is on it. A click brings the keyboard over.
+/// The capsule over the column the keyboard isn't in, of the window capsule's family, so it reads
+/// as that thread's title and not as a line of its transcript: the mark at its left end while the
+/// thread works, drawn as the window's capsule draws it, and at its right end, away from the mark,
+/// a cross while the pointer is on it, the way a tab closes. A click brings the keyboard over, and
+/// the title with it, up into the window's capsule.
 struct BesideTitle: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -424,34 +431,41 @@ struct BesideTitle: View {
     let ring: Namespace.ID
     @State private var hovering = false
 
-    static let height: CGFloat = 20
-    private static let cross: CGFloat = 18
+    static let height = TitleCapsule.height
+    private static let cross: CGFloat = 16
 
     var body: some View {
-        HStack(spacing: 4) {
-            // As wide as the cross, so the title stays in the column's middle.
-            Color.clear.frame(width: Self.cross, height: Self.cross)
-            Button {
-                model.select(chat)
-            } label: {
-                HStack(spacing: 6) {
-                    if let conversation, conversation.working {
+        let working = conversation?.working == true
+        Button {
+            model.select(chat)
+        } label: {
+            Text(chat.title)
+                .foregroundStyle(Ink.secondary)
+                .truncationMode(.tail)
+                .titleTravels(chat.id, in: ring, unless: reduceMotion)
+                .font(Type.secondary)
+                .lineLimit(1)
+                // Room for the cross whether it shows or not, so the capsule keeps its width
+                // under the pointer, and as much at the left without the mark, so the title
+                // stays in the column's middle.
+                .padding(.leading, working ? 12 + TitleCapsule.mark + 6 : Self.cross + 8)
+                .padding(.trailing, Self.cross + 8)
+                .frame(height: Self.height)
+                .background(hovering ? Surface.selected : Surface.drawer, in: .capsule)
+                .overlay(alignment: .leading) {
+                    if working, let conversation {
                         ThreadMark(conversation: conversation)
                             .frame(width: TitleCapsule.mark, height: TitleCapsule.mark)
                             .travels(chat.id, in: ring, unless: reduceMotion)
+                            .padding(.leading, 10)
                             .transition(.opacity)
                     }
-                    Text(chat.title)
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                 }
-                .frame(height: Self.height)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .help("Write in this thread")
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .help("Bring the keyboard to this thread")
+        .overlay(alignment: .trailing) {
             Button {
                 model.closeOtherSide()
             } label: {
@@ -462,12 +476,13 @@ struct BesideTitle: View {
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .padding(.trailing, 6)
             .opacity(hovering ? 1 : 0)
             .help("Close this side (\(model.shortcuts.label(.closeOtherSide)))")
             .accessibilityLabel("Close \(chat.title)")
         }
         .animation(Motion.fade, value: hovering)
-        .animation(Motion.fade, value: conversation?.working)
+        .animation(Motion.move, value: working)
         .onHover { hovering = $0 }
         .column()
         .padding(.top, TitleBar.height)

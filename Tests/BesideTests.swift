@@ -64,6 +64,22 @@ struct BesideTests {
         #expect(model.conversations[second.id] != nil)
     }
 
+    /// The titles trade places between the capsules on the keyboard crossing, and on nothing else.
+    @Test func theKeyboardSideChangesOnlyAsItCrosses() {
+        #expect(model.keyboardSide == nil)
+        model.besideChatID = second.id
+        #expect(model.keyboardSide == .left)
+        model.select(second)
+        #expect(model.keyboardSide == .right)
+        model.select(third)
+        #expect(model.keyboardSide == .right)
+        #expect(model.besideChatID == first.id)
+        model.roomForTwo = false
+        #expect(model.keyboardSide == nil)
+        model.select(first)
+        #expect(model.keyboardSide == nil)
+    }
+
     @Test func pickingTheThreadBesideLeavesItsWorkflowAlone() async throws {
         let conversation = model.conversation(for: second)
         model.besideChatID = second.id

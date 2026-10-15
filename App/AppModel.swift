@@ -378,6 +378,13 @@ final class AppModel {
         didSet { UserDefaults.standard.set(composerHalf.rawValue, forKey: "composerHalf") }
     }
 
+    /// The half the keyboard is in while both threads are drawn, which changes as it crosses to
+    /// the other: the threads' titles trade places between the capsules on it, and a thread
+    /// opened any other way takes the capsule's title at once.
+    var keyboardSide: Half? {
+        besideShown == nil ? nil : composerHalf
+    }
+
     /// At launch: the thread that was beside the open one is beside it again, each in the half it
     /// was in. One deleted or archived meanwhile isn't, and the open thread has the window; the
     /// half kept for that pair goes too, or the next pair would come back with its sides traded.
