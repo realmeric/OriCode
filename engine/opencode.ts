@@ -15,8 +15,10 @@ import { called, perSource, replied, type Found, type Source, type Transcript } 
 
 const permission = (rules: Record<string, string>): Reach => ({ mode: "build", env: { OPENCODE_PERMISSION: JSON.stringify(rules) } });
 
-/// Ask asks before every read, edit, command and fetch; Accept edits only before a command; Auto
-/// is OpenCode as the user set it up; Plan is its read-only plan agent; Don't ask allows it all.
+/// Ask asks before every read, edit, command and fetch; Accept edits only before a command; Plan is
+/// its read-only plan agent; Don't ask allows it all. Auto isn't offered: nothing in OpenCode
+/// judges a call's risk, and OpenCode as the user set it up, which a mode it lacks gets, runs
+/// everything in the folder unasked.
 export function reach(mode: string): Reach {
   switch (mode) {
     case "default":
@@ -185,10 +187,11 @@ export const opencode = acpProvider({
   permissions: reach,
   resume: true,
   images: true,
-  // Its permissions are read as the process starts, so a new mode waits for the next turn.
-  modeLive: false,
+  // Its permissions are read as the process starts, so a new mode waits for the next turn, all but
+  // Don't ask, whose asks the engine answers.
+  modeLive: true,
   handoff: "opencode --session {session}",
-  modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
+  modes: ["default", "acceptEdits", "plan", "bypassPermissions"],
   levels,
   models,
   // Idle, `opencode acp` holds about 430MB and never settles, at 1.7% CPU and 129 context

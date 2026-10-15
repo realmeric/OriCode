@@ -105,7 +105,8 @@ export type Capabilities = {
   steer: boolean;
   /// A thread picks up its session after a quit or a release.
   resume: boolean;
-  /// A new permission mode reaches the running turn.
+  /// A new permission mode can reach the running turn, as setMode then says of each. Don't ask
+  /// does on every agent that asks, since the engine answers its asks (`byMode`).
   modeLive: boolean;
   attachments: boolean;
   /// The subagents, commands and workflows a turn starts are reported as heads.
@@ -203,6 +204,25 @@ export type Ask = {
 
 /// Every ask still waiting, by its request id, so an answer finds its session.
 export const asks = new Map<string, Ask>();
+
+/// The calls Plan refuses: those that change a file. A command may only read, and an agent's own
+/// plan mode asks about one, so it stays the user's.
+const changing = new Set(["edit", "write", "delete", "move"]);
+
+/// The choice a thread's mode makes on an ask by itself, for an agent whose own mode can lag the
+/// thread's: one started with its mode, or a turn running when the mode changed. Don't ask goes
+/// ahead once, never always, which on Cursor would write its global allowlist; an ask offering
+/// several ways ahead once is a question, as Cursor's come, and is left to the user. Plan refuses
+/// a change to a file with the first refusal offered, Codex's plain no before its no-and-stop.
+/// Anything else is the user's.
+export function byMode<Choice extends { kind: string }>(mode: string | undefined, kind: string, choices: Choice[]): Choice | undefined {
+  if (mode === "bypassPermissions") {
+    const ahead = choices.filter((choice) => choice.kind === "allow_once");
+    return ahead.length === 1 ? ahead[0] : undefined;
+  }
+  if (mode === "plan" && changing.has(kind)) return choices.find((choice) => choice.kind === "reject_once");
+  return undefined;
+}
 
 export function answer(params: Answer): void {
   const ask = asks.get(params.requestId);

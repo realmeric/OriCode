@@ -23,7 +23,7 @@ function grokEntry(state: string, cliPath: string | null, cliVersion: string | n
     capabilities: {
       steer: false,
       resume: true,
-      modeLive: false,
+      modeLive: true,
       attachments: false,
       heads: false,
       stopTask: false,

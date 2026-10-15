@@ -78,7 +78,7 @@ export function antigravityProvider({ security, settings = settingsFile }: { sec
       unsupervised: true,
     },
     levels: [],
-    modes: ["default", "acceptEdits", "plan"],
+    modes: ["default", "acceptEdits", "plan", "bypassPermissions"],
     missing: entry.install!,
     found: () => binary(entry.id),
     availability,

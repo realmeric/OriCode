@@ -15,7 +15,8 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
         let steer: Bool
         /// A thread picks up its session after a quit or a release.
         let resume: Bool
-        /// A new permission mode reaches the running turn.
+        /// A new permission mode can reach the running turn, as the engine's reply to setMode then
+        /// says of each.
         let modeLive: Bool
         let attachments: Bool
         let heads: Bool

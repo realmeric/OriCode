@@ -298,6 +298,7 @@ test("routes, modes, stop reasons, views, refusals, model lists and a replacemen
   assert.deepEqual(modeFlags(undefined), []);
   assert.deepEqual(modeFlags("acceptEdits"), ["--mode", "accept-edits"]);
   assert.deepEqual(modeFlags("plan"), ["--mode", "plan"]);
+  assert.deepEqual(modeFlags("bypassPermissions"), ["--dangerously-skip-permissions"]);
   assert.equal(stopReason("SUCCESS"), "end_turn");
   assert.equal(stopReason("INTERRUPTED"), "interrupted");
   assert.equal(stopReason("CANCELED"), "interrupted");

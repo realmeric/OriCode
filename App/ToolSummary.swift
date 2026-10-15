@@ -118,11 +118,15 @@ enum ToolSummary {
         }
     }
 
+    /// A path inside the thread's folder from the folder, under the folder's real path too, which an
+    /// agent names its files by when the folder was added by a link.
     static func relative(_ path: String, to cwd: String) -> String {
         let path = (path as NSString).standardizingPath
         let cwd = (cwd as NSString).standardizingPath
         let root = cwd.hasSuffix("/") ? cwd : cwd + "/"
         if path.hasPrefix(root) { return String(path.dropFirst(root.count)) }
+        let real = (cwd as NSString).resolvingSymlinksInPath
+        if real != cwd, path.hasPrefix(real + "/") { return String(path.dropFirst(real.count + 1)) }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if path.hasPrefix(home) { return "~" + path.dropFirst(home.count) }
         return path

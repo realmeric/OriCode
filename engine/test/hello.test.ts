@@ -293,7 +293,7 @@ function codexEntry(state: string, cliPath: string | null, cliVersion: string | 
     capabilities: {
       steer: true,
       resume: true,
-      modeLive: false,
+      modeLive: true,
       attachments: true,
       heads: false,
       stopTask: false,
@@ -334,7 +334,7 @@ function unwiredEntry(id: string, name: string, agent: string, state: string, cl
 /// Cursor as hello lists it, in the state it found it.
 function cursorEntry(state: string, cliPath: string | null, cliVersion: string | null, hint: string | null) {
   const capabilities = { steer: false, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: false, usage: false, commands: true, compact: false, commitMessage: false, handoff: null, workers: true };
-  return { id: "cursor", name: "Cursor", agent: "Cursor", state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: ["acceptEdits", "plan"] };
+  return { id: "cursor", name: "Cursor", agent: "Cursor", state, hint, cli: cliPath, version: cliVersion, capabilities, levels: [], modes: ["acceptEdits", "plan", "bypassPermissions"] };
 }
 
 /// A model API that runs in Claude Code, as hello lists it: Claude's thread without its plan, with
@@ -377,7 +377,7 @@ test("hello lists the agents turned on without asking their CLIs anything, a che
       capabilities: {
         steer: false,
         resume: true,
-        modeLive: false,
+        modeLive: true,
         attachments: false,
         heads: false,
         stopTask: false,
@@ -524,7 +524,7 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
     capabilities: {
       steer: false,
       resume: true,
-      modeLive: false,
+      modeLive: true,
       attachments: true,
       heads: false,
       stopTask: false,
@@ -537,7 +537,7 @@ test("OpenCode turned on is found at hello, reads ready once checked, and lists 
       workers: true,
     },
     levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultracode"],
-    modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
+    modes: ["default", "acceptEdits", "plan", "bypassPermissions"],
   };
   assert.deepEqual(hello.result.providers[1], { ...entry, state: "unknown" });
   // Its own pick first, the last id of its first provider; each model's variants are its levels,
@@ -701,7 +701,7 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
   assert.equal(start.effort, "ultra");
   // Every thread on an agent that takes MCP has OriCode's tools, for open_thread, and hears of it.
   const { config, ...opened } = sent.find((message) => message.method === "thread/start").params;
-  assert.deepEqual(opened, { cwd, model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: `${drawing}\n\n${opening}\n\n${suggesting}` });
+  assert.deepEqual(opened, { cwd: await realpath(cwd), model: "gpt-large", approvalPolicy: "untrusted", sandbox: "workspace-write", approvalsReviewer: "user", developerInstructions: `${drawing}\n\n${opening}\n\n${suggesting}` });
   assert.match(config["mcp_servers.oricode"].url, /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f-]{36}$/);
   const decisions = sent.filter((message) => message.method === undefined && message.result?.decision).map((message) => message.result.decision);
   assert.deepEqual(decisions, [{ acceptWithExecpolicyAmendment: { execpolicy_amendment: ["make", "test"] } }, "decline"]);
@@ -962,7 +962,7 @@ function antigravityEntry(state: string, cliPath: string | null, cliVersion: str
       unsupervised: true,
     },
     levels: [],
-    modes: ["default", "acceptEdits", "plan"],
+    modes: ["default", "acceptEdits", "plan", "bypassPermissions"],
   };
 }
 

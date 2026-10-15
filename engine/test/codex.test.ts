@@ -1,5 +1,5 @@
 // A Codex thread against a stand-in app-server that scripts its replies, so nothing reaches a model.
-import { mkdtemp, readFile, realpath } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -85,7 +85,7 @@ test("the handshake: initialize names OriCode, the account is read, a thread sta
   assert.equal(initialize.params.clientInfo.name, "oricode");
   assert.equal(initialize.params.capabilities.experimentalApi, false);
   assert.ok(initialize.params.capabilities.optOutNotificationMethods.includes("item/commandExecution/outputDelta"));
-  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: drawing });
+  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write", approvalsReviewer: "user", developerInstructions: drawing });
   const start = log.find((message) => message.method === "turn/start").params;
   assert.deepEqual(start.input, [{ type: "text", text: "hello", text_elements: [] }]);
   assert.equal(start.threadId, "t-1");
@@ -186,7 +186,7 @@ test("a turn: reasoning, text, a read, a command asked and approved, a plan, a f
   assert.deepEqual(done.usage, { input: 400, output: 50, cacheRead: 1800, cacheWrite: 0 });
   assert.deepEqual(done.context, { used: 1230, window: 258400 });
   const log = await sent();
-  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "on-request", sandbox: "workspace-write", developerInstructions: drawing });
+  assert.deepEqual(log.find((message) => message.method === "thread/start").params, { cwd, model: "gpt-large", approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "user", developerInstructions: drawing });
   const start = log.find((message) => message.method === "turn/start").params;
   assert.equal(start.model, "gpt-large");
   assert.equal(start.effort, "low");
@@ -249,8 +249,8 @@ test("an idle app-server is let go, the next send resumes the thread without its
   assert.deepEqual(
     log.filter((message) => message.method === "thread/resume").map((message) => message.params),
     [
-      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: drawing },
-      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "never", sandbox: "read-only", developerInstructions: drawing },
+      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "untrusted", sandbox: "workspace-write", approvalsReviewer: "user", developerInstructions: drawing },
+      { threadId: "t-1", excludeTurns: true, cwd, model: null, approvalPolicy: "never", sandbox: "read-only", approvalsReviewer: "user", developerInstructions: drawing },
     ],
   );
   assert.equal(log.filter((message) => message.env).length, 3);
@@ -360,14 +360,47 @@ test("a send into a folder that's gone is refused, and a mode can't reach a runn
   await until(named("turn.done", "busy"), from);
 });
 
+test("Don't ask picked mid-turn answers the ask waiting and the next once each, and says so; Plan refuses an edit unasked", async () => {
+  const { session: codex, cwd, sent } = await session("midturn");
+  let from = events.length;
+  await codex.send({ threadId: "midturn", cwd, text: "work", permissionMode: "default" });
+  const ask = await until(named("ask", "midturn"), from);
+  assert.equal(await codex.setMode("bypassPermissions"), true);
+  assert.deepEqual(await until(named("ask.answered", "midturn"), from), { event: "ask.answered", threadId: "midturn", requestId: ask.requestId, allow: true });
+  assert.equal(answer({ requestId: ask.requestId, allow: false }), false);
+  await until(named("turn.done", "midturn"), from);
+  assert.equal(told("midturn", from).filter((event) => event.event === "ask").length, 1);
+  from = events.length;
+  await codex.send({ threadId: "midturn", cwd, text: "work", permissionMode: "plan" });
+  // The command is still the user's, since it may only read.
+  const command = await until(named("ask", "midturn"), from);
+  assert.equal(command.toolKind, "run");
+  answer({ requestId: command.requestId, allow: false });
+  await until(named("turn.done", "midturn"), from);
+  assert.deepEqual(told("midturn", from).filter((event) => event.event.startsWith("ask")).map((event) => event.requestId), [command.requestId]);
+  const decisions = (await sent()).filter((message) => message.method === undefined && message.result?.decision).map((message) => message.result.decision);
+  // Never for the thread: acceptForSession was offered with the edit. Plan's edit is a plain no.
+  assert.deepEqual(decisions, ["accept", "accept", "cancel", "decline"]);
+});
+
+test("Codex is given its folder's real path, since its sandbox refuses a writable root with a link in it", async () => {
+  const { session: codex, cwd, sent } = await session("linked");
+  const link = join(await realpath(await mkdtemp(join(tmpdir(), "oricode-link-"))), "linked");
+  await symlink(cwd, link);
+  const from = events.length;
+  await codex.send({ threadId: "linked", cwd: link, text: "hello" });
+  await until(named("turn.done", "linked"), from);
+  assert.equal((await sent()).find((message) => message.method === "thread/start").params.cwd, cwd);
+});
+
 test("modes, decisions, commands, diffs and windows in the app's words", () => {
   assert.deepEqual(["default", "acceptEdits", "auto", "plan", "bypassPermissions", undefined].map(policy), [
-    { approvalPolicy: "untrusted", sandbox: "workspace-write" },
-    { approvalPolicy: "on-request", sandbox: "workspace-write" },
-    { approvalPolicy: "on-request" },
-    { approvalPolicy: "never", sandbox: "read-only" },
-    { approvalPolicy: "never", sandbox: "danger-full-access" },
-    { approvalPolicy: "untrusted", sandbox: "workspace-write" },
+    { approvalPolicy: "untrusted", sandbox: "workspace-write", approvalsReviewer: "user" },
+    { approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "user" },
+    { approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "auto_review" },
+    { approvalPolicy: "never", sandbox: "read-only", approvalsReviewer: "user" },
+    { approvalPolicy: "never", sandbox: "danger-full-access", approvalsReviewer: "user" },
+    { approvalPolicy: "untrusted", sandbox: "workspace-write", approvalsReviewer: "user" },
   ]);
   assert.deepEqual(choiceOf({ applyNetworkPolicyAmendment: { network_policy_amendment: { host: "npmjs.org", action: "allow" } } }), {
     id: "applyNetworkPolicyAmendment",

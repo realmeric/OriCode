@@ -38,7 +38,8 @@ export const codex: Provider = {
   capabilities: {
     steer: true,
     resume: true,
-    modeLive: false,
+    // Only Don't ask, whose asks the engine answers; any other mode waits for the next turn.
+    modeLive: true,
     attachments: true,
     heads: false,
     stopTask: false,

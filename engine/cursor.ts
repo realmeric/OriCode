@@ -1,7 +1,7 @@
 import { readdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { agentEnvironment } from "./acp.ts";
+import { agentEnvironment, type Reach } from "./acp.ts";
 import { acpProvider } from "./acp-provider.ts";
 import { run } from "./child.ts";
 import type { Model } from "./models.ts";
@@ -167,11 +167,18 @@ export const cursorChats: Source = {
   read: (id) => chatEvents(id),
 };
 
+/// Cursor's Agent asks before a command and applies edits; Plan reads and changes nothing; Don't
+/// ask is Agent started with `--force`, which its ACP server reads to run every call unasked.
+/// Its `--auto-review` reaches only its own prompt, not ACP, so Auto isn't offered.
+export function reach(mode: string): Reach {
+  if (mode === "bypassPermissions") return { mode: "agent", args: ["--force"] };
+  return { mode: mode === "plan" ? "plan" : "agent" };
+}
+
 export const cursor = acpProvider({
   id: "cursor",
   args: ["acp"],
-  // Cursor's Agent asks before a command and applies edits; Plan reads and changes nothing.
-  permissions: (mode) => ({ mode: mode === "plan" ? "plan" : "agent" }),
+  permissions: reach,
   allowAlways: "Cursor adds this to its own allowlist, which every Cursor session on this Mac follows.",
   strays: true,
   resume: true,
@@ -179,7 +186,7 @@ export const cursor = acpProvider({
   modeLive: true,
   // Its ACP sessions live apart from the chats `cursor-agent --resume` opens.
   handoff: null,
-  modes: ["acceptEdits", "plan"],
+  modes: ["acceptEdits", "plan", "bypassPermissions"],
   forget: (_cli, sessionId) => rm(sessionFolder(sessionId), { recursive: true, force: true }),
   runs: plan,
 });

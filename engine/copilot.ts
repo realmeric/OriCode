@@ -189,7 +189,8 @@ export const copilotSessions: Source = {
 export const copilot = acpProvider({
   id: "copilot",
   args: ["--acp", "--no-auto-update"],
-  // Its modes are URIs; Autopilot turns its allow-all on, and leaving it turns it off.
+  // Its modes are URIs; Autopilot turns its allow-all on, and leaving it turns it off. Its assisted
+  // approval, an LLM check that would be Auto, runs only in its prompt mode, not over ACP.
   permissions: (mode) => ({ mode: `https://agentclientprotocol.com/protocol/session-modes#${modes[mode] ?? "agent"}` }),
   textErrors: true,
   resume: true,

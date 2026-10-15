@@ -732,6 +732,9 @@ final class Conversation {
         case "tool.use", "tool.result", "ask", "ask.cancelled", "error", "note":
             if event.name == "error" { failed = true }
             record(event.name, event.body)
+        case "ask.answered":
+            // The thread's mode answered it, Don't ask or Plan picked while it waited, as the user would.
+            if let requestId = event.body["requestId"]?.string { answered(requestId, allow: event.body["allow"]?.bool == true) }
         case "thread.suggested":
             // Under the reply it came with, which is still being written.
             guard running else {

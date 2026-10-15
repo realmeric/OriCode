@@ -61,8 +61,9 @@ async function call(url: string, name: string, args: object = {}): Promise<any> 
   return result.isError ? { error: text } : JSON.parse(text);
 }
 
-/// An engine with a Codex head in a repository whose thread lets its workers use Codex and OpenCode.
-async function head(t: { after: (fn: () => unknown) => void }, threadId: string) {
+/// An engine with a Codex head in a repository whose thread lets its workers use Codex and OpenCode,
+/// on Ask unless it says, so what its workers ask comes to the thread.
+async function head(t: { after: (fn: () => unknown) => void }, threadId: string, permissionMode = "default") {
   const { bin, env } = await sandbox();
   const logs = await mkdtemp(join(tmpdir(), "oricode-rays-logs-"));
   await agents(bin, logs);
@@ -70,7 +71,7 @@ async function head(t: { after: (fn: () => unknown) => void }, threadId: string)
   const engine = engineWith(env);
   t.after(engine.kill);
   await engine.request("hello", { agents: { codex: { path: join(bin, "codex") }, opencode: { path: join(bin, "opencode") } } });
-  const send = { threadId, cwd, text: "hello", permissionMode: "bypassPermissions", provider: "codex", rays: ["codex/gpt-small", "opencode/small", "codex/gpt-large"] };
+  const send = { threadId, cwd, text: "hello", permissionMode, provider: "codex", rays: ["codex/gpt-small", "opencode/small", "codex/gpt-large"] };
   assert.deepEqual((await engine.request("send", send)).result, { ok: true });
   await engine.until((line) => line.event === "turn.done" && line.threadId === threadId);
   const started = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start");
@@ -207,6 +208,15 @@ test("a worker's ask goes to the head's thread labelled with its agent and task,
   assert.deepEqual(credited.files.map((file: { path: string }) => file.path), ["/w/a.txt"]);
   // Nothing of the worker's own reaches the app under an id it has no thread for.
   assert.equal(engine.lines.slice(from).some((line) => typeof line.threadId === "string" && line.threadId.includes("/worker-")), false);
+  await engine.end();
+});
+
+test("a worker of a thread on Don't ask asks nothing: what its agent asks is answered once", async (t) => {
+  const { engine, url } = await head(t, "k193-dont", "bypassPermissions");
+  const from = engine.lines.length;
+  await call(url, "start_worker", { agent: "opencode", task: "work" });
+  assert.equal((await call(url, "worker_result", { worker: "worker-1", wait: true })).state, "done");
+  assert.equal(engine.lines.slice(from).some((line) => line.event === "ask"), false);
   await engine.end();
 });
 

@@ -43,7 +43,9 @@ export const grok = acpProvider({
   // session/resume, which doesn't replay the conversation.
   resume: true,
   images: false,
-  modeLive: false,
+  // Plan is a session mode, and Don't ask's asks the engine answers; leaving Don't ask waits for
+  // the next turn, which starts Grok again.
+  modeLive: true,
   handoff: "grok --resume {session}",
   levels: ["low", "medium", "high", "xhigh"],
   modes: ["default", "plan", "bypassPermissions"],

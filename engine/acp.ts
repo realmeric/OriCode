@@ -1,11 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { diffHunks, diffOf, exitCode, resultText, stopReason, todos, todosIn, toolKind, toolView, unifiedHunks, type Location, type PlanEntry, type Todo, type ToolContent } from "./acp-map.ts";
 import { within } from "./child.ts";
-import { asks as registry, client, toolsServer } from "./provider.ts";
+import { byMode, asks as registry, client, toolsServer } from "./provider.ts";
 import { lastLine } from "./shell.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
@@ -60,7 +60,8 @@ export type AcpSendParams = {
   text: string;
   /// The agent's own model id.
   model?: string;
-  /// The agent's own mode id. A mode it doesn't have, one of Claude's, leaves its mode alone.
+  /// The thread's mode, which the agent's `permissions` turns into its own; without them it's taken
+  /// as the agent's own id, and a mode it doesn't have leaves its mode alone.
   permissionMode?: string;
   /// A value of the agent's thought_level option, for an agent that has one.
   effort?: string;
@@ -125,7 +126,7 @@ type PermissionOption = { optionId: string; name: string; kind: string };
 
 type Outcome = { outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string } };
 
-type Ask = { session: AcpSession; options: PermissionOption[]; resolve: (outcome: Outcome) => void };
+type Ask = { session: AcpSession; kind: string; options: PermissionOption[]; resolve: (outcome: Outcome) => void };
 
 /// What an agent sends back for a request it couldn't do.
 class AgentError extends Error {
@@ -277,6 +278,7 @@ export class AcpSession {
     if (this.running) throw new Error("A turn is already running in this thread.");
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
     log(`send thread=${this.id} agent=${this.agent.name} model=${params.model ?? "default"} mode=${params.permissionMode ?? "default"}`);
+    this.mode = params.permissionMode ?? this.mode;
     this.running = true;
     this.interrupted = false;
     this.errored = false;
@@ -300,14 +302,17 @@ export class AcpSession {
   }
 
   /// The thread's mode, applied now when a session is open, and held for the next one. A mode
-  /// the running process wasn't started for reaches the next turn, which starts another.
+  /// the running process wasn't started for reaches the next turn, which starts another. Don't
+  /// ask reaches the running turn whatever the agent takes, since its asks are answered here.
   async setMode(mode: string): Promise<boolean> {
     this.mode = mode;
+    this.settle();
+    const answered = mode === "bypassPermissions";
     if (!this.live) return true;
     const reach = this.reach(mode);
-    if (launch(reach) !== this.startedWith) return !this.running;
+    if (launch(reach) !== this.startedWith) return !this.running || answered;
     if (!reach.mode) return true;
-    return this.applyMode(reach.mode).catch(() => false);
+    return (await this.applyMode(reach.mode).catch(() => false)) || answered;
   }
 
   /// ACP has no fast mode.
@@ -363,6 +368,9 @@ export class AcpSession {
 
   private async turn(params: AcpSendParams, turn: number): Promise<void> {
     try {
+      // The folder's real path, since an agent that resolves the files it touches would find a
+      // folder added by a link outside the one it was given, and ask before going there.
+      params = { ...params, cwd: realpathSync(params.cwd) };
       const reach = this.reach(params.permissionMode ?? this.mode);
       if (this.child && (params.cwd !== this.cwd || launch(reach) !== this.startedWith)) this.stop();
       if (!this.child) await this.start(params.cwd, reach);
@@ -595,6 +603,18 @@ export class AcpSession {
     }
   }
 
+  /// The asks still waiting that the thread's new mode answers by itself.
+  private settle(): void {
+    for (const [requestId, ask] of asks) {
+      const option = ask.session === this ? byMode(this.mode, ask.kind, ask.options) : undefined;
+      if (!option) continue;
+      asks.delete(requestId);
+      registry.delete(requestId);
+      event("ask.answered", { threadId: this.id, requestId, allow: option.kind === "allow_once" });
+      ask.resolve({ outcome: { outcome: "selected", optionId: option.optionId } });
+    }
+  }
+
   /// The agent's process has gone, whether it quit, crashed or never started. A turn it was in
   /// ends as the engine's stopping, and its asks with it.
   private exited(child: ChildProcessWithoutNullStreams, message: string): void {
@@ -801,15 +821,19 @@ export class AcpSession {
     event("tool.result", { threadId: this.id, toolUseId, content: "", isError: false });
   }
 
-  /// The agent's own options become the ask's choices, and the one picked goes back by its id.
+  /// The agent's own options become the ask's choices, and the one picked goes back by its id. One
+  /// the thread's mode answers by itself isn't asked.
   private permission(params: { toolCall: ToolCallUpdate; options: PermissionOption[] }): Promise<Outcome> {
     // Cursor can ask about a call after it has answered Stop, with no turn left to show it in.
     if (!this.running) return Promise.resolve({ outcome: { outcome: "cancelled" } });
     const call = this.track(params.toolCall);
     this.use(call);
+    const kind = toolKind(call.kind);
+    const settled = byMode(this.mode, kind, params.options);
+    if (settled) return Promise.resolve({ outcome: { outcome: "selected", optionId: settled.optionId } });
     const requestId = randomUUID();
     return new Promise((resolve) => {
-      asks.set(requestId, { session: this, options: params.options, resolve });
+      asks.set(requestId, { session: this, kind, options: params.options, resolve });
       // main.ts answers every ask through the shared registry, which hands this one the optionId.
       registry.set(requestId, { threadId: this.id, answer, stop: () => this.cancelAsks() });
       event("ask", {
@@ -817,7 +841,7 @@ export class AcpSession {
         requestId,
         kind: "permission",
         tool: call.name ?? call.title ?? "Tool",
-        toolKind: toolKind(call.kind),
+        toolKind: kind,
         toolUseId: call.toolCallId,
         input: call.rawInput ?? {},
         view: toolView(call.rawInput, call.locations, call.content),

@@ -1,5 +1,5 @@
 // An ACP thread against a stand-in agent that scripts its replies, so nothing reaches a model.
-import { chmod, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -10,8 +10,9 @@ import { acpProvider } from "../acp-provider.ts";
 import { availability, copilot, noPlan } from "../copilot.ts";
 import { auto, cursor, named as cursorNamed, onPlan, sessionFolder } from "../cursor.ts";
 import type { Model } from "../models.ts";
-import { listed, preferred, reach } from "../opencode.ts";
-import { answer as answerThroughRegistry, asks } from "../provider.ts";
+import { listed, opencode, preferred, reach } from "../opencode.ts";
+import { reach as cursorReach } from "../cursor.ts";
+import { answer as answerThroughRegistry, asks, byMode } from "../provider.ts";
 
 /// The events sessions write to stdout, kept here instead, and whoever waits on the next one.
 const events: Record<string, any>[] = [];
@@ -106,7 +107,9 @@ test("the handshake: initialize with nothing offered, a new session in the folde
   assert.equal(await session.setFast(true), false);
   assert.equal(await session.setMode("plan"), true);
   assert.equal(modes(session).current, "plan");
-  assert.equal(await session.setMode("bypassPermissions"), false);
+  // A mode it lacks leaves its own alone, but Don't ask is still taken: its asks are answered here.
+  assert.equal(await session.setMode("bypassPermissions"), true);
+  assert.equal(modes(session).current, "plan");
 });
 
 test("a turn: thinking, text, a read, an edit with its diff after an ask, a plan and the usage", async () => {
@@ -407,9 +410,80 @@ test("OpenCode's permissions for each of a thread's modes", () => {
   };
   assert.deepEqual(permission("default"), ["build", { read: "ask", edit: "ask", bash: "ask", webfetch: "ask" }]);
   assert.deepEqual(permission("acceptEdits"), ["build", { edit: "allow", bash: "ask" }]);
-  assert.deepEqual(permission("auto"), ["build", undefined]);
   assert.deepEqual(permission("plan"), ["plan", undefined]);
   assert.deepEqual(permission("bypassPermissions"), ["build", { "*": "allow" }]);
+  // Nothing in OpenCode judges a call's risk, so Auto isn't offered; a thread left in it gets
+  // OpenCode as the user set it up.
+  assert.deepEqual(opencode.modes, ["default", "acceptEdits", "plan", "bypassPermissions"]);
+  assert.deepEqual(permission("auto"), ["build", undefined]);
+});
+
+test("Cursor's modes: Agent for Accept edits, its own Plan, and Agent started with --force for Don't ask", () => {
+  assert.deepEqual(cursorReach("acceptEdits"), { mode: "agent" });
+  assert.deepEqual(cursorReach("plan"), { mode: "plan" });
+  assert.deepEqual(cursorReach("bypassPermissions"), { mode: "agent", args: ["--force"] });
+});
+
+test("a thread's mode answers an ask by itself: Don't ask once and never always, Plan refuses an edit, a question is the user's", () => {
+  const options = [
+    { optionId: "once", kind: "allow_once" },
+    { optionId: "always", kind: "allow_always" },
+    { optionId: "reject", kind: "reject_once" },
+  ];
+  assert.equal(byMode("bypassPermissions", "run", options)?.optionId, "once");
+  assert.equal(byMode("bypassPermissions", "read", options)?.optionId, "once");
+  assert.equal(byMode("bypassPermissions", "edit", options.slice(1)), undefined);
+  for (const kind of ["edit", "write", "delete", "move"]) assert.equal(byMode("plan", kind, options)?.optionId, "reject", kind);
+  // A command may only read, and an agent's own plan mode asks about one.
+  assert.equal(byMode("plan", "run", options), undefined);
+  assert.equal(byMode("plan", "read", options), undefined);
+  for (const mode of ["default", "acceptEdits", "auto", undefined]) assert.equal(byMode(mode, "run", options), undefined);
+  // Cursor asks its questions as a permission, each answer a way ahead once.
+  const question = [
+    { optionId: "red", kind: "allow_once" },
+    { optionId: "blue", kind: "allow_once" },
+    { optionId: "__ask_question_skip__", kind: "reject_once" },
+  ];
+  assert.equal(byMode("bypassPermissions", "other", question), undefined);
+  assert.equal(byMode("plan", "other", question), undefined);
+});
+
+test("Don't ask answers each ask once, the one waiting when it's picked mid-turn included, and says so; Plan refuses an edit unasked", async () => {
+  const { session, cwd, sent } = await standIn("midturn");
+  sessions.push(session);
+  let from = events.length;
+  await session.send({ threadId: "midturn", cwd, text: "work", permissionMode: "default" });
+  const ask = await until(named("ask", "midturn"), from);
+  assert.equal(await session.setMode("bypassPermissions"), true);
+  assert.deepEqual(await until(named("ask.answered", "midturn"), from), { event: "ask.answered", threadId: "midturn", requestId: ask.requestId, allow: true });
+  assert.equal(asks.has(ask.requestId), false);
+  assert.equal(answer({ requestId: ask.requestId, allow: false }), false);
+  await until(named("turn.done", "midturn"), from);
+  from = events.length;
+  await session.send({ threadId: "midturn", cwd, text: "work", permissionMode: "bypassPermissions" });
+  await until(named("turn.done", "midturn"), from);
+  from = events.length;
+  await session.send({ threadId: "midturn", cwd, text: "work", permissionMode: "plan" });
+  const planned = await until(named("turn.done", "midturn"), from);
+  const told = events.slice(from).filter((event) => event.threadId === "midturn");
+  assert.equal(told.some((event) => event.event.startsWith("ask")), false);
+  assert.equal(told.find((event) => event.event === "tool.result" && event.toolUseId === "edit-1")?.isError, true);
+  assert.equal(planned.stopReason, "end_turn");
+  const answers = (await sent()).filter((message) => message.id >= 100 && message.result).map((message) => message.result.outcome.optionId);
+  assert.deepEqual(answers, ["once", "once", "reject"]);
+});
+
+test("an agent is given its folder's real path, not the link the folder was added by", async () => {
+  const { session, cwd, sent } = await standIn("linked");
+  sessions.push(session);
+  const link = join(await folder(), "linked");
+  await symlink(cwd, link);
+  const from = events.length;
+  await session.send({ threadId: "linked", cwd: link, text: "hello" });
+  await until(named("turn.done", "linked"), from);
+  const log = await sent();
+  assert.equal(log[0].cwd, cwd);
+  assert.deepEqual(log.find((message) => message.method === "session/new").params, { cwd, mcpServers: [] });
 });
 
 test("OpenCode starts on its own pick among its first provider's models", () => {
@@ -603,7 +677,7 @@ test("Cursor's models as Cursor names them, only Auto on the Free plan, and wher
   assert.equal(cursorNamed(model("composer-2.5[fast=true]", "composer-2.5")).description, "fast=true");
   assert.equal(sessionFolder("9df7c551-c34e-427e-b2b3-5bbbb2837e10", "/Users/x"), "/Users/x/.cursor/acp-sessions/9df7c551-c34e-427e-b2b3-5bbbb2837e10");
   assert.throws(() => sessionFolder("../chats"), /isn't a session id/);
-  assert.deepEqual([cursor.modes, cursor.levels, cursor.capabilities.modeLive, cursor.capabilities.resume], [["acceptEdits", "plan"], [], true, true]);
+  assert.deepEqual([cursor.modes, cursor.levels, cursor.capabilities.modeLive, cursor.capabilities.resume], [["acceptEdits", "plan", "bypassPermissions"], [], true, true]);
   assert.deepEqual([copilot.modes, copilot.levels], [["default", "plan", "bypassPermissions"], ["low", "medium", "high"]]);
 });
 

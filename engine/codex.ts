@@ -1,13 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
 import { runSettled, within } from "./child.ts";
-import { asks as registry, client, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
+import { byMode, asks as registry, client, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
 import { replied } from "./sessions.ts";
 import { lastLine } from "./shell.ts";
 import type { Usage } from "./usage.ts";
@@ -68,7 +68,10 @@ type RateLimits = { primary: RateLimitWindow | null; secondary: RateLimitWindow 
 
 type TurnError = { message: string; codexErrorInfo: unknown; additionalDetails: string | null };
 
-type Ask = { session: CodexSession; serverId: number | string; reply: (answer: Answer | undefined) => void };
+/// A permission ask carries its call's kind and its choices, which the thread's mode may answer.
+type Ask = { session: CodexSession; serverId: number | string; reply: (answer: Answer | undefined) => void; kind?: string; choices?: Choice[] };
+
+type Choice = { id: string; name: string; kind: string };
 
 /// What Codex sends that nothing here reads, turned off in initialize so it isn't parsed a
 /// token at a time: a command's output as it streams, MCP servers starting, hooks running.
@@ -105,30 +108,32 @@ export function answer(params: Answer): boolean {
   return true;
 }
 
-/// A thread's mode as Codex's approval policy and sandbox. Ask asks before every edit and anything
-/// Codex doesn't know to be read-only; it names workspace-write because in a folder Codex hasn't
-/// been told to trust, its own default is read-only and its model then won't try an edit at all.
-/// Accept edits lets it write inside the folder unasked; Codex can't tell an edit from a command
-/// that writes, so a command inside the folder runs unasked too. Auto leaves the sandbox to the
-/// user's config.toml and Codex to judge when to ask. Plan reads and never asks, so nothing it
-/// does can change a file. Don't ask runs anything anywhere.
-export function policy(mode: string | undefined): { approvalPolicy: string; sandbox?: string } {
+/// A thread's mode as Codex's approval policy, sandbox and reviewer. Ask asks before every edit and
+/// anything Codex doesn't know to be read-only; it names workspace-write because in a folder Codex
+/// hasn't been told to trust, its own default is read-only and its model then won't try an edit at
+/// all. Accept edits lets it write inside the folder unasked; Codex can't tell an edit from a
+/// command that writes, so a command inside the folder runs unasked too. Auto is Accept edits with
+/// Codex's auto-review deciding in the user's place, a subagent that weighs each request's risk,
+/// as Claude's Auto does. Plan reads and never asks, so nothing it does can change a file. Don't
+/// ask runs anything anywhere. Every mode names its reviewer, since a resumed thread would
+/// otherwise keep the one it had.
+export function policy(mode: string | undefined): { approvalPolicy: string; sandbox: string; approvalsReviewer: string } {
   switch (mode) {
     case "acceptEdits":
-      return { approvalPolicy: "on-request", sandbox: "workspace-write" };
+      return { approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "user" };
     case "auto":
-      return { approvalPolicy: "on-request" };
+      return { approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "auto_review" };
     case "plan":
-      return { approvalPolicy: "never", sandbox: "read-only" };
+      return { approvalPolicy: "never", sandbox: "read-only", approvalsReviewer: "user" };
     case "bypassPermissions":
-      return { approvalPolicy: "never", sandbox: "danger-full-access" };
+      return { approvalPolicy: "never", sandbox: "danger-full-access", approvalsReviewer: "user" };
     default:
-      return { approvalPolicy: "untrusted", sandbox: "workspace-write" };
+      return { approvalPolicy: "untrusted", sandbox: "workspace-write", approvalsReviewer: "user" };
   }
 }
 
 /// A decision as an ask's choice, worded as Codex's own prompt words it.
-export function choiceOf(decision: Decision): { id: string; name: string; kind: string } {
+export function choiceOf(decision: Decision): Choice {
   const id = typeof decision === "string" ? decision : (Object.keys(decision)[0] ?? "");
   const body = typeof decision === "string" ? undefined : decision[id];
   switch (id) {
@@ -239,10 +244,12 @@ export class CodexSession implements Session {
   }
 
   /// A mode is a policy and a sandbox Codex takes when a thread opens, so a new one reopens the
-  /// thread at the next turn. It can't reach the turn that's running.
+  /// thread at the next turn. It can't reach the turn that's running, except Don't ask, whose
+  /// asks are answered here.
   async setMode(mode: string): Promise<boolean> {
     this.mode = mode;
-    return !this.running;
+    this.settle();
+    return !this.running || mode === "bypassPermissions";
   }
 
   async setFast(_fast: boolean): Promise<boolean> {
@@ -309,6 +316,9 @@ export class CodexSession implements Session {
 
   private async turn(params: CodexSendParams, turn: number): Promise<void> {
     try {
+      // The folder's real path: Codex's sandbox refuses a writable root with a link in it, so in
+      // a folder added by one every command fails and Codex asks to run it unsandboxed.
+      params = { ...params, cwd: realpathSync(params.cwd) };
       const mode = params.permissionMode ?? this.mode ?? "default";
       this.mode = mode;
       if (this.server && (params.cwd !== this.cwd || mode !== this.openedMode || params.tools !== this.openedTools || params.instructions !== this.openedInstructions)) this.stop();
@@ -474,6 +484,19 @@ export class CodexSession implements Session {
     }
   }
 
+  /// The asks still waiting that the thread's new mode answers by itself.
+  private settle(): void {
+    for (const [requestId, ask] of asks) {
+      const choice = ask.session === this && ask.kind && ask.choices ? byMode(this.mode, ask.kind, ask.choices) : undefined;
+      if (!choice) continue;
+      const allow = choice.kind === "allow_once";
+      asks.delete(requestId);
+      registry.delete(requestId);
+      event("ask.answered", { threadId: this.id, requestId, allow });
+      ask.reply({ requestId, allow, optionId: choice.id });
+    }
+  }
+
   /// The app-server has gone, whether it quit, crashed or never started. A turn it was in ends
   /// as the engine's stopping, and its asks with it.
   private exited(server: AppServer, message: string): void {
@@ -632,7 +655,8 @@ export class CodexSession implements Session {
   }
 
   /// A command or an edit Codex wants to run: an ask whose choices are Codex's own decisions,
-  /// the one picked going back as it was offered.
+  /// the one picked going back as it was offered. One the thread's mode answers by itself isn't
+  /// asked.
   private approval(server: AppServer, id: number | string, method: string, params: any): void {
     const command = method === "item/commandExecution/requestApproval";
     const known = this.items.get(params.itemId);
@@ -640,9 +664,12 @@ export class CodexSession implements Session {
     this.use(item);
     const call = toolCalls(item)[0] ?? { id: params.itemId, name: "Edit", input: {}, kind: "edit", view: {} };
     const offered: Decision[] = params.availableDecisions ?? decisions;
+    const choices = offered.map(choiceOf);
+    const settled = byMode(this.mode, call.kind, choices);
+    if (settled) return server.respond(id, { decision: offered[choices.indexOf(settled)] });
     const stop = offered.includes("cancel") ? "cancel" : "decline";
     const requestId = randomUUID();
-    asks.set(requestId, { session: this, serverId: id, reply: (answer) => server.respond(id, { decision: answer ? decide(offered, answer) : stop }) });
+    asks.set(requestId, { session: this, serverId: id, reply: (answer) => server.respond(id, { decision: answer ? decide(offered, answer) : stop }), kind: call.kind, choices });
     this.register(requestId);
     event("ask", {
       threadId: this.id,
@@ -653,7 +680,7 @@ export class CodexSession implements Session {
       input: call.input,
       toolKind: call.kind,
       view: params.reason ? { ...call.view, description: params.reason } : call.view,
-      choices: offered.map(choiceOf),
+      choices,
     });
   }
 

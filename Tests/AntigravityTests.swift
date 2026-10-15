@@ -22,7 +22,7 @@ struct AntigravityTests {
                 "unsupervised": true,
             ],
             "levels": [],
-            "modes": ["default", "acceptEdits", "plan"],
+            "modes": ["default", "acceptEdits", "plan", "bypassPermissions"],
         ]
     }
 
@@ -59,7 +59,7 @@ struct AntigravityTests {
 
     @Test func itsThreeModesShowWithTheUnsupervisedLineAndNoRail() {
         let state = PickerState(model: model, chat: chat)
-        #expect(state.modes == [.ask, .acceptEdits, .plan])
+        #expect(state.modes == [.ask, .acceptEdits, .plan, .dontAsk])
         #expect(state.unsupervised)
         #expect(state.option?.efforts == [])
         #expect(model.modelSent(in: chat) == "gemini-3.8-flash-high")
@@ -75,8 +75,8 @@ struct AntigravityTests {
         let rows = model.paletteSearchable()
         let ids = Set(rows.map(\.id))
         #expect(rows.first { $0.id == "terminal.claude" }?.title == "Continue in Antigravity")
-        for id in ["thread.copySession", "mode.list", "mode.acceptEdits", "mode.plan"] { #expect(ids.contains(id), "\(id) missing") }
-        for id in ["thread.compact", "heads", "effort.list", "mode.auto", "mode.bypassPermissions"] { #expect(!ids.contains(id), "\(id) offered") }
+        for id in ["thread.copySession", "mode.list", "mode.acceptEdits", "mode.plan", "mode.bypassPermissions"] { #expect(ids.contains(id), "\(id) missing") }
+        for id in ["thread.compact", "heads", "effort.list", "mode.auto"] { #expect(!ids.contains(id), "\(id) offered") }
     }
 
     @Test func itsRowTakesAGeminiKeyAndKeepsTheGoogleAccountOff() throws {

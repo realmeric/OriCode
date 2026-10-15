@@ -19,7 +19,7 @@ struct CodexTests {
     private static let codex = ProviderInfo(
         id: "codex", name: "Codex", agent: "Codex", state: .unknown, hint: nil, cli: "/usr/local/bin/codex", version: nil,
         capabilities: ProviderInfo.Capabilities(
-            steer: true, resume: true, modeLive: false, attachments: true, heads: false, stopTask: false, limits: true,
+            steer: true, resume: true, modeLive: true, attachments: true, heads: false, stopTask: false, limits: true,
             usage: true, commands: false, compact: false, commitMessage: false, handoff: "codex resume --no-daemon {session}",
             longestMessage: 1 << 20),
         levels: ["low", "medium", "high", "xhigh", "max", Effort.ultracode],

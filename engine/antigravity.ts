@@ -96,13 +96,16 @@ export async function route(file = settingsFile): Promise<"gemini" | "google"> {
 }
 
 /// A thread's mode as agy's flags. Default is agy's own request-review, which print mode can't
-/// ask in, so a command is refused unless the user's settings allow it.
+/// ask in, so a command is refused unless the user's settings allow it. Don't ask approves
+/// everything it would have asked about.
 export function modeFlags(mode: string | undefined): string[] {
   switch (mode) {
     case "acceptEdits":
       return ["--mode", "accept-edits"];
     case "plan":
       return ["--mode", "plan"];
+    case "bypassPermissions":
+      return ["--dangerously-skip-permissions"];
     default:
       return [];
   }
