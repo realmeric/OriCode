@@ -343,6 +343,7 @@ extension AppModel {
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
         if event.name == "limits" { takeLimits(event.body, for: chat.providerID) }
+        if event.name == "tool.result", event.body["parent"]?.string == nil, inView(chat.id) { followWater(chat) }
         if event.name == "turn.done" {
             // A thread out of view is counted when it comes into view.
             if inView(chat.id) { readWater(for: chat, turnEnded: true) }
@@ -448,6 +449,8 @@ extension AppModel {
     private func changedAgent(_ chat: Chat, to ref: ModelRef) {
         let conversation = conversation(for: chat)
         chat.sessionId = nil
+        // The old session's water isn't this agent's: nothing stands until the thread has a figure of its own.
+        conversation.water.forget()
         chat.handover = conversation.items.contains(where: \.startsTurn)
         conversation.note(Self.nowOn(agent: providerInfo(ref.provider).agent, model: option(ref)?.name ?? ref.id))
         let thread = chat.id.uuidString

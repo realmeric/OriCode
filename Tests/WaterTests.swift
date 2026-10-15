@@ -229,4 +229,63 @@ struct WaterTests {
         #expect(footers.count == 2)
         #expect(conversation.lastFooter == footers.last)
     }
+
+    /// A Claude thread whose figure stands, moved to another agent, shows nothing straight away,
+    /// and a reading still on its way when it moves doesn't land after (K-265).
+    @Test func aThreadMovedToAnotherAgentShowsNoWaterAtOnce() async throws {
+        let restore = ModelMenuTests.keepingDefaults()
+        defer { restore() }
+        let definition = try JSONDecoder().decode(Water.Definition.self, from: Self.madeUp)
+        let config = FileManager.default.temporaryDirectory.appending(path: "water-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: config) }
+        let folder = config.appending(path: "projects/-tmp-alpha")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(Self.reply("msg_1", 10).utf8).write(to: folder.appending(path: "s1.jsonl"))
+
+        let container = try TestStore.memory()
+        let project = Project(name: "alpha", path: "/tmp/alpha")
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        model.models = ModelMenuTests.claudeModels
+        model.modelsByAgent[ModelMenuTests.codex.id] = ModelMenuTests.codexModels
+        model.providers = [.claude, ModelMenuTests.codex]
+        model.selectedProjectID = project.id
+        let chat = Chat(project: project)
+        chat.started = true
+        chat.model = "default"
+        container.mainContext.insert(chat)
+        let conversation = model.conversation(for: chat)
+        conversation.userSent("hello")
+        conversation.receive(EngineEvent(name: "turn.done", threadId: chat.id.uuidString, body: [
+            "event": "turn.done", "sessionId": "s1", "stopReason": "end_turn", "durationMs": 1, "costUSD": 0,
+        ]))
+        #expect(chat.sessionId == "s1")
+
+        conversation.water.read(session: chat.sessionId, cwd: chat.cwd, definition: definition, config: config)
+        await conversation.water.settled()
+        #expect(conversation.water.reading?.volume == "0,20 L")
+
+        // On its way when the thread moves, and a tool's reading asked for too.
+        conversation.water.read(session: chat.sessionId, cwd: chat.cwd, again: true, definition: definition, config: config)
+        conversation.water.soon { Issue.record("a reading asked for before the move was taken after it") }
+        model.setModel(ModelRef(provider: "codex", id: "gpt-6-luna"), for: chat)
+        #expect(chat.providerID == "codex" && chat.sessionId == nil)
+        #expect(conversation.water.reading == nil)
+        await conversation.water.settled()
+        try await Task.sleep(for: WaterMeter.writeWait * 2)
+        #expect(conversation.water.reading == nil)
+    }
+
+    /// Mid-turn, the tools' results in one moment share one reading, a moment after the first.
+    @Test func toolResultsInOneMomentShareOneReading() async throws {
+        let meter = WaterMeter()
+        var readings = 0
+        for _ in 0..<5 { meter.soon { readings += 1 } }
+        #expect(readings == 0)
+        await meter.settled()
+        #expect(readings == 1)
+        meter.soon { readings += 1 }
+        await meter.settled()
+        #expect(readings == 2)
+    }
 }

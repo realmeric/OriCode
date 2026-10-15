@@ -714,6 +714,7 @@ final class Conversation {
             nearLimit(event.body)
         case "session.lost":
             chat.sessionId = nil
+            water.forget()
             record("note", ["event": "note", "text": "The earlier session is gone, so this thread carries on in a new one."])
         case "compacted":
             chat.contextUsed = event.body["after"]?.int ?? 0

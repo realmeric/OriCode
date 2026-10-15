@@ -288,8 +288,8 @@ enum Water {
 extension Water.Tokens: Decodable {}
 
 /// One thread's water, read from its session's transcript off the main thread when the thread
-/// comes into view and when a turn of it ends, and at no other time. Nothing is read while
-/// Settings › Conversation leaves water off.
+/// comes into view, a moment after its tools' results and when a turn of it ends, and at no
+/// other time. Nothing is read while Settings › Conversation leaves water off.
 @MainActor
 @Observable
 final class WaterMeter {
@@ -300,6 +300,7 @@ final class WaterMeter {
     @ObservationIgnored private var tally = Water.Tally()
     @ObservationIgnored private var reads: Task<Void, Never>?
     @ObservationIgnored private var second: Task<Void, Never>?
+    @ObservationIgnored private var coming: Task<Void, Never>?
 
     /// Claude Code writes a reply's last lines to the transcript a moment after the turn ends, up
     /// to about 100 ms on the mod's measure, so a turn's end is read again, as the mod reads it.
@@ -348,13 +349,30 @@ final class WaterMeter {
         }
     }
 
+    /// A reading a moment from now, for a tool's result in the middle of a turn, as the mod reads
+    /// after each tool: the results that come in that moment share it, and by then Claude Code
+    /// has written the call's lines. `reading` asks for it, so it reads the thread as it is then.
+    func soon(_ reading: @escaping @MainActor () -> Void) {
+        guard coming == nil else { return }
+        coming = Task { [weak self] in
+            try? await Task.sleep(for: Self.writeWait)
+            guard !Task.isCancelled else { return }
+            self?.coming = nil
+            reading()
+        }
+    }
+
     /// The readings asked for so far, for a test to wait on.
     func settled() async {
+        await coming?.value
         await second?.value
         await reads?.value
     }
 
-    private func forget() {
+    /// Nothing to show, now: a thread that left its session, to another agent or a new one.
+    func forget() {
+        coming?.cancel()
+        coming = nil
         second?.cancel()
         session = nil
         file = nil
@@ -370,5 +388,17 @@ extension AppModel {
     func readWater(for chat: Chat, turnEnded: Bool = false) {
         guard UserDefaults.standard.bool(forKey: TranscriptSettings.showWater), let conversation = conversations[chat.id] else { return }
         conversation.water.read(session: chat.providerID == ProviderInfo.claudeID ? chat.sessionId : nil, cwd: chat.cwd, again: turnEnded)
+    }
+
+    /// A tool's result in a thread in view: its figure moves within the turn, once for however
+    /// many results come in the meter's moment, and never on the stream's deltas.
+    func followWater(_ chat: Chat) {
+        guard chat.providerID == ProviderInfo.claudeID, UserDefaults.standard.bool(forKey: TranscriptSettings.showWater),
+              let conversation = conversations[chat.id] else { return }
+        conversation.water.soon { [weak self] in
+            // Gone from the glass in that moment: counted when it comes back.
+            guard let self, self.inView(chat.id) else { return }
+            self.readWater(for: chat)
+        }
     }
 }

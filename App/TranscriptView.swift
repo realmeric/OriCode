@@ -79,14 +79,14 @@ struct TranscriptView: View {
                 // Not while a block is open: Return typed there mustn't answer the card.
                 let listening = !active || model.openShell != nil ? nil : conversation.waitingAsk?.requestId
                 let lastLimit = conversation.lastLimit
-                // The thread's water so far, under its latest turn; read only when Settings asks.
-                let water = showWater ? conversation.water.reading?.footer : nil
-                let watered = water == nil ? nil : conversation.lastFooter
+                // The thread's water so far, under its latest turn, when Settings asks. The footer
+                // reads the meter itself, so a new figure draws that line and not the transcript.
+                let watered = showWater ? conversation.lastFooter : nil
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     // One view a row, whatever the item draws: an item that can draw nothing, a footer
                     // with nothing to say, would have the lazy stack make every row to count them.
                     VStack(alignment: .leading, spacing: 0) {
-                        view(of: entry, listening: listening, lastLimit: lastLimit, water: entry.id == watered ? water : nil)
+                        view(of: entry, listening: listening, lastLimit: lastLimit, water: entry.id == watered ? conversation.water : nil)
                     }
                         .background {
                             // An item in a run is lit where it stands, in the run opened for it.
@@ -155,7 +155,7 @@ struct TranscriptView: View {
         .onAppear(perform: takeReveal)
         .onChange(of: model.reveal) { takeReveal() }
         // Its water is counted as the thread comes into view and as Settings turns water on;
-        // after that a turn's end counts it (AppModel.receive).
+        // after that its tools' results and a turn's end count it (AppModel.receive).
         .task(id: showWater) { model.readWater(for: conversation.chat) }
         // Once a view, the active one or not. A transcript built while the app is hidden, as it
         // comes forward, or behind another app can show its foot with the rows it made laid out
@@ -327,7 +327,7 @@ struct TranscriptView: View {
     private static let settling = Duration.milliseconds(400)
 
     @ViewBuilder
-    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?, water: String?) -> some View {
+    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?, water: WaterMeter?) -> some View {
         let streaming = conversation.live.id
         switch entry {
         case .item(let item):
@@ -649,7 +649,7 @@ struct ItemView: View {
     /// The text streaming into this item, which it reads in place of its own.
     var stream: LiveText?
     /// The thread's water so far, on the footer under its latest turn.
-    var water: String?
+    var water: WaterMeter?
     /// The picture Quick Look shows, and the message's others to step through.
     @State private var shown: URL?
     @State private var files: [URL] = []
@@ -951,46 +951,48 @@ struct ThinkingLine: View {
 /// where the column has room for both, and under it where it hasn't.
 struct FooterLine: View {
     let footer: TurnFooter
-    var water: String?
+    var water: WaterMeter?
     @AppStorage(TranscriptSettings.showTime) private var showTime = false
     @AppStorage(TranscriptSettings.showCost) private var showCost = false
 
     var body: some View {
-        let words = footer.words(time: showTime, cost: showCost)
-        let turn = !words.isEmpty || footer.files > 0
+        let turn = turn(footer.words(time: showTime, cost: showCost))
         Group {
-            if let water, turn {
-                ViewThatFits(in: .horizontal) {
-                    // Parted as the turn's own words are, by a dot with a space each side.
-                    HStack(spacing: 3.5) {
-                        self.turn(words)
-                        Text("·")
-                        Text(water).foregroundStyle(Ink.secondary)
+            if let water = water?.reading.map({ Text($0.footer).foregroundStyle(Ink.secondary) }) {
+                if let turn {
+                    ViewThatFits(in: .horizontal) {
+                        // One run of text, so the dot before the water is parted as the turn's own are.
+                        Text("\(turn) · \(water)")
+                        VStack(alignment: .leading, spacing: 4) {
+                            turn
+                            water
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        self.turn(words)
-                        Text(water).foregroundStyle(Ink.secondary)
-                    }
+                } else {
+                    water
                 }
-            } else if let water {
-                Text(water).foregroundStyle(Ink.secondary)
-            } else if turn {
-                self.turn(words)
+            } else if let turn {
+                turn
             }
         }
         .font(Type.secondary)
         .foregroundStyle(Ink.faint)
     }
 
-    private func turn(_ words: String) -> some View {
-        HStack(spacing: 5) {
-            if !words.isEmpty { Text(words) }
-            if footer.files > 0 {
-                Text((words.isEmpty ? "" : "· ") + "\(footer.files) \(footer.files == 1 ? "file" : "files") ·")
-                Counts(added: footer.added, deleted: footer.deleted)
-                    .opacity(0.8)
-            }
+    /// The turn's words and its files as one run of text, a dot with a space each side between
+    /// each, or nil when it has nothing to say.
+    private func turn(_ words: String) -> Text? {
+        var parts: [Text] = words.isEmpty ? [] : [Text(words)]
+        if footer.files > 0 {
+            parts.append(Text("\(footer.files) \(footer.files == 1 ? "file" : "files")"))
+            // Counts' green and red, as text so they sit in the run.
+            let added = Text("+\(footer.added)").foregroundStyle(Ink.added.opacity(0.8))
+            let deleted = Text("−\(footer.deleted)").foregroundStyle(Ink.deleted.opacity(0.8))
+            parts.append(Text("\(added) \(deleted)").font(Type.secondary.monospacedDigit()))
         }
+        guard var line = parts.first else { return nil }
+        for part in parts.dropFirst() { line = Text("\(line) · \(part)") }
+        return line
     }
 }
 
