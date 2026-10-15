@@ -2,6 +2,14 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.4.1 "Side by side" - 2026-10-15
+
+- A thread can say how much water it is estimated to have used. Settings › Conversation › Water turns it on; until you do, nothing is shown and nothing is counted. The footer under the thread's latest turn ends with "≈ 0.3484 L of water so far, estimated", on a line of its own when the column is too narrow for both, and the card over the usage glass says it again with the rate, 112.5 ml per thousand output tokens, the glasses of 250 ml once there is a tenth of one, and where the rate comes from. That is Mistral's published figure for its own model, 45 mL of water for a 400-token reply, from its life-cycle analysis of Mistral Large 2. Claude is taken to cost the same, which is why the number is an estimate, and input and cached tokens count nothing.
+- Only Claude Code threads have a figure, since it is counted from the transcript Claude Code keeps of the session. A turn made on that session in Terminal counts, a subagent's tokens don't, a thread on any other agent shows nothing, and a thread moved to another agent loses its figure at once. It moves a moment after each tool the agent runs as well as when a turn ends, not with each word of a reply, and only in a thread you can see; one out of view is counted when it comes back. Two threads side by side have one each.
+- ori-water, a mod for Claude Code, shows the same figure under the prompt of a Claude Code session. Both count from one definition, so a session reads the same in the window and in the terminal.
+- The review's page comes to rest on the change the keyboard is on. J then K, K then J, or a held J let go, pressed before the page had finished gliding, could leave it where the first key was taking it, with the selected change out of view and the caption under the page naming something not on it; in Witness, Tab then ⇧Tab could leave it far down the page. The page is now asked for the selected change again once the glide is over, so when keys come fast it may finish the first glide and come back.
+- The dots in a turn's footer are spaced alike. The one before its files stood wider than the rest.
+
 ## v0.4.0 "Side by side" - 2026-10-13
 
 ### Two threads
