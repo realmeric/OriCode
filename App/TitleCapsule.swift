@@ -7,9 +7,7 @@ import SwiftUI
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let island: Namespace.ID
-    let ring: Namespace.ID
     @Binding var hovering: Bool
     /// Its own tint, for when the island's glass isn't there to be it: with Reduce Motion.
     let glass: Bool
@@ -40,18 +38,12 @@ struct TitleCapsule: View {
                     }
                     if let chat = model.chat {
                         Text("·").foregroundStyle(Ink.faint)
-                        // One title a thread, as with its mark: the keyboard crossing brings the
-                        // title up from its column's capsule, whole, over the copy there fading
-                        // with that capsule, and sends this one down to its own, fading, so it's
-                        // drawn for the one down there to start from. A thread opened any other
-                        // way changes the title at once, with nothing to animate it.
                         Text(chat.title)
                             .foregroundStyle(Ink.primary)
                             .truncationMode(.tail)
-                            .titleTravels(chat.id, in: ring, unless: reduceMotion)
                             .layoutPriority(-1)
                             .id(chat.id)
-                            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .identity, removal: .opacity))
+                            .transition(CrossingGoo.arrival(crossing: model.crossing != nil))
                     }
                 }
                 .font(Type.secondary)
@@ -68,17 +60,15 @@ struct TitleCapsule: View {
             .onHover { hovering = $0 }
             .help("Command center (\(model.shortcuts.label(.commandCenter)))")
             // While the thread works, its mark at the capsule's left end, which opens its heads.
-            // One mark a thread, so the keyboard crossing to the thread beside brings that
-            // thread's mark in from its column's capsule, and sends this one back to its own.
             .overlay(alignment: .leading) {
                 ZStack {
                     if working, let conversation = model.currentConversation {
                         mark(conversation)
                     }
                 }
-                .animation(reduceMotion ? Motion.fade : Motion.cross, value: model.chat?.id)
+                .animation(Motion.fade, value: model.chat?.id)
             }
-            .animation(reduceMotion ? Motion.fade : Motion.cross, value: model.keyboardSide)
+            .animation(Motion.fade, value: model.keyboardSide)
             .animation(Motion.move, value: working)
             .overlay(alignment: .trailing) {
                 if updates.phase != .idle {
@@ -101,7 +91,6 @@ struct TitleCapsule: View {
         } label: {
             ThreadMark(conversation: conversation)
                 .frame(width: Self.mark, height: Self.mark)
-                .travels(conversation.chat.id, in: ring, unless: reduceMotion)
                 .matchedGeometryEffect(id: HeadsSurface.mark, in: island)
                 .padding(.leading, 10)
                 .frame(height: Self.height)
@@ -112,52 +101,37 @@ struct TitleCapsule: View {
         // An agent that reports no heads still shows it's working, with nothing to open.
         .allowsHitTesting(model.showsHeads(model.chat))
         .id(conversation.chat.id)
-        .transition(.opacity)
+        .transition(CrossingGoo.arrival(crossing: model.crossing != nil))
     }
 }
 
-extension View {
-    /// A thread's mark that glides to wherever the same thread's mark is drawn next, rather than
-    /// going out in one place and coming in at another; with Reduce Motion it only fades.
-    @ViewBuilder
-    func travels(_ thread: UUID, in ring: Namespace.ID, unless still: Bool) -> some View {
-        if still {
-            self
-        } else {
-            matchedGeometryEffect(id: thread, in: ring)
-        }
-    }
 
-    /// A thread's title that glides between the window's capsule and the capsule over its column,
-    /// as its mark does; with Reduce Motion it only fades. Only its place travels: the text keeps
-    /// the width it has where it's going, so it doesn't truncate differently on the way.
-    @ViewBuilder
-    func titleTravels(_ thread: UUID, in ring: Namespace.ID, unless still: Bool) -> some View {
-        if still {
-            self
-        } else {
-            matchedGeometryEffect(id: TravellingTitle(thread: thread), in: ring, properties: .position)
-        }
-    }
-}
-
-/// A thread's title in the ring, apart from its mark, which is keyed by the thread's id alone.
-private struct TravellingTitle: Hashable {
-    let thread: UUID
-}
-
-/// The keyboard crossing between two threads, drawn as the capsules' tint running like a liquid:
-/// the other column's capsule rises into the window's and runs into it, and the one being left
-/// comes out of it as a drop and falls into the other column's place. Each capsule is blurred and
-/// the blur cut at half, as metaballs are drawn, so two that near each other draw a neck between
-/// them and one that leaves draws one out. The real capsules' tint stands aside while it's out,
-/// and the titles and marks ride over it on the same curve. With Reduce Motion there's no goo,
-/// and the crossing ends as it begins.
+/// The keyboard crossing between two threads, as two drops of the capsules' tint: the capsule
+/// clicked draws itself into a drop where it stands, the drop runs up into the window's capsule
+/// and the two flow together, the window's swelling as it takes it in; and the thread being left
+/// comes out of the window's capsule as a drop of its own, falls to the other column and spreads
+/// into that column's capsule. Each shape is blurred and the blur cut at half, as metaballs are
+/// drawn, so a drop nearing the capsule draws a neck to it and one leaving draws one out. The
+/// blur is all but none at either end, so the goo starts and ends as the capsules it stands in
+/// for. Their tint, titles and marks stand aside while it's out, and the titles fade in where
+/// the drops have landed. With Reduce Motion there's no goo, and the crossing ends as it begins.
 struct CrossingGoo: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let crossing: AppModel.Crossing
     @State private var progress = 0.0
+
+    static let duration = 0.9
+    /// How far into the crossing the drop has flowed into the window's capsule, which is when
+    /// the title arriving there shows.
+    static let merged = 0.72
+
+    /// A title or mark as the crossing changes it: out at once, and in once its drop has landed.
+    /// Anything else changes it at once.
+    static func arrival(crossing: Bool) -> AnyTransition {
+        guard crossing else { return .identity }
+        return .asymmetric(insertion: .opacity.animation(Motion.fade.delay(duration * merged)), removal: .opacity.animation(Motion.fade))
+    }
 
     var body: some View {
         GeometryReader { area in
@@ -173,13 +147,15 @@ struct CrossingGoo: View {
                 model.crossing = nil
                 return
             }
-            withAnimation(Motion.cross) { progress = 1 } completion: {
+            withAnimation(.linear(duration: Self.duration)) { progress = 1 } completion: {
                 if model.crossing == crossing { model.crossing = nil }
             }
         }
     }
 }
 
+/// The crossing's shapes at one moment of it, `progress` running evenly from 0 to 1 and each
+/// stage easing within its own part of that.
 private struct Goo: View, Animatable {
     nonisolated var progress: Double
     let from: (capsule: CGRect, beside: CGRect)
@@ -188,9 +164,9 @@ private struct Goo: View, Animatable {
     let to: (capsule: CGRect, beside: CGRect)
     let origin: CGPoint
 
-    /// Wide enough that two capsules a few points apart run together, and narrower than the gap
-    /// between the window's capsule and the column's at rest, which stay apart.
-    private static let blur: CGFloat = 8
+    /// A drop's width, over the capsule's height, since the blur takes a few points off a round
+    /// shape and the drop should read as the capsule's own water, not a dot.
+    private static let drop: CGFloat = 32
 
     nonisolated var animatableData: Double {
         get { progress }
@@ -198,37 +174,70 @@ private struct Goo: View, Animatable {
     }
 
     var body: some View {
+        // Widest mid-flight, where the necks are drawn, and next to none at either end.
+        let blur = 1 + 8 * sin(min(max(progress, 0), 1) * .pi)
         Canvas { context, _ in
             context.addFilter(.alphaThreshold(min: 0.5, color: Surface.drawer))
-            context.addFilter(.blur(radius: Self.blur))
+            context.addFilter(.blur(radius: blur))
             context.drawLayer { layer in
-                for drop in drops {
-                    layer.fill(Capsule().path(in: drop.offsetBy(dx: -origin.x, dy: -origin.y)), with: .color(.white))
+                for shape in shapes {
+                    layer.fill(Capsule().path(in: shape.offsetBy(dx: -origin.x, dy: -origin.y)), with: .color(.white))
                 }
             }
         }
     }
 
-    /// The window's capsule taking its new title's width, the column's rising into it, and the
-    /// one being left falling out of it. The two in flight draw in toward a drop halfway, so they
-    /// read as liquid rather than as bars sliding.
-    private var drops: [CGRect] {
-        let squeeze = sin(min(max(progress, 0), 1) * .pi) * 0.6
-        return [
-            Self.between(from.capsule, to.capsule, progress),
-            Self.drop(Self.between(from.beside, to.capsule, progress), squeeze),
-            Self.drop(Self.between(from.capsule, to.beside, progress), squeeze),
-        ]
+    private var shapes: [CGRect] {
+        let p = progress
+        let round = CGSize(width: Self.drop, height: Self.drop)
+        // The capsule clicked: drawn into a drop where it stands, then up into the window's.
+        let rounding = Self.ease(Self.stage(p, 0, 0.3))
+        let rising = Self.ease(Self.stage(p, 0.18, 0.78))
+        let arriving = Self.rect(center: Self.mix(from.beside.center, to.capsule.center, rising),
+                                 size: Self.mix(from.beside.size, round, rounding))
+        // The thread being left: out of the window's capsule as a drop, down, and spread wide.
+        let falling = Self.ease(Self.stage(p, 0.12, 0.7))
+        let spreading = Self.ease(Self.stage(p, 0.66, 1))
+        let leaving = Self.rect(center: Self.mix(from.capsule.center, to.beside.center, falling),
+                                size: Self.mix(round, to.beside.size, spreading))
+        // The window's capsule, taking its new title's width, swelling a little as a drop leaves
+        // it and more as the other flows in.
+        let width = Self.ease(Self.stage(p, 0.25, 0.85))
+        let swell = 3 * Self.bump(p, at: 0.24, over: 0.14) + 5 * Self.bump(p, at: CrossingGoo.merged, over: 0.18)
+        let size = Self.mix(from.capsule.size, to.capsule.size, width)
+        let capsule = Self.rect(center: Self.mix(from.capsule.center, to.capsule.center, width),
+                                size: CGSize(width: size.width + swell * 2, height: size.height + swell))
+        return [capsule, arriving, leaving]
     }
 
-    private static func between(_ a: CGRect, _ b: CGRect, _ t: Double) -> CGRect {
-        CGRect(x: a.minX + (b.minX - a.minX) * t, y: a.minY + (b.minY - a.minY) * t,
-               width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
+    /// How far through a stage running from `start` to `end` of the crossing it is, 0 to 1.
+    private static func stage(_ p: Double, _ start: Double, _ end: Double) -> Double {
+        min(max((p - start) / (end - start), 0), 1)
     }
 
-    /// A capsule drawn in toward a round drop of its own height by `squeeze`, about its middle.
-    private static func drop(_ rect: CGRect, _ squeeze: Double) -> CGRect {
-        let width = rect.width - (rect.width - rect.height) * squeeze
-        return CGRect(x: rect.midX - width / 2, y: rect.minY, width: width, height: rect.height)
+    private static func ease(_ t: Double) -> Double {
+        t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
     }
+
+    /// 1 at `at`, falling smoothly to 0 `over` either side of it.
+    private static func bump(_ p: Double, at center: Double, over width: Double) -> Double {
+        let d = (p - center) / width
+        return d * d < 1 ? pow(1 - d * d, 2) : 0
+    }
+
+    private static func mix(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+
+    private static func mix(_ a: CGSize, _ b: CGSize, _ t: Double) -> CGSize {
+        CGSize(width: a.width + (b.width - a.width) * t, height: a.height + (b.height - a.height) * t)
+    }
+
+    private static func rect(center: CGPoint, size: CGSize) -> CGRect {
+        CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
+    }
+}
+
+private extension CGRect {
+    var center: CGPoint { CGPoint(x: midX, y: midY) }
 }

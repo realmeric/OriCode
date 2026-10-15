@@ -80,6 +80,23 @@ struct BesideTests {
         #expect(model.keyboardSide == nil)
     }
 
+    /// Only the keyboard crossing to the thread beside sends the drops out, from where both
+    /// capsules were drawn; another thread opened, or a pair with no room, sends none.
+    @Test func onlyTheCrossingSendsTheDropsOut() {
+        model.besideChatID = second.id
+        model.capsuleFrame = CGRect(x: 400, y: 14, width: 300, height: 24)
+        model.besideCapsuleFrame = CGRect(x: 700, y: 52, width: 260, height: 24)
+        model.select(third)
+        #expect(model.crossing == nil)
+        model.select(second)
+        #expect(model.crossing?.capsule == CGRect(x: 400, y: 14, width: 300, height: 24))
+        #expect(model.crossing?.beside == CGRect(x: 700, y: 52, width: 260, height: 24))
+        model.crossing = nil
+        model.roomForTwo = false
+        model.select(third)
+        #expect(model.crossing == nil)
+    }
+
     @Test func pickingTheThreadBesideLeavesItsWorkflowAlone() async throws {
         let conversation = model.conversation(for: second)
         model.besideChatID = second.id

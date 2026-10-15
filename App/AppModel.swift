@@ -384,8 +384,8 @@ final class AppModel {
     }
 
     /// The half the keyboard is in while both threads are drawn, which changes as it crosses to
-    /// the other: the threads' titles trade places between the capsules on it, and a thread
-    /// opened any other way takes the capsule's title at once.
+    /// the other: the capsule's title fades on it, and a thread opened any other way takes the
+    /// capsule's title at once.
     var keyboardSide: Half? {
         besideShown == nil ? nil : composerHalf
     }

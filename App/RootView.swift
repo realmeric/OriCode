@@ -3,11 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
-    /// A thread's mark and title, which travel between its column's capsule and the window's as
-    /// the keyboard crosses.
-    @Namespace private var ring
 
     var body: some View {
         GeometryReader { window in
@@ -59,17 +55,14 @@ struct RootView: View {
                                 .simultaneousGesture(TapGesture().onEnded {
                                     if !open { model.select(thread) }
                                 })
-                                // It fades out of the column the keyboard comes to and into the
-                                // one it left, on the window capsule's curve, so the title leaving
-                                // it and the one coming down into it travel with the capsule's.
+                                // Gone at once from the column the keyboard comes to, where the
+                                // crossing's drop takes its place, and in at once over the one it
+                                // left, its words showing when the drop there has spread: a fade
+                                // here would draw its tint and the drop's over each other.
                                 .overlay(alignment: .top) {
-                                    ZStack(alignment: .top) {
-                                        if !open {
-                                            BesideTitle(chat: thread, conversation: model.conversations[thread.id], ring: ring)
-                                                .transition(.opacity)
-                                        }
+                                    if !open {
+                                        BesideTitle(chat: thread, conversation: model.conversations[thread.id])
                                     }
-                                    .animation(reduceMotion ? Motion.fade : Motion.cross, value: open)
                                 }
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                             }
@@ -302,7 +295,7 @@ struct RootView: View {
         .overlay(alignment: .top) {
             // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
             // open block or file, which ⌘K and ⌘P open over.
-            Island(ring: ring)
+            Island()
                 // Clear of the lights and the sidebar button on the left, and of the review's
                 // button on the right, however wide its counts have made it; beside a pinned
                 // drawer, the column's margin from it.
@@ -430,13 +423,11 @@ extension String {
 /// as that thread's title and not as a line of its transcript: the mark at its left end while the
 /// thread works, drawn as the window's capsule draws it, and at its right end, away from the mark,
 /// a cross while the pointer is on it, the way a tab closes. A click brings the keyboard over, and
-/// the title with it, up into the window's capsule.
+/// the capsule with it, as a drop that runs up into the window's (CrossingGoo).
 struct BesideTitle: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let chat: Chat
     let conversation: Conversation?
-    let ring: Namespace.ID
     @State private var hovering = false
 
     static let height = TitleCapsule.height
@@ -444,13 +435,15 @@ struct BesideTitle: View {
 
     var body: some View {
         let working = conversation?.working == true
+        // Its words stand aside while the crossing's drops are out, and come back where one lands.
+        let crossing = model.crossing != nil
         Button {
             model.select(chat)
         } label: {
             Text(chat.title)
                 .foregroundStyle(Ink.secondary)
                 .truncationMode(.tail)
-                .titleTravels(chat.id, in: ring, unless: reduceMotion)
+                .opacity(crossing ? 0 : 1)
                 .font(Type.secondary)
                 .lineLimit(1)
                 // Room for the cross whether it shows or not, so the capsule keeps its width
@@ -460,14 +453,14 @@ struct BesideTitle: View {
                 .padding(.trailing, Self.cross + 8)
                 .frame(height: Self.height)
                 // While the keyboard crosses, its tint is the crossing's goo.
-                .background(model.crossing != nil ? .clear : hovering ? Surface.selected : Surface.drawer, in: .capsule)
+                .background(crossing ? .clear : hovering ? Surface.selected : Surface.drawer, in: .capsule)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.besideCapsuleFrame = $0 }
                 .overlay(alignment: .leading) {
                     if working, let conversation {
                         ThreadMark(conversation: conversation)
                             .frame(width: TitleCapsule.mark, height: TitleCapsule.mark)
-                            .travels(chat.id, in: ring, unless: reduceMotion)
                             .padding(.leading, 10)
+                            .opacity(crossing ? 0 : 1)
                             .transition(.opacity)
                     }
                 }
@@ -487,11 +480,12 @@ struct BesideTitle: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 6)
-            .opacity(hovering ? 1 : 0)
+            .opacity(hovering && !crossing ? 1 : 0)
             .help("Close this side (\(model.shortcuts.label(.closeOtherSide)))")
             .accessibilityLabel("Close \(chat.title)")
         }
         .animation(Motion.fade, value: hovering)
+        .animation(Motion.fade, value: crossing)
         .animation(Motion.move, value: working)
         .onHover { hovering = $0 }
         .column()
