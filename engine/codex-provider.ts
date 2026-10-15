@@ -50,6 +50,8 @@ export const codex: Provider = {
     // Without the shared background server, which would keep the thread after the block quits.
     handoff: "codex resume --no-daemon {session}",
     workers: true,
+    // turn/start and turn/steer refuse more: "Input exceeds the maximum length of 1048576 characters."
+    longestMessage: 1 << 20,
   },
   levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
   modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],

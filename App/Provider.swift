@@ -36,6 +36,8 @@ struct ProviderInfo: Codable, Hashable, Sendable, Identifiable {
         var workers: Bool? = nil
         /// A question can be asked beside a thread on it.
         var aside: Bool? = nil
+        /// The most characters, Unicode scalars, a message to it may have; nil for no limit.
+        var longestMessage: Int? = nil
 
         /// What an agent hello doesn't list can do: nothing.
         static let none = Capabilities(

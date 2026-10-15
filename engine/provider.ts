@@ -127,6 +127,8 @@ export type Capabilities = {
   workers?: boolean;
   /// A question can be asked beside a thread on it, of a copy of its session that isn't kept.
   aside?: boolean;
+  /// The most characters, Unicode scalars, a message to it may have, when it refuses longer ones.
+  longestMessage?: number;
 };
 
 /// Whether the agent can run: its CLI, what that CLI says its version is, and, when it can't

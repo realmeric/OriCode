@@ -128,8 +128,10 @@ enum ToolSummary {
         return path
     }
 
+    /// The first line that has anything on it, to 120 characters. Read no further than that, since
+    /// a queued paste can be one line a megabyte long.
     static func firstLine(_ text: String) -> String {
-        let line = text.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
-        return line.count > 120 ? String(line.prefix(120)) + "…" : line
+        let line = text.drop { $0 == "\n" }.prefix(121).prefix { $0 != "\n" }
+        return line.count > 120 ? String(line.prefix(120)) + "…" : String(line)
     }
 }

@@ -81,6 +81,24 @@ struct ComposerFieldTests {
         #expect(draft.height == line)
     }
 
+    /// The field's text bridged from its storage took seconds to send at a megabyte (REA-233).
+    @Test func whatTheFieldHandsOverIsAStringOfItsOwn() {
+        let (field, draft, _) = loneField()
+        type("Fix the build, Çağrı", into: field)
+        #expect(draft.text.isContiguousUTF8)
+        #expect(draft.text == "Fix the build, Çağrı")
+    }
+
+    /// A megabyte of lines pasted in is laid out where it's shown, not whole before the next key.
+    @Test func aPastedMegabyteIsLaidOutOnlyWhereItShows() throws {
+        let (field, draft, _) = loneField()
+        let lines = String(repeating: "let value = compute(alpha, beta) // a pasted line\n", count: 32_000)
+        type(lines, into: field)
+        let manager = try #require(field.layoutManager)
+        #expect(manager.hasNonContiguousLayout)
+        #expect(draft.height == field.maxHeight)
+    }
+
     @Test func returnIsTheComposersUnlessAnInputMethodIsComposing() {
         let (field, _, _) = loneField()
         var pressed: [EventModifiers] = []

@@ -131,9 +131,9 @@ extension Project {
 extension Chat {
     static let untitled = "New thread"
 
-    /// The first message's first line, trimmed to 60 characters.
+    /// The first message's first line, trimmed to 60 characters, read from the message's head.
     static func title(from message: String) -> String {
-        let line = message.split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        let line = message.prefix(Item.headLength).split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         guard !line.isEmpty else { return untitled }
         return line.count > 60 ? String(line.prefix(59)).trimmingCharacters(in: .whitespaces) + "…" : line
     }

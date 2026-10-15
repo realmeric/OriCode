@@ -17,7 +17,10 @@ final class MessageIndex {
         /// The text as MessageSearch folds it, when that differs from the text.
         let folded: NSString?
 
+        /// Your message by its head alone: a reply is as long as a model writes, a paste as long as
+        /// the pasteboard held, and every search key read all of it.
         init(id: UUID, chat: UUID, user: Bool, text: String) {
+            let text = user ? String(text.prefix(Item.headLength)) : text
             self.id = id
             self.chat = chat
             self.user = user

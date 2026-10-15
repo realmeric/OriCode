@@ -12,6 +12,10 @@ final class Draft {
     var text: String {
         get {
             access(keyPath: \.text)
+            // What the field hands over at each key is its own storage, bridged, which Swift reads
+            // through a character at a time: sending a megabyte of it took seconds. It's made a
+            // String of its own the first time it's read after a key, not at every key.
+            if !stored.isContiguousUTF8 { stored.makeContiguousUTF8() }
             return stored
         }
         set {
@@ -45,10 +49,13 @@ final class Draft {
     /// What follows an `@` that starts the last word, while it's still being typed: a file's name.
     private(set) var at: String?
 
-    /// Read from the end, so a long draft costs a key no more than its last word.
+    /// Read from the end, and no further back than a path can be long, so a long draft costs a key
+    /// no more than its last word, even a draft with no space in it.
     nonisolated static func mention(in text: String) -> String? {
-        let start = text.lastIndex(where: \.isWhitespace).map(text.index(after:)) ?? text.startIndex
-        guard start < text.endIndex, text[start] == "@" else { return nil }
+        let tail = text.suffix(Int(PATH_MAX))
+        guard let start = tail.lastIndex(where: \.isWhitespace).map(text.index(after:)) ?? (tail.startIndex == text.startIndex ? text.startIndex : nil),
+              start < text.endIndex, text[start] == "@"
+        else { return nil }
         let word = text[text.index(after: start)...]
         // A quoted mention is a path with spaces in it, which Tab completes.
         return word.hasPrefix("\"") ? nil : String(word)
@@ -205,6 +212,9 @@ final class ComposerTextView: NSTextView {
         textContainerInset = .zero
         textContainer?.lineFragmentPadding = 0
         textContainer?.widthTracksTextView = true
+        // Lays out only what's shown and what's asked of it: a pasted megabyte of lines was laid
+        // out whole, in half a second, before the field took its next key.
+        layoutManager?.allowsNonContiguousLayout = true
         isVerticallyResizable = true
         isHorizontallyResizable = false
         minSize = .zero

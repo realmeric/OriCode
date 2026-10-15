@@ -1161,6 +1161,12 @@ final class Conversation {
 }
 
 extension Item {
+    /// How much of your message the app reads for itself: what its bubble draws, what ⌘K searches,
+    /// what the thread's title and the review's turns are named from. A paste can run to megabytes,
+    /// which all go to the agent; laid out or folded whole on the main thread, one held the window
+    /// for seconds, and its thread could hardly be opened again.
+    static let headLength = 20_000
+
     var text: String? {
         switch self {
         case .text(_, let text), .thinking(_, let text), .user(_, let text, _, _), .note(_, let text): text

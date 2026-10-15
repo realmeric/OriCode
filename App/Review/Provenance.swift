@@ -5,7 +5,8 @@ import Foundation
 /// latest turn that wrote either. What no edit wrote (a command's change, yours, another
 /// thread's) has no turn, and the review says so rather than guess.
 struct Provenance {
-    /// Each turn's message, by its number: the first message is turn 1.
+    /// Each turn's message, by its number: the first message is turn 1. Its head, as anything the
+    /// app shows of a message is (`Item.headLength`).
     private(set) var prompts: [Int: String] = [:]
     /// Every edit in the order it was made, a worker's among them. A line is credited to one by
     /// where it stands here.
@@ -109,7 +110,7 @@ struct Provenance {
                 guard !midTurn else { continue }
                 credit(&waiting, through: turn, resolve: resolve)
                 turn += 1
-                prompts[turn] = text
+                prompts[turn] = String(text.prefix(Item.headLength))
                 said = nil
             case .text(_, let text):
                 said = Self.sentence(of: text) ?? said

@@ -304,6 +304,7 @@ function codexEntry(state: string, cliPath: string | null, cliVersion: string | 
       commitMessage: false,
       handoff: "codex resume --no-daemon {session}",
       workers: true,
+      longestMessage: 1048576,
     },
     levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],

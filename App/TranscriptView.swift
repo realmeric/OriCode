@@ -700,13 +700,7 @@ struct ItemView: View {
                     }
                     .quickLookPreview($shown, in: files)
                 }
-                Text(text)
-                    .font(Type.body)
-                    .foregroundStyle(waiting ? Ink.secondary : Ink.primary)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Surface.userMessage, in: .rect(cornerRadius: 18, style: .continuous))
+                MessageText(text: text, waiting: waiting)
                 if waiting {
                     Text("Waiting for the next step")
                         .font(Type.secondary)
@@ -754,6 +748,49 @@ struct ItemView: View {
             OpenedLine(thread: opened, title: title, finished: finished, parent: thread)
         case .suggested(_, let title, let prompt):
             SuggestedThread(title: title, prompt: prompt, thread: thread)
+        }
+    }
+}
+
+/// Your message's words in their bubble. One longer than `Item.headLength`, a paste as a rule, is
+/// drawn from its head alone, folded to its first lines until it's opened, with its size and Copy
+/// for all of it underneath: a megabyte laid out as one Text held the window for a second at every
+/// layout, and its thread could hardly be opened.
+private struct MessageText: View {
+    @Environment(AppModel.self) private var model
+    let text: String
+    let waiting: Bool
+    @State private var open = false
+
+    /// The lines a long message shows until it's opened.
+    private static let folded = 12
+
+    var body: some View {
+        let head = text.prefix(Item.headLength)
+        let long = head.endIndex < text.endIndex
+        VStack(alignment: .trailing, spacing: 6) {
+            Text(long ? String(head) : text)
+                .font(Type.body)
+                .foregroundStyle(waiting ? Ink.secondary : Ink.primary)
+                .lineLimit(long && !open ? Self.folded : nil)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Surface.userMessage, in: .rect(cornerRadius: 18, style: .continuous))
+            if long {
+                HStack(spacing: 12) {
+                    let size = text.utf8.count.formatted(.byteCount(style: .file))
+                    Text(open ? "The first \(Item.headLength.formatted()) characters of \(size)" : size)
+                    Button(open ? "Show less" : "Show more") {
+                        withAnimation(Motion.fade) { open.toggle() }
+                    }
+                    Button("Copy") { model.copy(text, saying: "Copied the message.") }
+                }
+                .font(Type.secondary)
+                .foregroundStyle(Ink.faint)
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+            }
         }
     }
 }

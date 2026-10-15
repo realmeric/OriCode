@@ -20,7 +20,8 @@ struct CodexTests {
         id: "codex", name: "Codex", agent: "Codex", state: .unknown, hint: nil, cli: "/usr/local/bin/codex", version: nil,
         capabilities: ProviderInfo.Capabilities(
             steer: true, resume: true, modeLive: false, attachments: true, heads: false, stopTask: false, limits: true,
-            usage: true, commands: false, compact: false, commitMessage: false, handoff: "codex resume --no-daemon {session}"),
+            usage: true, commands: false, compact: false, commitMessage: false, handoff: "codex resume --no-daemon {session}",
+            longestMessage: 1 << 20),
         levels: ["low", "medium", "high", "xhigh", "max", Effort.ultracode],
         modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"])
 
@@ -75,6 +76,33 @@ struct CodexTests {
         let sent = conversation.items.contains { if case .user(_, let text, _, _) = $0 { text.hasPrefix("The 30-day limit") } else { false } }
         #expect(sent)
         #expect(chat.resumeAt == nil)
+        // No engine runs here, so the send fails; its note lands before the store goes.
+        for _ in 0..<60 where conversation.running { try await Task.sleep(for: .milliseconds(50)) }
+    }
+
+    /// Codex refuses a message past 1,048,576 characters (REA-233), which went into the thread as
+    /// sent and came back as Codex's own error. The app says so and sends nothing, so the composer
+    /// keeps it; one at the limit, counted in characters as Codex counts them, goes.
+    @Test func aMessageLongerThanCodexTakesIsSaidAndNotSent() async throws {
+        let model = AppModel(container: container)
+        let codex = Self.codex
+        model.providers = [.claude, ProviderInfo(
+            id: codex.id, name: codex.name, agent: codex.agent, state: .ready, hint: nil, cli: codex.cli, version: "0.157.1",
+            capabilities: codex.capabilities, levels: codex.levels, modes: codex.modes)]
+        model.engineState = .ready
+        let chat = Chat(project: project)
+        chat.provider = "codex"
+        container.mainContext.insert(chat)
+        try container.mainContext.save()
+        model.selectedProjectID = project.id
+        model.selectedChatID = chat.id
+        let conversation = model.conversation(for: chat)
+        #expect(!model.send(String(repeating: "a", count: (1 << 20) + 1), in: chat))
+        #expect(conversation.items.isEmpty)
+        #expect(model.note == "Codex takes messages of up to \((1 << 20).formatted()) characters. This one has \(((1 << 20) + 1).formatted()).")
+        // Two bytes a letter: more bytes than the limit, and as many characters as it.
+        #expect(model.send(String(repeating: "ğ", count: 1 << 20), in: chat))
+        #expect(conversation.items.count == 1)
         // No engine runs here, so the send fails; its note lands before the store goes.
         for _ in 0..<60 where conversation.running { try await Task.sleep(for: .milliseconds(50)) }
     }

@@ -169,6 +169,9 @@ struct CompletionTests {
         #expect(Draft.mention(in: "look at @Comp ") == nil)
         #expect(Draft.mention(in: "see @\"My No") == nil)
         #expect(Draft.mention(in: "") == nil)
+        // At every key of a pasted megabyte: a word longer than any path is no file's name.
+        #expect(Draft.mention(in: "@" + String(repeating: "x", count: 2_000_000)) == nil)
+        #expect(Draft.mention(in: String(repeating: "pasted ", count: 300_000) + "@App/Rep") == "App/Rep")
     }
 
     @Test func aPickedFileTakesTheWordsPlace() {

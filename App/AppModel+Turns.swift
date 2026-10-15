@@ -60,7 +60,7 @@ extension AppModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let composer = composer(for: thread ?? chat)
         let images = composer.attachments
-        guard !trimmed.isEmpty || !images.isEmpty, let chat = thread ?? chat ?? newChat() else { return false }
+        guard !trimmed.isEmpty || !images.isEmpty, !tooLong(trimmed, for: thread ?? chat), let chat = thread ?? chat ?? newChat() else { return false }
         let conversation = conversation(for: chat)
         // Waiting on you from before a quit, the thread has no CLI to send into.
         guard !conversation.waitingAfterQuit else { return false }
@@ -106,7 +106,7 @@ extension AppModel {
         let composer = composer(for: thread ?? chat)
         let images = composer.attachments
         guard !trimmed.isEmpty || !images.isEmpty, let conversation = (thread ?? chat).flatMap({ conversations[$0.id] }),
-              conversation.running || !conversation.waiting.isEmpty
+              conversation.running || !conversation.waiting.isEmpty, !tooLong(trimmed, for: conversation.chat)
         else { return false }
         conversation.enqueue(trimmed, images: images)
         composer.attachments = []
@@ -118,7 +118,7 @@ extension AppModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         let conversation = conversation(for: chat)
-        guard !conversation.running, !heldInBlock(chat) else { return false }
+        guard !conversation.running, !heldInBlock(chat), !tooLong(trimmed, for: chat) else { return false }
         let text = Self.asked(trimmed, images)
         // Only the pictures with a preview show, so only they are kept, and in the bubble's order.
         let shown = images.compactMap { image in image.preview.map { (image: image, preview: $0) } }
@@ -132,6 +132,19 @@ extension AppModel {
     /// What goes out: what was typed, or for images alone a question about them.
     private static func asked(_ typed: String, _ images: [ImageAttachment]) -> String {
         typed.isEmpty ? "What's in \(images.count == 1 ? "this image" : "these images")?" : typed
+    }
+
+    /// Whether the message is longer than the thread's agent takes, which it then says, leaving the
+    /// message where it was. Codex refuses one past a million characters, and sent anyway it came
+    /// back as Codex's own error, with the message left in the thread as if it had gone.
+    func tooLong(_ text: String, for chat: Chat?) -> Bool {
+        let agent = agent(for: chat)
+        // Never fewer bytes than scalars, so only a message with more bytes than the limit is counted.
+        guard let longest = agent.capabilities.longestMessage, text.utf8.count > longest else { return false }
+        let length = text.unicodeScalars.count
+        guard length > longest else { return false }
+        say("\(agent.agent) takes messages of up to \(longest.formatted()) characters. This one has \(length.formatted()).")
+        return true
     }
 
     /// Hands a message the transcript already shows, or one it needn't, to the thread's session
