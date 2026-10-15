@@ -50,6 +50,7 @@ enum PerfBench {
                     case "seed": try await seedStore()
                     case "earlyj": try await earlyJ()
                     case "backstep": try await backStep()
+                    case "besidetitle": try await besideTitle()
                     default: log("unknown part \(part)")
                     }
                 } catch {
@@ -429,6 +430,84 @@ enum PerfBench {
         }
         log("keys: the composer reads \(stage.typed().count) characters")
         screenshot(stage.window, "\(label)-keys")
+    }
+
+    // MARK: The title line beside
+
+    /// K-266: a click on the title line of the thread beside while it has a workflow out, at
+    /// 1180pt, wide and 720pt. A picture at each moment after the click, and after the click back,
+    /// taken while the main thread waits on it, so the frame on screen is the one of that moment;
+    /// and every request the app sent the engine, read off a node that copies the engine's stdin.
+    static func besideTitle() async throws {
+        let sent = folder.appending(path: "besidetitle-requests.jsonl")
+        try? FileManager.default.removeItem(at: sent)
+        let node = try await NodeLocator.find(override: nil)
+        let shim = folder.appending(path: "node-tee")
+        try "#!/bin/sh\ncase \"$1\" in --version) exec '\(node.path)' \"$@\" ;; esac\ntee -a '\(sent.path)' | '\(node.path)' \"$@\"\n"
+            .write(to: shim, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shim.path)
+        UserDefaults.standard.set(shim.path, forKey: "nodePath")
+        defer { UserDefaults.standard.removeObject(forKey: "nodePath") }
+
+        let (stage, a, b) = try two(25, 25)
+        defer { stage.window.close() }
+        let model = stage.model, window = stage.window
+        beside(model, b)
+        try await stage.boot()
+        guard model.engineState == .ready else { return log("besidetitle: the engine isn't up, \(model.engineState)") }
+        await front(window)
+        let workflow: JSON = ["id": "w1", "kind": "workflow", "toolUseId": "call-w1", "label": "water-041", "background": true, "depth": 1,
+                              "startedAt": .number(Date.now.timeIntervalSince1970 * 1000)]
+        stage.send("heads", ["heads": [workflow]], to: b)
+        stage.send("workflow", ["taskId": "w1", "toolUseId": "call-w1", "name": "water-041", "state": "running", "phases": ["Build", "Check"],
+                                "agents": [["label": "mod", "phase": "Build", "state": "running"], ["label": "nits", "phase": "Check", "state": "running"]]], to: b)
+        try await settle(1500)
+
+        /// A click at the middle of the title line over the column without the keyboard.
+        func clickBeside() {
+            let size = window.contentView!.bounds.size
+            let x = model.composerHalf == .right ? size.width / 4 : size.width * 3 / 4
+            let point = NSPoint(x: x, y: size.height - TitleBar.height - BesideTitle.height / 2)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+                window.sendEvent(event)
+            }
+        }
+        let name = { (id: UUID?) in id == a ? "a" : id == b ? "b" : "-" }
+        let wide = Int(min(1800, (NSScreen.main?.visibleFrame.width ?? 1800) - 40))
+        for width in [1180, wide, 720] {
+            window.setContentSize(NSSize(width: width, height: 760))
+            try await settle(900)
+            guard model.besideShown != nil else {
+                log("BESIDETITLE \(width)pt: the pair folds, open \(name(model.chat?.id)), no title line to click")
+                screenshot(window, "\(label)-\(width)-folded")
+                continue
+            }
+            screenshot(window, "\(label)-\(width)-before")
+            for ms in [0, 40, 80, 120, 180, 260, 400] {
+                // b, working, is beside: the click brings it over, and its ring into the capsule.
+                clickBeside()
+                try await settle(ms)
+                screenshot(window, "\(label)-\(width)-in-\(ms)")
+                try await settle(700)
+                let over = model.chat?.id == b
+                // And back: b goes beside again, its ring out of the capsule and into its line.
+                clickBeside()
+                try await settle(ms)
+                screenshot(window, "\(label)-\(width)-out-\(ms)")
+                try await settle(700)
+                log("BESIDETITLE \(width)pt at \(ms) ms: the click opened \(over ? "b" : "nothing"), the click back \(name(model.chat?.id)); b's heads \(model.conversations[b]?.heads.list.count ?? -1)")
+            }
+        }
+        try await settle(300)
+        let methods = ((try? String(contentsOf: sent, encoding: .utf8)) ?? "").split(separator: "\n").compactMap { line -> String? in
+            guard let request = try? JSONDecoder().decode(JSON.self, from: Data(line.utf8)) else { return nil }
+            return request["method"]?.string
+        }
+        let counted = Dictionary(methods.map { ($0, 1) }, uniquingKeysWith: +).sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }
+        let stops = methods.filter { ["interrupt", "task.stop", "close", "leave", "side.stop"].contains($0) }
+        log("BESIDETITLE requests to the engine: \(counted.joined(separator: ", ")); stops \(stops.isEmpty ? "none" : stops.joined(separator: " "))")
     }
 
     // MARK: Scrolling

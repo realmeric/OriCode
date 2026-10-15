@@ -1,11 +1,12 @@
 // Letting idle CLIs go, on threads whose CLI is a stand-in, so nothing reaches Claude.
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { idleRelease, releaseIdle } from "../idle.ts";
 import { Thread } from "../thread.ts";
+import { engineWith, sandbox, standInCli } from "./engine.ts";
 
 const write = process.stdout.write.bind(process.stdout);
 process.stdout.write = ((chunk: string | Uint8Array, ...rest: any[]) =>
@@ -150,4 +151,84 @@ test("an agent that asks for less is let go at its own limit, and one running or
   assert.equal(next, 20_000);
   assert.equal(soon.log.closed + running.log.closed, 0);
   assert.equal(idle.log.closed, 1);
+});
+
+const workflow = (id: string) => ({ ...started(id), description: "water-041", task_type: "local_workflow", tool_use_id: `call-${id}` });
+const listed = (...tasks: { task_id: string; task_type: string }[]) => ({ type: "system", subtype: "background_tasks_changed", tasks: tasks.map((task) => ({ ...task, description: "" })), session_id: "s", uuid: "u" });
+
+test("a CLI with a workflow out stays up when the CLI stops listing it", async () => {
+  const { thread, cli, ended } = await finished("a");
+  (thread as any).handle(workflow("w1"));
+  (thread as any).handle(listed());
+  const threads = new Map([["a", thread], ["b", new Thread("b", "claude", standIn().launch as never)]]);
+  const select = releaseIdle(threads, { threadId: "b", visible: true }, ended + idleRelease);
+  assert.deepEqual(select.released, []);
+  const hide = releaseIdle(threads, { threadId: "b", visible: false }, ended + idleRelease);
+  assert.deepEqual(hide.released, []);
+  assert.equal(cli.closes, 0);
+});
+
+test("a workflow ended by an update lets its CLI go at its limit", async () => {
+  const { thread, cli, ended } = await finished("a");
+  (thread as any).handle(workflow("w1"));
+  (thread as any).handle(listed());
+  (thread as any).handle({ type: "system", subtype: "task_updated", task_id: "w1", patch: { status: "killed" }, session_id: "s", uuid: "u" });
+  const { released } = releaseIdle(new Map([["a", thread]]), { threadId: "a", visible: true }, ended + idleRelease);
+  assert.deepEqual(released, ["a"]);
+  assert.equal(cli.closes, 1);
+});
+
+test("a background command keeps its CLI until the CLI says how it ended", async () => {
+  const { thread, cli, ended } = await finished("a");
+  (thread as any).handle({ ...started("c1"), task_type: "local_bash", tool_use_id: "call-c1" });
+  (thread as any).handle(listed());
+  const threads = new Map([["a", thread]]);
+  assert.deepEqual(releaseIdle(threads, { threadId: "a", visible: true }, ended + idleRelease).released, []);
+  (thread as any).handle({ type: "system", subtype: "task_notification", task_id: "c1", tool_use_id: "call-c1", status: "completed", session_id: "s", uuid: "u" });
+  assert.deepEqual(releaseIdle(threads, { threadId: "a", visible: true }, ended + idleRelease).released, ["a"]);
+  assert.equal(cli.closes, 1);
+});
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const realWait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("the engine keeps a CLI with a workflow out through a select, a hide and the sweep, and lets it go when the workflow ends", async () => {
+  const { bin, env } = await sandbox();
+  const cwd = await mkdtemp(join(tmpdir(), "oricode-workflow-out-"));
+  const pidFile = join(cwd, "claude.pid");
+  const claude = await standInCli(bin, "claude-code", "claude-cli.ts", { CLAUDE_STAND_IN_PID: pidFile });
+  const clock = new URL("./fixtures/fast-clock.ts", import.meta.url).pathname;
+  const engine = engineWith({ ...env, ORICODE_CLAUDE: claude, NODE_OPTIONS: `--import ${clock}` });
+  try {
+    const released = (line: any) => line.event === "released" && line.threadId === "w";
+    await engine.request("window", { threadId: "w", visible: true });
+    void engine.request("send", { threadId: "w", cwd, text: "Run water-041 in the background", permissionMode: "default" });
+    await engine.until((line) => line.event === "turn.done" && line.threadId === "w");
+    await engine.until((line) => line.event === "heads" && line.threadId === "w" && line.heads.length === 0);
+    const pid = Number(await readFile(pidFile, "utf8"));
+    // A hundred times fast, a second is past the 90 s limit, and two more see the sweep twice.
+    await realWait(1000);
+    await engine.request("window", { threadId: "other", visible: true });
+    await engine.request("window", { threadId: "other", visible: false });
+    await realWait(2000);
+    assert.equal(engine.lines.filter(released).length, 0);
+    assert.ok(alive(pid));
+    const from = engine.lines.length;
+    process.kill(pid, "SIGUSR1");
+    await engine.until((line) => line.event === "workflow" && line.threadId === "w" && line.state === "completed", from);
+    await engine.until(released, from);
+    for (let tries = 0; tries < 40 && alive(pid); tries += 1) await realWait(50);
+    assert.ok(!alive(pid));
+    await engine.end();
+  } finally {
+    engine.kill();
+  }
 });

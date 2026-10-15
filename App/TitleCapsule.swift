@@ -7,7 +7,9 @@ import SwiftUI
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let island: Namespace.ID
+    let ring: Namespace.ID
     @Binding var hovering: Bool
     /// Its own tint, for when the island's glass isn't there to be it: with Reduce Motion.
     let glass: Bool
@@ -57,24 +59,15 @@ struct TitleCapsule: View {
             .onHover { hovering = $0 }
             .help("Command center (\(model.shortcuts.label(.commandCenter)))")
             // While the thread works, its mark at the capsule's left end, which opens its heads.
+            // One mark a thread, so the keyboard crossing to the thread beside brings that
+            // thread's mark in from its column's title line, and sends this one back to its own.
             .overlay(alignment: .leading) {
-                if working, let conversation = model.currentConversation {
-                    Button {
-                        model.toggleHeads()
-                    } label: {
-                        ThreadMark(conversation: conversation)
-                            .frame(width: Self.mark, height: Self.mark)
-                            .matchedGeometryEffect(id: HeadsSurface.mark, in: island)
-                            .padding(.leading, 10)
-                            .frame(height: Self.height)
-                            .contentShape(.rect)
+                ZStack {
+                    if working, let conversation = model.currentConversation {
+                        mark(conversation)
                     }
-                    .buttonStyle(.plain)
-                    .help("What each head is doing (\(model.shortcuts.label(.heads)))")
-                    // An agent that reports no heads still shows it's working, with nothing to open.
-                    .allowsHitTesting(model.showsHeads(model.chat))
-                    .transition(.opacity)
                 }
+                .animation(reduceMotion ? Motion.fade : Motion.move, value: model.chat?.id)
             }
             .animation(Motion.move, value: working)
             .overlay(alignment: .trailing) {
@@ -89,6 +82,39 @@ struct TitleCapsule: View {
             .fixedSize(horizontal: false, vertical: true)
         } else if updates.phase != .idle {
             UpdateCircle()
+        }
+    }
+
+    private func mark(_ conversation: Conversation) -> some View {
+        Button {
+            model.toggleHeads()
+        } label: {
+            ThreadMark(conversation: conversation)
+                .frame(width: Self.mark, height: Self.mark)
+                .travels(conversation.chat.id, in: ring, unless: reduceMotion)
+                .matchedGeometryEffect(id: HeadsSurface.mark, in: island)
+                .padding(.leading, 10)
+                .frame(height: Self.height)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help("What each head is doing (\(model.shortcuts.label(.heads)))")
+        // An agent that reports no heads still shows it's working, with nothing to open.
+        .allowsHitTesting(model.showsHeads(model.chat))
+        .id(conversation.chat.id)
+        .transition(.opacity)
+    }
+}
+
+extension View {
+    /// A thread's mark that glides to wherever the same thread's mark is drawn next, rather than
+    /// going out in one place and coming in at another; with Reduce Motion it only fades.
+    @ViewBuilder
+    func travels(_ thread: UUID, in ring: Namespace.ID, unless still: Bool) -> some View {
+        if still {
+            self
+        } else {
+            matchedGeometryEffect(id: thread, in: ring)
         }
     }
 }

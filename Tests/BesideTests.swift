@@ -64,6 +64,23 @@ struct BesideTests {
         #expect(model.conversations[second.id] != nil)
     }
 
+    @Test func pickingTheThreadBesideLeavesItsWorkflowAlone() async throws {
+        let conversation = model.conversation(for: second)
+        model.besideChatID = second.id
+        conversation.receive(EngineEvent(name: "heads", threadId: second.id.uuidString, body: [
+            "event": "heads", "heads": [["id": "w1", "kind": "workflow", "toolUseId": "call-w1", "label": "water-041", "background": true]],
+        ]))
+        model.select(second)
+        #expect(model.selectedChatID == second.id)
+        #expect(model.besideChatID == first.id)
+        #expect(model.leaving.isEmpty)
+        try await away()
+        #expect(model.conversations[first.id] != nil)
+        #expect(model.conversations[second.id] === conversation)
+        #expect(conversation.heads.list.map(\.id) == ["w1"])
+        #expect(conversation.working)
+    }
+
     @Test func aThreadPutAwayFromBesideIsLetGoInItsTime() async throws {
         _ = model.conversation(for: second)
         model.besideChatID = second.id

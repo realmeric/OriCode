@@ -4,6 +4,9 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
+    /// A working thread's mark, which travels between its column's title line and the capsule
+    /// as the keyboard crosses.
+    @Namespace private var ring
 
     var body: some View {
         GeometryReader { window in
@@ -60,7 +63,7 @@ struct RootView: View {
                                 .overlay(alignment: .top) {
                                     ZStack(alignment: .top) {
                                         if !open {
-                                            BesideTitle(chat: thread, conversation: model.conversations[thread.id])
+                                            BesideTitle(chat: thread, conversation: model.conversations[thread.id], ring: ring)
                                                 .transition(.opacity)
                                         }
                                     }
@@ -287,7 +290,7 @@ struct RootView: View {
         .overlay(alignment: .top) {
             // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
             // open block or file, which ⌘K and ⌘P open over.
-            Island()
+            Island(ring: ring)
                 // Clear of the lights and the sidebar button on the left, and of the review's
                 // button on the right, however wide its counts have made it; beside a pinned
                 // drawer, the column's margin from it.
@@ -415,8 +418,10 @@ extension String {
 /// and a cross while the pointer is on it. A click brings the keyboard over.
 struct BesideTitle: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let chat: Chat
     let conversation: Conversation?
+    let ring: Namespace.ID
     @State private var hovering = false
 
     static let height: CGFloat = 20
@@ -433,6 +438,7 @@ struct BesideTitle: View {
                     if let conversation, conversation.working {
                         ThreadMark(conversation: conversation)
                             .frame(width: TitleCapsule.mark, height: TitleCapsule.mark)
+                            .travels(chat.id, in: ring, unless: reduceMotion)
                             .transition(.opacity)
                     }
                     Text(chat.title)

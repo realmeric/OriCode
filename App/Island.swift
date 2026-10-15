@@ -9,6 +9,7 @@ struct Island: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var island
+    let ring: Namespace.ID
     @State private var capsuleHovered = false
     @AppStorage(ReviewDesign.key) private var reviewDesign = ReviewDesign.witness
 
@@ -106,7 +107,7 @@ struct Island: View {
     private func piece(_ piece: Piece, room: CGSize) -> some View {
         switch piece {
         case .capsule:
-            TitleCapsule(island: island, hovering: $capsuleHovered, glass: reduceMotion)
+            TitleCapsule(island: island, ring: ring, hovering: $capsuleHovered, glass: reduceMotion)
                 .transition(arrival)
         case .command:
             CommandCenter()

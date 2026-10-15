@@ -295,9 +295,12 @@ export class Thread implements Session {
   }
 
   /// Ends the CLI of a thread idle this long, with no subagents out and nothing asked of the
-  /// user. The next send starts one that resumes the session.
+  /// user. The next send starts one that resumes the session. A workflow or a background command
+  /// is out until the CLI says how it ended, not only while the heads list it: they let one go as
+  /// soon as the CLI's background list leaves it out, and closing the CLI would end it.
   releaseIfIdle(idleMs: number, now = Date.now()): boolean {
     if (!this.query || this.running || this.waiting.size > 0 || this.heads.size > 0 || this.idleSince === undefined) return false;
+    if (this.workflows.size > 0 || this.backgroundCalls.size > 0) return false;
     if (now - this.idleSince < idleMs) return false;
     if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
     this.close();
@@ -487,6 +490,7 @@ export class Thread implements Session {
         if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) {
           const status = message.patch.status === "killed" ? "stopped" : message.patch.status;
           this.tellWorkflow(message.task_id, status);
+          this.workflows.delete(message.task_id);
           this.commandEnded(message.task_id, undefined, status);
         }
         break;
