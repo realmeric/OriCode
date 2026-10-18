@@ -8,7 +8,7 @@ import type { Model } from "./models.ts";
 import type { Provider, SendParams, Session } from "./provider.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
-import { askApp, listThreads, mostOpened, mostSuggested, openThread, readThread, suggestThread, Unanswered } from "./threads.ts";
+import { askApp, listThreads, longestTurnWait, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -20,7 +20,7 @@ import { emit, event, log, tap, untap } from "./wire.ts";
 // thread's own, its cost is added to the thread's in a `worker` event, and it's a head in the
 // thread's `heads`, so its ray lights. Nothing here polls: a worker runs only once started, and
 // its session is let go when idle like a thread's. A thread with no rays is served here too, for
-// the tools every thread on such an agent has, open_thread and suggest_thread (threads.ts).
+// the tools every thread on such an agent has for the user's threads (threads.ts).
 
 /// A model a head may send a worker out on, picked for the thread in the model menu.
 export type Ray = { agent: string; model: string };
@@ -223,10 +223,7 @@ export class Rays {
   private instructions = "";
   /// The head's own level, which a worker takes when it's given none and its model has it.
   private level: string | undefined;
-  /// Whether the thread may open others, which one another thread opened may not, and how many
-  /// its turn has opened and suggested.
-  private opens = false;
-  private opened = 0;
+  /// How many threads its turn has suggested.
   private suggested = 0;
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
@@ -237,7 +234,7 @@ export class Rays {
     this.url = `http://127.0.0.1:${port}${this.path}`;
     // The thread's own `heads` go out with its workers after them.
     tap(threadId, (name, fields) => {
-      if (name === "turn.started") this.opened = this.suggested = 0;
+      if (name === "turn.started") this.suggested = 0;
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
       this.tell();
@@ -247,14 +244,13 @@ export class Rays {
 
   /// What the thread's latest send says: where it works, in which mode, at what level, and its
   /// rays, none when it has none left, with what the head is told of them: `brief`, or what
-  /// workflows on tell it; and whether it may open threads.
-  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string, opens = false): void {
+  /// workflows on tell it.
+  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string): void {
     this.cwd = cwd;
     this.mode = mode;
     this.rays = rays;
     this.instructions = instructions;
     this.level = level;
-    this.opens = opens;
   }
 
   has(workerId: string): boolean {
@@ -268,7 +264,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.rays.length ? tools : []), ...(this.opens ? [openThread] : []), suggestThread, listThreads, readThread] } };
+        return { result: { tools: [...(this.rays.length ? tools : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread] } };
       case "tools/call":
         try {
           const out = await this.call(params.name, params.arguments ?? {});
@@ -299,6 +295,12 @@ export class Rays {
         return this.merge(this.worker(args.worker));
       case "open_thread":
         return this.open(args);
+      case "message_thread":
+        return this.act("thread.message", args, { text: required(args.text, "A message needs its text.") });
+      case "wait_thread":
+        return this.wait(args);
+      case "stop_thread":
+        return this.act("thread.stop", args, {});
       case "suggest_thread":
         return this.suggest(args);
       case "list_threads":
@@ -339,22 +341,34 @@ export class Rays {
   /// The app makes the thread and sends it its first message, as the composer would, and says
   /// what it made: the tool's answer. The thread it's asked from doesn't wait on the turn.
   async open(args: Record<string, any>): Promise<unknown> {
-    if (!this.opens) throw new Error("Another thread opened this one, so it can't open threads of its own.");
-    const text = String(args.message ?? "").trim();
-    if (!text) throw new Error("A thread needs its first message.");
-    if (this.opened >= mostOpened) throw new Error(`This turn has opened ${mostOpened} threads, which is as many as one turn may.`);
-    this.opened += 1;
+    const text = required(args.message, "A thread needs its first message.");
+    const why = required(args.reason, "Say why in `reason`, one line the user reads.");
+    return await askApp("thread.open", {
+      threadId: this.threadId,
+      title: String(args.title ?? "").trim(),
+      text,
+      reason: why,
+      ...pick(args, ["agent", "model", "folder"]),
+      worktree: args.worktree === true,
+    });
+  }
+
+  /// A message to another thread, or a stop: the app does it as the user would, and says so in
+  /// both threads with the reason.
+  async act(name: string, args: Record<string, any>, fields: Record<string, unknown>): Promise<unknown> {
+    const other = required(args.thread, "Name the thread by its id, which list_threads gives.");
+    const why = required(args.reason, "Say why in `reason`, one line the user reads.");
+    return await askApp(name, { threadId: this.threadId, thread: other, ...fields, reason: why });
+  }
+
+  /// The app answers when the thread's turn ends, or with its state once the wait is up; nothing
+  /// polls. The engine gives it a little longer than that, so the app's answer is the one read.
+  async wait(args: Record<string, any>): Promise<unknown> {
+    const other = required(args.thread, "Name the thread by its id, which list_threads gives.");
     try {
-      return await askApp("thread.open", {
-        threadId: this.threadId,
-        title: String(args.title ?? "").trim(),
-        text,
-        ...pick(args, ["agent", "model", "folder"]),
-        worktree: args.worktree === true,
-      });
+      return await askApp("thread.wait", { threadId: this.threadId, thread: other }, longestTurnWait + 30_000);
     } catch (error) {
-      // One the app refused made no thread. One it was slow over may yet, and stays counted.
-      if (!(error instanceof Unanswered)) this.opened -= 1;
+      if (error instanceof Unanswered) throw new Error("OriCode didn't say how that thread is doing. Nothing was changed, so call wait_thread again.");
       throw error;
     }
   }
@@ -764,4 +778,11 @@ function counted(hunks: { lines: string[] }[]): { added: number; deleted: number
 
 function pick(from: Record<string, unknown>, keys: string[]): Record<string, unknown> {
   return Object.fromEntries(keys.filter((key) => typeof from[key] === "string").map((key) => [key, from[key]]));
+}
+
+/// A tool's argument as trimmed text, or the tool's error when there is none.
+function required(value: unknown, why: string): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) throw new Error(why);
+  return text;
 }

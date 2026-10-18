@@ -1,13 +1,13 @@
-// A thread that opens another, suggests one, or reads the others, through the real engine: a
-// stand-in Codex in the thread's place, the test calling the tools over MCP as its agent would and
-// answering `thread.open`, `threads.list` and `thread.read` as the app would.
+// A thread that opens, messages, waits on or stops another, suggests one, or reads the others,
+// through the real engine: a stand-in Codex in the thread's place, the test calling the tools over
+// MCP as its agent would and answering the app's events as the app would.
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { told } from "../provider.ts";
-import { mostOpened, mostSuggested, openedByAnother, opening, suggesting } from "../threads.ts";
+import { fromThread, leading, mostSuggested, opening, suggesting } from "../threads.ts";
 import { engineWith, sandbox } from "./engine.ts";
 
 async function mcp(url: string, method: string, params: object = {}): Promise<any> {
@@ -39,11 +39,12 @@ async function codex(t: { after: (fn: () => unknown) => void }) {
     assert.deepEqual((await engine.request("send", { threadId, cwd, text: "hello", permissionMode: "default", provider: "codex", ...more })).result, { ok: true });
     await engine.until((line) => line.event === "turn.done" && line.threadId === threadId, from);
   };
-  const starts = async () => (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line)).filter((message) => message.method === "thread/start").map((message) => message.params);
-  return { engine, cwd, turn, starts };
+  const logged = async (method: string) => (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line)).filter((message) => message.method === method).map((message) => message.params);
+  const starts = () => logged("thread/start");
+  return { engine, cwd, turn, starts, logged };
 }
 
-test("a thread with no rays has the thread tools alone, is told when to open one, and the app's answer is the tool's", async (t) => {
+test("a thread with no rays has the thread tools alone, is told it decides, and the app's answer is the tool's", async (t) => {
   const { engine, turn, starts } = await codex(t);
   await turn("parent");
   const [started] = await starts();
@@ -51,53 +52,49 @@ test("a thread with no rays has the thread tools alone, is told when to open one
   assert.equal(started.developerInstructions, told(`${opening}\n\n${suggesting}`));
   assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, `${opening}\n\n${suggesting}`);
   const tools = (await mcp(url, "tools/list")).tools;
-  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "suggest_thread", "list_threads", "read_thread"]);
-  assert.match(tools[0].description, /only when the user asked for another thread in their own words/);
+  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "message_thread", "wait_thread", "stop_thread", "suggest_thread", "list_threads", "read_thread"]);
+  assert.match(tools[0].description, /Open one when you judge the work wants it/);
+  assert.doesNotMatch(tools[0].description, /asked|own words/);
+  assert.deepEqual(tools[0].inputSchema.required, ["title", "message", "reason"]);
+  assert.match(opening, /CLAUDE\.md or AGENTS\.md: keep to it\./);
+  assert.match(opening, /Ask the user first only where you aren't sure/);
   assert.match((await call(url, "start_worker", { agent: "codex", task: "x" })).error, /isn't one of this thread's rays/);
 
   // The call waits on the app, which makes the thread and says what it made.
   const from = engine.lines.length;
-  const calling = call(url, "open_thread", { title: "Rename sum.txt", message: " Rename sum.txt to total.txt. ", model: "gpt-large", folder: "/elsewhere", worktree: true, mode: "bypassPermissions" });
+  const calling = call(url, "open_thread", { title: "Rename sum.txt", message: " Rename sum.txt to total.txt. ", reason: " The rename can go on alone. ", model: "gpt-large", folder: "/elsewhere", worktree: true, mode: "bypassPermissions" });
   const asked = await engine.until((line) => line.event === "thread.open", from);
   const { requestId, ...fields } = asked;
-  assert.deepEqual(fields, { event: "thread.open", threadId: "parent", title: "Rename sum.txt", text: "Rename sum.txt to total.txt.", model: "gpt-large", folder: "/elsewhere", worktree: true });
+  assert.deepEqual(fields, { event: "thread.open", threadId: "parent", title: "Rename sum.txt", text: "Rename sum.txt to total.txt.", reason: "The rename can go on alone.", model: "gpt-large", folder: "/elsewhere", worktree: true });
   const made = { thread: "Rename sum.txt", agent: "codex", model: "gpt-large", mode: "default", folder: "/elsewhere" };
   assert.deepEqual((await engine.request("app.reply", { requestId, result: made })).result, { ok: true });
   assert.deepEqual(await calling, made);
   assert.equal((await engine.request("app.reply", { requestId, result: made })).error, "Nothing is waiting on that reply.");
 
   // What the app refuses, the agent reads as the tool's error.
-  const refused = call(url, "open_thread", { title: "x", message: "y", agent: "pi" });
+  const refused = call(url, "open_thread", { title: "x", message: "y", reason: "z", agent: "pi" });
   const second = await engine.until((line) => line.event === "thread.open" && line.requestId !== requestId, from);
   assert.equal(second.worktree, false);
   await engine.request("app.reply", { requestId: second.requestId, error: "Pi asks before nothing, and this thread is on Ask." });
   assert.deepEqual(await refused, { error: "Pi asks before nothing, and this thread is on Ask." });
-  assert.deepEqual(await call(url, "open_thread", { title: "x", message: "  " }), { error: "A thread needs its first message." });
+  assert.deepEqual(await call(url, "open_thread", { title: "x", message: "  ", reason: "z" }), { error: "A thread needs its first message." });
+  assert.deepEqual(await call(url, "open_thread", { title: "x", message: "y" }), { error: "Say why in `reason`, one line the user reads." });
   await engine.end();
 });
 
-test("one turn opens three threads at most, and the next turn three more", async (t) => {
+test("a turn opens as many threads as the app lets it, which is the app's ceiling to keep", async (t) => {
   const { engine, turn, starts } = await codex(t);
   await turn("parent");
   const url: string = (await starts())[0].config["mcp_servers.oricode"].url;
-  const open = async (title: string) => {
+  const open = async (title: string, answer: object) => {
     const from = engine.lines.length;
-    const calling = call(url, "open_thread", { title, message: "go" });
-    // The fourth is refused before the app hears of it.
-    const asked = await Promise.race([engine.until((line) => line.event === "thread.open", from), calling.then(() => undefined)]);
-    if (asked) await engine.request("app.reply", { requestId: asked.requestId, result: { thread: title } });
+    const calling = call(url, "open_thread", { title, message: "go", reason: "a part of its own" });
+    const asked = await engine.until((line) => line.event === "thread.open", from);
+    await engine.request("app.reply", { requestId: asked.requestId, ...answer });
     return calling;
   };
-  for (let n = 1; n <= mostOpened; n++) assert.deepEqual(await open(`t${n}`), { thread: `t${n}` });
-  assert.deepEqual(await open("t4"), { error: "This turn has opened 3 threads, which is as many as one turn may." });
-  // One the app refused doesn't count, so a turn's three are three that opened.
-  await turn("parent");
-  const from = engine.lines.length;
-  const refused = call(url, "open_thread", { title: "no", message: "go" });
-  await engine.request("app.reply", { requestId: (await engine.until((line) => line.event === "thread.open", from)).requestId, error: "No." });
-  assert.deepEqual(await refused, { error: "No." });
-  for (let n = 1; n <= mostOpened; n++) assert.deepEqual(await open(`u${n}`), { thread: `u${n}` });
-  assert.match((await open("u4")).error, /^This turn has opened 3 threads/);
+  for (let n = 1; n <= 5; n++) assert.deepEqual(await open(`t${n}`, { result: { thread: `t${n}` } }), { thread: `t${n}` });
+  assert.deepEqual(await open("t6", { error: "2 threads are working, as many as the user allows at once." }), { error: "2 threads are working, as many as the user allows at once." });
   await engine.end();
 });
 
@@ -129,39 +126,63 @@ test("a suggestion goes to the app as an event and starts nothing, two a turn at
   await engine.end();
 });
 
-test("a thread another thread opened has no open_thread, with rays or without, and is told why", async (t) => {
-  const { engine, turn, starts } = await codex(t);
-  await turn("child", { opened: true });
-  await turn("child-head", { opened: true, rays: ["codex/gpt-small"] });
-  const [child, head] = await starts();
-  // Without rays it has what opens nothing: suggest_thread and the two that read.
-  assert.deepEqual((await mcp(child.config["mcp_servers.oricode"].url, "tools/list")).tools.map((tool: { name: string }) => tool.name), ["suggest_thread", "list_threads", "read_thread"]);
-  assert.equal(child.developerInstructions, told(`${openedByAnother}\n\n${suggesting}`));
-  const url: string = head.config["mcp_servers.oricode"].url;
-  assert.match(head.developerInstructions, /^[^]*You are this thread's head\./);
-  assert.equal(head.developerInstructions.endsWith(`\n\n${openedByAnother}\n\n${suggesting}`), true);
-  const listed = (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name);
-  assert.equal(listed.includes("start_worker"), true);
-  assert.equal(listed.includes("open_thread"), false);
-  assert.equal(listed.includes("suggest_thread"), true);
-  const from = engine.lines.length;
-  assert.deepEqual(await call(url, "open_thread", { title: "x", message: "y" }), { error: "Another thread opened this one, so it can't open threads of its own." });
-  assert.equal(engine.lines.slice(from).some((line) => line.event === "thread.open"), false);
+test("a thread another opened has every thread tool, and a message from a thread says who sent it", async (t) => {
+  const { engine, turn, starts, logged } = await codex(t);
+  await turn("child", { from: { id: "PARENT-1", title: "Sums" } });
+  await turn("child", { text: "and you?" });
+  const [child] = await starts();
+  assert.deepEqual((await mcp(child.config["mcp_servers.oricode"].url, "tools/list")).tools.map((tool: { name: string }) => tool.name).slice(0, 4), ["open_thread", "message_thread", "wait_thread", "stop_thread"]);
+  assert.equal(child.developerInstructions, told(`${opening}\n\n${suggesting}`));
+  const [first, second] = await logged("turn/start");
+  // Codex hears the lead on parts ahead of each message, then who sent it.
+  assert.equal(JSON.stringify(first.input).includes(JSON.stringify(`${leading}\n\n${fromThread({ id: "PARENT-1", title: "Sums" })}\n\nhello`).slice(1, -1)), true);
+  assert.match(fromThread({ id: "PARENT-1", title: "Sums" }), /^\[From another thread\] The thread "Sums" \(id PARENT-1\)/);
+  // The user's own message says nothing of another thread.
+  assert.doesNotMatch(JSON.stringify(second.input), /From another thread/);
+  assert.equal(JSON.stringify(second.input).includes(JSON.stringify(`${leading}\n\nand you?`).slice(1, -1)), true);
   await engine.end();
 });
 
-test("a thread lists the others and reads one through the app, and has no tool that sends one anything", async (t) => {
+test("message_thread, wait_thread and stop_thread go to the app with the thread and the reason, and the app's answer is the tool's", async (t) => {
+  const { engine, turn, starts } = await codex(t);
+  await turn("parent");
+  const url: string = (await starts())[0].config["mcp_servers.oricode"].url;
+  const answered = async (name: string, args: object, event: string, answer: object) => {
+    const from = engine.lines.length;
+    const calling = call(url, name, args);
+    const { requestId, ...asked } = await engine.until((line) => line.event === event, from);
+    await engine.request("app.reply", { requestId, ...answer });
+    return { asked, answer: await calling };
+  };
+  const sent = await answered("message_thread", { thread: " T2 ", text: " Use tabs. ", reason: " It asked which. " }, "thread.message", { result: { sent: "Tabs", started: true } });
+  assert.deepEqual(sent.asked, { event: "thread.message", threadId: "parent", thread: "T2", text: "Use tabs.", reason: "It asked which." });
+  assert.deepEqual(sent.answer, { sent: "Tabs", started: true });
+  const waited = await answered("wait_thread", { thread: "T2", reason: "ignored" }, "thread.wait", { result: { state: "idle", reply: "Done." } });
+  assert.deepEqual(waited.asked, { event: "thread.wait", threadId: "parent", thread: "T2" });
+  assert.deepEqual(waited.answer, { state: "idle", reply: "Done." });
+  const stopped = await answered("stop_thread", { thread: "T2", reason: "Its part is done." }, "thread.stop", { error: "Tabs isn't working, so there's nothing to stop." });
+  assert.deepEqual(stopped.asked, { event: "thread.stop", threadId: "parent", thread: "T2", reason: "Its part is done." });
+  assert.deepEqual(stopped.answer, { error: "Tabs isn't working, so there's nothing to stop." });
+  // What's missing is refused before the app hears of it.
+  const from = engine.lines.length;
+  assert.deepEqual(await call(url, "message_thread", { thread: "T2", reason: "x" }), { error: "A message needs its text." });
+  assert.deepEqual(await call(url, "message_thread", { thread: "T2", text: "x" }), { error: "Say why in `reason`, one line the user reads." });
+  assert.deepEqual(await call(url, "stop_thread", { reason: "x" }), { error: "Name the thread by its id, which list_threads gives." });
+  assert.deepEqual(await call(url, "wait_thread", {}), { error: "Name the thread by its id, which list_threads gives." });
+  assert.equal(engine.lines.slice(from).some((line) => line.requestId), false);
+  await engine.end();
+});
+
+test("a thread lists the others and reads one through the app", async (t) => {
   const { engine, turn, starts } = await codex(t);
   await turn("asking");
   const url: string = (await starts())[0].config["mcp_servers.oricode"].url;
   const tools = (await mcp(url, "tools/list")).tools;
   const described = (name: string) => tools.find((tool: { name: string }) => tool.name === name);
-  assert.match(described("list_threads").description, /It reads and starts nothing, and you can't message, steer or stop another thread\./);
+  assert.match(described("list_threads").description, /It reads and starts nothing\./);
   assert.match(described("read_thread").description, /Reading wakes nothing/);
   assert.deepEqual(described("read_thread").inputSchema.required, ["thread"]);
-  for (const name of ["message_thread", "send_to_thread", "steer_thread", "stop_thread"]) {
-    assert.deepEqual(await call(url, name, { thread: "t", text: "x" }), { error: `OriCode has no tool called ${name}.` });
-  }
+  assert.deepEqual(await call(url, "steer_thread", { thread: "t", text: "x" }), { error: "OriCode has no tool called steer_thread." });
 
   // The listing is the app's, asked for when the tool is called, with the file to look for.
   const from = engine.lines.length;

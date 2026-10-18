@@ -231,7 +231,7 @@ async function handle(message: any): Promise<void> {
       send({ id, result: {} });
       return update(params.sessionId, { sessionUpdate: "current_mode_update", currentModeId: mode });
     case "session/prompt":
-      return send({ id, result: await prompt(params.sessionId, params.prompt.find((block: any) => block.type === "text")?.text ?? "") });
+      return send({ id, result: await prompt(params.sessionId, unled(params.prompt.find((block: any) => block.type === "text")?.text ?? "")) });
     case "session/cancel":
       cancelled?.();
       return;
@@ -250,3 +250,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
   void handle(message);
 });
+
+/// The message as the user wrote it, without the line OriCode puts ahead of it on threads.
+function unled(text: string): string {
+  return text.replace(/^\[OriCode\][^\n]*\n\n/, "");
+}

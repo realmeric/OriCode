@@ -6,6 +6,7 @@ import SwiftUI
 struct AgentsPane: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Rays.allowKey) private var workers = true
+    @AppStorage(AppModel.ceilingKey) private var ceiling = AppModel.defaultCeiling
 
     var body: some View {
         PaneTitle(text: "Agents")
@@ -33,6 +34,17 @@ struct AgentsPane: View {
                 detail: "A thread's head can send workers out on its rays, the models picked for it under Rays on the model page, each a ray on the mark while it works."
             ) {
                 Toggle("Heads may start workers", isOn: $workers).labelsHidden().toggleStyle(.switch)
+            }
+        }
+        SectionHeading("Threads")
+        SettingsCard {
+            SettingsRow(
+                title: "Threads working at once",
+                detail: "An agent opens, messages and stops threads as you would, and keeps to what the project's CLAUDE.md or AGENTS.md says. With this many working, it can't set another going and is told why. What you send yourself always goes."
+            ) {
+                Stepper(value: $ceiling, in: 1...20) {
+                    Text("\(ceiling)").monospacedDigit().foregroundStyle(Ink.primary)
+                }
             }
         }
     }

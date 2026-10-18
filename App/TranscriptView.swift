@@ -748,6 +748,8 @@ struct ItemView: View {
             OpenedLine(thread: opened, title: title, finished: finished, parent: thread)
         case .suggested(_, let title, let prompt):
             SuggestedThread(title: title, prompt: prompt, thread: thread)
+        case .act(_, let other, let text):
+            ThreadActLine(thread: other, text: text, parent: thread)
         }
     }
 }

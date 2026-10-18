@@ -241,7 +241,7 @@ async function handle(message: any): Promise<void> {
     case "turn/start":
       turnId = `turn-${++turns}`;
       send({ id, result: { turn: { id: turnId, items: [], status: "inProgress" } } });
-      return turn(params.input.find((part: any) => part.type === "text")?.text ?? "", params.clientUserMessageId ?? null);
+      return turn(unled(params.input.find((part: any) => part.type === "text")?.text ?? ""), params.clientUserMessageId ?? null);
     case "turn/steer":
       if (params.expectedTurnId !== turnId || !steered) return send({ id, error: { code: -32600, message: "no active turn to steer" } });
       send({ id, result: { turnId } });
@@ -264,3 +264,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
   void handle(message);
 });
+
+/// The message as the user wrote it, without the line OriCode puts ahead of it on threads.
+function unled(text: string): string {
+  return text.replace(/^\[OriCode\][^\n]*\n\n/, "");
+}

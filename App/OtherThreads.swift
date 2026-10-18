@@ -221,6 +221,22 @@ enum OtherThreads {
     }
 }
 
+extension OtherThreads {
+    /// The thread's last reply, which wait_thread answers with: the last thing its agent wrote
+    /// since the latest message it was sent, cut at a page. Nil when it has written nothing since.
+    static func lastReply(of chat: UUID, page: Int = OtherThreads.page, in context: ModelContext) -> String? {
+        var descriptor = FetchDescriptor<Event>(
+            predicate: #Predicate { $0.chat?.id == chat && ($0.kind == "user" || $0.kind == "text") },
+            sortBy: [SortDescriptor(\.seq, order: .reverse)])
+        descriptor.fetchLimit = 1
+        guard let last = try? context.fetch(descriptor).first, last.kind == "text",
+              let text = (try? JSONDecoder().decode(JSON.self, from: last.payload))?["delta"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty
+        else { return nil }
+        return text.count > page ? String(text.prefix(page)) + "…" : text
+    }
+}
+
 extension AppModel {
     /// The words list_threads gives for what a thread is doing.
     func state(of chat: Chat) -> String {

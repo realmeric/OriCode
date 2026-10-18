@@ -157,7 +157,7 @@ async function handle(message: any): Promise<void> {
       if (params.configId === "mode") update(params.sessionId, { sessionUpdate: "current_mode_update", currentModeId: mode });
       return;
     case "session/prompt": {
-      const text = params.prompt.find((block: any) => block.type === "text")?.text ?? "";
+      const text = unled(params.prompt.find((block: any) => block.type === "text")?.text ?? "");
       if (!loggedIn) {
         update(params.sessionId, { sessionUpdate: "session_info_update", title: text });
         send({ method: "_cognition.ai/agent_stopped", params: { cause: "auth_required", errorMessage: "Please authenticate to continue. Run `/login` to log in.", sessionId: params.sessionId } });
@@ -183,3 +183,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
   void handle(message);
 });
+
+/// The message as the user wrote it, without the line OriCode puts ahead of it on threads.
+function unled(text: string): string {
+  return text.replace(/^\[OriCode\][^\n]*\n\n/, "");
+}

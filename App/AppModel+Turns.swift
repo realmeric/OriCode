@@ -113,8 +113,9 @@ extension AppModel {
         return true
     }
 
-    /// Starts a turn in any thread, on screen or not.
-    func send(_ text: String, images: [ImageAttachment], in chat: Chat) -> Bool {
+    /// Starts a turn in any thread, on screen or not. `from` is the thread that sent it through
+    /// one of OriCode's tools, which the session is told.
+    func send(_ text: String, images: [ImageAttachment], in chat: Chat, from sender: Chat? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         let conversation = conversation(for: chat)
@@ -125,7 +126,7 @@ extension AppModel {
         let id = UUID()
         conversation.userSent(text, previews: shown.map { $0.preview }, id: id)
         conversation.pictures?.keep(shown.map { $0.image }, thread: chat.id, message: id)
-        startTurn(in: chat, text: text, images: images)
+        startTurn(in: chat, text: text, images: images, from: sender)
         return true
     }
 
@@ -138,25 +139,28 @@ extension AppModel {
     /// message where it was. Codex refuses one past a million characters, and sent anyway it came
     /// back as Codex's own error, with the message left in the thread as if it had gone.
     func tooLong(_ text: String, for chat: Chat?) -> Bool {
-        let agent = agent(for: chat)
-        // Never fewer bytes than scalars, so only a message with more bytes than the limit is counted.
-        guard let longest = agent.capabilities.longestMessage, text.utf8.count > longest else { return false }
-        let length = text.unicodeScalars.count
-        guard length > longest else { return false }
-        say("\(agent.agent) takes messages of up to \(longest.formatted()) characters. This one has \(length.formatted()).")
+        guard let longest = longestPassed(by: text, for: chat) else { return false }
+        say("\(agent(for: chat).agent) takes messages of up to \(longest.formatted()) characters. This one has \(text.unicodeScalars.count.formatted()).")
         return true
+    }
+
+    /// The most characters the thread's agent takes, when the text has more; nil when it fits.
+    func longestPassed(by text: String, for chat: Chat?) -> Int? {
+        // Never fewer bytes than scalars, so only a message with more bytes than the limit is counted.
+        guard let longest = agent(for: chat).capabilities.longestMessage, text.utf8.count > longest, text.unicodeScalars.count > longest else { return nil }
+        return longest
     }
 
     /// Hands a message the transcript already shows, or one it needn't, to the thread's session
     /// with the thread's model, level, mode and speed.
-    func startTurn(in chat: Chat, text: String, images: [ImageAttachment] = [], allowing grant: PendingAsk? = nil) {
+    func startTurn(in chat: Chat, text: String, images: [ImageAttachment] = [], allowing grant: PendingAsk? = nil, from sender: Chat? = nil) {
         let conversation = conversation(for: chat)
         holdWhileWorking()
         // The commands run from the shell prompt since Claude last read them go first.
         let (text, readShells) = withShells(text, in: chat)
         // No folder's own folder is the app's to keep there, whatever emptied the support folder.
         if chat.project?.isNoFolder == true { try? FileManager.default.createDirectory(atPath: chat.cwd, withIntermediateDirectories: true) }
-        var params = sendParams(in: chat, text: text, images: images)
+        var params = sendParams(in: chat, text: text, images: images, from: sender)
         if let handover = handover(for: chat) { params["handover"] = .string(handover) }
         if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
         Task {
@@ -165,6 +169,7 @@ extension AppModel {
                 readShells()
             } catch {
                 conversation.sendFailed(error.localizedDescription)
+                turnEnded(chat.id)
                 holdWhileWorking()
                 // A queued message the engine turned down ends the thread's work, and the turn
                 // before it held back its Finished for it.
@@ -184,13 +189,13 @@ extension AppModel {
 
     /// A message for the running turn, which Claude takes up at its next step. The engine sends
     /// it with the thread's settings, which only the next turn takes.
-    private func sendIntoTurn(_ message: WaitingMessage, in chat: Chat) {
+    func sendIntoTurn(_ message: WaitingMessage, in chat: Chat, from sender: Chat? = nil) {
         let conversation = conversation(for: chat)
         // A message into the turn is the next one too, so the shell's new blocks go with it. They
         // count as read once Claude takes it up; handed back, they go with the next message.
         let (text, readShells) = withShells(message.text, in: chat)
         shellReads[message.id] = readShells
-        var params = sendParams(in: chat, text: text, images: message.images)
+        var params = sendParams(in: chat, text: text, images: message.images, from: sender)
         params["id"] = .string(message.id.uuidString)
         Task {
             do {
@@ -207,7 +212,7 @@ extension AppModel {
         }
     }
 
-    func sendParams(in chat: Chat, text: String, images: [ImageAttachment]) -> [String: JSON] {
+    func sendParams(in chat: Chat, text: String, images: [ImageAttachment], from sender: Chat? = nil) -> [String: JSON] {
         var params: [String: JSON] = [
             "threadId": .string(chat.id.uuidString),
             "cwd": .string(chat.cwd),
@@ -228,8 +233,8 @@ extension AppModel {
         // The engine tells the session its folder is nobody's project.
         if chat.project?.isNoFolder == true { params["noFolder"] = true }
         if workflows(of: chat) { params["workflows"] = true }
-        // A thread another opened is left without open_thread.
-        if chat.openedBy != nil { params["opened"] = true }
+        // A message from another thread says which, so the session can answer it.
+        if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
@@ -351,6 +356,7 @@ extension AppModel {
         // so does the last message it left waiting going back.
         if event.name == "turn.done" || event.name == "message.cancelled" {
             conversation(for: chat).sendNext { send($0.text, images: $0.images, in: chat) }
+            turnEnded(chat.id)
         }
         holdWhileWorking()
         tellIfAway(event, chat: chat)
@@ -426,6 +432,8 @@ extension AppModel {
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]
         for conversation in conversations.values { withAnimation(Motion.fade) { conversation.handBackAll() } }
+        // Every wait on a thread is over: its turn went with the engine.
+        for id in turnWaits.keys { turnEnded(id) }
         holdWhileWorking()
     }
 }

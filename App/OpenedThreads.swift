@@ -1,11 +1,31 @@
+import SwiftData
 import SwiftUI
 
 /// What an agent asks the app for through OriCode's own tools (engine/threads.ts): each arrives as
-/// an event with a request id and is answered with `app.reply`. A thread opened this way is a
-/// thread like any other, made and sent to as the composer would. A thread it only suggests is an
-/// event in its transcript, and made by the user's click. What it asks about the other threads is
-/// read from the store (OtherThreads).
+/// an event with a request id and is answered with `app.reply`. An agent does to threads what the
+/// user can: a thread it opens is a thread like any other, made and sent to as the composer would,
+/// and it messages, waits on and stops any thread as the composer and Stop would, each act a line
+/// in both transcripts with its reason. In its way are a ceiling on threads working at once, set
+/// in Settings › Agents, and its own permission mode, which no thread it opens or messages is
+/// looser than. A thread it only suggests is an event in its transcript, and made by the user's
+/// click. What it asks about the other threads is read from the store (OtherThreads).
 extension AppModel {
+    /// Threads working at once past which an agent can't set another going, so threads opening
+    /// threads can't take the Mac. The user's own sends are never refused by it.
+    static let ceilingKey = "threadsAtOnce"
+    static let defaultCeiling = 6
+
+    var threadsAtOnce: Int {
+        max(1, UserDefaults.standard.object(forKey: Self.ceilingKey) as? Int ?? Self.defaultCeiling)
+    }
+
+    /// Refuses an act that would set one more thread working past the ceiling.
+    func checkCeiling() throws {
+        let working = conversations.values.count(where: \.running)
+        guard working >= threadsAtOnce else { return }
+        throw Refused(why: "\(working) threads are working, as many as the user allows at once in Settings › Agents. Wait for one with wait_thread or stop one, then try again.")
+    }
+
     /// Why the app didn't do what a tool asked, in words the agent reads as the tool's error.
     struct Refused: LocalizedError {
         let why: String
@@ -17,6 +37,7 @@ extension AppModel {
         var parent: UUID
         var title = ""
         var text: String
+        var reason = ""
         var agent: String?
         var model: String?
         var folder: String?
@@ -30,6 +51,7 @@ extension AppModel {
         init(_ body: JSON, from parent: UUID) {
             self.init(parent: parent, text: body["text"]?.string ?? "")
             title = body["title"]?.string ?? ""
+            reason = body["reason"]?.string ?? ""
             agent = body["agent"]?.string?.nonEmpty
             model = body["model"]?.string?.nonEmpty
             folder = body["folder"]?.string?.nonEmpty
@@ -66,7 +88,7 @@ extension AppModel {
     }
 
     /// An event that asks the app for something and waits on its answer.
-    static let asks: Set<String> = ["thread.open", "threads.list", "thread.read"]
+    static let asks: Set<String> = ["thread.open", "thread.message", "thread.wait", "thread.stop", "threads.list", "thread.read"]
 
     func answerTool(_ event: EngineEvent, from thread: UUID) {
         guard let requestId = event.body["requestId"]?.string else { return }
@@ -95,9 +117,23 @@ extension AppModel {
                 guard let path = reply["path"]?.string, let branch = reply["branch"]?.string else { throw Refused(why: "Git made no worktree for it.") }
                 place = (path, branch)
             }
-            let chat = try open(opening, request, in: place)
+            let chat: Chat
+            do {
+                chat = try open(opening, request, in: place)
+            } catch {
+                if let place {
+                    _ = try? await engine.request("worktree.remove", ["cwd": .string(opening.project.path), "path": .string(place.path), "branch": .string(place.branch)])
+                }
+                throw error
+            }
             refreshBranch(for: chat)
             return Self.made(chat, on: opening.agent)
+        case "thread.message":
+            return try message(event.body["thread"]?.string ?? "", text: event.body["text"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
+        case "thread.wait":
+            return try await wait(on: event.body["thread"]?.string ?? "", from: thread)
+        case "thread.stop":
+            return try stop(event.body["thread"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
         case "threads.list":
             return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
         case "thread.read":
@@ -132,8 +168,8 @@ extension AppModel {
     /// Checks a request before anything is made, so a refusal leaves no thread and no worktree.
     func opening(for request: ThreadRequest) throws -> Opening {
         guard let parent = chat(withID: request.parent), let own = parent.project else { throw Refused(why: "The thread that asked is gone.") }
-        guard parent.openedBy == nil else { throw Refused(why: "Another thread opened this one, so it can't open threads of its own.") }
         guard !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Refused(why: "A thread needs its first message.") }
+        try checkCeiling()
 
         let id = request.agent ?? parent.providerID
         guard let agent = providers.first(where: { $0.id == id }) else {
@@ -173,6 +209,9 @@ extension AppModel {
     /// thread on screen stays the one on screen.
     @discardableResult
     func open(_ opening: Opening, _ request: ThreadRequest, in worktree: (path: String, branch: String)? = nil) throws -> Chat {
+        // Again, since threads may have started while git made the worktree. Nothing from here to
+        // the send waits, so two opens can't both pass it.
+        try checkCeiling()
         let parent = opening.parent
         let chat = Chat(project: opening.project, permissionMode: opening.mode)
         chat.provider = opening.agent.id
@@ -197,14 +236,135 @@ extension AppModel {
             chat.titleIsCustom = true
         }
         context.insert(chat)
-        guard send(request.text, images: [], in: chat) else {
+        let reason = request.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        conversation(for: chat).threadAct(ThreadAct(act: .opened, by: false, thread: parent.id, title: parent.title, reason: reason))
+        guard send(request.text, images: [], in: chat, from: parent) else {
             conversations[chat.id] = nil
             context.delete(chat)
             save()
             throw Refused(why: "OriCode couldn't start a turn in it just now.")
         }
+        conversation(for: parent).threadAct(ThreadAct(act: .opened, by: true, thread: chat.id, title: chat.title, reason: reason))
         save()
         return chat
+    }
+
+    /// The thread a tool names, among those the asking thread may list, and never itself.
+    func other(_ named: String, from asking: UUID, doing: String) throws -> (asking: Chat, thread: Chat) {
+        guard let chat = chat(withID: asking) else { throw Refused(why: "The thread that asked is gone.") }
+        let named = named.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let thread = threads(around: chat).first(where: { $0.id.uuidString.caseInsensitiveCompare(named) == .orderedSame }) else {
+            throw Refused(why: "No thread of this project has the id \(named). list_threads gives the ones there are.")
+        }
+        guard thread.id != chat.id else { throw Refused(why: "That's this thread. \(doing) is for another.") }
+        return (chat, thread)
+    }
+
+    /// How loose a thread's permission mode is, as its place in `tightness`. A thread on an agent
+    /// that asks before nothing is the loosest, whatever its mode says.
+    func looseness(of chat: Chat) -> Int {
+        let agent = agent(for: chat)
+        let loosest = Self.tightness.count - 1
+        guard !agent.unsupervised, !agent.modes.isEmpty else { return loosest }
+        return Self.tightness.firstIndex(of: chat.permissionMode) ?? loosest
+    }
+
+    private func modeWords(of chat: Chat) -> String {
+        let agent = agent(for: chat)
+        if agent.unsupervised || agent.modes.isEmpty { return "on \(agent.name), which asks before nothing" }
+        return "on " + (PermissionModeOption(rawValue: chat.permissionMode)?.title ?? chat.permissionMode)
+    }
+
+    /// message_thread: the message goes to the thread as its composer would send it, starting a
+    /// turn or into the one running, with the line saying who sent it and why in both threads.
+    /// Everything that could stop it is checked before the lines are written, quietly: the user
+    /// hears nothing of a call that's refused.
+    func message(_ named: String, text: String, reason: String, from asking: UUID) throws -> JSON {
+        let (chat, thread) = try other(named, from: asking, doing: "message_thread")
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw Refused(why: "A message needs its text.") }
+        // As an opened thread is never looser than its opener, a message can't have a looser
+        // thread do what the sender's mode keeps it from.
+        guard looseness(of: thread) <= looseness(of: chat) else {
+            throw Refused(why: "\(thread.title) is \(modeWords(of: thread)), looser than this thread, which is \(modeWords(of: chat)), so it takes no message from here. Ask the user to send it.")
+        }
+        let agent = agent(for: thread)
+        if handedOff[thread.id].flatMap({ shellBlocks[$0] })?.running == true {
+            throw Refused(why: "\(thread.title) is open in \(agent.name)'s own CLI in one of the user's terminal blocks, so it can't take a message here until they quit it there.")
+        }
+        let conversation = conversation(for: thread)
+        guard !conversation.waitingAfterQuit else { throw Refused(why: "\(thread.title) is waiting on the user to answer a question from before OriCode quit, so it can't take a message yet.") }
+        let busy = conversation.running || !conversation.waiting.isEmpty
+        if busy, !agent.capabilities.steer {
+            throw Refused(why: "\(thread.title) is working, and \(agent.agent) takes no message until its turn ends. Wait for it with wait_thread, then send this again.")
+        }
+        if !busy { try checkCeiling() }
+        if let longest = longestPassed(by: text, for: thread) {
+            throw Refused(why: "\(agent.agent) takes messages of up to \(longest.formatted()) characters, and this one has \(text.unicodeScalars.count.formatted()).")
+        }
+        let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        conversation.threadAct(ThreadAct(act: .messaged, by: false, thread: chat.id, title: chat.title, reason: reason))
+        if busy {
+            sendIntoTurn(conversation.sentIntoTurn(text, images: []), in: thread, from: chat)
+        } else if !send(text, images: [], in: thread, from: chat) {
+            throw Refused(why: "OriCode couldn't start a turn in \(thread.title) just now.")
+        }
+        self.conversation(for: chat).threadAct(ThreadAct(act: .messaged, by: true, thread: thread.id, title: thread.title, reason: reason))
+        return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "sent": true, "intoTurn": .bool(busy)]
+    }
+
+    /// stop_thread: the thread's Stop, with the line in both threads.
+    func stop(_ named: String, reason: String, from asking: UUID) throws -> JSON {
+        let (chat, thread) = try other(named, from: asking, doing: "stop_thread")
+        guard let conversation = conversations[thread.id], conversation.running || conversation.waitingAfterQuit else {
+            throw Refused(why: "\(thread.title) isn't working, so there's nothing to stop.")
+        }
+        let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        conversation.threadAct(ThreadAct(act: .stopped, by: false, thread: chat.id, title: chat.title, reason: reason))
+        stop(in: thread)
+        turnEnded(thread.id)
+        self.conversation(for: chat).threadAct(ThreadAct(act: .stopped, by: true, thread: thread.id, title: thread.title, reason: reason))
+        return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "stopped": true]
+    }
+
+    /// wait_thread: answered when the thread's turn ends, or with its state once the wait is up.
+    /// A turn's end wakes it (turnEnded); nothing polls.
+    func wait(on named: String, from asking: UUID, within limit: Duration = .seconds(300)) async throws -> JSON {
+        let (_, thread) = try other(named, from: asking, doing: "wait_thread")
+        let id = thread.id
+        if conversations[id]?.running == true {
+            let key = UUID()
+            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                let timer = Task {
+                    guard (try? await Task.sleep(for: limit)) != nil else { return }
+                    self.turnWaits[id]?.removeValue(forKey: key)?.done.resume()
+                }
+                turnWaits[id, default: [:]][key] = TurnWait(done: done, timer: timer)
+            }
+        }
+        guard let thread = chat(withID: id) else { throw Refused(why: "That thread was deleted while you waited on it.") }
+        var answer: [String: JSON] = ["thread": .string(thread.title), "id": .string(id.uuidString), "state": .string(state(of: thread))]
+        if let conversation = conversations[id], conversation.running {
+            answer["note"] = .string(conversation.waitingAsk != nil
+                ? "It's waiting on the user to answer it. Call wait_thread again to wait longer."
+                : "Still working. Call wait_thread again to wait longer.")
+            return .object(answer)
+        }
+        conversations[id]?.saveHeld()
+        let container = context.container
+        let reply = await Task.detached(priority: .userInitiated) { OtherThreads.lastReply(of: id, in: ModelContext(container)) }.value
+        answer["reply"] = reply.map(JSON.string) ?? .null
+        if let conversation = conversations[id] { answer["finished"] = .bool(conversation.endedByItself) }
+        return .object(answer)
+    }
+
+    /// A thread's turn ended, or its work did: whoever waits on it hears now.
+    func turnEnded(_ id: UUID) {
+        guard conversations[id]?.running != true, let waits = turnWaits.removeValue(forKey: id) else { return }
+        for wait in waits.values {
+            wait.timer.cancel()
+            wait.done.resume()
+        }
     }
 
     /// The first turn of a thread another opened has ended: that thread gets its one line, from
@@ -305,5 +465,82 @@ struct OpenedLine: View {
 
     static func words(title: String, finished: Bool) -> String {
         finished ? "\(title) finished its first turn" : "\(title) stopped before its first turn finished"
+    }
+}
+
+/// A wait_thread call: what wakes it, and the timer that answers it once the wait is up, called
+/// off when the turn ends first so it never wakes the Mac for nothing.
+struct TurnWait {
+    let done: CheckedContinuation<Void, Never>
+    let timer: Task<Void, Never>
+}
+
+/// What one thread did to another, as the line each of them stores: which act, whether this
+/// thread did it or had it done to it, the other thread then, and the agent's reason.
+struct ThreadAct: Equatable {
+    enum Kind: String { case opened, messaged, stopped }
+
+    let act: Kind
+    /// This thread did it; false when the other did it to this one.
+    let by: Bool
+    let thread: UUID
+    let title: String
+    let reason: String
+
+    init(act: Kind, by: Bool, thread: UUID, title: String, reason: String) {
+        self.act = act
+        self.by = by
+        self.thread = thread
+        self.title = title
+        self.reason = reason
+    }
+
+    init?(_ body: JSON) {
+        guard let act = body["act"]?.string.flatMap(Kind.init(rawValue:)), let thread = body["thread"]?.string.flatMap(UUID.init(uuidString:)) else { return nil }
+        self.init(act: act, by: body["by"]?.bool ?? false, thread: thread, title: body["title"]?.string ?? Chat.untitled, reason: body["reason"]?.string ?? "")
+    }
+
+    var json: JSON {
+        ["event": "thread.act", "act": .string(act.rawValue), "by": .bool(by), "thread": .string(thread.uuidString), "title": .string(title), "reason": .string(reason)]
+    }
+
+    var words: String {
+        let done = switch (act, by) {
+        case (.opened, true): "Opened \(title)"
+        case (.messaged, true): "Sent \(title) a message"
+        case (.stopped, true): "Stopped \(title)"
+        case (.opened, false): "\(title) opened this thread"
+        case (.messaged, false): "Message from \(title)"
+        case (.stopped, false): "\(title) stopped this thread"
+        }
+        return reason.isEmpty ? done : "\(done) · \(reason)"
+    }
+}
+
+/// The line for what one thread did to another. A click opens the other thread beside this one.
+struct ThreadActLine: View {
+    @Environment(AppModel.self) private var model
+    let thread: UUID
+    let text: String
+    /// The thread the line is in; nil stands for the open one.
+    var parent: UUID?
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            model.openOpened(thread, from: parent)
+        } label: {
+            Text(text)
+                .underline(hovering)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.plain)
+        .font(Type.secondary)
+        .foregroundStyle(Ink.secondary)
+        .onHover { hovering = $0 }
+        .pointerStyle(.link)
+        .help("Open the thread")
     }
 }

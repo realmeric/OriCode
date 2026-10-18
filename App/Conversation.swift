@@ -209,12 +209,15 @@ enum Item: Identifiable, Hashable {
     /// A thread the agent suggested for something outside the task: the button's words, and the
     /// message a thread made from it would start on.
     case suggested(id: UUID, title: String, prompt: String)
+    /// One thread opened, messaged or stopped another: the line both get, with the other thread
+    /// and the line's words, the agent's reason among them.
+    case act(id: UUID, thread: UUID, text: String)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _),
-             .opened(let id, _, _, _), .suggested(let id, _, _):
+             .opened(let id, _, _, _), .suggested(let id, _, _), .act(let id, _, _):
             id
         }
     }
@@ -657,6 +660,14 @@ final class Conversation {
         context.insert(event)
         event.chat = chat
         chat.updatedAt = .now
+    }
+
+    /// A line for something one thread did to another, here or to this one: stored now, or at the
+    /// end of a turn running here, as a thread's finished first turn is.
+    func threadAct(_ act: ThreadAct) {
+        let line = act.json
+        guard !running else { return underTurn.append(("thread.act", line)) }
+        record("thread.act", line)
     }
 
     private func writeUnderTurn() {
@@ -1129,6 +1140,9 @@ final class Conversation {
         case "thread.done":
             guard let thread = body["thread"]?.string.flatMap(UUID.init(uuidString:)) else { break }
             items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true))
+        case "thread.act":
+            guard let act = ThreadAct(body) else { break }
+            items.append(.act(id: id, thread: act.thread, text: act.words))
         case "thread.suggested":
             guard let prompt = body["text"]?.string?.nonEmpty else { break }
             items.append(.suggested(id: id, title: body["title"]?.string?.nonEmpty ?? Chat.title(from: prompt), prompt: prompt))
@@ -1183,10 +1197,11 @@ extension Item {
     }
 
     /// A line written under a turn once it's over, after its footer: a thread it opened ending its
-    /// first turn, or one it suggested. What reads how a turn ended looks past these.
+    /// first turn, one it suggested, or what it did to another thread or another to it. What reads
+    /// how a turn ended looks past these.
     var followsTurn: Bool {
         switch self {
-        case .opened, .suggested: true
+        case .opened, .suggested, .act: true
         default: false
         }
     }

@@ -2,34 +2,75 @@ import { randomUUID } from "node:crypto";
 import { emit } from "./wire.ts";
 
 // The tools an agent has for the user's threads, served beside a head's worker tools from the
-// same MCP server (rays.ts). The app keeps the threads, so a call that makes one goes to it as an
-// event carrying a request id and waits for its `app.reply`; a suggestion makes nothing, and is an
-// event alone. What a thread may know of the others it reads: the app answers a listing or a
-// transcript from the events it has stored, and no tool here sends a thread anything or stops one.
-// Nothing here keeps a thread or polls one.
+// same MCP server (rays.ts). The app keeps the threads, so a call that makes, sends to, waits on
+// or stops one goes to it as an event carrying a request id and waits for its `app.reply`; a
+// suggestion makes nothing, and is an event alone. What a thread may know of the others it reads:
+// the app answers a listing or a transcript from the events it has stored. An agent does to
+// threads what the user can, and the app keeps a ceiling on how many work at once. Nothing here
+// keeps a thread or polls one: a wait is answered by the app when the thread's turn ends.
 
-/// Threads one turn may open, so a thread can't fan out without end.
-export const mostOpened = 3;
+const reason = { type: "string", description: "Why, in one line the user reads in both threads' transcripts." };
+const thread = { type: "string", description: "The thread's id, from list_threads or open_thread's answer." };
 
 export const openThread = {
   name: "open_thread",
   description:
-    "Open another thread in OriCode and send it its first message. Call it only when the user asked for another thread in their own words, " +
-    '"open another thread", "send this to a new thread", and never because a task looks big enough for one. ' +
-    "It is an ordinary thread of the user's, in their list, on your agent and model unless you name others and in a permission mode no looser than yours. " +
-    "It works in this project's folder on its own while you go on, and its result doesn't come back to you: read_thread shows what it did, when the user asks. " +
-    `Returns its name, which you tell the user, and its id. A thread opened this way can't open another, and one turn opens ${mostOpened} at most.`,
+    "Open another thread in OriCode and send it its first message. Open one when you judge the work wants it: when a task has two or more parts that don't depend on each other, open one for each part as your first step, however small, and collect them with wait_thread; or for work in another of the user's projects, or something to look into while you carry on. " +
+    "It is an ordinary thread of the user's, in their list, on your agent and model unless you name others and in a permission mode no looser than yours, and it can open threads of its own. " +
+    "It works on its own while you go on: wait_thread gives you its reply when its turn ends, message_thread sends it more, stop_thread stops it. " +
+    "Returns its name, which you tell the user, and its id. OriCode refuses it when as many threads are working as the user allows at once, and says so.",
   inputSchema: {
     type: "object",
     properties: {
       title: { type: "string", description: "A short name for the thread, as the user will see it in their list." },
-      message: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what to do, where, and what the user said about it." },
-      agent: { type: "string", description: "Another agent to run it on, by its id, such as claude or codex, when the user asked for one. Yours when left out." },
-      model: { type: "string", description: "A model of that agent's, by its id, when the user asked for one. Yours when left out, or on another agent its first." },
+      message: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what to do, where, and what to say when it's done." },
+      reason,
+      agent: { type: "string", description: "Another agent to run it on, by its id, such as claude or codex. Yours when left out." },
+      model: { type: "string", description: "A model of that agent's, by its id. Yours when left out, or on another agent its first." },
       folder: { type: "string", description: "The folder of another of the user's projects, by its full path. This thread's project when left out." },
       worktree: { type: "boolean", description: "Work on a new branch in a git worktree of its own, so its edits can't run into yours." },
     },
-    required: ["title", "message"],
+    required: ["title", "message", "reason"],
+  },
+};
+
+export const messageThread = {
+  name: "message_thread",
+  description:
+    "Send a message to another of the user's threads, one you opened or not, as the user would from its composer. An idle thread starts a turn on it; a working one takes it in at its next step. A working thread on an agent that can't take a message mid-turn refuses it: wait for it with wait_thread, then send again. " +
+    "The thread is told the message came from you, with your id, and answers in its own transcript: wait_thread gives you that answer. " +
+    "OriCode refuses one to a thread in a looser permission mode than yours, and one that would start a turn when as many threads are working as the user allows at once, and says why.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      thread,
+      text: { type: "string", description: "The message, written for a reader who hasn't seen your conversation." },
+      reason,
+    },
+    required: ["thread", "text", "reason"],
+  },
+};
+
+export const waitThread = {
+  name: "wait_thread",
+  description:
+    "Wait for another thread's turn to end, and get its last reply. A thread that isn't working answers at once with the reply it last gave. " +
+    "Waits up to five minutes; a thread still working then comes back with its state and no reply, and you can call again. A thread waiting on the user to answer a question waits on them, and says so.",
+  inputSchema: {
+    type: "object",
+    properties: { thread },
+    required: ["thread"],
+  },
+};
+
+export const stopThread = {
+  name: "stop_thread",
+  description:
+    "Stop another thread's turn, as the user's Stop button would: what it was doing ends and what it had waiting goes back to its composer. The thread stays, and a message starts it again. Only a working thread can be stopped.",
+  inputSchema: {
+    type: "object",
+    properties: { thread, reason },
+    required: ["thread", "reason"],
   },
 };
 
@@ -59,7 +100,7 @@ export const listThreads = {
   description:
     "List the user's threads in this project as OriCode has them stored: each one's id, name, agent, whether it is working, waiting on the user or idle, when it was last active, and the files it edited most recently, latest first. " +
     'To find which thread changed a file, pass `edited`: only the threads whose own edits touched that file come back, from their whole history. An edit is a file the thread\'s agent or one of its workers wrote with an edit tool; what a shell command changed isn\'t known. ' +
-    "It reads and starts nothing, and you can't message, steer or stop another thread. Use it when the user asks about their other threads, or what a thread you opened has done.",
+    "It reads and starts nothing. Use it to find a thread to read, message, wait on or stop, or when the user asks about their other threads.",
   inputSchema: {
     type: "object",
     properties: {
@@ -91,13 +132,26 @@ export const suggesting =
   "When your reply is about to tell the user of a problem you saw and left alone because it is outside what they asked for, a bug seen in passing, a doc gone stale, a test that was already failing, call suggest_thread for it before you end the turn, one of the oricode MCP server's tools. " +
   "It starts nothing: it puts a button under your reply that opens a new thread with the prompt you wrote, unsent. Never call it for a part of the task, a next step in it or a general improvement. Most replies call for none.";
 
-/// What a session that may open threads is told, where its agent has somewhere to hear it.
+/// What every session with the tools is told of them, where its agent has somewhere to hear it:
+/// that it decides, asks where it isn't sure, and keeps to the project's instruction file.
 export const opening =
-  "You can open another thread in OriCode with open_thread, one of the oricode MCP server's tools: an ordinary thread of the user's that starts on the message you give it and goes on without you. " +
-  "Open one only when the user asked for another thread in their own words, and tell them its name. Its result doesn't come back to you.";
+  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. Only a task that is one part, or a question, you do yourself. " +
+  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, and list_threads and read_thread show what there is. You decide when to use them. " +
+  "Each open, message and stop takes a one-line reason, which both threads show the user. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
 
-/// What a thread another thread opened is told, since it has no open_thread to find.
-export const openedByAnother = "Another thread opened this one for the user, so it can't open threads of its own.";
+/// What goes ahead of each message to a thread on an agent other than Claude Code, since Codex
+/// weighed `opening` below its own habit of doing every part itself: told only in its developer
+/// instructions it gave a two-part task threads in 6 runs of 21, and with this line in 3 of 3.
+export const leading = "[OriCode] Parts of this message that don't depend on each other each go to a thread of their own, opened with open_thread, before you start on any of them.";
+
+/// A message one thread sends another goes ahead of the text with who sent it, so the thread can
+/// answer it, and the transcript shows the text alone.
+export function fromThread({ id, title }: { id: string; title: string }): string {
+  return `[From another thread] The thread "${title}" (id ${id}) sent you this through OriCode. Answer it here as you would the user: it reads your reply with wait_thread, and can message you again.`;
+}
+
+/// How long a wait_thread waits for a turn to end before it answers that the thread still works.
+export const longestTurnWait = 300_000;
 
 /// The app has this long to answer, which for a thread in a new worktree takes in git's work.
 const longestAsk = 30_000;
@@ -108,13 +162,13 @@ export class Unanswered extends Error {}
 const asked = new Map<string, { done: (result: unknown) => void; fail: (error: Error) => void; timer: NodeJS.Timeout }>();
 
 /// Asks the app for something only it can do for a thread, and waits for its `app.reply`.
-export function askApp(name: string, fields: Record<string, unknown>): Promise<unknown> {
+export function askApp(name: string, fields: Record<string, unknown>, within = longestAsk): Promise<unknown> {
   const requestId = randomUUID();
   return new Promise((done, fail) => {
     const timer = setTimeout(() => {
       asked.delete(requestId);
       fail(new Unanswered("OriCode hasn't answered yet. What you asked for may still happen, so don't ask again: tell the user to look for it."));
-    }, longestAsk);
+    }, within);
     asked.set(requestId, { done, fail, timer });
     emit({ event: name, requestId, ...fields });
   });

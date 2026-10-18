@@ -80,6 +80,14 @@ Each worker is a ray on the thread's mark, in its agent's colour, around a dot i
 
 Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP over HTTP, such as OpenCode, Cursor and Copilot, can be heads. Pi, Command Code and Antigravity take no MCP tools, so they can only be workers. So far a Claude head with a Codex worker and an OpenCode worker has run for real, and an Opus head that sent its GPT-6-Luna ray a task nobody had told it to hand out.
 
+## Threads that work with threads
+
+An agent does to your threads what you can. It opens one when it judges the work wants it, a part of a task that can go on alone or something in another of your projects, and a thread it opened can open its own. It sends any thread a message, waits for a thread's turn to end and gets its last reply, and stops one. So a thread handed a task with two parts that don't depend on each other can give each part a thread, wait on both and bring back what they did. It asks you first only where it isn't sure.
+
+Every open, message and stop leaves a line in both threads' transcripts with the agent's one-line reason, and a click on it opens the other thread. A thread opened this way is an ordinary thread in your list, in a permission mode no looser than its opener's, and a thread takes no message from one in a tighter mode than its own, so a thread on Plan can't have one on Don't ask make the edits it may not. What you don't want an agent to do with threads goes in the project's CLAUDE.md or AGENTS.md, which it reads and keeps to. Threads working at once, in Settings › Agents, caps how many can be working before an agent can't set another going: six unless you change it. What you send yourself is never held back by it.
+
+Claude Code, the model APIs inside it, Codex, and the ACP agents that take MCP over HTTP have these tools. Pi, Command Code and Antigravity take no MCP tools, so their threads can be opened, messaged and stopped but do none of it themselves.
+
 ## The marks in the model menu
 
 The model menu lists each agent's models under its name and its maker's logo, drawn in the colour its maker draws it in on a dark background, white where the maker's mark is black or white, which the effort rail and the thread's mark take too. Claude's logo marks Claude Code's models and Anthropic's own logo the Anthropic API's, both Anthropic's. The logos of OpenAI (Codex), Anysphere (Cursor), GitHub (Copilot), OpenCode, xAI (Grok Build), Cognition (Devin), Pi, Google (Antigravity), Z.ai, DeepSeek, OpenRouter, Meta and Command Code belong to their makers, as each agent's name does. OriCode shows them only to mark each agent's models, none of those makers made or endorsed it, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) says where each came from.
