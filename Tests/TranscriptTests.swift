@@ -79,11 +79,14 @@ struct LongMessageTests {
     /// One line of 1.6 million characters, the shape of the paste in REA-233.
     private static let pasted = String(repeating: "ÇAĞRI ÜZÜMLÜ ", count: 123_077)
 
-    @Test func itsBubbleShowsItsFirstLinesLaidOutAtOnce() async throws {
-        final class Found { var layouts: [Text.Layout] = [] }
+    private final class Found { var layouts: [Text.Layout] = [] }
+
+    /// Your message in its row at 700pt, not yet laid out, and what its Texts were laid out as
+    /// once it is.
+    private static func row(_ text: String) throws -> (NSView, Found) {
         let found = Found()
         let model = AppModel(container: try TestStore.memory())
-        let view = ItemView(item: .user(id: UUID(), text: Self.pasted), cwd: "/tmp", listening: nil, live: false)
+        let view = ItemView(item: .user(id: UUID(), text: text), cwd: "/tmp", listening: nil, live: false)
             .frame(width: 700)
             .overlayPreferenceValue(Text.LayoutKey.self) { layouts in
                 let _ = found.layouts = layouts.map(\.layout)
@@ -92,14 +95,43 @@ struct LongMessageTests {
             .environment(model)
         let host = NSHostingView(rootView: view)
         host.frame = NSRect(x: 0, y: 0, width: 700, height: 800)
-        // Laid out whole it took a second, at every layout.
-        let took = ContinuousClock().measure { host.layoutSubtreeIfNeeded() }
-        #expect(took < .milliseconds(250))
+        return (host, found)
+    }
+
+    private static func layouts(_ host: NSView, _ found: Found) async throws -> [Text.Layout] {
         for _ in 0..<5 where found.layouts.isEmpty {
             host.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(20))
         }
-        #expect(found.layouts.map(\.count).max() == 12)
+        return found.layouts
+    }
+
+    @Test func itsBubbleShowsItsFirstLinesLaidOutAtOnce() async throws {
+        let (host, found) = try Self.row(Self.pasted)
+        // Laid out whole it took a second, at every layout.
+        let took = ContinuousClock().measure { host.layoutSubtreeIfNeeded() }
+        #expect(took < .milliseconds(250))
+        #expect(try await Self.layouts(host, found).map(\.count).max() == 12)
+    }
+
+    /// What a folded message hands its Text (K-280): of a pasted file, its first twelve lines and
+    /// the thirteenth, so the twelfth ends in an ellipsis; of one long line, twelve rows of 200
+    /// characters at most.
+    @Test func aFoldedMessageHandsItsTextOnlyWhatItShows() {
+        let file = (0..<2_500).map { "line \($0)" }.joined(separator: "\n")
+        #expect(MessageText.fold(Substring(file)) == (0..<13).map { "line \($0)" }.joined(separator: "\n"))
+        #expect(MessageText.fold(Substring(String(repeating: "a step ", count: 30_000))).count == 2_400)
+    }
+
+    /// 200,000 characters pasted as lines of code or as one line, as the bench pastes them: what
+    /// it's folded to still fills the bubble's twelve rows. One line's twelfth row ends in an
+    /// ellipsis; here a line of code takes two rows, and a row that ends where a line does gets
+    /// none from TextKit, whatever follows it.
+    @Test(arguments: ["\n", " "]) func aLongPasteFillsTwelveRows(between: String) async throws {
+        let line = "    let value = items.filter { $0.id == index }.map(\\.name).joined(separator: \", \") // a step"
+        let (host, found) = try Self.row(Array(repeating: line, count: 2_100).joined(separator: between))
+        let bubble = try #require(try await Self.layouts(host, found).first { $0.count == 12 })
+        if between == " " { #expect(bubble.isTruncated) }
     }
 
     @Test func searchAndTheTitleReadItsHead() throws {

@@ -195,6 +195,14 @@ final class ComposerTextView: NSTextView {
     /// Writing the draft's text in, which the draft already holds.
     private var showing = false
     private var dressed: (font: NSFont?, ink: CGFloat) = (nil, 0)
+    /// Set while the text is longer than `unkerned`, and then it is set without kerning.
+    private var long = false
+
+    /// How long the text grows before its kerning goes. To show the caret after a paste the field
+    /// lays out the whole paragraph it lands in, and in a paste of one line 200,000 characters
+    /// long that was 90 ms, 40% of it CoreText's kerning, over a frame of 100 ms with the rest.
+    /// Nobody reads a paste that long by the pair of letters, and a shorter one keeps its kerning.
+    static let unkerned = 20_000
 
     /// A plain text view on TextKit 1. TextKit 2's adds a view for the paragraph each key lays out
     /// again, and every one of them had SwiftUI lay out the whole window again, transcript and all.
@@ -236,6 +244,29 @@ final class ComposerTextView: NSTextView {
         if refont { measure() }
     }
 
+    /// Whatever sets them, the text view itself as the caret moves among them, what's typed next
+    /// is kerned as the text is.
+    override var typingAttributes: [NSAttributedString.Key: Any] {
+        get { super.typingAttributes }
+        set {
+            var attributes = newValue
+            attributes[.kern] = long ? 0.0 : nil
+            super.typingAttributes = attributes
+        }
+    }
+
+    /// Kerning off for a text of `length` past `unkerned`, and back on below it, for what's there
+    /// and what comes next. It's turned off before a change, for the new text to come in without
+    /// it, and on after one, once what's left is short: turned on over the 200,000 characters a
+    /// send was about to clear, they were set again first, in 50 ms.
+    private func kern(for length: Int) {
+        guard (length > Self.unkerned) != long, let textStorage else { return }
+        long.toggle()
+        let all = NSRange(location: 0, length: textStorage.length)
+        if long { textStorage.addAttribute(.kern, value: 0, range: all) } else { textStorage.removeAttribute(.kern, range: all) }
+        typingAttributes = typingAttributes
+    }
+
     // MARK: Keys
 
     override func keyDown(with event: NSEvent) {
@@ -269,8 +300,20 @@ final class ComposerTextView: NSTextView {
 
     // MARK: Text
 
+    /// A paste takes the typing attributes it finds here, so a long one is set without kerning
+    /// from the start rather than kerned and set again.
+    override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
+        guard super.shouldChangeText(in: range, replacementString: replacementString) else { return false }
+        if let replacementString {
+            let length = (textStorage?.length ?? 0) - range.length + (replacementString as NSString).length
+            if length > Self.unkerned { kern(for: length) }
+        }
+        return true
+    }
+
     override func didChangeText() {
         super.didChangeText()
+        kern(for: textStorage?.length ?? 0)
         measure()
         guard !showing, let draft else { return }
         draft.typing = true
@@ -290,7 +333,10 @@ final class ComposerTextView: NSTextView {
             replaceCharacters(in: all, with: text)
             didChangeText()
         } else {
+            let length = (text as NSString).length
+            if length > Self.unkerned { kern(for: length) }
             string = text
+            kern(for: length)
             measure()
         }
         setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
@@ -304,7 +350,10 @@ final class ComposerTextView: NSTextView {
         defer { showing = false }
         breakUndoCoalescing()
         undoManager?.disableUndoRegistration()
+        let length = (text as NSString).length
+        if length > Self.unkerned { kern(for: length) }
         string = text
+        kern(for: length)
         undoManager?.enableUndoRegistration()
         if let textStorage { undoManager?.removeAllActions(withTarget: textStorage) }
         setSelectedRange(NSRange(location: (text as NSString).length, length: 0))

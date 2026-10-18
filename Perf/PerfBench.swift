@@ -40,6 +40,7 @@ enum PerfBench {
                     case "stream": try await stream()
                     case "codesettle": try await codeSettle()
                     case "keys": try await keys()
+                    case "paste": try await paste()
                     case "scroll": try await scroll()
                     case "edits": try await edits()
                     case "switch": try await switching()
@@ -430,6 +431,76 @@ enum PerfBench {
         }
         log("keys: the composer reads \(stage.typed().count) characters")
         screenshot(stage.window, "\(label)-keys")
+    }
+
+    // MARK: A long paste
+
+    /// K-280: 200,000 characters pasted into the composer, then keys typed after them, then the
+    /// message sent: what the paste spent and the worst frame in the two seconds after it, what a
+    /// key spent, and the worst frame in the two seconds after Return, which is the transcript
+    /// laying the message out. PERF_PASTE says what's pasted: lines, a document of short lines
+    /// (the default), or one, a single line. No engine is up, so the send goes no further than the
+    /// transcript; the engine's part is timed in a real thread.
+    static func paste() async throws {
+        let (stage, _, _) = try two(100, 25)
+        defer { stage.window.close() }
+        await front(stage.window)
+        try await settle(1800)
+        guard try await stage.focusComposer(), let field = stage.window.firstResponder as? NSTextView else {
+            return log("paste: the composer never took the keyboard")
+        }
+        let shape = env["PERF_PASTE"] ?? "lines"
+        let length = Int(env["PERF_LENGTH"] ?? "") ?? 200_000
+        let line = "    let value = items.filter { $0.id == index }.map(\\.name).joined(separator: \", \") // a step\n"
+        let text = String(String(repeating: shape == "one" ? line.replacingOccurrences(of: "\n", with: " ") : line, count: length / line.count + 1).prefix(length))
+        // A pasteboard of its own, so the bench leaves whatever its owner had copied alone.
+        let board = NSPasteboard(name: NSPasteboard.Name("oricode-perf-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString(text, forType: .string)
+
+        let pasted = Frames(stage.window.contentView!)
+        var before = cpu()
+        var began = clock()
+        field.readSelection(from: board, type: .string)
+        let inside = (cpu() - before, clock() - began)
+        try await settle(2000)
+        let after = pasted.stop()
+        log(String(format: "PASTE %@, %d characters: %.1f ms inside the paste, by the clock %.1f; the two seconds after: %@; long frames %@",
+                   shape, text.count, inside.0, inside.1, after.text, after.long))
+
+        var sync: [Double] = []
+        var waited: [Double] = []
+        var longest: [Double] = []
+        let all = Frames(stage.window.contentView!)
+        for character in "make the review grow out of it and keep going" {
+            let frames = Frames(stage.window.contentView!)
+            before = cpu()
+            began = clock()
+            stage.press(String(character))
+            waited.append(clock() - began)
+            sync.append(cpu() - before)
+            try await Task.sleep(for: .milliseconds(50))
+            longest.append(frames.stop().cpu.max() ?? 0)
+        }
+        let typed = all.stop()
+        let sorted = sync.sorted()
+        log(String(format: "PASTEKEYS %@: %d keys, %.2f ms inside the key (median %.2f, worst %.1f), by the clock %.2f (worst %.1f); longest frame after a key %.2f on average (worst %.1f); %@",
+                   shape, sync.count, sync.reduce(0, +) / Double(sync.count), sorted[sorted.count / 2], sorted.last ?? 0,
+                   waited.reduce(0, +) / Double(waited.count), waited.max() ?? 0,
+                   longest.reduce(0, +) / Double(longest.count), longest.max() ?? 0, typed.text))
+        log("paste: the composer reads \(stage.typed().count) characters; each key inside, ms: \(sync.map { String(format: "%.2f", $0) }.joined(separator: " "))")
+
+        let sent = Frames(stage.window.contentView!)
+        before = cpu()
+        began = clock()
+        stage.press("\r", code: 36)
+        let send = (cpu() - before, clock() - began)
+        try await settle(2000)
+        let shown = sent.stop()
+        log(String(format: "PASTESEND %@: %.1f ms inside Return, by the clock %.1f; the two seconds after: %@; long frames %@; the composer reads %d characters",
+                   shape, send.0, send.1, shown.text, shown.long, stage.typed().count))
+        screenshot(stage.window, "\(label)-paste")
     }
 
     // MARK: The title line beside

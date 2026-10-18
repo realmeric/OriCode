@@ -756,7 +756,7 @@ struct ItemView: View {
 /// drawn from its head alone, folded to its first lines until it's opened, with its size and Copy
 /// for all of it underneath: a megabyte laid out as one Text held the window for a second at every
 /// layout, and its thread could hardly be opened.
-private struct MessageText: View {
+struct MessageText: View {
     @Environment(AppModel.self) private var model
     let text: String
     let waiting: Bool
@@ -765,11 +765,29 @@ private struct MessageText: View {
     /// The lines a long message shows until it's opened.
     private static let folded = 12
 
+    /// What a folded message hands its Text: up to the line after the ones it shows, so the last
+    /// still ends in an ellipsis, and no more than those lines hold at the bubble's widest. It was
+    /// handed the whole head, 20,000 characters laid out for twelve lines of them.
+    static func fold(_ head: Substring) -> String {
+        var end = head.startIndex
+        var breaks = 0
+        var count = 0
+        while end < head.endIndex, count < folded * 200 {
+            if head[end].isNewline {
+                breaks += 1
+                if breaks > folded { break }
+            }
+            head.formIndex(after: &end)
+            count += 1
+        }
+        return String(head[..<end])
+    }
+
     var body: some View {
         let head = text.prefix(Item.headLength)
         let long = head.endIndex < text.endIndex
         VStack(alignment: .trailing, spacing: 6) {
-            Text(long ? String(head) : text)
+            Text(long ? (open ? String(head) : Self.fold(head)) : text)
                 .font(Type.body)
                 .foregroundStyle(waiting ? Ink.secondary : Ink.primary)
                 .lineLimit(long && !open ? Self.folded : nil)

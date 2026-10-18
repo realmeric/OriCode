@@ -99,6 +99,52 @@ struct ComposerFieldTests {
         #expect(draft.height == field.maxHeight)
     }
 
+    /// The most characters an edit set again without changing them, as the storage hands each
+    /// edit over.
+    private final class Restyled: NSObject, NSTextStorageDelegate {
+        var most = 0
+
+        func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+            if !editedMask.contains(.editedCharacters) { most = max(most, editedRange.length) }
+        }
+    }
+
+    /// A paste past `unkerned` is set without kerning, all of it, and what's left once it goes
+    /// is kerned again, as is a draft that's short. The long text comes in unkerned and leaves as
+    /// it is, since kerning it or taking its kerning off sets all of it again.
+    @Test func aLongPasteIsSetWithoutKerning() throws {
+        let (field, draft, _) = loneField()
+        let storage = try #require(field.textStorage)
+        let restyled = Restyled()
+        storage.delegate = restyled
+        type("Tomorrow ", into: field)
+        #expect(storage.attribute(.kern, at: 0, effectiveRange: nil) == nil)
+        let board = NSPasteboard(name: NSPasteboard.Name("oricode-test-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.setString(String(repeating: "AVery long line with no break in it ", count: 1_000), forType: .string)
+        field.readSelection(from: board, type: .string)
+        var unkerned = NSRange()
+        #expect(storage.attribute(.kern, at: 0, longestEffectiveRange: &unkerned, in: NSRange(location: 0, length: storage.length)) as? Double == 0)
+        #expect(unkerned.length == storage.length)
+        #expect(field.typingAttributes[.kern] as? Double == 0)
+        field.setSelectedRange(NSRange(location: 9, length: storage.length - 9))
+        field.delete(nil)
+        #expect(field.string == "Tomorrow ")
+        #expect(storage.attribute(.kern, at: 0, effectiveRange: nil) == nil)
+        #expect(field.typingAttributes[.kern] == nil)
+        draft.text = String(repeating: "x", count: ComposerTextView.unkerned + 1)
+        #expect(storage.attribute(.kern, at: 0, effectiveRange: nil) as? Double == 0)
+        draft.text = "short"
+        #expect(storage.attribute(.kern, at: 0, effectiveRange: nil) == nil)
+        // Another thread's draft coming into the field.
+        field.turn(to: String(repeating: "y", count: ComposerTextView.unkerned + 1))
+        #expect(storage.attribute(.kern, at: storage.length - 1, effectiveRange: nil) as? Double == 0)
+        field.turn(to: "back")
+        #expect(storage.attribute(.kern, at: 0, effectiveRange: nil) == nil)
+        #expect(restyled.most < ComposerTextView.unkerned)
+    }
+
     @Test func returnIsTheComposersUnlessAnInputMethodIsComposing() {
         let (field, _, _) = loneField()
         var pressed: [EventModifiers] = []
