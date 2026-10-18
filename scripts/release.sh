@@ -10,10 +10,10 @@ system=$(awk -F'"' '/macOS: "/ {print $2; exit}' project.yml)
 tag="v$version"
 # Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
 build=$(git rev-list --count HEAD)
-derived="$HOME/Library/Developer/OriCode/DerivedData"
+derived="$HOME/Library/Developer/OriCode.noindex/DerivedData"
 app="$derived/Build/Products/Release/OriCode.app"
 sparkle="$derived/SourcePackages/artifacts/sparkle/Sparkle/bin"
-out="$HOME/Library/Developer/OriCode/release"
+out="$HOME/Library/Developer/OriCode.noindex/release"
 zip="$out/OriCode-$version.zip"
 url="https://github.com/realmeric/OriCode/releases/download/$tag/OriCode-$version.zip"
 

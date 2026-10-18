@@ -1,8 +1,9 @@
 export PATH := /opt/homebrew/bin:/usr/local/bin:$(PATH)
 
 # Builds live outside the checkout: Documents is synced by iCloud, whose
-# FinderInfo xattrs make codesign refuse the bundle.
-BUILD := $(HOME)/Library/Developer/OriCode
+# FinderInfo xattrs make codesign refuse the bundle. The .noindex suffix keeps
+# Spotlight out, or every build wakes mdworker and appstoreagent to scan the new apps.
+BUILD := $(HOME)/Library/Developer/OriCode.noindex
 DERIVED := $(BUILD)/DerivedData
 # The Debug build is OriCode Molten, which runs beside the installed OriCode.
 DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app

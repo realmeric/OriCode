@@ -111,9 +111,9 @@ targetTemplates:
     postCompileScripts:
       - name: Bundle engine
         script: |
-          if [ -d "$HOME/Library/Developer/OriCode/engine" ]; then
+          if [ -d "$HOME/Library/Developer/OriCode.noindex/engine" ]; then
             mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-            rsync -a --delete --exclude .stamp "$HOME/Library/Developer/OriCode/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
+            rsync -a --delete --exclude .stamp "$HOME/Library/Developer/OriCode.noindex/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
           fi
         basedOnDependencyAnalysis: false
 targets:

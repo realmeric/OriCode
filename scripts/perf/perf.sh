@@ -3,13 +3,13 @@
 # is every measure three times, the launch ten and idle for three minutes in each state, about
 # an hour with a window in front; quick is keys, one stream, ⌘K and the early J, three times.
 # Each measure is a fresh process. The lines land in a folder of their own under
-# ~/Library/Developer/OriCode/perf/runs, and judge.py prints the table and gives the exit code:
+# ~/Library/Developer/OriCode.noindex/perf/runs, and judge.py prints the table and gives the exit code:
 # 0 inside every budget, 1 naming each number over its own and each run that died, 3 when nothing
 # failed but a measure went unjudged because another process held a core or the bench couldn't
 # come to the front. When a core is held the run stops there; what it measured before is judged.
 #   PERF_RUNS=1 runs each measure once (the judge then says so); PERF_ONLY=<regex> picks configs.
 mode=${1:-full}
-BUILD=${BUILD:-$HOME/Library/Developer/OriCode}
+BUILD=${BUILD:-$HOME/Library/Developer/OriCode.noindex}
 export PERF_OUT="$BUILD/perf/runs/$(date +%Y%m%d-%H%M%S)-$mode"
 . ${0:A:h}/env.sh
 ln -sfn "$OUT" "$BUILD/perf/latest"

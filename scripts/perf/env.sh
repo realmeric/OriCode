@@ -1,6 +1,6 @@
 # Sourced by every script here: where OriCode Perf is built, and where a run's lines go.
 export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
-BUILD=${BUILD:-$HOME/Library/Developer/OriCode}
+BUILD=${BUILD:-$HOME/Library/Developer/OriCode.noindex}
 APP="$BUILD/DerivedData/Build/Products/Release/OriCode Perf.app"
 ID=com.realmeric.oricode.perf
 # One folder a run, PERF_OUT, which the bench writes results.txt into; perf.sh makes it.
