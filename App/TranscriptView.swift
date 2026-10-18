@@ -35,6 +35,12 @@ struct TranscriptView: View {
         var endSeen = false
         /// The way to the end that's under way, which the next one, or a reveal, takes over.
         var jump: Task<Void, Never>?
+        /// No hand and no momentum is moving the scroll.
+        var resting = true
+        /// The transcript has left the window, which takes the row named `end` with the rest.
+        var gone = false
+        /// When a row was last added under the others.
+        var added: ContinuousClock.Instant?
     }
 
     /// The room under the last row, a row of its own with a name: the one place in a lazy stack
@@ -115,7 +121,12 @@ struct TranscriptView: View {
                         content.endSeen = true
                         place(endLaidOut: true)
                     }
-                    .onDisappear { place(endLaidOut: false) }
+                    .onDisappear {
+                        let lost = end.lost(at: content.reached, resting: content.resting)
+                        place(endLaidOut: false)
+                        // Lost as a row came in under the others, or as the window changed size.
+                        if lost { regain(settling: content.added.map { .now - $0 > .milliseconds(500) } ?? true) }
+                    }
             }
             .column()
             // Under the toolbar's row, and under the title a column beside the open thread has.
@@ -137,11 +148,14 @@ struct TranscriptView: View {
             place(reached: reached)
         }
         .onScrollGeometryChange(for: CGFloat.self, of: \.contentSize.height) { content.height = $1 }
+        .onScrollPhaseChange { content.resting = $1 == .idle }
         .onScrollGeometryChange(for: CGFloat.self, of: \.containerSize.height) { content.visible = $1 }
         // Only what's laid out is growth to tell of: thinking left out, or a call folded into
         // the run above it, adds no row.
         .onChange(of: TranscriptEnd.Tail(count: conversation.items.count + conversation.waiting.count, last: entries.last?.id)) { old, tail in
-            end.grew(laidOut: tail.grew(from: old))
+            let grew = tail.grew(from: old)
+            if grew { content.added = .now }
+            end.grew(laidOut: grew)
         }
         // A message sent by hand is read where it lands when the end was a screen away or less;
         // sent from further up, what's being read stays put and the pill says there's more.
@@ -152,7 +166,11 @@ struct TranscriptView: View {
             if active { toEnd(animated: true) }
         }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
-        .onAppear(perform: takeReveal)
+        .onAppear {
+            content.gone = false
+            takeReveal()
+        }
+        .onDisappear { content.gone = true }
         .onChange(of: model.reveal) { takeReveal() }
         // Its water is counted as the thread comes into view and as Settings turns water on;
         // after that its tools' results and a turn's end count it (AppModel.receive).
@@ -281,6 +299,49 @@ struct TranscriptView: View {
             position.scrollTo(id: Self.end, anchor: .bottom)
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }
+            end.landed()
+        }
+    }
+
+    /// Brings back the end the lazy stack took from a transcript following it. A row added under
+    /// a long one, a turn's footer under its reply, is put at the height of the rows the stack has
+    /// made until it's made itself, a thousand points for a twenty-point line, and a resize puts
+    /// the rows under a reply it lays out again the same way. The scroll view follows that guess
+    /// down, and in the stretch it lands in nothing is made, not for a scroll to the row named
+    /// `end` either. From two screens up, or further when the guess is taller, the rows are made
+    /// and measured, and the way back finds the end at its true height.
+    private func regain(settling: Bool) {
+        _ = end.jump()
+        content.jump?.cancel()
+        content.jump = Task {
+            if settling {
+                // A resize lays a long reply out over a few frames, its height going up and down
+                // meanwhile, and a look taken then lands where nothing is made yet: it waits for
+                // the height to hold, a second at most.
+                var height = content.height
+                for _ in 0..<20 {
+                    try? await Task.sleep(for: .milliseconds(50))
+                    if Task.isCancelled || content.endLaidOut || content.height == height { break }
+                    height = content.height
+                }
+            }
+            var looks = 0
+            var from = CGFloat.infinity
+            // Two screens higher each time, as far as the top: a guess taller than two screens
+            // leaves the first look short of the rows, and a resize's more so.
+            while !Task.isCancelled, !content.gone, !content.endLaidOut, content.resting, !position.isPositionedByUser, from > 0 {
+                looks += 1
+                from = max(0, content.height - CGFloat(2 * looks) * content.visible)
+                position.scrollTo(y: from)
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled else { return }
+                position.scrollTo(id: Self.end, anchor: .bottom)
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+            guard !Task.isCancelled, !content.gone else { return }
+            if looks > 0 {
+                Self.logger.notice("A transcript of \(conversation.items.count) items lost its end under it\(settling ? " in a resize" : "", privacy: .public); \(content.endLaidOut ? "found" : "not found", privacy: .public) in \(looks) looks, \(Int(content.height)) tall in \(Int(content.visible))")
+            }
             end.landed()
         }
     }
@@ -470,6 +531,13 @@ enum TranscriptEnd {
         /// end is under way, so neither is adrift.
         func adrift(endSeen: Bool) -> Bool {
             !endSeen && pinned && place == .end && !heading
+        }
+
+        /// Whether the row that is the end went out of view from a transcript following it, with the
+        /// scroll view's numbers still at the end and no hand on the scroll: the lazy stack took
+        /// the end away, and nobody scrolled from it.
+        func lost(at reached: Place, resting: Bool) -> Bool {
+            pinned && !heading && reached == .end && resting
         }
 
         /// Whether a message sent by hand from here brings the end into view.

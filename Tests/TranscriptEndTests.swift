@@ -97,6 +97,22 @@ struct TranscriptEndTests {
         #expect(heading.adrift(endSeen: false))
     }
 
+    @Test func anEndTakenFromATranscriptFollowingItIsLost() {
+        // Following the end, resting, and the numbers still there: the stack took it.
+        #expect(TranscriptEnd.Standing().lost(at: .end, resting: true))
+        // A hand on the scroll, or numbers that moved off the end, is someone leaving.
+        #expect(!TranscriptEnd.Standing().lost(at: .end, resting: false))
+        #expect(!TranscriptEnd.Standing().lost(at: .near, resting: true))
+        // Scrolled up already, revealing an item, or on the way to the end, it's left alone.
+        #expect(!standing(at: .near).lost(at: .end, resting: true))
+        var revealed = TranscriptEnd.Standing()
+        revealed.revealing()
+        #expect(!revealed.lost(at: .end, resting: true))
+        var heading = TranscriptEnd.Standing()
+        _ = heading.jump()
+        #expect(!heading.lost(at: .end, resting: true))
+    }
+
     @Test func scrolledFromTheEndThePillComesAndGoesWithIt() {
         var standing = standing(at: .near)
         #expect(!standing.pinned)
