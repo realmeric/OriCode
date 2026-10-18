@@ -35,19 +35,17 @@ struct Drawer: View {
             .padding(.trailing, 8)
             .padding(.top, 2)
             List {
-                let chats = model.chats
-                let pinned = chats.filter(\.pinned).count
-                ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
-                    row(chat, index: index)
-                        // Space, not a line, parts the pinned threads from the rest.
-                        .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
+                let tree = model.drawerTree
+                let end = pinnedEnd(tree)
+                ForEach(Array(tree.enumerated()), id: \.element.id) { index, node in
+                    branch(node, index: index, end: end)
                         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
                 .onMove { model.moveThreads(from: $0, to: $1) }
                 .moveDisabled(model.drawerFilter != .all)
-                if chats.isEmpty, model.drawerFilter != .all {
+                if tree.isEmpty, model.drawerFilter != .all {
                     Button("No threads here. Show all") { model.drawerFilter = .all }
                         .buttonStyle(.plain)
                         .font(Type.secondary)
@@ -185,7 +183,48 @@ struct Drawer: View {
         .fixedSize()
     }
 
-    private func row(_ chat: Chat, index: Int) -> some View {
+    /// A thread and, when it opened any, the threads under it in the list's own fold. Only the
+    /// top rows drag: a thread under another stays where it was opened.
+    private func branch(_ node: DrawerNode, index: Int?, end: UUID?) -> AnyView {
+        guard let children = node.children else { return AnyView(row(node.chat, index: index, end: end)) }
+        let id = node.chat.id
+        let unfolded = Binding(
+            get: { model.unfolded.contains(id) },
+            set: { open in
+                if open { model.unfolded.insert(id) } else { model.unfolded.remove(id) }
+            })
+        return AnyView(DisclosureGroup(isExpanded: unfolded) {
+            ForEach(children) { child in
+                branch(child, index: nil, end: end)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .moveDisabled(true)
+            }
+        } label: {
+            row(node.chat, index: index, end: end, working: working(under: children))
+        })
+    }
+
+    /// The row the pinned threads end on, which space, not a line, parts from the rest: the last
+    /// pinned thread's, or the last row unfolded under it.
+    private func pinnedEnd(_ tree: [DrawerNode]) -> UUID? {
+        let pinned = tree.prefix { $0.chat.pinned }
+        guard var node = pinned.last, pinned.count < tree.count else { return nil }
+        while model.unfolded.contains(node.id), let last = node.children?.last { node = last }
+        return node.id
+    }
+
+    /// How many threads under it, at any depth, work or wait.
+    private func working(under children: [DrawerNode]) -> Int {
+        children.reduce(0) { count, node in
+            count + (model.conversations[node.chat.id]?.working == true ? 1 : 0) + working(under: node.children ?? [])
+        }
+    }
+
+    /// A top row has its place in the list and its ⌘digit; one under another has neither.
+    private func row(_ chat: Chat, index: Int?, end: UUID?, working under: Int = 0) -> some View {
+        let child = index == nil
         let selected = chat.id == model.chat?.id
         let beside = chat.id == model.besideChatID
         let peeked = chat.id == model.peekedChatID
@@ -194,6 +233,7 @@ struct Drawer: View {
         return HStack(spacing: 10) {
             if let project = chat.project {
                 ProjectBadge(project: project)
+                    .opacity(child ? 0.7 : 1)
             }
             if model.renamingChatID == chat.id {
                 TextField("Title", text: $draft)
@@ -214,6 +254,8 @@ struct Drawer: View {
                         Text(chat.title)
                             .font(Type.body)
                             .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
+                            // A shade quieter under the thread that opened it, selected or not.
+                            .opacity(child ? 0.8 : 1)
                             .lineLimit(1)
                             .truncationMode(.tail)
                         if chat.worktreeBranch != nil {
@@ -223,10 +265,14 @@ struct Drawer: View {
                                 .help(chat.worktreeBranch ?? "")
                         }
                     }
-                    if missing {
-                        Text("folder missing")
+                    // Under the title, which keeps its width: a row with threads under it at
+                    // work would otherwise leave it a word.
+                    let below = [missing ? "folder missing" : nil, under > 0 ? "\(under) working" : nil].compactMap(\.self)
+                    if !below.isEmpty {
+                        Text(below.joined(separator: " · "))
                             .font(.system(size: 11))
-                            .foregroundStyle(Ink.faint)
+                            .foregroundStyle(missing ? Ink.faint : Ink.secondary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -245,7 +291,7 @@ struct Drawer: View {
                     .foregroundStyle(Ink.faint)
                     .help("Pinned")
             }
-            if index < 9 {
+            if let index, index < 9 {
                 Text("⌘\(index + 1)")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.faint)
@@ -254,11 +300,13 @@ struct Drawer: View {
         .padding(.horizontal, 10)
         .frame(height: 34)
         .background(
-            selected || peeked ? Surface.selected : beside || hovered == chat.id ? Surface.hover : .clear,
+            selected || peeked ? (child ? Surface.quietSelected : Surface.selected)
+                : beside || hovered == chat.id ? (child ? Surface.quietHover : Surface.hover) : .clear,
             in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .offset(x: peeked ? 6 : 0)
         .animation(Motion.move, value: peeked)
+        .padding(.bottom, chat.id == end ? 10 : 0)
         .onTapGesture { model.pickByClick(chat, beside: NSEvent.modifierFlags.contains(.option)) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
         .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)
@@ -276,7 +324,9 @@ struct Drawer: View {
                     Button("Open Beside") { model.openBeside(chat) }
                         .disabled(selected)
                 }
-                Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
+                if !child {
+                    Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
+                }
                 Button("Rename") { model.startRename(chat) }
                 Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }
             }

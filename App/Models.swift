@@ -77,8 +77,11 @@ final class Chat {
     /// the thread so far. Cleared when that session's turn starts.
     var handover: Bool = false
     /// The thread that opened it, through open_thread, when one did: its first turn's end is told
-    /// to that thread, and it never opens a thread itself.
+    /// to that thread, and the drawer lists it under that thread.
     var openedBy: UUID?
+    /// The thread whose archive took it along, so restoring that one brings it back and one
+    /// archived on its own stays.
+    var archivedWith: UUID?
     /// The session in another tool it was imported from, as `source/id`, so Import sessions knows
     /// it's here already after its session id has changed or it moved to another agent.
     var importedFrom: String?
@@ -159,6 +162,15 @@ enum Store {
             fatalError("The store at \(folder.path) can't be opened: \(error)")
         }
     }
+}
+
+/// A row of the drawer's tree: a thread and the threads it opened, nil when it opened none, so
+/// the list draws no fold for it.
+struct DrawerNode: Identifiable {
+    let chat: Chat
+    let children: [DrawerNode]?
+
+    var id: UUID { chat.id }
 }
 
 extension Chat {

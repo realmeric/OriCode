@@ -301,6 +301,9 @@ final class AppModel {
         didSet { UserDefaults.standard.set(drawerPinned, forKey: "drawerPinned") }
     }
     var peekedChatID: UUID?
+    /// The drawer's threads whose threads show under them; not kept, so a launch folds them all
+    /// but the ones above the open thread.
+    var unfolded: Set<UUID> = []
     var renamingChatID: UUID?
     var deletingChat: Chat?
     /// A project Remove project… is asking about.
@@ -348,6 +351,7 @@ final class AppModel {
             // A ⌘digit peek ends when another thread is opened, however it's opened.
             if peekedChatID != selectedChatID { peekedChatID = nil }
             if let selectedChatID { loadConversation(selectedChatID) }
+            if let selectedChatID { unfold(toShow: selectedChatID) }
             if let selectedChatID { notifier.clear(chatID: selectedChatID) }
             refreshBranch(for: chat)
             readReview()
@@ -538,6 +542,7 @@ final class AppModel {
         clearDrafts()
         carryUltracode()
         if let selectedChatID { openRead = loadConversation(selectedChatID) }
+        if let selectedChatID { unfold(toShow: selectedChatID) }
         restorePair()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()

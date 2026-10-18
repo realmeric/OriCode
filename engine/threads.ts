@@ -22,7 +22,7 @@ export const openThread = {
   inputSchema: {
     type: "object",
     properties: {
-      title: { type: "string", description: "A short name for the thread, as the user will see it in their list." },
+      title: { type: "string", description: "A few words saying what the thread does, as the user will see it in their list under this thread: Write primes.py and run it." },
       message: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what to do, where, and what to say when it's done." },
       reason,
       agent: { type: "string", description: "Another agent to run it on, by its id, such as claude or codex. Yours when left out." },

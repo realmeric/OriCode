@@ -506,6 +506,7 @@ final class Conversation {
         chat.started = true
         // Written to again, it's a thread in use: back in the list.
         chat.archived = false
+        chat.archivedWith = nil
         chat.quitMidTurn = false
         chat.resumeAt = nil
         if !chat.titleIsCustom, turn == 1 || chat.title == Chat.untitled {

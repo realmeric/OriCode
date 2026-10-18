@@ -11,6 +11,9 @@ enum Surface {
     static let drawer = Color.white.opacity(0.06)
     static let hover = Color.white.opacity(0.07)
     static let selected = Color.white.opacity(0.10)
+    /// The same two under a thread in the drawer, a shade quieter than its opener's row.
+    static let quietHover = Color.white.opacity(0.05)
+    static let quietSelected = Color.white.opacity(0.08)
 }
 
 enum Ink {

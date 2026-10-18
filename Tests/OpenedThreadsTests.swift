@@ -94,8 +94,10 @@ struct OpenedThreadsTests {
         }
         #expect(text == "Rename sum.txt to total.txt." && !midTurn)
         #expect(conversation.running)
-        // In the drawer from its first message, above its parent, which stays the thread on screen.
-        #expect(model.chats.map(\.id) == [chat.id, parent.id])
+        // In the drawer from its first message, folded under its parent, which stays the thread on screen.
+        #expect(model.chats.map(\.id) == [parent.id])
+        #expect(model.drawerTree.first?.children?.map(\.id) == [chat.id])
+        #expect(model.drawerRows.map(\.id) == [parent.id])
         #expect(model.selectedChatID == parent.id)
         // The tool's answer names it.
         #expect(AppModel.made(chat, on: .claude) == ["thread": "Rename sum.txt", "id": .string(chat.id.uuidString), "agent": "claude", "mode": "acceptEdits", "folder": "/tmp/alpha", "model": "opus"])
@@ -181,7 +183,7 @@ struct OpenedThreadsTests {
         try model.open(openings.0, first, in: ("/tmp/alpha/.worktrees/t-1", "oricode/t-1"))
         #expect(throws: AppModel.Refused.self) { try model.open(openings.1, second, in: ("/tmp/alpha/.worktrees/t-2", "oricode/t-2")) }
         #expect(model.conversations.values.count(where: \.running) == 2)
-        #expect(model.chats.count == 2)
+        #expect(model.listedChats.count == 2)
     }
 
     @Test func aMessageNeverGoesToAThreadLooserThanItsSender() throws {
@@ -346,7 +348,7 @@ struct OpenedThreadsTests {
         #expect(refusal(model, request(parent) { $0.agent = "pi" }) == "Pi asks before nothing, and this thread is on Auto.")
         #expect(refusal(model, request(parent) { $0.text = " \n" }) == "A thread needs its first message.")
         // A refusal makes nothing.
-        #expect(model.chats.map(\.id) == [chat.id, parent.id])
+        #expect(model.listedChats.count == 2 && model.drawerTree.first?.children?.map(\.id) == [chat.id])
     }
 
     @Test func aLevelTheModelDoesntHaveStaysBehind() throws {

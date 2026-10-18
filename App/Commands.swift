@@ -67,10 +67,10 @@ struct OriCodeCommands: Commands {
                 .disabled(model.project == nil || model.project?.isNoFolder == true)
             Button("Next Thread") { model.stepThread(1) }
                 .keyboardShortcut(shortcuts.key(.nextThread))
-                .disabled(model.chats.count < 2)
+                .disabled(model.drawerRows.count < 2)
             Button("Previous Thread") { model.stepThread(-1) }
                 .keyboardShortcut(shortcuts.key(.previousThread))
-                .disabled(model.chats.count < 2)
+                .disabled(model.drawerRows.count < 2)
             ForEach(Array(model.chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))

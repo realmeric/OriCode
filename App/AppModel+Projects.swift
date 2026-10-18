@@ -19,12 +19,64 @@ extension AppModel {
         return projects.first { $0.id == selectedProjectID }
     }
 
-    /// Every project's threads in one list, in the drawer's order: the drawer, ⌘1–9 and the
-    /// Thread menu. A draft isn't one of them until its first message.
+    /// Every project's threads in one list, in the drawer's order: the drawer's top rows, ⌘1–9
+    /// and the Thread menu. A draft isn't one of them until its first message, and a thread
+    /// another opened sits under its opener instead, while the opener is listed too.
     /// Under the drawer's filter, when it has one.
     var chats: [Chat] {
-        // The archived ones, when they're what's asked for, the latest worked on first.
-        drawerFilter == .archived ? archivedChats : listedChats.sorted(by: Chat.drawerOrder)
+        // The archived ones, when they're what's asked for, the latest worked on first, and flat.
+        guard drawerFilter != .archived else { return archivedChats }
+        let listed = listedChats
+        let ids = Set(listed.map(\.id))
+        return listed.filter { $0.openedBy.map { !ids.contains($0) } ?? true }.sorted(by: Chat.drawerOrder)
+    }
+
+    /// The drawer as a tree: each top row with the threads it opened under it, and theirs under
+    /// those, in the order they were opened.
+    var drawerTree: [DrawerNode] {
+        let roots = chats
+        guard drawerFilter != .archived else { return roots.map { DrawerNode(chat: $0, children: nil) } }
+        let opened = Dictionary(grouping: listedChats.filter { $0.openedBy != nil }) { $0.openedBy! }
+        func node(_ chat: Chat) -> DrawerNode {
+            let under = opened[chat.id]?.sorted { $0.createdAt < $1.createdAt }.map(node)
+            return DrawerNode(chat: chat, children: under)
+        }
+        return roots.map(node)
+    }
+
+    /// The rows the drawer shows, top to bottom: the top rows and what's unfolded under them,
+    /// which ⌃Tab steps through.
+    var drawerRows: [Chat] {
+        func rows(_ node: DrawerNode) -> [Chat] {
+            [node.chat] + (unfolded.contains(node.chat.id) ? (node.children ?? []).flatMap(rows) : [])
+        }
+        return drawerTree.flatMap(rows)
+    }
+
+    /// Every thread under this one, at any depth, whatever the drawer's filter.
+    func threads(under chat: Chat) -> [Chat] {
+        let all = projects.flatMap(\.chats).filter(\.started)
+        var found: [Chat] = []
+        var openers: Set<UUID> = [chat.id]
+        while true {
+            let next = all.filter { $0.openedBy.map(openers.contains) == true && !found.contains($0) }
+            guard !next.isEmpty else { return found }
+            found += next
+            openers = Set(next.map(\.id))
+        }
+    }
+
+    /// The threads above this one in the drawer, its opener first, unfolded when it's opened so
+    /// its row is in sight: picked in ⌘K, from a line in another thread or anywhere else. Each
+    /// of them, since one the user folded can sit above one still unfolded.
+    func unfold(toShow id: UUID) {
+        let all = projects.flatMap(\.chats)
+        var opener = all.first { $0.id == id }?.openedBy
+        var seen: Set<UUID> = [id]
+        while let id = opener, seen.insert(id).inserted {
+            unfolded.insert(id)
+            opener = all.first { $0.id == id }?.openedBy
+        }
     }
 
     /// The same threads in no order, for whoever asks only which they are or how many: the
@@ -47,11 +99,22 @@ extension AppModel {
 
     /// Takes a thread out of the drawer and keeps everything of it: its transcript, its session,
     /// its worktree. Its CLI is let go, and a thread at work is stopped first by hand.
+    /// The threads it opened go with it, and come back with it; one archived before it stays.
     func archive(_ chat: Chat) {
         guard conversations[chat.id]?.running != true else {
             say("Stop the thread before archiving it")
             return
         }
+        let under = threads(under: chat).filter { !$0.archived }
+        guard !under.contains(where: { conversations[$0.id]?.running == true }) else {
+            say("Stop the threads under it before archiving it")
+            return
+        }
+        for child in under { put(away: child, with: chat) }
+        put(away: chat, with: nil)
+    }
+
+    private func put(away chat: Chat, with opener: Chat?) {
         let archived = chat.id
         let wasSelected = archived == selectedChatID
         if archived == besideChatID { besideChatID = nil }
@@ -60,6 +123,7 @@ extension AppModel {
         conversations[archived] = nil
         forgetComposer(of: archived)
         chat.archived = true
+        chat.archivedWith = opener?.id
         chat.pinned = false
         chat.position = nil
         save()
@@ -71,9 +135,14 @@ extension AppModel {
         }
     }
 
-    /// Back into the drawer, on top of the threads that aren't pinned, and open.
+    /// Back into the drawer, on top of the threads that aren't pinned, and open, with the
+    /// threads under it that went with it.
     func restore(_ chat: Chat) {
-        chat.archived = false
+        let went = chat.archivedWith ?? chat.id
+        for thread in [chat] + threads(under: chat).filter({ $0.archived && $0.archivedWith == went }) {
+            thread.archived = false
+            thread.archivedWith = nil
+        }
         save()
         drawerFilter = .all
         select(chat)

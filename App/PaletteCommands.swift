@@ -382,7 +382,7 @@ extension AppModel {
         items.append(command("thread.close", "Close thread", icon: "xmark", shortcut: shortcuts.label(.close), unavailable: noThread) { [weak self] in
             self?.close()
         })
-        let others: String? = listedChats.count > 1 ? nil : "No other thread"
+        let others: String? = drawerRows.count > 1 ? nil : "No other thread"
         // Its list is every project's threads whatever the drawer is filtered to, so it's counted, not the drawer's rows.
         items.append(PaletteItem(id: "thread.beside", kind: .command, title: "Open beside…", keywords: ["side by side", "split", "two", "pair", "second"],
                                  icon: "rectangle.split.2x1", unavailable: unsent ?? (besideable.isEmpty ? "No other thread" : nil), action: .list(besideList)))
