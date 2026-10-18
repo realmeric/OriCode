@@ -1010,6 +1010,24 @@ final class Conversation {
         return event
     }
 
+    /// A workflow agent's transcript as the engine read it from Claude Code's copy: each event
+    /// stored and shown as it would have been live, saved once for the read.
+    func transcribe(_ events: [JSON]) {
+        for body in events {
+            guard let kind = body["event"]?.string else { continue }
+            let event = Event(turn: turn, seq: seq, kind: kind, payload: (try? body.data()) ?? Data())
+            seq += 1
+            context.insert(event)
+            event.chat = chat
+            apply(kind, body, id: event.id, at: event.createdAt)
+            if kind == "user" || kind == "text" {
+                said?.add(event.id, in: chat.id, user: kind == "user", text: body[kind == "user" ? "text" : "delta"]?.string ?? "")
+            }
+        }
+        unsaved = true
+        flush()
+    }
+
     /// Stores an event the transcript has no item for, a subagent's call or a background
     /// command's ending, without closing the reply that may be streaming beside it. It's saved
     /// with whatever is saved next.

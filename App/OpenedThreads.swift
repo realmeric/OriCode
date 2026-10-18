@@ -281,6 +281,7 @@ extension AppModel {
     /// hears nothing of a call that's refused.
     func message(_ named: String, text: String, reason: String, from asking: UUID) throws -> JSON {
         let (chat, thread) = try other(named, from: asking, doing: "message_thread")
+        if thread.agentID != nil { throw Refused(why: Self.agentRefusal(thread, doing: "takes no message")) }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw Refused(why: "A message needs its text.") }
         // As an opened thread is never looser than its opener, a message can't have a looser
@@ -311,9 +312,16 @@ extension AppModel {
         return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "sent": true, "intoTurn": .bool(busy)]
     }
 
+    /// Why a workflow agent's thread refuses a tool: only its workflow writes there, and Claude
+    /// Code stops a workflow whole.
+    static func agentRefusal(_ thread: Chat, doing: String) -> String {
+        "\(thread.title) is an agent of a workflow its opener started, and \(doing): only the workflow writes to it, and Claude Code stops a workflow whole. Stop its opener's workflow, or read it with read_thread."
+    }
+
     /// stop_thread: the thread's Stop, with the line in both threads.
     func stop(_ named: String, reason: String, from asking: UUID) throws -> JSON {
         let (chat, thread) = try other(named, from: asking, doing: "stop_thread")
+        if thread.agentID != nil { throw Refused(why: Self.agentRefusal(thread, doing: "can't be stopped alone")) }
         guard let conversation = conversations[thread.id], conversation.running || conversation.waitingAfterQuit else {
             throw Refused(why: "\(thread.title) isn't working, so there's nothing to stop.")
         }

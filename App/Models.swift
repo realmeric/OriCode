@@ -85,6 +85,18 @@ final class Chat {
     /// The session in another tool it was imported from, as `source/id`, so Import sessions knows
     /// it's here already after its session id has changed or it moved to another agent.
     var importedFrom: String?
+    /// Claude Code's id for the workflow agent it is, when it's one: a thread its opener's workflow
+    /// writes and nobody else, read-only, under that thread in the drawer.
+    var agentID: String?
+    /// The workflow that runs it, by its task, which Stop stops whole.
+    var agentTask: String?
+    /// Where Claude Code writes its transcript, and how many bytes of it are stored here.
+    var agentTranscript: String?
+    var agentRead: Int = 0
+    /// `queued`, `running`, `done`, `failed` or `stopped`, as its workflow last told.
+    var agentState: String?
+    /// The first line of what it returned, or why it failed.
+    var agentResult: String?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

@@ -18,7 +18,7 @@ import { adaptive, applied, type Applied } from "./models.ts";
 import { Heads } from "./heads.ts";
 import { asks, told, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
-import { workflowShape, type WorkflowShape } from "./workflow.ts";
+import { finalShape, workflowShape, type WorkflowShape } from "./workflow.ts";
 
 /// What an `effort` event tells the app: the level the session sends, null for none, and
 /// whether it runs as Ultracode.
@@ -97,8 +97,10 @@ export class Thread implements Session {
   private streamed = new Set<string>();
   /// Subagents and other tasks the CLI is running for this thread, in the foreground or not.
   private heads: Heads;
-  /// Workflows the thread started, by task, with the call that started them and their last snapshot.
-  private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape }>();
+  /// Workflows the thread started, by task, with the call that started them, their last snapshot
+  /// and the folder their agents' transcripts are written to, which the call's result names. One
+  /// the CLI has said is over stays until its notification brings the run's last snapshot.
+  private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape; transcriptDir: string | null; ended: boolean }>();
   /// The commands out in the background, by their task and by the call that started each,
   /// until the CLI says how each ended. Kept here and not read off the heads, which let a
   /// background task go as soon as the CLI stops listing it, before its notification.
@@ -306,7 +308,7 @@ export class Thread implements Session {
   /// soon as the CLI's background list leaves it out, and closing the CLI would end it.
   releaseIfIdle(idleMs: number, now = Date.now()): boolean {
     if (!this.query || this.running || this.waiting.size > 0 || this.heads.size > 0 || this.idleSince === undefined) return false;
-    if (this.workflows.size > 0 || this.backgroundCalls.size > 0) return false;
+    if ([...this.workflows.values()].some((workflow) => !workflow.ended) || this.backgroundCalls.size > 0) return false;
     if (now - this.idleSince < idleMs) return false;
     if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
     this.close();
@@ -354,7 +356,7 @@ export class Thread implements Session {
 
   /// What the CLI ran goes with it: its workflows stop, and its heads end with their watchers.
   private endHeads(): void {
-    for (const taskId of this.workflows.keys()) this.tellWorkflow(taskId, "stopped");
+    for (const [taskId, workflow] of this.workflows) if (!workflow.ended) this.tellWorkflow(taskId, "stopped");
     this.workflows.clear();
     this.heads.clear();
     this.commandCalls.clear();
@@ -466,7 +468,7 @@ export class Thread implements Session {
       case "task_started":
         if (message.task_type === "local_workflow") {
           const name = message.workflow_name ?? message.description;
-          this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] } });
+          this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] }, transcriptDir: null, ended: false });
           this.tellWorkflow(message.task_id, "running");
         }
         if (message.task_type === "local_bash" && message.tool_use_id) {
@@ -486,8 +488,7 @@ export class Thread implements Session {
       case "task_notification":
         if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
         this.commandEnded(message.task_id, message.tool_use_id, message.status);
-        this.tellWorkflow(message.task_id, message.status, message.summary);
-        this.workflows.delete(message.task_id);
+        if (this.workflows.has(message.task_id)) void this.endWorkflow(message.task_id, message.status, message.summary, message.output_file || null);
         break;
       case "task_updated":
         if (message.patch.is_backgrounded) {
@@ -496,8 +497,10 @@ export class Thread implements Session {
         }
         if (message.patch.status && !["pending", "running", "paused"].includes(message.patch.status)) {
           const status = message.patch.status === "killed" ? "stopped" : message.patch.status;
+          // Its notification follows with the run's last snapshot, and the workflow goes then.
           this.tellWorkflow(message.task_id, status);
-          this.workflows.delete(message.task_id);
+          const workflow = this.workflows.get(message.task_id);
+          if (workflow) workflow.ended = true;
           this.commandEnded(message.task_id, undefined, status);
         }
         break;
@@ -509,7 +512,29 @@ export class Thread implements Session {
   private tellWorkflow(taskId: string, state: string, summary?: string): void {
     const workflow = this.workflows.get(taskId);
     if (!workflow) return;
-    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, summary: summary ?? null });
+    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, summary: summary ?? null, transcriptDir: workflow.transcriptDir });
+  }
+
+  /// A workflow's end, with what every agent returned: the snapshots are thinned out while it
+  /// runs, and none comes as it ends, so the run's last one is read from where the CLI wrote it.
+  private async endWorkflow(taskId: string, status: string, summary: string, outputFile: string | null): Promise<void> {
+    const workflow = this.workflows.get(taskId);
+    if (!workflow) return;
+    const shape = await finalShape(outputFile, workflow.transcriptDir);
+    if (this.workflows.get(taskId) !== workflow) return;
+    if (shape) workflow.shape = shape;
+    this.tellWorkflow(taskId, status, summary);
+    this.workflows.delete(taskId);
+  }
+
+  /// The Workflow call's result names the folder its agents' transcripts go to.
+  private workflowLaunched(output: unknown): void {
+    const launched = output as { taskId?: unknown; transcriptDir?: unknown } | undefined;
+    if (typeof launched?.taskId !== "string" || typeof launched.transcriptDir !== "string") return;
+    const workflow = this.workflows.get(launched.taskId);
+    if (!workflow || workflow.transcriptDir) return;
+    workflow.transcriptDir = launched.transcriptDir;
+    this.tellWorkflow(launched.taskId, "running");
   }
 
   /// The CLI holding them is going, so what still waits will never run.
@@ -689,6 +714,7 @@ export class Thread implements Session {
           if (block.type === "tool_result") this.heads.result(block.tool_use_id, resultText(block.content));
         }
         const patch = patchOf(message.tool_use_result);
+        this.workflowLaunched(message.tool_use_result);
         for (const block of blocks) {
           if (block.type !== "tool_result") continue;
           const tool = this.subcalls.get(block.tool_use_id);

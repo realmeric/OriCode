@@ -24,6 +24,7 @@ import { addWorktree, branch, branches, create, previous, pull, push, remote, re
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
 import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
+import { Follow } from "./follow.ts";
 import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
 import { t3Code } from "./t3code.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
@@ -67,6 +68,8 @@ const listed = new Set<string>();
 const lists = new Map<string, Promise<Model[]>>();
 /// Threads whose Heads surface is open, which a thread made after the surface opened starts with.
 const watched = new Set<string>();
+/// The workflow agents' transcripts read while the app shows their threads, by thread.
+const follows = new Map<string, Follow>();
 
 /// The agent a request names, Claude Code when it names none.
 function provider(id: string | undefined): Provider {
@@ -568,6 +571,21 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     else watched.delete(threadId);
     sessions.get(threadId)?.watchHeads(on);
     raysOf(threadId)?.watch(on);
+    return { ok: true };
+  },
+
+  /// A workflow agent's thread came into view, or left it. Only Claude Code's transcripts of its
+  /// workflows' agents are read; a follow already going for the thread goes on from where it is.
+  async "agent.follow"({ threadId, path, from, on }: { threadId: string; path: string; from: number; on: boolean }) {
+    const following = follows.get(threadId);
+    if (on && following?.path === path) return { ok: true };
+    following?.stop();
+    follows.delete(threadId);
+    if (!on) return { ok: true };
+    if (!/\/subagents\/workflows\/[^/]+\/agent-[\w-]+\.jsonl$/.test(path)) throw new Error("That isn't a workflow agent's transcript.");
+    const follow = new Follow(threadId, path, Math.max(0, from));
+    follows.set(threadId, follow);
+    follow.start();
     return { ok: true };
   },
 

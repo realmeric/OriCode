@@ -127,6 +127,11 @@ final class Heads {
         list.count { !$0.ending && $0.lights }
     }
 
+    /// Whether a workflow is at work here, or the one with this task.
+    func workflowRuns(_ task: String? = nil) -> Bool {
+        list.contains { !$0.ending && $0.kind == .workflow && (task == nil || $0.id == task) }
+    }
+
     /// The engine's whole list. A head it no longer lists ends: its ray goes out now, and its row
     /// a moment later. A head the engine names no agent for is on `agent`, the thread's own.
     func update(_ body: JSON, agent: String) {

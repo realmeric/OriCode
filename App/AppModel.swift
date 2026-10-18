@@ -223,6 +223,11 @@ final class AppModel {
     }
     /// The thread the engine is telling what its heads are doing.
     var headsWatched: UUID?
+    /// The workflow agents' threads whose transcripts the engine reads for the app while they're
+    /// on the glass.
+    @ObservationIgnored var followed: Set<UUID> = []
+    /// The pieces of a read of an agent's transcript before its last: where they end, and their events.
+    @ObservationIgnored var heldPieces: [UUID: (offset: Int, events: [JSON])] = [:]
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
     let shortcuts = Shortcuts()
@@ -360,6 +365,7 @@ final class AppModel {
             returnKeyboard()
             watchHeads()
             tellWindow()
+            followAgents()
         }
     }
 
@@ -371,6 +377,7 @@ final class AppModel {
             if let besideChatID, besideChatID == selectedChatID { self.besideChatID = nil }
             if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
             UserDefaults.standard.set(besideChatID?.uuidString, forKey: "besideChat")
+            followAgents()
             guard let besideChatID else {
                 composerHalf = .left
                 return
@@ -548,6 +555,7 @@ final class AppModel {
         restorePair()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
+        settleAgents()
         startingSeen = startingValues
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -677,6 +685,7 @@ final class AppModel {
             pickUpAfterQuit()
             scheduleResumes()
             watchHeads()
+            followAgents()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

@@ -110,6 +110,10 @@ extension AppModel {
     /// Delete asks first; for a worktree thread it first finds out what removing the worktree would lose.
     func askToDelete(_ chat: Chat?) {
         guard let chat else { return }
+        guard chat.agentID == nil || !workflowRuns(in: chat) else {
+            say("Stop its workflow before deleting it")
+            return
+        }
         deletingLoss = nil
         // A worktree another thread works in too stays, so there is nothing to ask about it.
         guard let branch = chat.worktreeBranch, ownFolder(of: chat) != nil, FileManager.default.fileExists(atPath: chat.cwd) else {

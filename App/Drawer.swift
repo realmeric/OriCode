@@ -218,7 +218,7 @@ struct Drawer: View {
     /// How many threads under it, at any depth, work or wait.
     private func working(under children: [DrawerNode]) -> Int {
         children.reduce(0) { count, node in
-            count + (model.conversations[node.chat.id]?.working == true ? 1 : 0) + working(under: node.children ?? [])
+            count + (model.conversations[node.chat.id]?.working == true || node.chat.agentWorking ? 1 : 0) + working(under: node.children ?? [])
         }
     }
 
@@ -267,7 +267,8 @@ struct Drawer: View {
                     }
                     // Under the title, which keeps its width: a row with threads under it at
                     // work would otherwise leave it a word.
-                    let below = [missing ? "folder missing" : nil, under > 0 ? "\(under) working" : nil].compactMap(\.self)
+                    // A workflow's agent says what it returned, or how it ended.
+                    let below = [missing ? "folder missing" : nil, under > 0 ? "\(under) working" : nil, chat.agentLine].compactMap(\.self)
                     if !below.isEmpty {
                         Text(below.joined(separator: " · "))
                             .font(.system(size: 11))
@@ -283,6 +284,11 @@ struct Drawer: View {
                 // mark would redraw for nobody.
                 ThreadMark(conversation: conversation, moving: model.drawerShown)
                     .frame(width: 14, height: 14)
+            } else if chat.agentWorking {
+                // An agent of a workflow is a main loop of its own, with no rays.
+                RaysMark(restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
+                    .frame(width: 14, height: 14)
+                    .accessibilityLabel("Working")
             }
             if chat.pinned {
                 Image(systemName: "pin.fill")

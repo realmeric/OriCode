@@ -117,7 +117,7 @@ extension AppModel {
     /// one of OriCode's tools, which the session is told.
     func send(_ text: String, images: [ImageAttachment], in chat: Chat, from sender: Chat? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !images.isEmpty else { return false }
+        guard !trimmed.isEmpty || !images.isEmpty, chat.agentID == nil else { return false }
         let conversation = conversation(for: chat)
         guard !conversation.running, !heldInBlock(chat), !tooLong(trimmed, for: chat) else { return false }
         let text = Self.asked(trimmed, images)
@@ -349,11 +349,21 @@ extension AppModel {
         return .object(params)
     }
 
+    /// Whether Stop has something in the open thread: its turn, or a workflow agent's workflow.
+    var canStop: Bool {
+        currentConversation?.running == true || chat?.agentWorking == true
+    }
+
     /// Stop ends the turn and takes back everything still to go: the engine cancels what was sent
     /// into the turn, and the queue goes back now, not when the turn ends, since a turn already
     /// ending by itself as the interrupt goes out would still send its next.
     func stop(in thread: Chat? = nil) {
         guard let chat = thread ?? chat else { return }
+        // A workflow's agent has no turn of its own, and Claude Code stops it only with its workflow.
+        guard chat.agentID == nil else {
+            if chat.agentWorking { stopWorkflow(of: chat) }
+            return
+        }
         let conversation = conversation(for: chat)
         conversation.handBackQueue()
         if conversation.waitingAfterQuit {
@@ -410,6 +420,10 @@ extension AppModel {
             return
         }
         guard let chat = chat(withID: id) else { return }
+        if event.name == "agent.lines" {
+            transcribed(event.body, into: chat)
+            return
+        }
         if event.name.hasPrefix("message.") {
             // A message taken up brightens in place; one handed back fades out.
             withAnimation(Motion.fade) { conversation(for: chat).receive(event) }
@@ -420,6 +434,7 @@ extension AppModel {
         } else {
             conversation(for: chat).receive(event)
         }
+        if event.name == "workflow" { syncAgents(of: chat, event.body) }
         if event.name == "turn.done", let spent = event.body["spent"]?.string {
             startOver(chat, spent: spent, held: event.body["held"]?.bool == true)
         }
@@ -500,6 +515,9 @@ extension AppModel {
         for conversation in conversations.values { conversation.endWorkflows() }
         // A new engine watches nothing until it's asked again.
         headsWatched = nil
+        followed = []
+        heldPieces = [:]
+        settleAgents()
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]
         for conversation in conversations.values { withAnimation(Motion.fade) { conversation.handBackAll() } }

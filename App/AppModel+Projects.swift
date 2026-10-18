@@ -86,7 +86,7 @@ extension AppModel {
         switch drawerFilter {
         case .all: return all
         case .project(let id): return all.filter { $0.project?.id == id }
-        case .working: return all.filter { conversations[$0.id]?.working == true }
+        case .working: return all.filter { conversations[$0.id]?.working == true || $0.agentWorking }
         case .waiting: return all.filter { conversations[$0.id]?.waitingAsk != nil }
         case .archived: return archivedChats
         }
@@ -105,8 +105,12 @@ extension AppModel {
             say("Stop the thread before archiving it")
             return
         }
+        guard !workflowRuns(in: chat) else {
+            say("Stop its workflow before archiving it")
+            return
+        }
         let under = threads(under: chat).filter { !$0.archived }
-        guard !under.contains(where: { conversations[$0.id]?.running == true }) else {
+        guard !under.contains(where: { conversations[$0.id]?.running == true || workflowRuns(in: $0) }) else {
             say("Stop the threads under it before archiving it")
             return
         }
@@ -389,9 +393,19 @@ extension AppModel {
     }
 
     func delete(_ chat: Chat) {
+        guard chat.agentID == nil || !workflowRuns(in: chat) else {
+            say("Stop its workflow before deleting it")
+            return
+        }
         let deleted = chat.id
-        let wasSelected = deleted == selectedChatID
-        if deleted == besideChatID { besideChatID = nil }
+        // Its workflow's agents go with it: nothing else writes or reads them.
+        let agents = agents(under: chat)
+        let wasSelected = deleted == selectedChatID || agents.contains { $0.id == selectedChatID }
+        if deleted == besideChatID || agents.contains(where: { $0.id == besideChatID }) { besideChatID = nil }
+        for agent in agents {
+            conversations[agent.id] = nil
+            context.delete(agent)
+        }
         endShells(of: chat)
         // A thread it opened that still works in its worktree keeps it, as its own from here.
         if let branch = chat.worktreeBranch, let heir = projects.flatMap(\.chats).first(where: { $0.id != deleted && $0.cwd == chat.cwd && $0.worktreeBranch == nil }) {
@@ -406,7 +420,7 @@ extension AppModel {
         save()
         guard wasSelected, !besideTakesWindow() else { return }
         // The next thread in the same project if there is one, so deleting doesn't switch projects.
-        let rest = chats.filter { $0.id != deleted }
+        let rest = chats.filter { $0.id != deleted && $0.openedBy != deleted }
         if let next = rest.first(where: { $0.project?.id == selectedProjectID }) ?? rest.first {
             select(next)
         } else {

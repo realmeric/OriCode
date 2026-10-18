@@ -56,7 +56,7 @@ struct OriCodeCommands: Commands {
         CommandMenu("Thread") {
             Button("Stop") { model.stop() }
                 .keyboardShortcut(shortcuts.key(.stop))
-                .disabled(!(model.currentConversation?.running ?? false))
+                .disabled(!model.canStop)
             if agent.capabilities.compact {
                 Button("Compact") { model.send("/compact") }
                     .disabled(model.chat?.sessionId == nil || (model.currentConversation?.running ?? true))

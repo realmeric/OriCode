@@ -86,16 +86,23 @@ struct RootView: View {
                     HStack(alignment: .bottom, spacing: 0) {
                         ForEach(Array(zip(halves, threads)), id: \.0) { side, thread in
                             let conversation = thread.flatMap { model.conversations[$0.id] }
-                            Composer(chat: thread, conversation: conversation, state: model.composer(for: thread),
-                                     running: conversation?.running ?? false, windowHeight: window.size.height,
-                                     paired: beside != nil)
-                                // Moves as one piece: otherwise a label that changes with the thread,
-                                // like the model's name, is drawn where the composer is going while
-                                // the rest of it is still on the way.
-                                .geometryGroup()
-                                .padding(.leading, side == halves[0] ? clear : 0)
-                                .column()
-                                .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
+                            Group {
+                                // A workflow's agent takes no messages: its workflow writes there.
+                                if let thread, thread.agentID != nil {
+                                    AgentBar(chat: thread)
+                                } else {
+                                    Composer(chat: thread, conversation: conversation, state: model.composer(for: thread),
+                                             running: conversation?.running ?? false, windowHeight: window.size.height,
+                                             paired: beside != nil)
+                                }
+                            }
+                            // Moves as one piece: otherwise a label that changes with the thread,
+                            // like the model's name, is drawn where the composer is going while
+                            // the rest of it is still on the way.
+                            .geometryGroup()
+                            .padding(.leading, side == halves[0] ? clear : 0)
+                            .column()
+                            .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                         }
                     }
                     // The one there was glides to its half as a second comes beside it.

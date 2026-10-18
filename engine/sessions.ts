@@ -168,17 +168,23 @@ export async function claudeEvents(sessionId: string, read: typeof getSessionMes
   const events: Transcript = [];
   for (const message of messages) {
     if (message.parent_tool_use_id) continue;
-    const content = (message.message as { content?: unknown } | null)?.content;
-    const blocks: Block[] = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? (content as Block[]) : [];
-    for (const block of blocks) {
-      if (message.type === "user") {
-        if (block.type === "text" && block.text?.trim() && !machine.test(block.text)) events.push({ event: "user", text: block.text });
-        if (block.type === "tool_result") events.push({ event: "tool.result", toolUseId: block.tool_use_id ?? "", content: resultText(block.content), isError: block.is_error === true });
-      } else if (message.type === "assistant") {
-        if (block.type === "text" && block.text?.trim()) events.push({ event: "text", delta: block.text });
-        if (block.type === "thinking" && block.thinking?.trim()) events.push({ event: "thinking", delta: block.thinking });
-        if (block.type === "tool_use") events.push({ event: "tool.use", toolUseId: block.id ?? "", name: block.name ?? "", input: block.input ?? {} });
-      }
+    events.push(...messageEvents(message.type, (message.message as { content?: unknown } | null)?.content));
+  }
+  return events;
+}
+
+/// One message of a Claude Code transcript as the events a thread stores.
+export function messageEvents(type: string, content: unknown): Transcript {
+  const blocks: Block[] = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? (content as Block[]) : [];
+  const events: Transcript = [];
+  for (const block of blocks) {
+    if (type === "user") {
+      if (block.type === "text" && block.text?.trim() && !machine.test(block.text)) events.push({ event: "user", text: block.text });
+      if (block.type === "tool_result") events.push({ event: "tool.result", toolUseId: block.tool_use_id ?? "", content: resultText(block.content), isError: block.is_error === true });
+    } else if (type === "assistant") {
+      if (block.type === "text" && block.text?.trim()) events.push({ event: "text", delta: block.text });
+      if (block.type === "thinking" && block.thinking?.trim()) events.push({ event: "thinking", delta: block.thinking });
+      if (block.type === "tool_use") events.push({ event: "tool.use", toolUseId: block.id ?? "", name: block.name ?? "", input: block.input ?? {} });
     }
   }
   return events;
