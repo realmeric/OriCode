@@ -20,6 +20,8 @@ export type CatalogModel = {
   adaptive: boolean;
   /// The oldest Claude Code that can run it, when the catalog says.
   minVersion: string | null;
+  /// The most tokens it reads at once, its context window, when the catalog says.
+  window: number | null;
 };
 
 type File = { fetchedAt?: number; catalog?: { surface?: string; config?: { models?: Row[] } } };
@@ -32,6 +34,7 @@ type Row = {
   thinking?: { type?: unknown; effort_options?: { id?: unknown; badge?: { message?: unknown } }[] };
   fast_mode?: unknown;
   min_claude_code_version?: unknown;
+  runtime?: { max_input_tokens?: unknown };
 };
 
 const levels = ["low", "medium", "high", "xhigh", "max"];
@@ -84,6 +87,7 @@ function parse(row: Row): CatalogModel[] {
       fast: row.fast_mode != null,
       adaptive: effort,
       minVersion: typeof row.min_claude_code_version === "string" ? row.min_claude_code_version : null,
+      window: typeof row.runtime?.max_input_tokens === "number" ? row.runtime.max_input_tokens : null,
     },
   ];
 }

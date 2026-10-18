@@ -73,8 +73,8 @@ final class Chat {
     /// workflows, as Ultracode at Extra high, and another agent's on its rays. Never carried to a
     /// new thread, since it spends a plan much faster.
     var workflows: Bool = false
-    /// It changed agent, and its next send starts a session of the new agent's own that opens with
-    /// the thread so far. Cleared when that session's turn starts.
+    /// It changed agent, or its session can't be sent to the model again, and its next send starts
+    /// a new session that opens with the thread so far. Cleared when that session's turn starts.
     var handover: Bool = false
     /// The thread that opened it, through open_thread, when one did: its first turn's end is told
     /// to that thread, and the drawer lists it under that thread.

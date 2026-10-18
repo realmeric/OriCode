@@ -99,7 +99,7 @@ extension ProviderInfo {
             id: option.id, name: option.name, description: option.description, efforts: efforts, fast: option.fast,
             defaultEffort: option.defaultEffort.flatMap { efforts.contains($0) ? $0 : nil },
             ultra: option.ultra && workflows, ultraBlocked: workflows ? option.ultraBlocked : nil, more: option.more, needs: option.needs,
-            forbidden: option.forbidden, ultraRays: option.ultraRays)
+            forbidden: option.forbidden, ultraRays: option.ultraRays, window: option.window)
     }
 }
 

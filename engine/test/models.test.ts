@@ -20,7 +20,7 @@ const sdk: ModelInfo[] = [
 ];
 
 function row(id: string, name: string, more = false, extra: Partial<CatalogModel> = {}): CatalogModel {
-  return { id, name, description: null, more, efforts: [], defaultEffort: null, fast: false, adaptive: false, minVersion: null, ...extra };
+  return { id, name, description: null, more, efforts: [], defaultEffort: null, fast: false, adaptive: false, minVersion: null, window: null, ...extra };
 }
 
 const catalog = [
@@ -78,7 +78,7 @@ test("the newest cc catalog is read, and the desktop's, a broken file and retire
   const home = await cache({
     "org-old-cc.json": file(1, "cc", [{ id: "claude-opus-4-8", name: "Opus 4.8" }]),
     "org-new-cc.json": file(2, "cc", [
-      { id: "claude-opus-5-5", name: "Opus 5.5", description: "Most capable for ambitious work", section: "main", min_claude_code_version: "2.1.280" },
+      { id: "claude-opus-5-5", name: "Opus 5.5", description: "Most capable for ambitious work", section: "main", min_claude_code_version: "2.1.280", runtime: { max_input_tokens: 1000000 } },
       {
         id: "claude-opus-4-8",
         name: "Opus 4.8",
@@ -94,7 +94,7 @@ test("the newest cc catalog is read, and the desktop's, a broken file and retire
     "tok-broken-cc.json": "{ not json",
   });
   assert.deepEqual(await readCatalog(home), [
-    row("claude-opus-5-5", "Opus 5.5", false, { description: "Most capable for ambitious work", minVersion: "2.1.280" }),
+    row("claude-opus-5-5", "Opus 5.5", false, { description: "Most capable for ambitious work", minVersion: "2.1.280", window: 1000000 }),
     row("claude-opus-4-8", "Opus 4.8", true, { efforts: every, defaultEffort: "high", fast: true, adaptive: true }),
   ]);
 });

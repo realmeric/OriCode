@@ -622,6 +622,13 @@ final class Conversation {
         if !send(next) { handBackQueue(with: [next]) }
     }
 
+    /// The message that started a spent turn goes again in a new session: the thread works until
+    /// that turn starts or its send fails.
+    func resending() {
+        running = true
+        failed = false
+    }
+
     func sendFailed(_ message: String) {
         running = false
         handBackQueue()
@@ -764,6 +771,8 @@ final class Conversation {
         case "message.cancelled":
             if let id = event.body["messageId"]?.string.flatMap(UUID.init(uuidString:)) { handBack(id) }
         case "turn.done":
+            // A session the model can't be sent again sends nothing more, the queue's next included.
+            if event.body["spent"] != nil { failed = true }
             // Messages sent during the turn that it ended without taking up are the next turn's.
             nextFollows = !waiting.isEmpty && (event.body["waiting"]?.int ?? 0) > 0
             running = nextFollows

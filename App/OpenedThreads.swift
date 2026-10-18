@@ -299,9 +299,7 @@ extension AppModel {
             throw Refused(why: "\(thread.title) is working, and \(agent.agent) takes no message until its turn ends. Wait for it with wait_thread, then send this again.")
         }
         if !busy { try checkCeiling() }
-        if let longest = longestPassed(by: text, for: thread) {
-            throw Refused(why: "\(agent.agent) takes messages of up to \(longest.formatted()) characters, and this one has \(text.unicodeScalars.count.formatted()).")
-        }
+        if let why = whyTooLong(text, for: thread) { throw Refused(why: why) }
         let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         conversation.threadAct(ThreadAct(act: .messaged, by: false, thread: chat.id, title: chat.title, reason: reason))
         if busy {

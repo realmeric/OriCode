@@ -139,16 +139,34 @@ extension AppModel {
     /// message where it was. Codex refuses one past a million characters, and sent anyway it came
     /// back as Codex's own error, with the message left in the thread as if it had gone.
     func tooLong(_ text: String, for chat: Chat?) -> Bool {
-        guard let longest = longestPassed(by: text, for: chat) else { return false }
-        say("\(agent(for: chat).agent) takes messages of up to \(longest.formatted()) characters. This one has \(text.unicodeScalars.count.formatted()).")
+        guard let why = whyTooLong(text, for: chat) else { return false }
+        say(why)
+        // Focus stays in the composer with the text, so VoiceOver says why it didn't go.
+        AccessibilityNotification.Announcement(why).post()
         return true
     }
 
-    /// The most characters the thread's agent takes, when the text has more; nil when it fits.
-    func longestPassed(by text: String, for chat: Chat?) -> Int? {
-        // Never fewer bytes than scalars, so only a message with more bytes than the limit is counted.
-        guard let longest = agent(for: chat).capabilities.longestMessage, text.utf8.count > longest, text.unicodeScalars.count > longest else { return nil }
-        return longest
+    /// Characters a message may have for each token of the model's window. Lines of code and
+    /// dictionary words came to 2.4 a token on Haiku 5.5, so a message over twice the window fills
+    /// it nearly whole or more, and a session that doesn't fit is one the model can't be sent again.
+    static let charactersPerToken = 2
+
+    /// What says the message is longer than the thread takes, by its agent's own limit or twice its
+    /// model's window, whichever is less; nil when it fits.
+    func whyTooLong(_ text: String, for chat: Chat?) -> String? {
+        let agent = agent(for: chat)
+        let option = option(for: chat)
+        let window = option?.window ?? chat.flatMap { $0.contextWindow > 0 ? $0.contextWindow : nil }
+        let read = window.map { $0 * Self.charactersPerToken }
+        guard let longest = [agent.capabilities.longestMessage, read].compactMap(\.self).min(),
+              // Never fewer bytes than scalars, so only a message with more bytes than the limit is counted.
+              text.utf8.count > longest, text.unicodeScalars.count > longest
+        else { return nil }
+        let count = text.unicodeScalars.count.formatted()
+        guard window != nil, longest == read else { return "\(agent.agent) takes messages of up to \(longest.formatted()) characters. This one has \(count)." }
+        // Short enough for a column of two side by side. Default's name is the menu's, not a model's.
+        let name = option.flatMap { $0.id == ModelOption.claudeDefault ? nil : $0.name } ?? agent.agent
+        return "\(name) reads about \(longest.formatted()) characters. This has \(count)."
     }
 
     /// Hands a message the transcript already shows, or one it needn't, to the thread's session
@@ -160,9 +178,7 @@ extension AppModel {
         let (text, readShells) = withShells(text, in: chat)
         // No folder's own folder is the app's to keep there, whatever emptied the support folder.
         if chat.project?.isNoFolder == true { try? FileManager.default.createDirectory(atPath: chat.cwd, withIntermediateDirectories: true) }
-        var params = sendParams(in: chat, text: text, images: images, from: sender)
-        if let handover = handover(for: chat) { params["handover"] = .string(handover) }
-        if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
+        let params = turnParams(in: chat, text: text, images: images, allowing: grant, from: sender)
         Task {
             do {
                 _ = try await engine.request("send", .object(params))
@@ -178,8 +194,60 @@ extension AppModel {
         }
     }
 
-    /// The thread so far, for the session a change of agent starts: everything before the message
-    /// just sent, until a turn on the new agent has begun.
+    /// What `send` carries to start a turn: the thread's settings, the thread so far when its
+    /// session is new, and a call allowed before a quit.
+    func turnParams(in chat: Chat, text: String, images: [ImageAttachment] = [], allowing grant: PendingAsk? = nil, from sender: Chat? = nil) -> [String: JSON] {
+        var params = sendParams(in: chat, text: text, images: images, from: sender)
+        if let handover = handover(for: chat) { params["handover"] = .string(handover) }
+        if let grant { params["grant"] = ["tool": .string(grant.tool), "input": grant.input] }
+        return params
+    }
+
+    /// The thread's session can't be sent to the model again: longer than it reads at once (`long`),
+    /// or one it stopped answering in (`refused`), so every later turn there fails the same and is
+    /// paid for. The engine has let it go; the thread goes on in a new session handed what it has
+    /// said. `held` is the session having had a turn before this one, and when what started this
+    /// turn could go better in a new session, it goes again at once and is returned.
+    @discardableResult
+    func startOver(_ chat: Chat, spent: String, held: Bool) -> String? {
+        let conversation = conversation(for: chat)
+        chat.sessionId = nil
+        conversation.water.forget()
+        chat.handover = true
+        let again = held ? Self.sentAgain(after: spent, in: conversation.items) : nil
+        let agent = agent(for: chat).agent
+        let why = spent == "long" ? "This session is more than \(agent) reads at once" : "\(agent) won't go on in this session"
+        conversation.note("\(why), so \(again == nil ? "the next message starts" : "the message goes again in") a new one, handed what the thread has said.")
+        save()
+        guard let again else { return nil }
+        // Working until that turn starts, so Return meanwhile goes into it and not beside it.
+        conversation.resending()
+        startTurn(in: chat, text: again)
+        return again
+    }
+
+    /// The message that started the spent turn, when it's worth sending again: a session too long
+    /// for the model, which a new one handed the thread so far isn't, or one the model refused
+    /// while the thread held an older message longer than this one and than a handover keeps of
+    /// the latest, which may be what it stopped on. Nil for a turn its own message didn't start, a
+    /// background agent reporting back after that message was answered, and for one with pictures,
+    /// which the thread doesn't keep whole.
+    static func sentAgain(after spent: String, in items: [Item]) -> String? {
+        guard let index = items.lastIndex(where: \.startsTurn),
+              // The spent turn's footer is the one just written; one before it ended this message's turn.
+              items[index...].count(where: { if case .footer = $0 { true } else { false } }) == 1,
+              case .user(_, let text, let images, _) = items[index], images.isEmpty
+        else { return nil }
+        guard spent == "refused" else { return text }
+        let longest = max(text.utf8.count, Handover.cap / 2)
+        let older = items[..<index].contains { item in
+            if case .user(_, let older, _, _) = item { older.utf8.count > longest } else { false }
+        }
+        return older ? text : nil
+    }
+
+    /// The thread so far, for the session a change of agent or a spent session starts: everything
+    /// before the message just sent, until a turn in the new session has begun.
     func handover(for chat: Chat) -> String? {
         guard chat.handover, chat.sessionId == nil else { return nil }
         let items = conversation(for: chat).items
@@ -351,6 +419,9 @@ extension AppModel {
             }
         } else {
             conversation(for: chat).receive(event)
+        }
+        if event.name == "turn.done", let spent = event.body["spent"]?.string {
+            startOver(chat, spent: spent, held: event.body["held"]?.bool == true)
         }
         // On screen or not, a turn that ended by itself lets the thread's queue send its next, and
         // so does the last message it left waiting going back.

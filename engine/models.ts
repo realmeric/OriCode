@@ -29,6 +29,8 @@ export type Model = {
   /// The maker whose login reaches the model, when that maker keeps the login to its own apps:
   /// `anthropic`, `xai` or `meta` for pi. The app shows it dimmed and doesn't pick it.
   forbidden?: string;
+  /// The most tokens it reads at once, from the catalog, which the app keeps a message under.
+  window?: number;
 };
 
 /// Models that take adaptive thinking, filled from the SDK's list. Asking one that doesn't
@@ -48,7 +50,8 @@ export function fromSDK(models: ModelInfo[], catalog: CatalogModel[] = []): Mode
   }
   return models.map((model) => {
     const efforts: string[] = model.supportsEffort ? (model.supportedEffortLevels ?? []) : [];
-    const marked = catalog.find((row) => row.id === runs(model))?.defaultEffort;
+    const row = catalog.find((entry) => entry.id === runs(model));
+    const marked = row?.defaultEffort;
     return {
       id: model.value,
       ...versioned(model, catalog),
@@ -57,6 +60,7 @@ export function fromSDK(models: ModelInfo[], catalog: CatalogModel[] = []): Mode
       defaultEffort: marked && efforts.includes(marked) ? marked : null,
       ultra: false,
       ultraBlocked: null,
+      ...windowOf(row),
     };
   });
 }
@@ -90,8 +94,14 @@ export function older(catalog: CatalogModel[], models: ModelInfo[]): Model[] {
         ultra: false,
         ultraBlocked: null,
         more: true,
+        ...windowOf(row),
       };
     });
+}
+
+/// A row's window as the catalog gives it, and nothing when it gives none.
+function windowOf(row: CatalogModel | undefined): { window?: number } {
+  return row?.window ? { window: row.window } : {};
 }
 
 /// The catalog's models this Claude Code can't run yet: one from the main section that names the

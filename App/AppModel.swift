@@ -28,6 +28,8 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
     /// Its workflows are OriCode's own, on Rays: the head plans, sends workers out and merges what
     /// they bring, on a model with no workflows of its own.
     var ultraRays: Bool? = nil
+    /// The most tokens it reads at once, when the agent's catalog says: Claude Code's does.
+    var window: Int? = nil
 
     /// The SDK's id for Default (recommended), the model Claude Code picks.
     static let claudeDefault = "default"
@@ -42,7 +44,7 @@ struct ModelOption: Codable, Hashable, Sendable, Identifiable {
         guard !ultra, ultraBlocked == nil, needs == nil else { return self }
         return ModelOption(
             id: id, name: name, description: description, efforts: efforts, fast: fast, defaultEffort: defaultEffort,
-            ultra: true, ultraBlocked: nil, more: more, needs: needs)
+            ultra: true, ultraBlocked: nil, more: more, needs: needs, window: window)
     }
 }
 

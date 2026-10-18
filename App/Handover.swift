@@ -1,9 +1,10 @@
 import Foundation
 
-/// What a thread has said so far, for the agent it moves to: its session has none of the old one's
-/// history. What was asked and answered, each tool call as one line, and nothing else, cut to a
-/// size the new agent takes with the latest exchange kept whole. The engine puts it ahead of the
-/// first message in its own words (`handover` on `send`); the transcript never shows it.
+/// What a thread has said so far, for the agent it moves to or a new session of its own: that
+/// session has none of the old one's history. What was asked and answered, each tool call as one
+/// line, and nothing else, cut to a size the new agent takes with the latest exchange kept whole.
+/// The engine puts it ahead of the first message in its own words (`handover` on `send`); the
+/// transcript never shows it.
 enum Handover {
     /// Characters, about ten thousand tokens: what any model an agent offers takes with room to
     /// work, since the models' own windows aren't in what the agents list.

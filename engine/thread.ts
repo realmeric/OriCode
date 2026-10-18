@@ -87,6 +87,11 @@ export class Thread implements Session {
   private interrupted = false;
   /// One error line per turn: the CLI can report the same failure as a message and in the result.
   private errored = false;
+  /// The API's refusal of this turn's request, said once the result shows whether it ended the session.
+  private apiError: string | undefined;
+  /// Whether the session had no turn before the one running, so nothing older in it can be what
+  /// broke it. Said as `held` on a spent turn; what the app sends again it judges by the thread.
+  private fresh = true;
   /// The send in flight while the CLI resumes a session, so it can go again fresh if that session is gone.
   private resuming: SendParams | undefined;
   private streamed = new Set<string>();
@@ -225,6 +230,7 @@ export class Thread implements Session {
     this.started = false;
     this.interrupted = false;
     this.errored = false;
+    this.apiError = undefined;
     this.refused = false;
     this.grant = params.grant;
     this.push(params);
@@ -359,6 +365,7 @@ export class Thread implements Session {
   private start(params: SendParams, key: string, env: Record<string, string | undefined>): void {
     const resume = params.sessionId ?? this.sessionId;
     this.resuming = resume ? params : undefined;
+    this.fresh = !resume;
     log(`start thread=${this.id} cwd=${params.cwd} resume=${resume ?? "none"}`);
     this.key = key;
     this.env = env;
@@ -524,6 +531,7 @@ export class Thread implements Session {
     this.started = false;
     this.interrupted = stopped;
     this.errored = false;
+    this.apiError = undefined;
     this.refused = false;
   }
 
@@ -598,6 +606,8 @@ export class Thread implements Session {
     this.inbox = undefined;
     this.endHeads();
     this.dropWaiting();
+    if (this.apiError) this.fail(this.apiError);
+    this.apiError = undefined;
     if (this.running) {
       this.running = false;
       event("turn.done", { threadId: this.id, sessionId: this.sessionId, stopReason: "engine_stopped", durationMs: 0, costUSD: 0, usage: emptyUsage, waiting: 0 });
@@ -657,7 +667,9 @@ export class Thread implements Session {
         }
         if (message.error) {
           // An API failure arrives as a synthetic message; its text is the raw error, so say it once, plainly.
-          this.fail(errorText(message.error, this.elsewhere?.agent));
+          // A request the API refused waits for the result, which says whether it ended the session.
+          if (message.error === "invalid_request") this.apiError = errorText(message.error, this.elsewhere?.agent);
+          else this.fail(errorText(message.error, this.elsewhere?.agent));
           return;
         }
         const streamed = this.streamed.has(message.message.id);
@@ -769,8 +781,16 @@ export class Thread implements Session {
         const cost = message.total_cost_usd - this.costSoFar;
         this.costSoFar = message.total_cost_usd;
         const window = Object.values(message.modelUsage).reduce((largest, usage) => Math.max(largest, usage.contextWindow ?? 0), 0);
+        const spent = spentBy(message);
+        const held = !this.fresh;
+        this.fresh = false;
+        if (this.apiError && !spent) this.fail(this.apiError);
+        this.apiError = undefined;
+        // Messages sent into a spent turn would start a turn of their own in that session, sending
+        // it all again, paid for, and failing the same; they go back to the app before it ends.
+        if (spent) this.dropWaiting();
         // An interrupt ends the turn as error_during_execution with a diagnostic nobody needs to read.
-        if (message.subtype !== "success" && message.errors.length && !this.interrupted) {
+        if (message.subtype !== "success" && message.errors.length && !this.interrupted && !spent) {
           this.fail(message.errors.join("\n"));
         }
         event("turn.done", {
@@ -786,6 +806,8 @@ export class Thread implements Session {
             cacheWrite: message.usage.cache_creation_input_tokens,
           },
           context: { used: this.lastContext, window },
+          // The session can't be sent to the model again, and the app goes on in a new one.
+          ...(spent ? { spent, held } : {}),
           // Messages sent during the turn that it ended without taking up: each runs as a turn
           // of its own, starting now.
           waiting: this.waiting.size,
@@ -793,6 +815,12 @@ export class Thread implements Session {
         // Said for this turn. A Stop from here on is for the turn a waiting message starts, and
         // so is one still on its way, which the CLI may get once it has started that turn.
         this.interrupted = this.stopping;
+        if (spent) {
+          // The CLI goes with the session, so nothing more is sent there, and the next send starts
+          // a new session, as one that's gone does.
+          this.sessionId = undefined;
+          this.close();
+        }
         this.onIdle?.();
         return;
       }
@@ -926,6 +954,16 @@ function resultText(content: unknown): string {
   return content
     .map((part: { type?: string; text?: string }) => (part.type === "text" ? (part.text ?? "") : `[${part.type}]`))
     .join("\n");
+}
+
+/// Why a turn left its session one the model can't be sent again, which the CLI says itself:
+/// `long` when the session no longer fits the model's window, which a single message can't be
+/// compacted out of, and `refused` when the model stopped on it and the CLI asks for a new session.
+/// Each later turn of that session sends the same and fails the same, and is paid for.
+export function spentBy(result: { terminal_reason?: string; stop_reason?: string | null }): "long" | "refused" | undefined {
+  if (result.terminal_reason === "prompt_too_long") return "long";
+  if (result.stop_reason === "refusal") return "refused";
+  return undefined;
 }
 
 /// `maker` is the endpoint's, when the thread's Claude Code is pointed at another maker's.
