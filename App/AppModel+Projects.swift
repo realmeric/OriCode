@@ -403,6 +403,7 @@ extension AppModel {
         let wasSelected = deleted == selectedChatID || agents.contains { $0.id == selectedChatID }
         if deleted == besideChatID || agents.contains(where: { $0.id == besideChatID }) { besideChatID = nil }
         for agent in agents {
+            conversations[agent.id]?.forget()
             conversations[agent.id] = nil
             context.delete(agent)
         }
@@ -413,6 +414,7 @@ extension AppModel {
         }
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         // Its events can't find it through the conversation any more.
+        conversations[deleted]?.forget()
         conversations[deleted] = nil
         forgetComposer(of: deleted)
         SentPictures.standard.forget(thread: deleted)

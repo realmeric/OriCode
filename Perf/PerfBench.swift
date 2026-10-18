@@ -291,11 +291,18 @@ enum PerfBench {
         var waited: [Double] = []
         var last = cpu()
         var i = 0
+        // Each beat at its own time from the first, and not `every` after the one before: a
+        // sleep's end waits for the main thread, which keeps the display's frames while the app
+        // streams (K-284), and the 300 beats took 4.6 s in place of 3.7, every one of those
+        // frames drawn and counted to the beats.
+        let first = ContinuousClock.now
+        var beat = 0
         while i < chars.count, !Task.isCancelled {
             let began = clock()
             for id in ids { stage.send("text", ["delta": .string(String(chars[i..<min(i + 40, chars.count)]))], to: id) }
             waited.append(clock() - began)
-            try await Task.sleep(for: .milliseconds(every))
+            beat += 1
+            try await Task.sleep(until: first + .milliseconds(every * beat), tolerance: .zero)
             let now = cpu()
             costs.append(now - last)
             last = now

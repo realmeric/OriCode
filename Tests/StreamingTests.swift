@@ -148,13 +148,14 @@ struct StreamingTests {
         conversation.flush()
         #expect(try storedText() == "One")
         delta(" two", in: conversation)
-        try await Task.sleep(for: .milliseconds(50))
         delta(" three", in: conversation)
-        delta(" four", in: conversation)
-        // Shown, and nothing of the store's touched for it.
+        try await Task.sleep(for: .milliseconds(50))
+        // Shown at the frame, and nothing of the store's touched for it.
         #expect(conversation.items.last?.text == "One two three")
         #expect(!context.hasChanges)
-        // A thread reading this one takes what's held too, and the thread's date stays.
+        // A thread reading this one takes what's held for the next frame too, and the thread's
+        // date stays.
+        delta(" four", in: conversation)
         let was = chat.updatedAt
         conversation.saveHeld()
         #expect(try storedText() == "One two three four")

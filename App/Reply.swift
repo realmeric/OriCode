@@ -44,11 +44,15 @@ struct Reply: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var blocks: [String] {
+    private var blocks: [String] { Self.blocks(of: id, text: text) }
+
+    /// The reply's text cut into its blocks, kept for its next body: a stream asks how many
+    /// there are as it shows a delta, and the body that follows finds them cut.
+    static func blocks(of id: UUID, text: String) -> [String] {
         let key = id as NSUUID
-        if let split = Self.splits.object(forKey: key), split.text == text { return split.blocks }
-        let blocks = Self.split(text)
-        Self.splits.setObject(Split(text: text, blocks: blocks), forKey: key)
+        if let split = splits.object(forKey: key), split.text == text { return split.blocks }
+        let blocks = split(text)
+        splits.setObject(Split(text: text, blocks: blocks), forKey: key)
         return blocks
     }
 
@@ -216,10 +220,14 @@ private struct ReplyBlock: View, Equatable {
                 // frame 10 ms after a paragraph, and code was laid out twice, plain and coloured.
                 // The reply's last block has stopped when no word has come for `pause`, though
                 // the turn runs on: Claude writes a tool's input for tens of seconds after its
-                // last sentence, which reads as finished and is.
+                // last sentence, which reads as finished and is. Then in a frame the clock has
+                // room in: 40 lines of code made again cost 13 ms, and beside another stream or
+                // a block starting it was two frames.
                 .task(id: Stop(length: growing ? source.utf8.count : nil, awaited: awaited)) {
                     guard !awaited else { return }
                     try? await Task.sleep(for: growing ? Reply.pause : Conversation.frame)
+                    guard !Task.isCancelled else { return }
+                    await StreamClock.shared.frameToMake()
                     if !Task.isCancelled { made = true }
                 }
         }

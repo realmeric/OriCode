@@ -42,6 +42,7 @@ MEASURES = [
     ('stream.settle.worst.ms', 'stream1', r'SETTLE into one thread \(100 turns behind\)', r'worst frame ([0-9.]+)', True),
     ('stream2.delta.ms', 'stream2', r'STREAM into both of a pair \(100 turns behind\)', r'([0-9.]+) ms a beat', False),
     ('stream2.over16', 'stream2', r'STREAM into both of a pair \(100 turns behind\)', r'over 16\.7ms (\d+)', False),
+    ('stream2.dropped', 'stream2', r'STREAM into both of a pair \(100 turns behind\)', r'frames dropped (\d+)', False),
     ('codesettle.ms', 'codesettle', r'CODESETTLE \d', r': ([0-9.]+) ms in 300ms', False),
     ('codesettle.worst.ms', 'codesettle', r'CODESETTLE \d', r'worst frame ([0-9.]+)', False),
     ('scroll.wheel.p95.ms', 'scroll', r'SCROLL one thread, round \d, wheel 90pt', r'p95 ([0-9.]+)', False),

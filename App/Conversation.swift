@@ -258,6 +258,139 @@ final class LiveText {
     fileprivate(set) var text = ""
 }
 
+/// The display's frame, at which every thread's held deltas are shown at once: two replies
+/// streaming side by side are laid out and committed once a frame, and not each at a moment of
+/// its own that cuts the frame in two. Past the open thread's stream a frame does one costly
+/// thing at most: the thread beside growing, or a reply's block made again. It runs only while
+/// a delta is held or a block waits.
+@MainActor
+final class StreamClock: NSObject {
+    static let shared = StreamClock()
+    /// Ticks when told to, as a test does, and never by itself.
+    private let manual: Bool
+    private var link: CADisplayLink?
+    private var waiting: [Conversation] = []
+    /// Blocks waiting for a frame to be made again in, oldest first.
+    private var makers: [(id: UUID, resume: CheckedContinuation<Void, Never>)] = []
+    private var count = 0
+    /// The frame each thread shown every other one was last shown in, while that's recent.
+    private var shown: [ObjectIdentifier: Int] = [:]
+    /// A frame already full before anything shows in it: the one after a block was made again,
+    /// whose drawing spills into it, or the one a new row was added for.
+    private var fullAt = Int.min
+
+    init(manual: Bool = false) {
+        self.manual = manual
+        super.init()
+        guard !manual else { return }
+        // A link made on a display that's gone, or that the window has left, keeps the wrong
+        // time or none, and what's held would wait for the next event recorded.
+        for name in [NSApplication.didChangeScreenParametersNotification, NSWindow.didChangeScreenNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.restart() }
+            }
+        }
+    }
+
+    func wait(for conversation: Conversation) {
+        guard !waiting.contains(where: { $0 === conversation }) else { return }
+        waiting.append(conversation)
+        start()
+    }
+
+    /// Returns in a frame with room for a block to be made again in, one block a frame: made
+    /// beside another stream growing, or with a block starting, it cost two frames.
+    func frameToMake() async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { resume in
+                makers.append((id, resume))
+                start()
+            }
+        } onCancel: {
+            Task { @MainActor in self.release(id) }
+        }
+    }
+
+    /// A row was added to a transcript on screen, which costs the coming frame 10 ms.
+    func fill() {
+        fullAt = count + 1
+    }
+
+    func forget(_ conversation: Conversation) {
+        waiting.removeAll { $0 === conversation }
+        shown[ObjectIdentifier(conversation)] = nil
+    }
+
+    private func release(_ id: UUID) {
+        guard let index = makers.firstIndex(where: { $0.id == id }) else { return }
+        makers.remove(at: index).resume.resume()
+    }
+
+    private func start() {
+        guard link == nil, !manual else { return }
+        // The display the window is on, which mainWindow doesn't say while the app is in the
+        // background. A view's own link would stop with its window, and a window can close
+        // mid-stream.
+        let window = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
+        guard let screen = window?.screen ?? NSScreen.main else {
+            // No display to keep time by: everything at once.
+            for conversation in waiting { conversation.showHeld() }
+            waiting = []
+            while !makers.isEmpty { makers.removeFirst().resume.resume() }
+            return
+        }
+        let link = screen.displayLink(target: self, selector: #selector(frame))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    private func restart() {
+        guard let link else { return }
+        link.invalidate()
+        self.link = nil
+        start()
+    }
+
+    @objc private func frame() {
+        tick()
+    }
+
+    func tick() {
+        count += 1
+        // The open thread every frame. A block it starts fills the frame, as a row added and
+        // what a block made again the frame before has left to draw already have; a block that
+        // would start in a full frame waits for the next with room.
+        var busy = fullAt == count
+        for conversation in waiting where !conversation.everyOtherFrame() {
+            if conversation.showHeld(startingAtMost: busy ? 0 : 1) { busy = true }
+        }
+        for conversation in waiting where conversation.everyOtherFrame() {
+            let id = ObjectIdentifier(conversation)
+            guard Self.besideShows(since: shown[id].map { count - $0 }, busy: busy) else { continue }
+            conversation.showHeld(startingAtMost: busy ? 0 : 1)
+            shown[id] = count
+            busy = true
+        }
+        if !busy, !makers.isEmpty {
+            makers.removeFirst().resume.resume()
+            fullAt = count + 1
+        }
+        waiting.removeAll { !$0.holds }
+        shown = shown.filter { count - $1 < 3 }
+        guard waiting.isEmpty, makers.isEmpty else { return }
+        link?.invalidate()
+        link = nil
+    }
+
+    /// Whether the thread beside shows in this frame, last shown `since` frames ago: every other
+    /// frame, a frame later when this one is full, and never later than the third.
+    static func besideShows(since: Int?, busy: Bool) -> Bool {
+        let since = since ?? 2
+        return since >= 3 || since >= 2 && !busy
+    }
+}
+
 /// One thread's transcript: the stored events replayed into items, then kept current
 /// from the engine's live events. Streaming text lands in one event per assistant
 /// message, updated in place.
@@ -353,14 +486,19 @@ final class Conversation {
             live.id = open?.event.id
         }
     }
-    /// Deltas for the open item that haven't reached it yet: a fast stream reaches the view at
-    /// most once a frame.
+    /// Deltas for the open item that haven't reached it yet: a stream reaches the view at the
+    /// display's frame, once a frame at most.
     private var held = ""
-    /// Whether streaming text is shown every other frame, asked at each delta: so while the
+    /// A reply's first deltas in the thread beside, waiting for a frame with room for its row.
+    @ObservationIgnored private var opening: (kind: String, text: String)?
+    /// Whether streaming text is shown every other frame, asked at each frame: so while the
     /// thread is drawn beside an open one that's working too, since two replies laid out in one
     /// frame don't fit it.
     @ObservationIgnored var everyOtherFrame: () -> Bool = { false }
-    private var holding = false
+    /// Whether the thread is on screen, where a block its reply starts costs a frame's room.
+    @ObservationIgnored var drawn: () -> Bool = { true }
+    /// The frame its deltas wait for.
+    @ObservationIgnored var clock = StreamClock.shared
     private var shownAt = ContinuousClock.now
     private var unsaved = false
     /// Whether the open item's text is ahead of its event and of ⌘K's fold of it.
@@ -715,6 +853,12 @@ final class Conversation {
             let delta = event.body["delta"]?.string ?? ""
             if let open, open.kind == event.name {
                 hold(delta)
+            } else if everyOtherFrame() || opening?.kind == event.name {
+                // A new row costs its frame 10 ms, so beside the open thread it waits for one with
+                // room, and the deltas after it join it there, paced or not, so the reply stays one row.
+                if let opening, opening.kind != event.name { openHeld() }
+                opening = (event.name, (opening?.text ?? "") + delta)
+                clock.wait(for: self)
             } else {
                 record(event.name, ["event": .string(event.name), "delta": .string(delta)], keepOpen: true)
             }
@@ -817,7 +961,9 @@ final class Conversation {
         chat.started = true
         if !chat.titleIsCustom, chat.title == Chat.untitled { chat.title = Chat.title(from: run.command) }
         // A reply streaming meanwhile goes on in its own item, above the block, which is where
-        // its event, written before the block's, puts it after a relaunch.
+        // its event, written before the block's, puts it after a relaunch. A reply whose row
+        // waits for the clock gets it first.
+        writeHeld()
         let streaming = open
         shellEvents[id] = record("shell", run.body, id: id)
         open = streaming
@@ -901,30 +1047,76 @@ final class Conversation {
         flush()
     }
 
-    /// A delta waits for the frame after the last one shown; one after a pause shows at once.
-    /// Every other frame while `everyOtherFrame` says so.
+    /// A delta waits for the display's next frame, where every thread's are shown together.
     private func hold(_ delta: String) {
         held += delta
-        let wait = Self.frame * (everyOtherFrame() ? 2 : 1) - shownAt.duration(to: .now)
-        guard wait > .zero else { return showHeld() }
-        guard !holding else { return }
-        holding = true
-        Task {
-            try? await Task.sleep(for: wait, tolerance: .milliseconds(1))
-            showHeld()
+        clock.wait(for: self)
+    }
+
+    /// Whether deltas wait for the clock.
+    fileprivate var holds: Bool { !held.isEmpty || opening != nil }
+
+    /// What waits for the clock dropped unrecorded, for a thread being deleted, whose chat a
+    /// row recorded later would point at.
+    func forget() {
+        opening = nil
+        held = ""
+        clock.forget(self)
+    }
+
+    /// The reply's row, made with the deltas that waited for it: with its first block alone
+    /// unless it's `whole`, the rest held for the frames after.
+    private func openHeld(whole: Bool = true) {
+        guard let opening else { return }
+        self.opening = nil
+        var text = opening.text
+        var rest = ""
+        if !whole, opening.kind == "text", let first = Reply.split(text).first, first.utf8.count < text.utf8.count, text.hasPrefix(first) {
+            rest = String(text.dropFirst(first.count))
+            text = first
         }
+        record(opening.kind, ["event": .string(opening.kind), "delta": .string(text)], keepOpen: true)
+        held = rest
     }
 
     static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
 
     /// The held deltas onto the open item, for the view. Its event and ⌘K's fold of it wait for
     /// `writeHeld`: the whole reply encoded and folded at every frame cost more with each one.
-    private func showHeld() {
-        holding = false
-        guard let open, !held.isEmpty else { return }
+    /// A row added, or a block starting in a reply on screen, costs its frame 5 to 10 ms more,
+    /// so the clock lets a frame start one block at most, or none when it's full: what's held
+    /// shows as far as the next block's start and the rest waits for a frame with room. All of
+    /// it when nothing is said. Whether a block or a row started.
+    @discardableResult
+    fileprivate func showHeld(startingAtMost allowed: Int? = nil) -> Bool {
+        if opening != nil {
+            guard allowed != 0 else { return false }
+            openHeld(whole: allowed == nil)
+            return true
+        }
+        guard let open, !held.isEmpty else { return false }
         let current = stored[open.item]
-        let text = (current.text ?? "") + held
-        held = ""
+        let before = current.text ?? ""
+        var text = before + held
+        var rest = ""
+        var starts = false
+        if open.kind == "text", drawn() {
+            let had = Reply.blocks(of: current.id, text: before).count
+            let blocks = Reply.blocks(of: current.id, text: text)
+            starts = blocks.count > had
+            // Up to where the block after those allowed starts, when the blocks before it are
+            // the text's start.
+            if let allowed, had > 0, blocks.count > had + allowed {
+                let kept = blocks.prefix(had + allowed).joined()
+                if text.hasPrefix(kept) {
+                    guard kept.utf8.count > before.utf8.count else { return false }
+                    rest = String(text.dropFirst(kept.count))
+                    text = kept
+                    starts = allowed > 0
+                }
+            }
+        }
+        held = rest
         shownAt = .now
         stored[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
         live.text = text
@@ -933,6 +1125,7 @@ final class Conversation {
         ahead = true
         unsaved = true
         if wroteAt.duration(to: shownAt) >= keeps { write() }
+        return starts
     }
 
     /// The held deltas shown, and the open item's text onto its event, which the store takes at
@@ -1006,6 +1199,7 @@ final class Conversation {
             said?.add(event.id, in: chat.id, user: kind == "user", text: body[kind == "user" ? "text" : "delta"]?.string ?? "")
         }
         if keepOpen, let last = items.indices.last { open = (last, event, kind) }
+        if drawn() { clock.fill() }
         if !keepOpen { flush() }
         return event
     }

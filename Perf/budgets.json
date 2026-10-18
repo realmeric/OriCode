@@ -105,30 +105,41 @@
     "stream2.delta.ms": {
       "what": "two streams at once, main thread a delta",
       "unit": "ms",
-      "measured": 5.75,
+      "measured": 4.75,
       "range": [
-        5.75,
-        6.38
+        4.59,
+        4.75
       ],
-      "budget": 7.02,
-      "date": "2026-10-13",
-      "ceiling": true,
-      "note": "Two transcripts streaming at once don't hold 8.3 ms a frame (K-246): a ceiling, not a pass.",
-      "sessions": 5
+      "budget": 5.23,
+      "date": "2026-10-19",
+      "note": "K-284: shown at the display's frame, with the beats of the bench's reply each at its own time. Read beside the frames dropped, as one stream's is: a frame the compositor drops is a delta's work not done, so dropping two where 0.4.0 dropped thirty costs a little more a delta.",
+      "sessions": 6
     },
     "stream2.over16": {
-      "what": "two streams at once, frames over 16.7 ms of about 205",
+      "what": "two streams at once, frames over 16.7 ms of about 175",
       "unit": "count",
-      "measured": 9.0,
+      "measured": 3.0,
       "range": [
-        6.0,
-        10.0
+        1.0,
+        3.0
       ],
-      "budget": 14,
-      "date": "2026-10-13",
-      "ceiling": true,
-      "note": "Two streams at once drop frames (K-246): a ceiling, not a pass.",
-      "sessions": 5
+      "budget": 3,
+      "date": "2026-10-19",
+      "note": "Held to REA-224's bar and not to the day's margin: the frames left over 16.7 ms are the reply's row and its first blocks as the stream starts.",
+      "sessions": 6
+    },
+    "stream2.dropped": {
+      "what": "two streams at once, frames dropped in three seconds",
+      "unit": "count",
+      "measured": 2.0,
+      "range": [
+        1.0,
+        2.5
+      ],
+      "budget": 5,
+      "date": "2026-10-19",
+      "note": "REA-224 asks no more than one stream drops alone (stream.dropped), 8 in the same session.",
+      "sessions": 4
     },
     "codesettle.ms": {
       "what": "the settle after a 120-line code block, main thread",

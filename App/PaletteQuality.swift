@@ -152,6 +152,7 @@ extension AppModel {
         if project.chats.contains(where: { $0.id == besideChatID }) { besideChatID = nil }
         for chat in project.chats {
             let id = chat.id.uuidString
+            conversations[chat.id]?.forget()
             conversations[chat.id] = nil
             forgetComposer(of: chat.id)
             SentPictures.standard.forget(thread: chat.id)

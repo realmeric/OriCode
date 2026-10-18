@@ -43,12 +43,17 @@ extension AppModel {
     }
 
     /// With two threads drawn and both at work, the open one streams every frame and the other
-    /// every second one: two replies growing in the same frame cost more than the frame has.
+    /// every second one: two replies growing in the same frame cost more than the frame has. A
+    /// block starting in a reply weighs on the frame only in a thread that's drawn.
     func pace(_ conversation: Conversation) {
         let id = conversation.chat.id
         conversation.everyOtherFrame = { [weak self] in
             guard let self, id == besideChatID, roomForTwo else { return false }
             return currentConversation?.running == true
+        }
+        conversation.drawn = { [weak self] in
+            guard let self else { return false }
+            return id == selectedChatID || id == besideChatID && roomForTwo
         }
     }
 
