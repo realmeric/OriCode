@@ -132,6 +132,7 @@ extension AppModel {
         conversation.userSent(text, previews: shown.map { $0.preview }, id: id)
         conversation.pictures?.keep(shown.map { $0.image }, thread: chat.id, message: id)
         chat.turnFrom = sender?.id
+        planTurnStarts(in: chat)
         startTurn(in: chat, text: text, images: images, from: sender)
         return true
     }
@@ -398,6 +399,8 @@ extension AppModel {
         }
         let conversation = conversation(for: chat)
         conversation.handBackQueue()
+        holdPlan(of: chat)
+        if sparing == nil { stoppedByUser.insert(chat.id) }
         stopOpened(by: chat, sparing: sparing)
         if !conversation.running, !conversation.waitingAfterQuit {
             for head in conversation.heads.list where !head.ending {
@@ -595,8 +598,10 @@ extension AppModel {
     /// workflows.
     func engineStopped() {
         // A thread waiting on you from before a quit has no CLI to lose.
+        var cut: [UUID] = []
         for conversation in conversations.values where !conversation.waitingAfterQuit {
             let midTurn = conversation.running
+            if midTurn { cut.append(conversation.chat.id) }
             conversation.stopped()
             guard midTurn else { continue }
             conversation.note("The engine stopped in the middle of this turn.")
@@ -617,6 +622,9 @@ extension AppModel {
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]
         for conversation in conversations.values { withAnimation(Motion.fade) { conversation.handBackAll() } }
+        // A task whose thread's turn went with it is stuck, which its owner hears once the engine
+        // is back; before the waits wake, which would take that turn as one that ended by itself.
+        for id in cut { planTurnEnded(id, stopped: true) }
         // Every wait on a thread is over: its turn went with the engine.
         for id in turnWaits.keys { turnEnded(id) }
         holdWhileWorking()

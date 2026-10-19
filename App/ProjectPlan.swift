@@ -86,7 +86,7 @@ struct ProjectPlan {
 /// and written to it, and what the user does to it on ⌘⇧I's screen. The plan changes on those calls
 /// and clicks alone, and the screen follows the store, so nothing polls.
 extension AppModel {
-    static let planAsks: Set<String> = ["plan.read", "plan.add", "plan.claim", "plan.update"]
+    static let planAsks: Set<String> = ["plan.read", "plan.add", "plan.claim", "plan.update", "plan.wait"]
     /// What a task's note keeps: a line or two the user reads under it.
     static let longestNote = 500
     /// What a task's title and what done means for it keep. Both go ahead of each message its
@@ -95,6 +95,8 @@ extension AppModel {
     static let longestDone = 500
     /// The done tasks read_plan gives of the asking thread's plan, the latest done first.
     static let doneRead = 10
+    /// A stuck task's note when the user stopped its thread, which agents leave to the user.
+    static let stoppedByYou = "Stopped by you."
 
     func answerPlan(_ event: EngineEvent, from thread: UUID) throws -> JSON {
         guard let asking = chat(withID: thread), let project = planProject(of: asking) else { throw Refused(why: "The thread that asked is gone.") }
@@ -103,7 +105,7 @@ extension AppModel {
         case "plan.read":
             return readPlan(for: asking, in: project)
         case "plan.add":
-            return try addTasks(body["tasks"]?.array ?? [], in: project, for: asking)
+            return try addTasks(body["tasks"]?.array ?? [], in: project, for: asking, run: body["run"]?.bool == true)
         case "plan.claim":
             let task = try planTask(body["task"]?.string ?? "", in: project)
             try claim(task, for: asking, in: ProjectPlan(project))
@@ -133,7 +135,9 @@ extension AppModel {
     /// What a turn's send says of the task the thread works, which its agent hears ahead of the message.
     func taskParams(for chat: Chat) -> JSON? {
         guard let task = heldTasks(of: chat).first else { return nil }
-        return ["id": .string(task.name), "title": .string(task.title), "done": .string(task.doneWhen)]
+        var params: [String: JSON] = ["id": .string(task.name), "title": .string(task.title), "done": .string(task.doneWhen)]
+        if task.owner != nil { params["run"] = true }
+        return .object(params)
     }
 
     private func planTask(_ named: String, in project: Project) throws -> PlanTask {
@@ -173,12 +177,15 @@ extension AppModel {
 
     /// add_tasks: every task is checked before any is made, so a refusal adds none. A task waits
     /// on one in the plan, or on one of the same call by its title or by the id it's about to have.
-    private func addTasks(_ asked: [JSON], in project: Project, for asking: Chat) throws -> JSON {
+    /// With `run` each is checked as the thread it will open would be, and the asking thread runs
+    /// them: the ready ones start now, the rest as what they wait on is done.
+    private func addTasks(_ asked: [JSON], in project: Project, for asking: Chat, run: Bool = false) throws -> JSON {
         let plan = ProjectPlan(project)
         guard !asked.isEmpty else { throw Refused(why: "add_tasks needs `tasks`, each with its title and what done means.") }
         let first = plan.nextNumber
         var titles: [String: Int] = [:]
         var made: [(number: Int, title: String, done: String, names: [String])] = []
+        var runs: [ThreadRequest] = []
         for (offset, task) in asked.enumerated() {
             let title = task["title"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let done = task["done"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -187,6 +194,7 @@ extension AppModel {
             if let why = Self.whyTooLong(title: title, done: done) { throw Refused(why: why) }
             guard titles.updateValue(first + offset, forKey: title.lowercased()) == nil else { throw Refused(why: "Two of these tasks are called \(title). Give each its own title.") }
             made.append((first + offset, title, done, (task["waitsOn"]?.array ?? []).compactMap(\.string)))
+            if run { runs.append(try runRequest(task, title: title, from: asking)) }
         }
         var waits: [Int: [Int]] = [:]
         for task in made {
@@ -202,15 +210,50 @@ extension AppModel {
         for task in made where plan.loops(task.number, waitingOn: waits[task.number] ?? [], extra: waits) {
             throw Refused(why: "\(task.title) would wait on itself, through what it waits on. A plan's tasks can't wait in a circle.")
         }
-        for task in made {
+        for (offset, task) in made.enumerated() {
             let added = PlanTask(number: task.number, title: task.title, doneWhen: task.done, waitsOn: Array(Set(waits[task.number] ?? [])).sorted())
+            if run {
+                let request = runs[offset]
+                added.owner = asking.id
+                added.brief = request.text
+                added.agent = request.agent
+                added.model = request.model
+                added.effort = request.effort
+                added.worktree = request.worktree
+            }
             context.insert(added)
             project.tasks.append(added)
         }
         project.lastTaskNumber = first + made.count - 1
+        if run { asking.planHeld = false }
         save()
         let now = ProjectPlan(project)
-        return ["project": .string(project.name), "added": .array(now.tasks.filter { $0.number >= first }.map { taskJSON($0, in: now, for: asking) })]
+        var answer: [String: JSON] = ["project": .string(project.name), "added": .array(now.tasks.filter { $0.number >= first }.map { taskJSON($0, in: now, for: asking) })]
+        if run {
+            let starting = now.tasks.filter { $0.number >= first && now.state(of: $0) == .ready }.map(\.name)
+            answer["note"] = .string("\(starting.isEmpty ? "None starts yet" : "\(starting.joined(separator: " and ")) \(starting.count == 1 ? "starts" : "start") now"), each as a thread under this one, and the rest as what they wait on is done and merged. Wait for them with wait_plan.")
+            runPlans()
+        }
+        return .object(answer)
+    }
+
+    /// The thread a task to run will open, checked now as open_thread would check it but for the
+    /// ceiling, which it meets when it starts.
+    private func runRequest(_ task: JSON, title: String, from asking: Chat) throws -> ThreadRequest {
+        let message = task["message"]?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !message.isEmpty else { throw Refused(why: "With run, each task needs the first message its thread is sent, in `message`: \(title) has none.") }
+        var request = ThreadRequest(parent: asking.id, text: message)
+        request.title = title
+        request.agent = task["agent"]?.string?.nonEmpty
+        request.model = task["model"]?.string?.nonEmpty
+        request.effort = task["effort"]?.string?.nonEmpty
+        request.worktree = task["worktree"]?.bool ?? false
+        do {
+            _ = try opening(for: request, ceiling: false)
+        } catch let refused as Refused {
+            throw Refused(why: "\(title): \(refused.why)")
+        }
+        return request
     }
 
     /// update_task: what it names changes, all of it or none.
@@ -266,14 +309,17 @@ extension AppModel {
             task.state = state!
             // A thread that ends a task nobody had taken has worked it.
             if task.thread == nil { task.thread = asking.id }
+            if task.owner != nil { task.heard = false }
         case "ready":
             task.state = "open"
             task.thread = nil
+            task.unmerged = false
         default:
             break
         }
         task.updatedAt = .now
         save()
+        if task.owner != nil { planChanged(task) }
         return taskJSON(task, in: ProjectPlan(project), for: asking)
     }
 
@@ -292,6 +338,10 @@ extension AppModel {
             "waitsOn": .array(task.waitsOn.compactMap { number in plan.tasks.first { $0.number == number } }.map { .string($0.name) }),
         ]
         if state == .waiting { json["waitingOn"] = .array(plan.waitingOn(task).map { .string($0.name) }) }
+        if let owner = task.owner {
+            json["runBy"] = self.chat(withID: owner).map { ["id": .string($0.id.uuidString), "title": .string($0.title)] } ?? ["id": .string(owner.uuidString), "deleted": true]
+            if task.unmerged { json["unmerged"] = true }
+        }
         if !task.note.isEmpty { json["note"] = .string(task.note) }
         if let id = task.thread {
             json["thread"] = self.chat(withID: id).map { ["id": .string($0.id.uuidString), "title": .string($0.title)] } ?? ["id": .string(id.uuidString), "deleted": true]
@@ -352,18 +402,23 @@ extension AppModel {
             stop(in: thread)
         }
         task.state = "stuck"
-        task.note = "Stopped by you."
+        task.note = Self.stoppedByYou
         task.updatedAt = .now
+        if task.owner != nil { task.heard = false }
         save()
+        if task.owner != nil { planChanged(task) }
     }
 
-    /// Reopen: ready again for any thread, or waiting on what it waits on.
+    /// Reopen: ready again for any thread, or waiting on what it waits on. A task its plan runs
+    /// starts again in a new thread once it's ready.
     func reopenTask(_ task: PlanTask) {
         task.state = "open"
         task.thread = nil
         task.note = ""
+        task.unmerged = false
         task.updatedAt = .now
         save()
+        if task.owner != nil { runPlans() }
     }
 
     /// ⌘K's way to what a task's row on ⌘⇧I offers: Stop while it works, Reopen once it's done or
@@ -392,9 +447,12 @@ extension AppModel {
         for other in project.tasks where other.waitsOn.contains(task.number) {
             other.waitsOn.removeAll { $0 == task.number }
         }
+        let ran = task.owner != nil
         project.tasks.removeAll { $0.id == task.id }
         context.delete(task)
         save()
+        // A task its plan runs that waited on it may start now.
+        if ran || project.tasks.contains(where: { $0.owner != nil }) { movePlans() }
     }
 }
 
@@ -511,7 +569,11 @@ private struct PlanLine: View {
         var parts = [task.name]
         switch state {
         case .waiting:
-            parts.append("Waits on " + plan.waitingOn(task).map(\.name).joined(separator: ", "))
+            parts.append("Waits on " + plan.waitingOn(task).map { $0.state == "stuck" ? "\($0.name) (stuck)" : $0.name }.joined(separator: ", "))
+        case .ready where task.owner != nil && thread == nil:
+            // Its plan starts it once what it waited on is merged too.
+            let unmerged = task.waitsOn.compactMap { number in plan.tasks.first { $0.number == number && $0.unmerged }?.name }
+            parts.append(unmerged.isEmpty ? task.doneWhen : "Starts once \(unmerged.joined(separator: " and ")) \(unmerged.count == 1 ? "is" : "are") merged")
         default:
             // A thread named as its task, as an opener names one, isn't said twice.
             if let thread, thread.title.caseInsensitiveCompare(task.title) != .orderedSame { parts.append(thread.title) }

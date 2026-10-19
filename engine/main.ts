@@ -25,6 +25,7 @@ import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
+import { folderCommit } from "./merge.ts";
 import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
 import { Follow } from "./follow.ts";
 import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
@@ -351,7 +352,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// Every one of them at the thread's own level. `from` is the thread that sent the message
   /// through message_thread or open_thread, which the session is told ahead of it, and `task` the
   /// task of the plan the thread works, if it does.
-  async send({ rays, choose, mac, handover, concise, noFolder, from, task, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string } }) {
+  async send({ rays, choose, mac, handover, concise, noFolder, from, task, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean } }) {
     const agent = provider(params.provider);
     const budget = choose?.budget ?? 0;
     if (budget > 0 && (choose?.spent ?? 0) >= budget) throw new Error(`This thread has spent its ${usd(budget)} budget. Raise it or lift it in Settings › Agents to go on.`);
@@ -370,7 +371,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     // Claude Code keeps to the system prompt's `opening`; another agent with the tools hears it
     // again ahead of each message that starts a turn, unless workflows hand its parts to workers,
     // and a head that chooses hears `choosingLead` there, Claude Code's too.
-    const parts = head.tools && !running && !told ? (choice ? `${choosingLead(params.model, params.effort)}\n\n` : agent.id !== claude.id ? `${leading}\n\n` : "") : "";
+    const parts = head.tools && !running && !told ? (choice ? `${choosingLead(params.model, params.effort, choice.budget !== null)}\n\n` : agent.id !== claude.id ? `${leading}\n\n` : "") : "";
     // A thread working a task of the plan hears it ahead of each message that starts a turn.
     const held = task?.id && !running ? `${taskLead(task)}\n\n` : "";
     const text = `${opening}${told && !running ? `${told}\n\n` : ""}${parts}${held}${sender}${params.text}`;
@@ -569,8 +570,11 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { comments: commentsIn(await agent.oneShot(await cli(agent), cwd, prompt)) };
   },
 
-  async "worktree.add"({ cwd, slug, prefix }: { cwd: string; slug: string; prefix?: string }) {
-    return addWorktree(cwd, slug, prefix);
+  /// `from` is the folder of the thread it's opened from, whose files as they are it starts with,
+  /// uncommitted, when that folder is in the same repository.
+  async "worktree.add"({ cwd, slug, prefix, from }: { cwd: string; slug: string; prefix?: string; from?: string }) {
+    const at = from ? await folderCommit(from, cwd).catch(() => undefined) : undefined;
+    return addWorktree(cwd, slug, prefix, at);
   },
 
   async "worktree.loss"({ path, branch: branchName }: { path: string; branch: string }) {

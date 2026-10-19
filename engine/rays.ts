@@ -227,13 +227,15 @@ export function choosing(picked: Ray[], budget: number | null): string {
   return [
     "You run this thread: you choose which models do its work and how hard each one thinks, your own model and level included. The user doesn't pick them; they watch and talk to you. " +
       "list_agents gives every model you may use, on each agent that's ready, with its effort levels and each agent's plan windows where its CLI says them. " +
-      "When a task has parts that don't depend on each other, don't start on them yourself: first give each part a worker with start_worker, on the model and at the level that part needs, with a one-line reason the user reads, then bring their work together with worker_result, however small the parts are. " +
+      (budget !== null
+        ? "When a task has parts that don't depend on each other, don't start on them yourself: first give each part a worker with start_worker, on the model and at the level that part needs, with a one-line reason the user reads, then bring their work together with worker_result, however small the parts are. Workers that edit files work isolated, and you merge what you keep with merge_worker. "
+        : "When a task has parts, don't start on them yourself: write every part as a task of the project's plan with add_tasks and `run`, each with what it waits on, its first message, the agent, model and `effort` that part needs and a one-line `reason` the user reads, and a worktree for each that edits files while another does, however small the parts are. OriCode starts each as a full thread under you, which the user can write into and stop, once what it waits on is done and merged; wait for them with wait_plan, bring each one's work into your folder with merge_thread as it comes back, and once wait_plan says planDone, bring their results together. ") +
       "A quick model at low effort does something mechanical; a stronger model or a higher level does something hard. Spread the parts across agents where more than one is ready: each agent's plan has windows of its own, so a part on Codex leaves Claude's untouched. " +
-      "Keep for yourself what needs the whole picture. Workers that edit files work isolated, and you merge what you keep with merge_worker.",
+      "Keep for yourself what needs the whole picture.",
     "Your own model and level are yours to change with change_my_model, with a one-line reason the user reads: move up before a part that needs more thought than you're on, and back down once it's done. Starting low and moving up when the work asks for it is the point.",
     picked.length ? `The user picked these models for this thread, so lean to them: ${picked.map((ray) => `${ray.agent} ${ray.model}`).join(", ")}.` : "",
     budget !== null
-      ? `This thread may spend ${usd(budget)} in all, you and your workers together, as the agents report it; list_agents says what's left. OriCode stops everything at that line, starts no worker on an agent whose spending it can't count, and refuses open_thread and message_thread, since another thread's spending isn't this one's.`
+      ? `This thread may spend ${usd(budget)} in all, you and your workers together, as the agents report it; list_agents says what's left. OriCode stops everything at that line, starts no worker on an agent whose spending it can't count, and refuses open_thread, message_thread and add_tasks' run, since another thread's spending isn't this one's.`
       : "",
     "These tools are the oricode MCP server's; if they aren't among yours yet, load them with tool_search.",
   ]
@@ -477,9 +479,9 @@ export class Rays {
       case "read_plan":
         return this.read("plan.read", {});
       case "add_tasks":
-        if (!Array.isArray(args.tasks) || !args.tasks.length) return Promise.reject(new Error("add_tasks needs `tasks`, each with its title and what done means."));
-        // A task named by its number, 1, waits on T1 as "1" would: the app reads only strings.
-        return this.keep("plan.add", { tasks: args.tasks.map((task: any) => (task && Array.isArray(task.waitsOn) ? { ...task, waitsOn: task.waitsOn.map(String) } : task)) });
+        return this.addTasks(args);
+      case "wait_plan":
+        return this.waitPlan();
       case "claim_task":
         return this.keep("plan.claim", { task: required(args.task, "Name the task by its id, which read_plan gives.") });
       case "update_task":
@@ -755,6 +757,46 @@ export class Rays {
       return await askApp(name, { threadId: this.threadId, ...fields });
     } catch (error) {
       if (error instanceof Unanswered) throw new Error("OriCode took too long to answer. The plan may have changed, so read it with read_plan before you try again.");
+      throw error;
+    }
+  }
+
+  /// add_tasks, and with `run` a plan the app runs as threads under this one. A head that chooses
+  /// names each task's model and why, which ⌘I keeps as its choice once the app has taken them.
+  async addTasks(args: Record<string, any>): Promise<unknown> {
+    if (!Array.isArray(args.tasks) || !args.tasks.length) throw new Error("add_tasks needs `tasks`, each with its title and what done means.");
+    const run = args.run === true;
+    if (run) this.uncounted("add_tasks' run");
+    // A task named by its number, 1, waits on T1 as "1" would: the app reads only strings.
+    const tasks: Record<string, any>[] = args.tasks.map((task: any) => (task && Array.isArray(task.waitsOn) ? { ...task, waitsOn: task.waitsOn.map(String) } : task));
+    for (const task of run ? tasks : []) {
+      const title = String(task?.title ?? "").trim() || "a task";
+      required(task?.message, `With run, each task needs the first message its thread is sent, in \`message\`: ${title} has none.`);
+      if (!this.choice) continue;
+      required(task.model, `Name the model for ${title} in \`model\`, one of that agent's from list_agents.`);
+      required(task.reason, `Say why this model at this level for ${title} in \`reason\`, one line the user reads.`);
+    }
+    const answer = (await this.keep("plan.add", { tasks, ...(run ? { run: true } : {}) })) as { added?: { id?: string }[] };
+    if (run && this.choice) {
+      for (const [index, task] of tasks.entries()) {
+        const id = String(task.agent ?? "").trim() || this.choice.agent;
+        const agent = this.seam.provider(id);
+        const known = agent ? (await this.seam.models(agent).catch(() => [] as Model[])).find((listed) => listed.id === task.model) : undefined;
+        const named = typeof task.effort === "string" && task.effort ? task.effort : undefined;
+        const effort = named ?? (this.level && known?.efforts.includes(this.level) ? this.level : null);
+        const label = String(task.title).split("\n")[0].slice(0, 80);
+        event("head.chose", { threadId: this.threadId, worker: answer.added?.[index]?.id ?? label, agent: id, model: task.model, name: known?.name ?? task.model, effort, label, reason: String(task.reason).trim() });
+      }
+    }
+    return answer;
+  }
+
+  /// The app answers when a task the thread runs ends, or once the wait is up; nothing polls.
+  async waitPlan(): Promise<unknown> {
+    try {
+      return await askApp("plan.wait", { threadId: this.threadId }, longestTurnWait + 30_000);
+    } catch (error) {
+      if (error instanceof Unanswered) throw new Error("OriCode didn't say how the plan is doing. Nothing was changed, so call wait_plan again.");
       throw error;
     }
   }

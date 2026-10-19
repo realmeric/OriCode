@@ -184,7 +184,11 @@ export async function push(cwd: string): Promise<void> {
 
 /// A new branch checked out in `.worktrees/<slug>` inside the project, kept out of the
 /// project's status through .git/info/exclude rather than its .gitignore.
-export async function addWorktree(root: string, slug: string, prefix = "oricode/"): Promise<{ path: string; branch: string }> {
+/// `at`, a commit on the opener's HEAD, is what its files start as: the branch starts at that HEAD
+/// and they come in uncommitted, so nothing of the folder it was made from goes up with a push of the branch unless
+/// someone commits it. A merge of the branch later takes `at` as where it began, kept under
+/// `baseRef` so git doesn't collect it.
+export async function addWorktree(root: string, slug: string, prefix = "oricode/", at?: string): Promise<{ path: string; branch: string }> {
   const { appendFile, readFile } = await import("node:fs/promises");
   const gitDir = (await git(root, ["rev-parse", "--git-common-dir"])).trim();
   const exclude = `${gitDir.startsWith("/") ? gitDir : `${root}/${gitDir}`}/info/exclude`;
@@ -198,7 +202,17 @@ export async function addWorktree(root: string, slug: string, prefix = "oricode/
   await git(root, ["check-ref-format", "--branch", branchName]).catch(() => {
     throw new Error(`"${branchName}" isn't a name git takes for a branch. Change the prefix in Settings › Source control.`);
   });
-  await git(root, ["worktree", "add", "-b", branchName, path]);
+  await git(root, ["worktree", "add", "-b", branchName, path, ...(at ? [`${at}^`] : [])]);
+  if (at) {
+    try {
+      await git(root, ["update-ref", baseRef(branchName), at]);
+      await git(path, ["read-tree", "-u", "--reset", at]);
+      await git(path, ["reset", "-q"]);
+    } catch (error) {
+      await removeWorktree(root, path, branchName).catch(() => {});
+      throw error;
+    }
+  }
   // A fresh checkout runs without them; one that can't be copied doesn't undo the worktree.
   await copyIncluded(root, path).catch(() => {});
   return { path, branch: branchName };
@@ -240,4 +254,11 @@ export async function worktreeLoss(path: string, branchName: string): Promise<{ 
 export async function removeWorktree(root: string, path: string, branchName: string): Promise<void> {
   await git(root, ["worktree", "remove", "--force", path]);
   await git(root, ["branch", "-D", branchName]);
+  await git(root, ["update-ref", "-d", baseRef(branchName)]).catch(() => {});
+}
+
+/// Where a worktree's branch began when it started with its opener's folder, outside refs/heads
+/// so no push or branch list takes it.
+export function baseRef(branchName: string): string {
+  return `refs/oricode/base/${branchName}`;
 }

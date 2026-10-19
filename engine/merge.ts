@@ -2,7 +2,7 @@ import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runSettled } from "./child.ts";
-import { gitDeadline } from "./git.ts";
+import { baseRef, gitDeadline } from "./git.ts";
 import { gitRun, top } from "./review.ts";
 
 // A branch's work brought into a folder: a thread's worktree, or an isolated worker's, into the
@@ -58,6 +58,21 @@ export async function snapshot(root: string): Promise<string> {
   }
 }
 
+/// The folder as it is, as a commit on its HEAD that no branch holds, for a thread's worktree of
+/// `repository` to start with: a thread opened for a part sees what its opener's folder has,
+/// uncommitted edits and the work merged in from threads before it included. None when the folder
+/// is as HEAD has it, or is in another repository, whose commits the worktree can't start from.
+export async function folderCommit(folder: string, repository: string): Promise<string | undefined> {
+  const common = (cwd: string) => gitRun(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]).then((dir) => dir.trim());
+  if ((await common(folder)) !== (await common(repository))) return undefined;
+  const root = await top(folder);
+  const head = (await gitRun(root, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]).catch(() => "")).trim();
+  if (!head) return undefined;
+  const tree = await snapshot(root);
+  if (tree === (await gitRun(root, ["rev-parse", "HEAD^{tree}"])).trim()) return undefined;
+  return (await gitRun(root, ["-c", "commit.gpgsign=false", "commit-tree", tree, "-p", head, "-m", "The opener's folder as the thread opened"])).trim();
+}
+
 /// Merges `branch` into the folder `folder` is in. Throws, having written nothing, when git
 /// can't merge at all.
 export async function begin(folder: string, branch: string, label: string): Promise<Merge> {
@@ -65,7 +80,12 @@ export async function begin(folder: string, branch: string, label: string): Prom
   const head = await gitRun(root, ["rev-parse", "--verify", "-q", "HEAD^{commit}"]).catch(() => "");
   if (!head.trim()) throw new Error("This folder's repository has no commit yet, so nothing can be merged into it.");
   const tip = (await gitRun(root, ["rev-parse", "--verify", `${branch}^{commit}`])).trim();
-  const base = (await gitRun(root, ["merge-base", "HEAD", tip])).trim();
+  // A worktree started with its opener's folder merges against that folder as it was, which
+  // HEAD's merge base would take for edits on both sides; while the branch still grows from the
+  // HEAD it started on.
+  const started = (await gitRun(root, ["rev-parse", "--verify", "-q", `${baseRef(branch)}^{commit}`]).catch(() => "")).trim();
+  const from = started && (await gitRun(root, ["merge-base", "--is-ancestor", `${started}^`, tip]).then(() => true, () => false)) ? started : "";
+  const base = from || (await gitRun(root, ["merge-base", "HEAD", tip])).trim();
   const ours = await snapshot(root);
   const args = ["merge-tree", "--write-tree", "--name-only", "-z", `--merge-base=${base}`, ours, tip];
   const { stdout, stderr, error } = await runSettled("git", args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, timeout: gitDeadline(args), maxBuffer: 32 * 1024 * 1024 });

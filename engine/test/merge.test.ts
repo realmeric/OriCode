@@ -52,8 +52,8 @@ async function opener(t: { after: (fn: () => unknown) => void }) {
   const started = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line)).find((message) => message.method === "thread/start");
   const url: string = started.params.config["mcp_servers.oricode"].url;
   const threads = new Map<string, { id: string; title: string; worktree: string; branch: string }>();
-  const open = async (id: string, title: string) => {
-    const made = (await engine.request("worktree.add", { cwd, slug: id, prefix: "oricode/" })).result;
+  const open = async (id: string, title: string, from?: string) => {
+    const made = (await engine.request("worktree.add", { cwd, slug: id, prefix: "oricode/", ...(from ? { from } : {}) })).result;
     threads.set(id, { id, title, worktree: made.path, branch: made.branch });
     return made.path as string;
   };
@@ -137,6 +137,50 @@ test("an opener merges two threads that edited different files, both arrive unco
   // What the app refuses, the agent reads.
   assert.match((await merging("merge_thread", { thread: "t-none" })).answer.error, /No thread of this project/);
   assert.deepEqual(await call(url, "finish_merge", {}), { error: "This thread has no merge open." });
+});
+
+test("a worktree opened from a folder starts with the folder as it is, and merges back against it, not HEAD", async (t) => {
+  const { cwd, open, merging } = await opener(t);
+  // What came in from a thread before, uncommitted: primes.py, untracked, and an edit to README.md.
+  await writeFile(join(cwd, "primes.py"), "print([2, 3, 5])\n");
+  await writeFile(join(cwd, "README.md"), "# Sums\n\nAnd primes.\n");
+  const tests = await open("t-tests", "Test primes.py", cwd);
+  assert.equal(await readFile(join(tests, "primes.py"), "utf8"), "print([2, 3, 5])\n");
+  assert.equal(await readFile(join(tests, "README.md"), "utf8"), "# Sums\n\nAnd primes.\n");
+  // Nothing in the folder was committed, staged or moved to make it.
+  assert.equal(git(cwd, "log", "--oneline").trim().split("\n").length, 1);
+  assert.equal(git(cwd, "diff", "--cached", "--name-only"), "");
+  // The branch starts at HEAD and the folder's files are uncommitted there, so a push of it
+  // takes none of them.
+  assert.equal(git(tests, "rev-parse", "HEAD"), git(cwd, "rev-parse", "HEAD"));
+  assert.equal(git(tests, "status", "--porcelain"), " M README.md\n?? primes.py\n");
+  await writeFile(join(tests, "test_primes.py"), "def test_primes():\n    assert True\n");
+  // The folder moves on meanwhile: against HEAD, primes.py would be added on both sides, differently.
+  await writeFile(join(cwd, "primes.py"), "print([2, 3, 5, 7])\n");
+  const merged = await merging("merge_thread", { thread: "t-tests" });
+  assert.equal(merged.answer.merged, true);
+  assert.deepEqual(merged.answer.files, [{ path: "test_primes.py", added: 2, deleted: 0 }]);
+  assert.equal(await readFile(join(cwd, "primes.py"), "utf8"), "print([2, 3, 5, 7])\n");
+  assert.equal(await readFile(join(cwd, "test_primes.py"), "utf8"), "def test_primes():\n    assert True\n");
+  // Its branch and the base it kept went with the worktree.
+  assert.equal(git(cwd, "branch", "--list", "oricode/*"), "");
+  assert.equal(git(cwd, "for-each-ref", "refs/oricode"), "");
+  // A folder in another repository gives it nothing: its commits aren't this one's.
+  const other = await mkdtemp(join(tmpdir(), "oricode-merge-other-"));
+  git(other, "init", "-q", "-b", "main");
+  git(other, "-c", "user.name=Stand-in", "-c", "user.email=stand-in@example.com", "commit", "-q", "--allow-empty", "-m", "Other");
+  await writeFile(join(other, "other.txt"), "elsewhere\n");
+  const apart = await open("t-apart", "Apart", other);
+  assert.equal(git(apart, "rev-parse", "HEAD"), git(cwd, "rev-parse", "HEAD"));
+  assert.equal(git(apart, "status", "--porcelain"), "");
+  assert.equal(git(cwd, "for-each-ref", "refs/oricode"), "");
+  // A folder as HEAD has it starts its worktree at HEAD.
+  await rm(join(cwd, "primes.py"));
+  await rm(join(cwd, "test_primes.py"));
+  git(cwd, "checkout", "--", "README.md");
+  const plain = await open("t-plain", "Plain", cwd);
+  assert.equal(git(plain, "rev-parse", "HEAD"), git(cwd, "rev-parse", "HEAD"));
+  assert.equal(git(plain, "status", "--porcelain"), "");
 });
 
 test("a merge that meets a conflict stays open with its hunks, is finished once they're settled, and nothing else merges meanwhile", async (t) => {

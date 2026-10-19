@@ -23,12 +23,14 @@ extension AppModel {
     func checkCeiling() throws {
         let working = conversations.values.count(where: \.running)
         guard working >= threadsAtOnce else { return }
-        throw Refused(why: "\(working) threads are working, as many as the user allows at once in Settings › Agents. Wait for one with wait_thread or stop one, then try again.")
+        throw Refused(why: "\(working) threads are working, as many as the user allows at once in Settings › Agents. Wait for one with wait_thread or stop one, then try again.", full: true)
     }
 
     /// Why the app didn't do what a tool asked, in words the agent reads as the tool's error.
+    /// `full` is the ceiling's refusal, which a plan's task waits out.
     struct Refused: LocalizedError {
         let why: String
+        var full = false
         var errorDescription: String? { why }
     }
 
@@ -46,6 +48,8 @@ extension AppModel {
         var task: String?
         /// A mode tighter than the parent's, asked for by its id.
         var mode: String?
+        /// A level of its model's, which a plan's task names.
+        var effort: String?
 
         init(parent: UUID, text: String) {
             self.parent = parent
@@ -72,6 +76,7 @@ extension AppModel {
         let agent: ProviderInfo
         let model: String?
         let mode: String
+        let effort: String?
         /// Whether it works where its parent does, a worktree included.
         let beside: Bool
         /// The task of the plan it takes as it opens, by its id and name, and the project whose
@@ -115,27 +120,7 @@ extension AppModel {
     private func result(of event: EngineEvent, from thread: UUID) async throws -> JSON {
         switch event.name {
         case "thread.open":
-            let request = ThreadRequest(event.body, from: thread)
-            await readModels(for: request)
-            let opening = try opening(for: request)
-            var place: (path: String, branch: String)?
-            if request.worktree {
-                let slug = "t-" + UUID().uuidString.prefix(6).lowercased()
-                let prefix = UserDefaults.standard.string(forKey: NewThreads.branchPrefix) ?? NewThreads.defaultBranchPrefix
-                let reply = try await engine.request("worktree.add", ["cwd": .string(opening.project.path), "slug": .string(slug), "prefix": .string(prefix)])
-                guard let path = reply["path"]?.string, let branch = reply["branch"]?.string else { throw Refused(why: "Git made no worktree for it.") }
-                place = (path, branch)
-            }
-            let chat: Chat
-            do {
-                chat = try open(opening, request, in: place)
-            } catch {
-                if let place {
-                    _ = try? await engine.request("worktree.remove", ["cwd": .string(opening.project.path), "path": .string(place.path), "branch": .string(place.branch)])
-                }
-                throw error
-            }
-            refreshBranch(for: chat)
+            let (chat, opening) = try await openThread(ThreadRequest(event.body, from: thread))
             return Self.made(chat, on: opening.agent, opening)
         case "thread.message":
             return try message(event.body["thread"]?.string ?? "", text: event.body["text"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
@@ -153,12 +138,50 @@ extension AppModel {
             return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
         case "thread.read":
             return try await readThread(event.body["thread"]?.string ?? "", before: event.body["before"]?.int, for: thread)
+        case "plan.wait":
+            return try await waitPlan(from: thread)
+        case "plan.add" where event.body["run"]?.bool == true:
+            // Each task is checked as its thread would be, against the models its agent lists.
+            for task in event.body["tasks"]?.array ?? [] {
+                var request = ThreadRequest(parent: thread, text: "")
+                request.agent = task["agent"]?.string?.nonEmpty
+                request.model = task["model"]?.string?.nonEmpty
+                request.effort = task["effort"]?.string?.nonEmpty
+                await readModels(for: request)
+            }
+            return try answerPlan(event, from: thread)
         case _ where Self.planAsks.contains(event.name):
             return try answerPlan(event, from: thread)
         default:
             if MacHands.asks.contains(event.name) { return try await MacHands.answer(event, from: thread) }
             throw Refused(why: "OriCode doesn't know what \(event.name) asks for.")
         }
+    }
+
+    /// open_thread, and a plan's task starting: checked, its worktree made from the parent's
+    /// folder as it is when it asks for one, then made and sent its first message.
+    func openThread(_ request: ThreadRequest) async throws -> (Chat, Opening) {
+        await readModels(for: request)
+        let opening = try opening(for: request)
+        var place: (path: String, branch: String)?
+        if request.worktree {
+            let slug = "t-" + UUID().uuidString.prefix(6).lowercased()
+            let prefix = UserDefaults.standard.string(forKey: NewThreads.branchPrefix) ?? NewThreads.defaultBranchPrefix
+            let reply = try await engine.request("worktree.add", ["cwd": .string(opening.project.path), "slug": .string(slug), "prefix": .string(prefix), "from": .string(opening.parent.cwd)])
+            guard let path = reply["path"]?.string, let branch = reply["branch"]?.string else { throw Refused(why: "Git made no worktree for it.") }
+            place = (path, branch)
+        }
+        let chat: Chat
+        do {
+            chat = try open(opening, request, in: place)
+        } catch {
+            if let place {
+                _ = try? await engine.request("worktree.remove", ["cwd": .string(opening.project.path), "path": .string(place.path), "branch": .string(place.branch)])
+            }
+            throw error
+        }
+        refreshBranch(for: chat)
+        return (chat, opening)
     }
 
     /// What the tool answers: the thread as it was made, for the agent to tell the user, and the
@@ -173,10 +196,10 @@ extension AppModel {
         return .object(made)
     }
 
-    /// A named model is checked against its agent's list, which another agent's CLI gives only
-    /// once a menu has asked for it: asked here when none has.
+    /// A named model or level is checked against its agent's list, which another agent's CLI gives
+    /// only once a menu has asked for it: asked here when none has.
     private func readModels(for request: ThreadRequest) async {
-        guard request.model != nil, let id = request.agent ?? chat(withID: request.parent)?.providerID, models(of: id).isEmpty,
+        guard request.model != nil || request.effort != nil, let id = request.agent ?? chat(withID: request.parent)?.providerID, models(of: id).isEmpty,
               providers.first(where: { $0.id == id })?.state == .ready,
               let reply = try? await engine.request("models.list", ["provider": .string(id)]),
               let list = try? reply["models"]?.decode([ModelOption].self)
@@ -185,10 +208,11 @@ extension AppModel {
     }
 
     /// Checks a request before anything is made, so a refusal leaves no thread and no worktree.
-    func opening(for request: ThreadRequest) throws -> Opening {
+    /// Without `ceiling`, a plan's task is checked as it's added, to start later.
+    func opening(for request: ThreadRequest, ceiling: Bool = true) throws -> Opening {
         guard let parent = chat(withID: request.parent), let own = parent.project else { throw Refused(why: "The thread that asked is gone.") }
         guard !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Refused(why: "A thread needs its first message.") }
-        try checkCeiling()
+        if ceiling { try checkCeiling() }
 
         let id = request.agent ?? parent.providerID
         guard let agent = providers.first(where: { $0.id == id }) else {
@@ -228,6 +252,15 @@ extension AppModel {
             mode = asked
         }
 
+        if let effort = request.effort {
+            let levels = (model.flatMap { model in models(of: id).first { $0.id == model } } ?? models(of: id).first)?.efforts ?? []
+            guard levels.contains(effort) else {
+                throw Refused(why: levels.isEmpty
+                    ? "\(model ?? agent.name) has no effort levels OriCode knows of, so leave `effort` out."
+                    : "\(model ?? agent.name) has no level called \(effort). It has: \(levels.joined(separator: ", ")).")
+            }
+        }
+
         var project = own
         if let folder = request.folder {
             let path = URL(fileURLWithPath: (folder as NSString).expandingTildeInPath).standardizedFileURL.path
@@ -246,7 +279,7 @@ extension AppModel {
             task = (found.id, found.name, planned)
         }
         return Opening(
-            parent: parent, project: project, agent: agent, model: model, mode: mode,
+            parent: parent, project: project, agent: agent, model: model, mode: mode, effort: request.effort,
             beside: project.id == own.id && !request.worktree, task: task)
     }
 
@@ -282,6 +315,7 @@ extension AppModel {
             chat.fastMode = parent.fastMode && chat.model == parent.model
             if let effort = parent.effort, option(for: chat)?.efforts.contains(effort) ?? (chat.model == parent.model) { chat.effort = effort }
         }
+        if let effort = opening.effort { chat.effort = effort }
         // The name the agent gave it is the one it told the user, so the first message doesn't replace it.
         let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !title.isEmpty {
@@ -450,6 +484,8 @@ extension AppModel {
             return .object(answer)
         }
         conversations[id]?.saveHeld()
+        // A plan's owner that waited on a task's thread has heard how the task ended.
+        for task in projects.flatMap(\.tasks) where task.thread == id && task.owner == asking && (task.state == "done" || task.state == "stuck") { task.heard = true }
         let container = context.container
         let reply = await Task.detached(priority: .userInitiated) { OtherThreads.lastReply(of: id, in: ModelContext(container)) }.value
         answer["reply"] = reply.map(JSON.string) ?? .null
@@ -463,6 +499,7 @@ extension AppModel {
         guard conversations[id]?.running != true else { return }
         interrupting.remove(id)
         if let chat = conversations[id]?.chat { passHeld(by: chat) }
+        planTurnEnded(id)
         guard let waits = turnWaits.removeValue(forKey: id) else { return }
         for wait in waits.values {
             wait.timer.cancel()
@@ -578,6 +615,8 @@ struct TurnWait {
     let done: CheckedContinuation<Void, Never>
     let timer: Task<Void, Never>
     var waiter: UUID?
+    /// A wait_plan, kept under the thread that waits and woken when a task it runs ends.
+    var plan = false
 }
 
 /// What one thread did to another, as the line each of them stores: which act, whether this
@@ -586,7 +625,8 @@ struct ThreadAct: Equatable {
     /// `stoppedWith`: Stop on the opener reached the thread it opened. `merged`: the opener
     /// brought its work into its own folder. `allowed`, `denied`, `answered` and `passed`: the
     /// opener settled an ask of the thread's or sent it up (K-296).
-    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed }
+    /// `stuck`: a task of the plan this thread runs got stuck in the other, and what waits on it won't start (K-297).
+    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed, stuck }
 
     let act: Kind
     /// This thread did it; false when the other did it to this one.
@@ -642,6 +682,8 @@ struct ThreadAct: Equatable {
         case (.answered, false): "\(title) answered: \(what)"
         case (.passed, true): "Passed \(title)'s ask to \(to ?? "you"): \(what)"
         case (.passed, false): "\(title) passed this to \(to ?? "you"): \(what)"
+        case (.stuck, true): "Stuck on \(what)"
+        case (.stuck, false): "\(title) is stuck on \(what)"
         }
         return reason.isEmpty ? done : "\(done) · \(reason)"
     }

@@ -309,6 +309,10 @@ final class AppModel {
     @ObservationIgnored var pullWatches: [String: Task<Void, Never>] = [:]
     /// wait_thread's calls by the thread they wait on, each woken when that thread's turn ends.
     @ObservationIgnored var turnWaits: [UUID: [UUID: TurnWait]] = [:]
+    /// Tasks of a plan that runs whose thread is being made, a worktree say, so none starts twice.
+    @ObservationIgnored var startingTasks: Set<UUID> = []
+    /// Threads the user stopped whose turn hasn't ended yet, so a task of a plan there says so.
+    @ObservationIgnored var stoppedByUser: Set<UUID> = []
     /// How many times an open pull request has been found with no checks yet.
     @ObservationIgnored var pullLooks: [String: Int] = [:]
     /// Which threads the drawer lists; not kept, so a launch shows them all.
@@ -724,6 +728,7 @@ final class AppModel {
             tellWindow()
             readReview()
             pickUpAfterQuit()
+            movePlans()
             scheduleResumes()
             watchHeads()
             followAgents()

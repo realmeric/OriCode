@@ -802,6 +802,7 @@ final class Conversation {
 
     func sendFailed(_ message: String) {
         running = false
+        endedByItself = false
         handBackQueue()
         record("note", ["event": "note", "text": .string(message)])
         writeUnderTurn()

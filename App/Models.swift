@@ -90,6 +90,9 @@ final class Chat {
     /// The thread whose open_thread or message_thread started its latest turn, nil when the user
     /// did: Stop on that thread stops the turn, where a turn the user started stays theirs.
     var turnFrom: UUID?
+    /// It runs a plan and the user stopped it: nothing more of its plan starts and nothing is sent
+    /// to it until it works again, across a quit too (PlanRun.swift).
+    var planHeld: Bool = false
     /// The thread whose archive took it along, so restoring that one brings it back and one
     /// archived on its own stays.
     var archivedWith: UUID?
@@ -144,6 +147,19 @@ final class PlanTask {
     var state: String = "open"
     /// Where it stands, in its thread's words.
     var note: String = ""
+    /// The thread that runs it, when an agent added it with add_tasks' `run`: it starts as a thread
+    /// under that one once what it waits on is done (PlanRun.swift).
+    var owner: UUID?
+    /// What its thread is sent first and runs on, as its owner asked.
+    var brief: String = ""
+    var agent: String?
+    var model: String?
+    var effort: String?
+    var worktree: Bool = false
+    /// Its thread worked in a worktree its owner hasn't merged yet, which what waits on it waits for.
+    var unmerged: Bool = false
+    /// Whether its owner has heard how it ended.
+    var heard: Bool = true
     var createdAt: Date
     var updatedAt: Date
 

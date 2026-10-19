@@ -426,6 +426,7 @@ extension AppModel {
         SentPictures.standard.forget(thread: deleted)
         context.delete(chat)
         save()
+        planThreadDeleted(deleted)
         guard wasSelected, !besideTakesWindow() else { return }
         // The next thread in the same project if there is one, so deleting doesn't switch projects.
         let rest = chats.filter { $0.id != deleted && $0.openedBy != deleted }

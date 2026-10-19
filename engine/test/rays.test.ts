@@ -121,7 +121,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.equal(init.protocolVersion, "2025-06-18");
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
-    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task"],
+    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task", "wait_plan"],
   );
 
   const from = engine.lines.length;
@@ -512,6 +512,46 @@ test("a head that chooses is told so, lists every model it may use, starts a wor
   await engine.end();
 });
 
+test("a head that chooses fans out through a plan that runs: each task names its model and why, which ⌘I keeps, and wait_plan waits on the app", async (t) => {
+  const { engine, logs, send } = await chooser(t, "k297", { models: ["codex/gpt-small", "codex/gpt-large"], unread: [], keepOff: [], spent: 0 });
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k297");
+  const opened = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start").params;
+  const url: string = opened.config["mcp_servers.oricode"].url;
+  assert.match(opened.developerInstructions, /write every part as a task of the project's plan with add_tasks and `run`/);
+  assert.ok(choosingLead("gpt-small", "low").includes("add_tasks and `run`"));
+  assert.ok(choosingLead("gpt-small", "low", true).includes("start_worker"));
+
+  const tasks = [
+    { title: "Write a.py", done: "a.py runs", message: "Write a.py.", agent: "codex", model: "gpt-small", effort: "low", worktree: true, reason: "Mechanical, so small at low" },
+    { title: "Test a.py", done: "its tests pass", waitsOn: [1], message: "Test a.py.", model: "gpt-large", reason: "Tests need care, so large" },
+  ];
+  assert.match((await call(url, "add_tasks", { run: true, tasks: [{ title: "Write a.py", done: "x", model: "gpt-small", reason: "x" }] })).error, /^With run, each task needs the first message its thread is sent, in `message`: Write a\.py has none\./);
+  assert.match((await call(url, "add_tasks", { run: true, tasks: [{ title: "Write a.py", done: "x", message: "go", reason: "x" }] })).error, /^Name the model for Write a\.py in `model`/);
+  assert.match((await call(url, "add_tasks", { run: true, tasks: [{ title: "Write a.py", done: "x", message: "go", model: "gpt-small" }] })).error, /^Say why this model at this level for Write a\.py in `reason`/);
+  const from = engine.lines.length;
+  const adding = call(url, "add_tasks", { run: true, tasks });
+  const asked = await engine.until((line) => line.event === "plan.add", from);
+  assert.equal(asked.run, true);
+  assert.deepEqual(asked.tasks, tasks.map((task) => ("waitsOn" in task ? { ...task, waitsOn: ["1"] } : task)));
+  await engine.request("app.reply", { requestId: asked.requestId, result: { added: [{ id: "T1" }, { id: "T2" }] } });
+  assert.deepEqual(await adding, { added: [{ id: "T1" }, { id: "T2" }] });
+  // Each task's model and why go to the app for ⌘I, as a worker's do; the second at the head's level, which its model has.
+  const chose = engine.lines.slice(from).filter((line) => line.event === "head.chose").map(({ event, ...rest }) => rest);
+  assert.deepEqual(chose, [
+    { threadId: "k297", worker: "T1", agent: "codex", model: "gpt-small", name: "GPT Small", effort: "low", label: "Write a.py", reason: "Mechanical, so small at low" },
+    { threadId: "k297", worker: "T2", agent: "codex", model: "gpt-large", name: "GPT Large", effort: "low", label: "Test a.py", reason: "Tests need care, so large" },
+  ]);
+
+  const waitFrom = engine.lines.length;
+  const waiting = call(url, "wait_plan");
+  const wait = await engine.until((line) => line.event === "plan.wait", waitFrom);
+  assert.deepEqual({ ...wait, requestId: undefined }, { event: "plan.wait", threadId: "k297", requestId: undefined });
+  await engine.request("app.reply", { requestId: wait.requestId, result: { ended: [{ id: "T1", state: "done", merge: true }], planDone: false } });
+  assert.deepEqual(await waiting, { ended: [{ id: "T1", state: "done", merge: true }], planDone: false });
+  await engine.end();
+});
+
 test("a head running workflows doesn't choose though the send says choose: Claude Code's own, and Codex's at max", async (t) => {
   const { bin, env } = await sandbox();
   const logs = await mkdtemp(join(tmpdir(), "oricode-rays-logs-"));
@@ -585,10 +625,14 @@ test("under a budget a head opens no thread and messages none, since what they s
   await engine.until((line) => line.event === "turn.done" && line.threadId === "k287-open");
   const opened = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start").params;
   const url: string = opened.config["mcp_servers.oricode"].url;
-  assert.match(opened.developerInstructions, /refuses open_thread and message_thread, since another thread's spending isn't this one's\./);
-  const refused = /^This thread has a \$1 budget, and what another thread spends isn't counted in it, so (open|message)_thread is off while it's set\. Give the part to a worker with start_worker instead\.$/;
+  assert.match(opened.developerInstructions, /refuses open_thread, message_thread and add_tasks' run, since another thread's spending isn't this one's\./);
+  // Its parts go to workers then, where they're counted.
+  assert.match(opened.developerInstructions, /first give each part a worker with start_worker/);
+  assert.ok(opened.developerInstructions.includes("add_tasks and `run`, each with") === false);
+  const refused = /^This thread has a \$1 budget, and what another thread spends isn't counted in it, so (open_thread|message_thread|add_tasks' run) is off while it's set\. Give the part to a worker with start_worker instead\.$/;
   assert.match((await call(url, "open_thread", { message: "go", reason: "a part", agent: "codex" })).error, refused);
   assert.match((await call(url, "message_thread", { thread: "x", text: "go", reason: "a part" })).error, refused);
+  assert.match((await call(url, "add_tasks", { run: true, tasks: [{ title: "a", done: "b", message: "go", model: "gpt-small", reason: "x" }] })).error, refused);
   await engine.end();
 });
 

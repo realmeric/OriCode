@@ -52,7 +52,10 @@ test("the plan's tools go to the app with what they name, and the app's answer i
   assert.deepEqual(described("claim_task").inputSchema.required, ["task"]);
   assert.equal(described("update_task").inputSchema.required, undefined);
   assert.match(described("open_thread").inputSchema.properties.task.description, /takes it as it opens/);
-  assert.match(opening, /write every part first as a task of the project's plan with add_tasks/);
+  assert.match(opening, /write every part as a task of the project's plan with add_tasks and `run`/);
+  assert.match(described("add_tasks").description, /With `run`, OriCode runs them for you/);
+  assert.equal(described("add_tasks").inputSchema.properties.run.type, "boolean");
+  assert.match(described("wait_plan").description, /`planDone` says every task you run is done/);
 
   const answered = async (name: string, args: object, event: string, answer: object) => {
     const from = engine.lines.length;
@@ -113,6 +116,9 @@ test("a thread working a task hears it ahead of each message that starts a turn,
   const lead = JSON.stringify(taskLead(task)).slice(1, -1);
   assert.equal(JSON.stringify(first.input).includes(JSON.stringify(`${leading}\n\n${taskLead(task)}\n\n[From another thread]`).slice(1, -1)), true);
   assert.match(taskLead(task), /^\[OriCode\] This thread works T2 of the project's plan, "Test a\.py"\. Done means: its tests pass /);
+  // A task its plan runs is done when the turn ends, which its thread is told.
+  assert.equal(taskLead(task).includes("when your turn ends"), false);
+  assert.match(taskLead({ ...task, run: true }), /The plan runs by itself: when your turn ends the task is done, and your last reply is its result/);
   assert.equal(JSON.stringify(second.input).includes(`${lead}\\n\\nand now?`), true);
   assert.equal(JSON.stringify(third.input).includes(`${lead}\\n\\nslow`), true);
   const [steer] = await logged("turn/steer");

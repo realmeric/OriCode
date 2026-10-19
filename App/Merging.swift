@@ -60,11 +60,17 @@ extension AppModel {
             kept = "Its worktree stays, since another thread works in it."
         }
         let summary = body["summary"]?.string ?? ""
+        // What waited on its task's work can start, now that it's in.
+        let merged = projects.flatMap(\.tasks).filter { $0.thread == thread.id && $0.unmerged }
+        for task in merged { task.unmerged = false }
+        // The thread that merged it has heard how it ended.
+        for task in projects.flatMap(\.tasks) where task.thread == thread.id && task.owner == chat.id && (task.state == "done" || task.state == "stuck") { task.heard = true }
         conversation(for: chat).threadAct(ThreadAct(act: .merged, by: true, thread: thread.id, title: thread.title, reason: summary))
         let told = ThreadAct(act: .merged, by: false, thread: chat.id, title: chat.title, reason: removed ? "Its worktree is removed; this thread works in its opener's folder from here" : "")
         line("thread.act", told.json, in: thread) { $0.threadAct(told) }
         save()
         refreshBranch(for: thread)
+        if !merged.isEmpty { runPlans() }
         var answer: [String: JSON] = ["worktreeRemoved": .bool(removed)]
         if let kept { answer["worktreeNote"] = .string(kept) }
         return .object(answer)
