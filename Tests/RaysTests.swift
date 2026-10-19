@@ -38,6 +38,9 @@ struct RaysTests {
         model.selectedProjectID = project.id
         model.selectedChatID = chat.id
         UserDefaults.standard.removeObject(forKey: Rays.allowKey)
+        UserDefaults.standard.removeObject(forKey: Rays.chooseKey)
+        UserDefaults.standard.removeObject(forKey: Rays.budgetKey)
+        model.headsKeepOff = []
     }
 
     private func receive(_ name: String, _ body: [String: JSON]) {
@@ -183,5 +186,77 @@ struct RaysTests {
         #expect(book.chapters.map(\.turn) == [1])
         #expect(book.chapters[0].files.map(\.file.path) == ["greet.ts", "greet.test.ts"])
         #expect(book.chapters[0].files.map(\.ray) == [nil, ray])
+    }
+
+    @Test func aHeadThatChoosesIsSentEveryModelTheMenuShowsLessTheOnesKeptOffWithTheBudget() {
+        model.models = [Self.option("opus", "Opus"), Self.option("sonnet", "Sonnet")]
+        model.modelsByAgent["codex"] = [Self.option("gpt-6-luna", "GPT-6-Luna")]
+        chat.model = "opus"
+        chat.rays = ["codex/gpt-6-luna"]
+        let choose = sent()["choose"]
+        // OpenCode and Pi are ready with no models read yet, which the engine lists itself;
+        // Cursor is signed out.
+        #expect(choose?["models"] == ["claude/opus", "claude/sonnet", "codex/gpt-6-luna"])
+        #expect(choose?["unread"] == ["opencode", "pi"])
+        #expect(choose?["budget"] == nil)
+        #expect(choose?["spent"] == 0)
+        // The rays picked go too, which the head leans to.
+        #expect(sent()["rays"] == ["codex/gpt-6-luna"])
+
+        model.keepHeadsOff(ModelRef(provider: ProviderInfo.claudeID, id: "sonnet"), true)
+        chat.costUSD = 3
+        UserDefaults.standard.set(2.0, forKey: Rays.budgetKey)
+        #expect(sent()["choose"]?["models"] == ["claude/opus", "codex/gpt-6-luna"])
+        #expect(sent()["choose"]?["keepOff"] == ["claude/sonnet"])
+        #expect(sent()["choose"]?["budget"] == 2)
+        // What it spent before the budget was set isn't counted in it.
+        #expect(chat.spentBefore == 3)
+        #expect(sent()["choose"]?["spent"] == 0)
+        chat.costUSD = 3.5
+        #expect(sent()["choose"]?["spent"] == .number(0.5))
+        // Lifted, the budget lets go of it; set again, it counts from then.
+        UserDefaults.standard.removeObject(forKey: Rays.budgetKey)
+        #expect(sent()["choose"]?["spent"] == .number(3.5) && chat.spentBefore == nil)
+        UserDefaults.standard.set(2.0, forKey: Rays.budgetKey)
+        #expect(sent()["choose"]?["spent"] == 0 && chat.spentBefore == 3.5)
+        model.keepHeadsOff(ModelRef(provider: ProviderInfo.claudeID, id: "sonnet"), false)
+        #expect(model.headsKeepOff.isEmpty)
+
+        // Off, the head works on its rays as before; and with workers off, on neither.
+        UserDefaults.standard.set(false, forKey: Rays.chooseKey)
+        #expect(sent()["choose"] == nil)
+        #expect(sent()["rays"] == ["codex/gpt-6-luna"])
+        UserDefaults.standard.set(true, forKey: Rays.chooseKey)
+        UserDefaults.standard.set(false, forKey: Rays.allowKey)
+        #expect(sent()["choose"] == nil)
+        UserDefaults.standard.removeObject(forKey: Rays.allowKey)
+        UserDefaults.standard.removeObject(forKey: Rays.budgetKey)
+    }
+
+    @Test func aHeadThatMovesItselfPutsTheThreadOnWhatItChoseWithALineSayingWhy() {
+        model.models = [Self.option("sonnet", "Sonnet"), Self.option("opus", "Opus (1M context)")]
+        chat.model = "sonnet"
+        chat.effort = "low"
+        receive("head.changed", ["agent": "claude", "model": "sonnet", "name": "Sonnet", "modelChanged": false, "effort": "medium", "reason": "Tests need care", "live": true])
+        #expect(chat.model == "sonnet")
+        #expect(chat.effort == "medium")
+        receive("head.changed", ["agent": "claude", "model": "opus", "name": "Opus (1M context)", "modelChanged": true, "effort": "xhigh", "reason": "The schema change touches every query", "live": true])
+        #expect(chat.model == "opus")
+        #expect(chat.effort == "xhigh")
+        receive("head.changed", ["agent": "claude", "model": "opus", "name": "Opus", "modelChanged": false, "effort": .null, "reason": "Back to its own", "live": true])
+        #expect(chat.effort == nil)
+        let lines = model.conversation(for: chat).items.compactMap { item -> String? in
+            if case .note(_, let text) = item { text } else { nil }
+        }
+        #expect(lines == [
+            "Now at medium effort · Tests need care",
+            "Now on Opus at extra high · The schema change touches every query",
+            "Now at the model's own effort · Back to its own",
+        ])
+        // Stored, so a relaunch shows the same lines.
+        let replayed = Conversation(chat: chat, context: container.mainContext).items.compactMap { item -> String? in
+            if case .note(_, let text) = item { text } else { nil }
+        }
+        #expect(replayed == lines)
     }
 }

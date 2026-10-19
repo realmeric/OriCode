@@ -351,6 +351,26 @@ struct OpenedThreadsTests {
         #expect(model.listedChats.count == 2 && model.drawerTree.first?.children?.map(\.id) == [chat.id])
     }
 
+    @Test func aHeadThatChoosesOpensNoThreadOnAModelHeadsKeepOff() throws {
+        let (model, parent) = try model()
+        model.headsKeepOff = ["claude/haiku", "codex/gpt-large"]
+        defer { model.headsKeepOff = [] }
+        #expect(refusal(model, request(parent) { $0.model = "haiku" }) == "The user keeps heads off haiku in Settings › Agents. Claude Code has: opus.")
+        #expect(refusal(model, request(parent) {
+            $0.agent = "codex"
+            $0.model = "gpt-large"
+        }) == "The user keeps heads off gpt-large in Settings › Agents. Codex has: gpt-small.")
+        #expect(refusal(model, request(parent) { $0.model = "sonnet" }) == "Claude Code has no model called sonnet. It has: opus.")
+        // Left out, the model is the parent's own, which may be one kept off too.
+        #expect(refusal(model, request(parent)) == nil)
+        model.headsKeepOff.append("claude/opus")
+        #expect(refusal(model, request(parent)) == "This thread is on opus, which the user keeps heads off in Settings › Agents, so a thread it opens can't take it. Name another Claude Code model.")
+        // With Heads choose off, the head picks nothing, and the list doesn't apply.
+        UserDefaults.standard.set(false, forKey: Rays.chooseKey)
+        defer { UserDefaults.standard.removeObject(forKey: Rays.chooseKey) }
+        #expect(refusal(model, request(parent) { $0.model = "haiku" }) == nil)
+    }
+
     @Test func aLevelTheModelDoesntHaveStaysBehind() throws {
         let (model, parent) = try model()
         let asked = request(parent) { $0.model = "haiku" }

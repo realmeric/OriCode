@@ -43,6 +43,9 @@ final class Chat {
     var contextUsed: Int = 0
     var contextWindow: Int = 0
     var costUSD: Double = 0
+    /// What it had spent when a send first went under the budget in Settings › Agents, from which
+    /// its budget is counted; nil while there's none.
+    var spentBefore: Double?
     /// Set once the user renames the thread; until then the title follows the first message.
     var titleIsCustom: Bool = false
     /// Set for a thread on its own branch: cwd is the worktree, the branch is oricode/<slug>.

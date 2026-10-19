@@ -378,6 +378,7 @@ export const claude: Provider = {
     workers: true,
     aside: true,
   },
+  costs: true,
   levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
   modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
   missing,

@@ -268,7 +268,7 @@ private struct SliderRow: View {
 
 extension View {
     /// A pop-up menu sized to its choice, at the right of a settings row.
-    fileprivate func menuRow() -> some View {
+    func menuRow() -> some View {
         labelsHidden()
             .pickerStyle(.menu)
             .fixedSize()

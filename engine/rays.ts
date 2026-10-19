@@ -6,6 +6,7 @@ import { addWorktree, friendly, git } from "./git.ts";
 import { stepOf, type Step } from "./heads.ts";
 import type { Model } from "./models.ts";
 import type { Provider, SendParams, Session } from "./provider.ts";
+import type { Usage } from "./usage.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
 import { askApp, listThreads, longestTurnWait, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
@@ -40,6 +41,28 @@ export type Seam = {
   models(agent: Provider): Promise<Model[]>;
   adopt(threadId: string, session: Session): void;
   forget(threadId: string): void;
+  /// The plan's windows, from an agent whose CLI says them, or undefined.
+  usage(agent: Provider): Promise<Usage | undefined>;
+  /// The head's own session takes another model or level: true when its running turn took it.
+  retune(threadId: string, model: string | undefined, effort: string | undefined): Promise<boolean>;
+  /// Stops the head's own turn, which a spent budget does.
+  interrupt(threadId: string): Promise<void>;
+  /// What the head's running turn has spent so far, where its CLI can say.
+  inFlight(threadId: string): Promise<number | undefined>;
+};
+
+/// What a head that chooses works from, from Settings › Agents through the thread's send: the
+/// models the model menu shows on every ready agent, less the ones heads keep off, the agents
+/// whose models the app hasn't read yet, the rays the user picked anyway, the budget and what
+/// the thread has spent, and the head's own agent and model.
+export type Choice = {
+  picked: Ray[];
+  unread: string[];
+  keepOff: string[];
+  budget: number | null;
+  spent: number;
+  agent: string;
+  model: string | undefined;
 };
 
 type Hunk = { oldStart: number; newStart: number; lines: string[] };
@@ -58,6 +81,8 @@ type Worker = {
   effort: string | null;
   mode: string;
   label: string;
+  /// What it may spend at most, held out of the thread's budget while it works; null with none.
+  cap: number | null;
   cwd: string;
   /// Its worktree, its branch there and the commit the branch started from.
   isolated: { path: string; branch: string; base: string } | null;
@@ -90,6 +115,22 @@ const mostAtWork = 6;
 /// A worker's own events its thread in the app keeps. Its asks go to the head's thread, and its
 /// session's other news, its limits, its effort and its heads, belong to no transcript.
 const shown = new Set(["turn.started", "text", "thinking", "tool.use", "tool.result", "tool.ended", "note", "error", "limited", "compacted", "retrying", "turn.done"]);
+
+/// The tool a head that chooses moves itself with.
+const changeMyModel = {
+  name: "change_my_model",
+  description:
+    "Move yourself to another model of your own agent's, or another effort level, for the work in front of you: up when a part needs more thought than you're on, back down once it's done. The user reads your reason as one line of the transcript. On Claude Code it takes effect from your next request; on another agent, from your next turn.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      model: { type: "string", description: "One of your own agent's models from list_agents. Your current model when left out." },
+      effort: { type: "string", description: "One of that model's levels from list_agents. Your current level when left out and the model has it." },
+      reason: { type: "string", description: "Why, in one line the user reads, such as \"The schema change touches every query, so high\"." },
+    },
+    required: ["reason"],
+  },
+};
 
 const tools = [
   {
@@ -154,6 +195,27 @@ export function brief(rays: Ray[]): string {
     "Use them: give the parts of each task a ray can do to a worker on it with start_worker, rather than doing all of it yourself, and bring their work back with worker_result. " +
     "Workers that edit files should work isolated, and you merge what you keep with merge_worker."
   );
+}
+
+/// What a head that chooses is told, in place of `brief`: that the models and levels are its to
+/// pick, its own included, which user's picks it should lean to, and the budget. Nothing in it
+/// changes from one send to the next unless Settings does, since the CLI opens again when it does.
+export function choosing(picked: Ray[], budget: number | null): string {
+  return [
+    "You run this thread: you choose which models do its work and how hard each one thinks, your own model and level included. The user doesn't pick them; they watch and talk to you. " +
+      "list_agents gives every model you may use, on each agent that's ready, with its effort levels and each agent's plan windows where its CLI says them. " +
+      "When a task has parts that don't depend on each other, don't start on them yourself: first give each part a worker with start_worker, on the model and at the level that part needs, then bring their work together with worker_result, however small the parts are. " +
+      "A quick model at low effort does something mechanical; a stronger model or a higher level does something hard. Spread the parts across agents where more than one is ready: each agent's plan has windows of its own, so a part on Codex leaves Claude's untouched. " +
+      "Keep for yourself what needs the whole picture. Workers that edit files work isolated, and you merge what you keep with merge_worker.",
+    "Your own model and level are yours to change with change_my_model, with a one-line reason the user reads: move up before a part that needs more thought than you're on, and back down once it's done. Starting low and moving up when the work asks for it is the point.",
+    picked.length ? `The user picked these models for this thread, so lean to them: ${picked.map((ray) => `${ray.agent} ${ray.model}`).join(", ")}.` : "",
+    budget !== null
+      ? `This thread may spend ${usd(budget)} in all, you and your workers together, as the agents report it; list_agents says what's left. OriCode stops everything at that line, starts no worker on an agent whose spending it can't count, and refuses open_thread and message_thread, since another thread's spending isn't this one's.`
+      : "",
+    "These tools are the oricode MCP server's; if they aren't among yours yet, load them with tool_search.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /// Heads with workers allowed, by thread and by the path of their tools.
@@ -229,6 +291,18 @@ export class Rays {
   private instructions = "";
   /// The head's own level, which a worker takes when it's given none and its model has it.
   private level: string | undefined;
+  /// What the head chooses from, null while it works on the rays picked for it.
+  private choice: Choice | null = null;
+  /// The thread's spend as counted: what the app said with the send, and each cost since.
+  private spent = 0;
+  /// The budget was reached and everything stopped, which a send under it again clears.
+  private stopped = false;
+  /// The most one worker's turn has cost in this thread, which what's left must cover for another
+  /// to start.
+  private dearest = 0;
+  /// The budget check running, and the one waiting to run after it.
+  private checking: Promise<unknown> = Promise.resolve();
+  private queued: Promise<boolean> | undefined;
   /// How many threads its turn has suggested.
   private suggested = 0;
 
@@ -241,6 +315,7 @@ export class Rays {
     // The thread's own `heads` go out with its workers after them.
     tap(threadId, (name, fields) => {
       if (name === "turn.started") this.suggested = 0;
+      if (name === "turn.done") this.tally(typeof fields.costUSD === "number" ? fields.costUSD : 0);
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
       this.tell();
@@ -251,12 +326,17 @@ export class Rays {
   /// What the thread's latest send says: where it works, in which mode, at what level, and its
   /// rays, none when it has none left, with what the head is told of them: `brief`, or what
   /// workflows on tell it.
-  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string): void {
+  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string, choice?: Choice): void {
     this.cwd = cwd;
     this.mode = mode;
-    this.rays = rays;
+    this.rays = choice ? rays.filter((ray) => !choice.keepOff.includes(`${ray.agent}/${ray.model}`)) : rays;
     this.instructions = instructions;
     this.level = level;
+    this.choice = choice ?? null;
+    if (choice) {
+      this.spent = choice.spent;
+      if (choice.budget === null || this.spent < choice.budget) this.stopped = false;
+    }
   }
 
   has(workerId: string): boolean {
@@ -270,9 +350,10 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.rays.length ? tools : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread] } };
+        return { result: { tools: [...(this.rays.length || this.choice ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread] } };
       case "tools/call":
         try {
+          if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
           const out = await this.call(params.name, params.arguments ?? {});
           return { result: { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] } };
         } catch (error) {
@@ -299,9 +380,12 @@ export class Rays {
         return this.stop(args.worker).then(() => this.status(this.worker(args.worker)));
       case "merge_worker":
         return this.merge(this.worker(args.worker));
+      case "change_my_model":
+        return this.retune(args);
       case "open_thread":
         return this.open(args);
       case "message_thread":
+        this.uncounted("message_thread");
         return this.act("thread.message", args, { text: required(args.text, "A message needs its text.") });
       case "wait_thread":
         return this.wait(args);
@@ -320,7 +404,9 @@ export class Rays {
   }
 
   /// Each ray's agent with its rays' models, named and with their levels as the agent lists them.
-  async agents(): Promise<{ agents: unknown[] }> {
+  /// A head that chooses is told every model it may use instead, and where it stands.
+  async agents(): Promise<unknown> {
+    if (this.choice) return this.choices(this.choice);
     const listed = await Promise.all(
       [...new Set(this.rays.map((ray) => ray.agent))].flatMap((id) => {
         const agent = this.seam.provider(id);
@@ -344,9 +430,166 @@ export class Rays {
     return { agents: listed };
   }
 
+  /// Every model a head that chooses may use, by agent: its levels and default, whether the user
+  /// picked it as a ray, each agent's plan windows where its CLI says them and whether OriCode can
+  /// count what it spends; then the head's own model and level, and the thread's budget.
+  async choices(choice: Choice): Promise<unknown> {
+    const offered = await this.offered();
+    const ids = [...new Set([choice.agent, ...offered.map((ray) => ray.agent)])];
+    const agents = await Promise.all(
+      ids.flatMap((id) => {
+        const agent = this.seam.provider(id);
+        if (!agent) return [];
+        const mine = offered.filter((ray) => ray.agent === id).map((ray) => ray.model);
+        return [
+          Promise.all([this.seam.models(agent).catch(() => [] as Model[]), within(this.seam.usage(agent).catch(() => undefined), 5_000)]).then(([models, usage]) => ({
+            id,
+            name: agent.name,
+            ...(usage?.windows.length ? { planWindows: usage.windows.map((window) => ({ window: window.label, used: window.used === null ? null : `${Math.round(window.used * 100)}%`, resetsAt: window.resetsAt })) } : {}),
+            ...(choice.budget !== null ? { spendCounted: agent.costs === true } : {}),
+            models: mine.map((model) => {
+              const known = models.find((listed) => listed.id === model);
+              const picked = choice.picked.some((ray) => ray.agent === id && ray.model === model);
+              return {
+                id: model,
+                ...(known ? { name: known.name, ...(known.description ? { description: known.description } : {}), levels: known.efforts, defaultLevel: known.defaultEffort } : {}),
+                ...(picked ? { pickedByUser: true } : {}),
+              };
+            }),
+          })),
+        ];
+      }),
+    );
+    return {
+      you: { agent: choice.agent, model: choice.model ?? "default", level: this.level ?? "the model's default" },
+      ...(choice.budget !== null ? { budget: { usd: choice.budget, spent: round(this.spent), left: round(Math.max(0, choice.budget - this.spent)) } } : {}),
+      agents,
+    };
+  }
+
+  /// The models a head that chooses may use: the app's, and for an agent whose models it hasn't
+  /// read yet, the ones the model menu shows of it out of the box, its whole list when that's five
+  /// or fewer and else its first. None of them one heads keep off.
+  private async offered(): Promise<Ray[]> {
+    const choice = this.choice;
+    if (!choice) return this.rays;
+    const more = await Promise.all(
+      choice.unread.map(async (id) => {
+        const agent = this.seam.provider(id);
+        const models = agent ? await this.seam.models(agent).catch(() => [] as Model[]) : [];
+        const shown = models.length <= 5 ? models : models.slice(0, 1);
+        return shown.filter((model) => !model.forbidden && !model.needs).map((model) => ({ agent: id, model: model.id }));
+      }),
+    );
+    return [...this.rays, ...more.flat()].filter((ray) => !choice.keepOff.includes(`${ray.agent}/${ray.model}`));
+  }
+
+  /// change_my_model: the head's own model or level, on its own agent, with the reason the
+  /// transcript shows. The app takes them as the thread's, so its next send carries them.
+  async retune(args: Record<string, any>): Promise<unknown> {
+    const choice = this.choice;
+    if (!choice) throw new Error("Only a head that chooses its models moves itself, and the user has Heads choose off.");
+    const why = required(args.reason, "Say why in `reason`, one line the user reads.");
+    const agent = this.seam.provider(choice.agent);
+    if (!agent) throw new Error("This thread's agent isn't one OriCode can move.");
+    const current = choice.model ?? "default";
+    const asked = typeof args.model === "string" && args.model.trim() ? args.model.trim() : undefined;
+    const mine = (await this.offered()).filter((ray) => ray.agent === agent.id).map((ray) => ray.model);
+    if (asked && asked !== current && !mine.includes(asked)) {
+      throw new Error(`${asked} isn't one of the ${agent.name} models you may move to: ${mine.join(", ") || "there are none"}.`);
+    }
+    const target = asked ?? current;
+    const known = (await this.seam.models(agent).catch(() => [] as Model[])).find((model) => model.id === target);
+    const levels = known?.efforts ?? [];
+    const named = typeof args.effort === "string" && args.effort.trim() ? args.effort.trim() : undefined;
+    if (named && levels.length && !levels.includes(named)) throw new Error(`${known?.name ?? target} has no ${named} level. Its levels: ${levels.join(", ")}.`);
+    if (named && !levels.length) throw new Error(`${known?.name ?? target} has no effort levels.`);
+    const level = named ?? (this.level && levels.includes(this.level) ? this.level : undefined);
+    if (target === current && level === this.level) throw new Error(`You're on ${known?.name ?? target}${level ? ` at ${level}` : ""} already.`);
+    const live = await this.seam.retune(this.threadId, target === current ? undefined : target, level === this.level ? undefined : level);
+    choice.model = target;
+    this.level = level;
+    event("head.changed", { threadId: this.threadId, agent: agent.id, model: target, name: known?.name ?? target, modelChanged: target !== current, effort: level ?? null, reason: why, live });
+    return { model: target, level: level ?? "the model's default", takesEffect: live ? "from your next request" : "from your next turn" };
+  }
+
+  /// A cost the thread's head or one of its workers reported, which may take it to its budget.
+  private tally(cost: number): void {
+    this.spent += cost;
+    if (this.choice?.budget != null) void this.over();
+  }
+
+  /// What the thread has spent, the running turns of the head and its workers included where
+  /// their CLIs can say. What the turns that ended cost is read first: a turn ending meanwhile is
+  /// then counted in neither, never in both, and its end checks again.
+  private async total(): Promise<number> {
+    const ended = this.spent;
+    const running = [...this.workers.values()].filter((worker) => worker.state === "running");
+    const turns = await Promise.all([this.seam.inFlight(this.threadId), ...running.map((worker) => worker.session.spentThisTurn?.())]);
+    return turns.reduce<number>((sum, turn) => sum + (turn ?? 0), ended);
+  }
+
+  /// Whether the thread is at its budget, counting the running turns. Asked before each tool any
+  /// of its Claude Code sessions calls, so none sends another request past the line, and at each
+  /// OriCode tool call and each turn's end. One check runs at a time, so the one that crosses the
+  /// line stops everything, once, and says why, and every check after it answers true.
+  over(): Promise<boolean> {
+    if ((this.choice?.budget ?? null) === null) return Promise.resolve(false);
+    if (this.stopped) return Promise.resolve(true);
+    this.queued ??= this.checking.then(() => {
+      this.queued = undefined;
+      return this.check();
+    });
+    this.checking = this.queued.catch(() => false);
+    return this.queued;
+  }
+
+  private async check(): Promise<boolean> {
+    const budget = this.choice?.budget ?? null;
+    if (budget === null) return false;
+    if (this.stopped) return true;
+    const total = await this.total();
+    if (total < budget) return false;
+    this.stopped = true;
+    log(`budget thread=${this.threadId} spent=${total.toFixed(4)} of ${budget}`);
+    event("note", { threadId: this.threadId, text: `This thread has spent its ${usd(budget)} budget, so OriCode stopped it and its workers.` });
+    // Not waited on: the session whose tool asked is waiting on this answer.
+    Promise.all([this.stopAll(), this.seam.interrupt(this.threadId)]).catch((error) => log(`budget stop thread=${this.threadId}: ${describe(error)}`));
+    return true;
+  }
+
+  /// Another thread's turns are its own, outside this thread's budget, so under one a head that
+  /// chooses neither opens a thread nor sends one a message.
+  private uncounted(tool: string): void {
+    const budget = this.choice?.budget ?? null;
+    if (budget === null) return;
+    throw new Error(`This thread has a ${usd(budget)} budget, and what another thread spends isn't counted in it, so ${tool} is off while it's set. Give the part to a worker with start_worker instead.`);
+  }
+
+  /// What a worker on the agent may spend: half of what the thread has left, the head's running
+  /// turn counted, less what the workers at work hold, so workers started together never hold more
+  /// than there is; or why it can't start, under a budget. What's left must cover the dearest worker
+  /// the thread has run, or the next would likely end past it.
+  private async allowance(agent: Provider): Promise<number | null> {
+    const budget = this.choice?.budget ?? null;
+    if (budget === null) return null;
+    if (agent.costs !== true) throw new Error(`${agent.name} doesn't say what it spends, so with a budget set OriCode can't start a worker on it. Pick a model whose agent has spendCounted in list_agents.`);
+    const total = await this.total();
+    const held = [...this.workers.values()].filter((worker) => worker.state === "running").reduce((sum, worker) => sum + (worker.cap ?? 0), 0);
+    const left = budget - total - held;
+    if (left <= this.dearest) {
+      throw new Error(
+        `This thread has ${usd(Math.max(0, round(budget - total)))} left of its ${usd(budget)} budget${held > 0 ? `, ${usd(round(held))} of it held by the workers at work` : ""}, ` +
+          `${this.dearest > 0 ? `less than the ${usd(round(this.dearest))} a worker has cost here, ` : ""}so no worker can start. Finish with what you have.`,
+      );
+    }
+    return round(left / 2);
+  }
+
   /// The app makes the thread and sends it its first message, as the composer would, and says
   /// what it made: the tool's answer. The thread it's asked from doesn't wait on the turn.
   async open(args: Record<string, any>): Promise<unknown> {
+    this.uncounted("open_thread");
     const text = required(args.message, "A thread needs its first message.");
     const why = required(args.reason, "Say why in `reason`, one line the user reads.");
     return await askApp("thread.open", {
@@ -407,15 +650,18 @@ export class Rays {
     const id = String(args.agent ?? "");
     const task = String(args.task ?? "").trim();
     if (!task) throw new Error("A worker needs a task.");
-    const model = typeof args.model === "string" && args.model ? args.model : this.rays.find((ray) => ray.agent === id)?.model;
-    const agent = this.rays.some((ray) => ray.agent === id && ray.model === model) ? this.seam.provider(id) : undefined;
+    const offered = await this.offered();
+    const model = typeof args.model === "string" && args.model ? args.model : offered.find((ray) => ray.agent === id)?.model;
+    const agent = offered.some((ray) => ray.agent === id && ray.model === model) ? this.seam.provider(id) : undefined;
     if (!agent || !model) {
       const asked = [id, args.model].filter(Boolean).join(" ") || "That";
-      throw new Error(`${asked} isn't one of this thread's rays: ${this.rays.map((ray) => `${ray.agent} ${ray.model}`).join(", ")}. start_worker takes only those.`);
+      const named = offered.map((ray) => `${ray.agent} ${ray.model}`).join(", ");
+      throw new Error(this.choice ? `${asked} isn't one of the models you may use: ${named}. list_agents says each one's levels.` : `${asked} isn't one of this thread's rays: ${named}. start_worker takes only those.`);
     }
     if ([...this.workers.values()].filter((worker) => worker.state === "running").length >= mostAtWork) {
       throw new Error(`${mostAtWork} workers are at work already. Wait for one to finish, or stop one.`);
     }
+    const cap = await this.allowance(agent);
     const cli = await this.seam.cli(agent);
     const named = typeof args.effort === "string" && args.effort ? args.effort : undefined;
     const level = this.level;
@@ -454,6 +700,7 @@ export class Rays {
       // The thread's mode, or the agent's first when it has no such mode.
       mode: agent.modes.includes(this.mode) ? this.mode : (agent.modes[0] ?? this.mode),
       label: task.split("\n")[0].slice(0, 80),
+      cap,
       cwd,
       isolated,
       session: agent.session(threadId, cli),
@@ -478,7 +725,7 @@ export class Rays {
     this.seam.adopt(threadId, worker.session);
     log(`worker ${workerId} for thread=${this.threadId} on ${agent.id}${isolated ? ` in ${isolated.branch}` : ""}`);
     await this.run(worker, task);
-    return { worker: workerId, agent: agent.id, model: worker.model, state: worker.state, branch: isolated?.branch ?? null, folder: cwd, ...(worker.error ? { error: worker.error } : {}) };
+    return { worker: workerId, agent: agent.id, model: worker.model, effort: worker.effort, ...(cap !== null ? { maySpendUSD: cap } : {}), state: worker.state, branch: isolated?.branch ?? null, folder: cwd, ...(worker.error ? { error: worker.error } : {}) };
   }
 
   status(worker: Worker) {
@@ -524,6 +771,7 @@ export class Rays {
   async message(worker: Worker, text: string): Promise<unknown> {
     if (!text.trim()) throw new Error("The message is empty.");
     if (worker.state !== "running") {
+      worker.cap = await this.allowance(worker.agent);
       await this.run(worker, text);
       return { worker: worker.id, state: worker.state, sent: "as its next turn" };
     }
@@ -617,6 +865,9 @@ export class Rays {
       effort: (worker.effort ?? undefined) as SendParams["effort"],
       permissionMode: worker.mode as SendParams["permissionMode"],
       id,
+      // A resumed session's first result carries the turns before it, which are counted already.
+      costSoFar: worker.cost,
+      ...(worker.cap !== null ? { spendCap: { limit: worker.cap, left: worker.cap, over: () => this.over() } } : {}),
     };
   }
 
@@ -689,6 +940,9 @@ export class Rays {
     worker.cost += cost;
     worker.edits.push(...worker.turnEdits);
     this.tellWorker(worker, cost, worker.turnEdits);
+    if (worker.cap !== null) worker.cap = Math.max(0, worker.cap - cost);
+    this.dearest = Math.max(this.dearest, cost);
+    this.tally(cost);
     // A message sent into the turn that it didn't take up runs next, as a turn of its own.
     if ((done.waiting ?? 0) > 0) return;
     const next = worker.pending.shift();
@@ -818,6 +1072,24 @@ function counted(hunks: { lines: string[] }[]): { added: number; deleted: number
 
 function pick(from: Record<string, unknown>, keys: string[]): Record<string, unknown> {
   return Object.fromEntries(keys.filter((key) => typeof from[key] === "string").map((key) => [key, from[key]]));
+}
+
+/// Dollars as a person reads them: $1, $0.50.
+export function usd(amount: number): string {
+  return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
+}
+
+function round(amount: number): number {
+  return Math.round(amount * 10_000) / 10_000;
+}
+
+/// The promise's answer, or undefined once it has taken longer than `ms`.
+function within<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((done) => {
+    timer = setTimeout(() => done(undefined), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
 /// A tool's argument as trimmed text, or the tool's error when there is none.

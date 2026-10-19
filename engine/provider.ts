@@ -38,6 +38,11 @@ export type SendParams = {
   /// its system prompt and Codex as developer instructions, and the ACP agents hear it only in
   /// the tools' MCP instructions, which say it too. A session opens again when it changes.
   instructions?: string;
+  /// What the thread may still spend, for an agent that stops itself at a cap: Claude Code's
+  /// maxBudgetUsd, from the budget set in Settings › Agents. `limit` is the budget, which a CLI
+  /// opens again when it changes, and `left` what the CLI started now may spend. `over` says
+  /// whether the thread as a whole is at its budget, which Claude Code asks before each tool.
+  spendCap?: { limit: number; left: number; over?: () => Promise<boolean> };
 };
 
 export type Grant = { tool: string; input: Record<string, unknown> };
@@ -90,6 +95,12 @@ export type Session = {
   /// Returns whether the running turn took the new mode.
   setMode(mode: PermissionMode): Promise<boolean>;
   setFast(fast: boolean): Promise<boolean>;
+  /// The head moving itself to another model or level of its agent's during its turn. Returns
+  /// whether the running CLI took it now; without it, or false, the next send carries it.
+  retune?(model: string | undefined, effort: string | undefined): Promise<boolean>;
+  /// What the running turn has spent so far, for an agent whose CLI can say before the turn ends;
+  /// undefined when it can't, or no turn runs.
+  spentThisTurn?(): Promise<number | undefined>;
   watchHeads(on: boolean): void;
   stopTask(taskId: string): Promise<void>;
   /// The commands the session's CLI knows, when it has one running.
@@ -152,6 +163,9 @@ export type Provider = {
   /// What a thread's lines call the agent.
   agent: string;
   capabilities: Capabilities;
+  /// Its turns say what they cost, so a thread's budget can count what it spends. The engine's
+  /// own business, which the app isn't told.
+  costs?: boolean;
   levels: string[];
   modes: string[];
   /// What the engine answers when found() finds no CLI.

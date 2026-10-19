@@ -176,6 +176,10 @@ final class AppModel {
     var menuModels = UserDefaults.standard.dictionary(forKey: "menuModels") as? [String: Bool] ?? [:] {
         didSet { UserDefaults.standard.set(menuModels, forKey: "menuModels") }
     }
+    /// The models heads never pick, as `agent/model`, from Settings › Agents.
+    var headsKeepOff = Rays.keepOff {
+        didSet { UserDefaults.standard.set(headsKeepOff, forKey: Rays.keepOffKey) }
+    }
     /// The agents the model page has open, the one in use when it turns to the page.
     var modelsOpen: Set<String> = []
     /// Whether the picker shows its rays' page, and the agents open on it.

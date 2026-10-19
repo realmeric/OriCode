@@ -895,6 +895,12 @@ final class Conversation {
         case "compacted":
             chat.contextUsed = event.body["after"]?.int ?? 0
             record(event.name, event.body)
+        case "head.changed":
+            // The head moved itself: the thread is on what it chose, so the next send carries it,
+            // and the line saying why stays where it moved.
+            if let model = event.body["model"]?.string, event.body["modelChanged"]?.bool == true { chat.model = model }
+            chat.effort = event.body["effort"]?.string
+            record(event.name, event.body)
         case "worker":
             // A worker's turn: its cost is the thread's too, and its edits are credited to its ray.
             chat.costUSD += event.body["costUSD"]?.double ?? 0
@@ -947,6 +953,17 @@ final class Conversation {
         default:
             break
         }
+    }
+
+    /// The line where the head moved itself: "Now on Opus at high · reason", or "Now at high
+    /// effort · reason" when only its level moved.
+    static func headChanged(_ body: JSON) -> String {
+        let level = body["effort"]?.string.map { ModelMenu.effortName($0) }
+        let moved = body["modelChanged"]?.bool == true
+            ? "Now on " + ModelMenu.shortName(body["name"]?.string ?? body["model"]?.string ?? "") + (level.map { " at \($0.lowercased())" } ?? "")
+            : "Now at " + (level.map { "\($0.lowercased()) effort" } ?? "the model's own effort")
+        let reason = body["reason"]?.string ?? ""
+        return reason.isEmpty ? moved : "\(moved) · \(reason)"
     }
 
     /// A limit nearing its ceiling puts one line in the thread each time its window fills: once
@@ -1366,6 +1383,8 @@ final class Conversation {
             items.append(.footer(id: id, footer: footer))
         case "error", "note":
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
+        case "head.changed":
+            items.append(.note(id: id, text: Self.headChanged(body)))
         case "limited":
             let resetsAt = Date(timeIntervalSince1970: (body["resetsAt"]?.double ?? 0) / 1000)
             items.append(.limited(id: id, resetsAt: resetsAt, window: body["window"]?.string))

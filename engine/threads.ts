@@ -132,17 +132,31 @@ export const suggesting =
   "When your reply is about to tell the user of a problem you saw and left alone because it is outside what they asked for, a bug seen in passing, a doc gone stale, a test that was already failing, call suggest_thread for it before you end the turn, one of the oricode MCP server's tools. " +
   "It starts nothing: it puts a button under your reply that opens a new thread with the prompt you wrote, unsent. Never call it for a part of the task, a next step in it or a general improvement. Most replies call for none.";
 
-/// What every session with the tools is told of them, where its agent has somewhere to hear it:
-/// that it decides, asks where it isn't sure, and keeps to the project's instruction file.
-export const opening =
-  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. Only a task that is one part, or a question, you do yourself. " +
+/// The first half of `opening`: parts that don't depend on each other go to threads. A head that
+/// chooses its models is told to give them to workers instead (rays.ts's `choosing`).
+export const parts =
+  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. Only a task that is one part, or a question, you do yourself. ";
+
+/// The second half: what the tools do to the user's threads, which every session with them hears.
+export const reach =
   "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, and list_threads and read_thread show what there is. You decide when to use them. " +
   "Each open, message and stop takes a one-line reason, which both threads show the user. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
+
+/// What every session with the tools is told of them, where its agent has somewhere to hear it:
+/// that it decides, asks where it isn't sure, and keeps to the project's instruction file.
+export const opening = `${parts}${reach}`;
 
 /// What goes ahead of each message to a thread on an agent other than Claude Code, since Codex
 /// weighed `opening` below its own habit of doing every part itself: told only in its developer
 /// instructions it gave a two-part task threads in 6 runs of 21, and with this line in 3 of 3.
 export const leading = "[OriCode] Parts of this message that don't depend on each other each go to a thread of their own, opened with open_thread, before you start on any of them.";
+
+/// `leading` for a head that chooses its models, whose parts go to workers, and which moves its own
+/// level, with where it stands. Claude Code hears it too: told only in its system prompt, Sonnet at
+/// low did a three-part task alone and never moved.
+export function choosingLead(model: string | undefined, level: string | undefined): string {
+  return `[OriCode] You choose who works on this and how hard; you're on ${model ?? "the default model"} at ${level ?? "its default level"}. Parts of this message that don't depend on each other each go to a worker of their own, started with start_worker on whichever ready agent's model suits that part and at the level it needs, before you start on any of them. Before a part you do yourself that needs judgment, a review, a design or a hard fix, first call change_my_model to move up to high or above unless you're there, and move back down once it's done.`;
+}
 
 /// A message one thread sends another goes ahead of the text with who sent it, so the thread can
 /// answer it, and the transcript shows the text alone.

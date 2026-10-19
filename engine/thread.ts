@@ -4,8 +4,10 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import {
   query,
+  type EffortLevel,
   type FastModeDisabledReason,
   type FastModeState,
+  type HookJSONOutput,
   type PermissionMode,
   type PermissionResult,
   type Query,
@@ -14,6 +16,7 @@ import {
   type SDKUserMessage,
   type SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
+import { within } from "./child.ts";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { subagentTranscript } from "./follow.ts";
@@ -115,6 +118,8 @@ export class Thread implements Session {
   /// A subagent's calls the app was told of and whose results it's owed, each with its tool.
   private subcalls = new Map<string, string>();
   private costSoFar = 0;
+  /// Whether the thread is at its budget, from the latest send under one.
+  private over: (() => Promise<boolean>) | undefined;
   private lastContext = 0;
   private fast = false;
   /// The fast mode state last told to the app, so results that repeat it aren't sent again.
@@ -209,7 +214,8 @@ export class Thread implements Session {
     if (!existsSync(params.cwd)) throw new Error(`The folder ${basename(params.cwd)} isn't where it was. Move it back, or add the project again.`);
     // Ultracode is a launch setting: switched on in a running CLI, Claude Code saves its launch
     // effort unpins into ~/.claude.json for good. Workflows below xhigh need nothing of the CLI.
-    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, ultracode(params), params.tools ?? null, params.instructions ?? null]);
+    const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, ultracode(params), params.tools ?? null, params.instructions ?? null, params.spendCap?.limit ?? null]);
+    this.over = params.spendCap?.over;
     if (!this.query || key !== this.key) {
       let env = cleanEnvironment();
       if (this.elsewhere) {
@@ -287,6 +293,45 @@ export class Thread implements Session {
     } finally {
       this.stopping = false;
     }
+  }
+
+  /// The head's own move, from change_my_model: the running CLI takes the model and the level for
+  /// its next request, and the key takes them too, so the send after, which carries them from the
+  /// app, doesn't start the CLI again. Never under Ultracode, which a level passed beside turns off.
+  async retune(model: string | undefined, effort: string | undefined): Promise<boolean> {
+    const running = this.query;
+    if (!running || this.askedUltracode) return false;
+    if (model !== undefined) await running.setModel(model);
+    if (effort !== undefined) await running.applyFlagSettings({ effortLevel: effort as EffortLevel });
+    const key = JSON.parse(this.key) as unknown[];
+    if (model !== undefined) key[1] = model;
+    if (effort !== undefined) {
+      key[2] = effort;
+      this.asked = effort;
+    }
+    this.key = JSON.stringify(key);
+    log(`retune thread=${this.id} model=${model ?? "same"} effort=${effort ?? "same"}`);
+    void this.tellEffort(running);
+    return true;
+  }
+
+  /// The running turn's spend, from the CLI's own running total less what it stood at when the
+  /// turn began: what a budget needs before the turn's result says it.
+  async spentThisTurn(): Promise<number | undefined> {
+    const running = this.query;
+    if (!running || !this.running) return undefined;
+    try {
+      const usage = await within(running.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }), 3_000, "Claude Code's spend");
+      return Math.max(0, usage.session.total_cost_usd - this.costSoFar);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /// What the hook before a tool answers: carry on, or not while the thread is at its budget.
+  private async spendGate(): Promise<HookJSONOutput> {
+    if (!(await this.over?.())) return { continue: true };
+    return { continue: false, stopReason: "This thread has spent its budget.", hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "This thread has spent its budget." } };
   }
 
   /// Returns whether the running turn took the new mode. Between turns there is
@@ -406,6 +451,8 @@ export class Thread implements Session {
         // Summarized, so the thinking deltas carry text the app can show when asked.
         thinking: adaptive.has(params.model ?? "default") ? { type: "adaptive", display: "summarized" } : undefined,
         permissionMode: params.permissionMode,
+        // Claude Code stops the turn at the request that takes this CLI past it.
+        maxBudgetUsd: params.spendCap ? Math.max(0, params.spendCap.left) : undefined,
         // Fast mode's is the opt-in the CLI asks of SDK sessions before it serves them fast;
         // Ultracode is a session setting that only flag settings can turn on.
         settings: this.fast || ultra ? { ...(this.fast ? { fastMode: true } : {}), ...(ultra ? { ultracode: true } : {}) } : undefined,
@@ -422,6 +469,9 @@ export class Thread implements Session {
         stderr: (data) => process.stderr.write(data),
         debugFile: cliDebugFile(this.id),
         canUseTool: (tool, input, { signal, toolUseID, agentID }) => this.ask(tool, input, toolUseID, signal, agentID),
+        // Under a budget each tool waits on the thread's count, so the request after its result
+        // isn't sent once the thread is at the line, its own or its workers' spend taking it there.
+        hooks: params.spendCap ? { PreToolUse: [{ hooks: [() => this.spendGate()] }] } : undefined,
         // Loaded with the prompt rather than behind tool search, so a head knows it can start workers.
         mcpServers: params.tools ? { [toolsServer]: { type: "http", url: params.tools, alwaysLoad: true, timeout: toolsTimeout } } : undefined,
       },
@@ -854,6 +904,8 @@ export class Thread implements Session {
         // Messages sent into a spent turn would start a turn of their own in that session, sending
         // it all again, paid for, and failing the same; they go back to the app before it ends.
         if (spent) this.dropWaiting();
+        // The CLI is at its cap for good, so the next send starts one with what the thread has left.
+        if (message.subtype === "error_max_budget_usd") this.key = "";
         // An interrupt ends the turn as error_during_execution with a diagnostic nobody needs to read.
         if (message.subtype !== "success" && message.errors.length && !this.interrupted && !spent) {
           this.fail(message.errors.join("\n"));

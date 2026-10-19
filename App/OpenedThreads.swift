@@ -177,12 +177,20 @@ extension AppModel {
         }
         let same = id == parent.providerID
         guard same || agent.state == .ready else { throw Refused(why: "\(agent.name) can't run here yet\(agent.hint.map { ": \($0)" } ?? ".")") }
+        // A head that chooses opens no thread on a model heads keep off, its own included.
+        let keptOff = Rays.choose && offersWorkers(parent) ? Set(headsKeepOff) : []
         if let model = request.model {
-            let listed = models(of: id)
-            guard !listed.isEmpty else { throw Refused(why: "\(agent.name) didn't list its models just now, so OriCode can't tell whether \(model) is one. Leave the model out, or try again.") }
+            guard !models(of: id).isEmpty else { throw Refused(why: "\(agent.name) didn't list its models just now, so OriCode can't tell whether \(model) is one. Leave the model out, or try again.") }
+            let listed = models(of: id).filter { !keptOff.contains("\(id)/\($0.id)") }
             guard listed.contains(where: { $0.id == model }) else {
-                throw Refused(why: "\(agent.name) has no model called \(model). It has: \(listed.map(\.id).joined(separator: ", ")).")
+                throw Refused(why: keptOff.contains("\(id)/\(model)")
+                    ? "The user keeps heads off \(model) in Settings › Agents. \(agent.name) has: \(listed.map(\.id).joined(separator: ", "))."
+                    : "\(agent.name) has no model called \(model). It has: \(listed.map(\.id).joined(separator: ", ")).")
             }
+        }
+        let model = request.model ?? (same ? parent.model : nil)
+        if let model, keptOff.contains("\(id)/\(model)") {
+            throw Refused(why: "This thread is on \(model), which the user keeps heads off in Settings › Agents, so a thread it opens can't take it. Name another \(agent.name) model.")
         }
         guard let mode = Self.mode(under: parent.permissionMode, on: agent, same: same) else {
             let title = PermissionModeOption(rawValue: parent.permissionMode)?.title ?? parent.permissionMode
@@ -201,7 +209,7 @@ extension AppModel {
         }
         guard !request.worktree || !project.isNoFolder else { throw Refused(why: "A thread without a folder has nothing to branch.") }
         return Opening(
-            parent: parent, project: project, agent: agent, model: request.model ?? (same ? parent.model : nil), mode: mode,
+            parent: parent, project: project, agent: agent, model: model, mode: mode,
             beside: project.id == own.id && !request.worktree)
     }
 

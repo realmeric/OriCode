@@ -6,6 +6,8 @@ import SwiftUI
 struct AgentsPane: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Rays.allowKey) private var workers = true
+    @AppStorage(Rays.chooseKey) private var choose = true
+    @AppStorage(Rays.budgetKey) private var budget = 0.0
     @AppStorage(AppModel.ceilingKey) private var ceiling = AppModel.defaultCeiling
 
     var body: some View {
@@ -31,10 +33,35 @@ struct AgentsPane: View {
         SettingsCard {
             SettingsRow(
                 title: "Heads may start workers",
-                detail: "A thread's head can send workers out on its rays, the models picked for it under Rays on the model page, each a ray on the mark while it works."
+                detail: "A thread's head can send workers out on other models, any agent's, each a ray on the mark while it works."
             ) {
                 Toggle("Heads may start workers", isOn: $workers).labelsHidden().toggleStyle(.switch)
             }
+            SettingsRow(
+                title: "Heads choose",
+                detail: choose
+                    ? "The head picks which models its workers run on, at which effort, and moves itself up or down as the work asks, from the models the model menu shows. It says why each time."
+                    : "A head sends workers out only on the rays picked for it, and stays on its own model and effort."
+            ) {
+                Toggle("Heads choose", isOn: $choose).labelsHidden().toggleStyle(.switch)
+            }
+            .disabled(!workers)
+            SettingsRow(
+                title: "Spend per thread",
+                detail: "What a head and its workers may spend in one thread from its first message under the limit, as the agents report it. At the limit everything in the thread stops, and it takes no more messages until you raise the limit. With one set, no worker starts on an agent that doesn't say what it spends, such as Codex."
+            ) {
+                Picker("Spend per thread", selection: $budget) {
+                    ForEach(Rays.budgets, id: \.self) { amount in
+                        Text(Rays.budgetName(amount)).tag(amount)
+                    }
+                }
+                .menuRow()
+            }
+            .disabled(!workers || !choose)
+            SettingsRow(title: "Models heads keep off", detail: "A head never picks these, for its workers or for itself.") {
+                KeepOffMenu()
+            }
+            .disabled(!workers || !choose)
         }
         SectionHeading("Threads")
         SettingsCard {
@@ -57,6 +84,34 @@ struct AgentsPane: View {
             model.refreshKeys()
             model.askUnasked()
         }
+    }
+}
+
+/// The models heads keep off, picked from each ready agent's models the model menu shows.
+private struct KeepOffMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let kept = Set(model.headsKeepOff)
+        let title = kept.isEmpty ? "None" : kept.count == 1 ? "1 model" : "\(kept.count) models"
+        Menu(title) {
+            ForEach(model.providers.filter { $0.state == .ready }, id: \.id) { agent in
+                let listed = model.shownModels(of: agent.id).filter(\.pickable)
+                if !listed.isEmpty {
+                    Section(agent.name) {
+                        ForEach(listed) { option in
+                            let ref = ModelRef(provider: agent.id, id: option.id)
+                            Toggle(option.name, isOn: Binding(get: { kept.contains("\(agent.id)/\(option.id)") }, set: { model.keepHeadsOff(ref, $0) }))
+                        }
+                    }
+                }
+            }
+        }
+        .menuRow()
+        .fixedSize()
+        .accessibilityLabel("Models heads keep off")
+        .accessibilityValue(title)
+        .onAppear { model.readAgentModels() }
     }
 }
 

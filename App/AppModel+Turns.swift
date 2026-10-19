@@ -297,6 +297,7 @@ extension AppModel {
         // Each as agent/model, Claude's too, where the stored form leaves Claude's agent out.
         let rays = rays(for: chat)
         if !rays.isEmpty { params["rays"] = .array(rays.map { .string("\($0.provider)/\($0.id)") }) }
+        if let choice = choice(for: chat) { params["choose"] = choice }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = modelSent(in: chat) { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it.

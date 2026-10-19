@@ -42,6 +42,7 @@ export const pi: Provider = {
   name: entry.name,
   agent: entry.agent,
   capabilities,
+  costs: true,
   levels,
   modes: [],
   missing: entry.install!,

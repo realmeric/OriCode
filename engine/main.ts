@@ -14,8 +14,8 @@ import { opencode, opencodeSessions } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
-import { brief, rayOf, raysFor, raysOf, type Seam } from "./rays.ts";
-import { appReplied, fromThread, leading, opening, suggesting } from "./threads.ts";
+import { brief, choosing, rayOf, raysFor, raysOf, usd, type Choice, type Seam } from "./rays.ts";
+import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
 import { answer, brevity, scratch, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
@@ -122,21 +122,53 @@ const seam: Seam = {
   models: listOf,
   adopt: kept,
   forget: (threadId) => sessions.delete(threadId),
+  usage: async (agent) => (agent.usage && agent.capabilities.usage ? agent.usage(await cli(agent)) : undefined),
+  retune: async (threadId, model, effort) => (await sessions.get(threadId)?.retune?.(model, effort)) ?? false,
+  interrupt: async (threadId) => {
+    await sessions.get(threadId)?.interrupt();
+  },
+  inFlight: async (threadId) => sessions.get(threadId)?.spentThisTurn?.(),
 };
+
+/// What the app sends with a thread whose head chooses, Heads choose being on in Settings › Agents:
+/// every model, as `agent/model`, that the model menu shows on a ready agent, less those heads
+/// keep off, which come too for the agents in `unread`, whose models the app hasn't read yet; the
+/// budget, null with none, and what the thread has spent, its workers' share included.
+type Choose = { models?: string[]; unread?: string[]; keepOff?: string[]; budget?: number | null; spent?: number };
 
 /// The URL of the thread's tools and what it's told of them, on an agent that takes them: a head's
 /// worker tools when the thread has rays, or runs OriCode's workflows, on its own model when it
 /// has no rays; the tools for the user's threads, which every such thread has, a thread another
 /// opened included; and suggest_thread, which it is told when to call. A thread with no rays left
 /// keeps the workers it has, and can't start more.
-async function threadTools(params: SendParams & { rays?: string[] }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions">> {
+async function threadTools(params: SendParams & { rays?: string[]; choose?: Choose }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions"> & { choice?: Choice }> {
   const takes = agent.capabilities.workers === true;
   const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
-  const rays = fans && !picked.length ? [{ agent: agent.id, model: fans.id }] : picked;
-  const instructions = [rays.length ? (fans ? fanning(rays) : brief(rays)) : undefined, takes ? opening : undefined, takes ? suggesting : undefined].filter(Boolean).join("\n\n") || undefined;
+  // Workflows hand the parts out on the rays picked, or the head's own model, as they always did.
+  const choice: Choice | undefined =
+    takes && !fans && params.choose
+      ? {
+          picked,
+          unread: (params.choose.unread ?? []).filter((id) => providers.has(id)),
+          keepOff: params.choose.keepOff ?? [],
+          budget: typeof params.choose.budget === "number" && params.choose.budget > 0 ? params.choose.budget : null,
+          spent: params.choose.spent ?? 0,
+          agent: agent.id,
+          model: params.model,
+        }
+      : undefined;
+  // The rays the user picked stay the head's to use, a model since left out of the menu included,
+  // unless heads keep off it.
+  if (choice) choice.picked = picked.filter((ray) => !choice.keepOff.includes(`${ray.agent}/${ray.model}`));
+  const offered = choice
+    ? [...choice.picked, ...(params.choose?.models ?? []).map(rayOf).filter((ray) => providers.has(ray.agent) && !choice.picked.some((mine) => mine.agent === ray.agent && mine.model === ray.model))]
+    : [];
+  const rays = fans && !picked.length ? [{ agent: agent.id, model: fans.id }] : choice ? offered : picked;
+  const told = choice ? choosing(choice.picked, choice.budget) : rays.length ? (fans ? fanning(rays) : brief(rays)) : undefined;
+  const instructions = [told, takes ? (choice ? reach : opening) : undefined, takes ? suggesting : undefined].filter(Boolean).join("\n\n") || undefined;
   const head = takes ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
-  head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort);
-  return takes && head ? { tools: head.url, instructions } : { instructions };
+  head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort, choice);
+  return takes && head ? { tools: head.url, instructions, choice } : { instructions };
 }
 
 /// An agent's models as the app gets them, from its CLI the first time and kept after, with
@@ -310,14 +342,16 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// other head OriCode's, told to fan each task out to workers on its rays, with the message too.
   /// Every one of them at the thread's own level. `from` is the thread that sent the message
   /// through message_thread or open_thread, which the session is told ahead of it.
-  async send({ rays, handover, concise, noFolder, from, ...params }: SendParams & { provider?: string; rays?: string[]; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string } }) {
+  async send({ rays, choose, handover, concise, noFolder, from, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string } }) {
     const agent = provider(params.provider);
+    const budget = choose?.budget ?? 0;
+    if (budget > 0 && (choose?.spent ?? 0) >= budget) throw new Error(`This thread has spent its ${usd(budget)} budget. Raise it or lift it in Settings › Agents to go on.`);
     const path = await cli(agent);
     leave(params.threadId, agent);
     const model = params.workflows ? await workflowsModel(agent, path, params.model) : undefined;
     const own = agent.id === claude.id ? params.workflows === true : model !== undefined && !model.ultraRays && params.effort === "max";
     const fans = own ? undefined : model;
-    const head = await threadTools({ ...params, rays }, agent, fans);
+    const { choice, ...head } = await threadTools({ ...params, rays, choose }, agent, fans);
     const told = agent.id === claude.id && own && params.effort !== "xhigh" ? claudeLead : fans ? lead : undefined;
     // A message into a running turn joins one that was told already.
     const running = sessions.get(params.threadId)?.isRunning;
@@ -325,13 +359,16 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const opening = handover && !sessions.has(params.threadId) ? `${handed(handover)}\n\n` : "";
     const sender = from?.id ? `${fromThread({ id: from.id, title: from.title ?? "" })}\n\n` : "";
     // Claude Code keeps to the system prompt's `opening`; another agent with the tools hears it
-    // again ahead of each message that starts a turn, unless workflows hand its parts to workers.
-    const parts = head.tools && agent.id !== claude.id && !running && !told ? `${leading}\n\n` : "";
+    // again ahead of each message that starts a turn, unless workflows hand its parts to workers,
+    // and a head that chooses hears `choosingLead` there, Claude Code's too.
+    const parts = head.tools && !running && !told ? (choice ? `${choosingLead(params.model, params.effort)}\n\n` : agent.id !== claude.id ? `${leading}\n\n` : "") : "";
     const text = `${opening}${told && !running ? `${told}\n\n` : ""}${parts}${sender}${params.text}`;
     // Concise replies, asked for in Settings, go where a head's rays do, ahead of them, and after
     // what a thread without a folder is told of where it is.
     const instructions = [noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
-    const waiting = await session(params.threadId, agent, path).send({ ...params, text, workflows: own, ...head, instructions });
+    // An agent that stops itself at a cap is given what the thread has left, its budget beside it.
+    const spendCap = choice?.budget && agent.costs ? { limit: choice.budget, left: choice.budget - choice.spent, over: async () => (await raysOf(params.threadId)?.over()) ?? false } : undefined;
+    const waiting = await session(params.threadId, agent, path).send({ ...params, text, workflows: own, ...head, instructions, ...(spendCap ? { spendCap } : {}) });
     return waiting ? { ok: true, waiting: true } : { ok: true };
   },
 

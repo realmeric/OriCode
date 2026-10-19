@@ -12,9 +12,9 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
 import { brevity, drawing, scratch, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
-import { opening, suggesting } from "../threads.ts";
+import { choosingLead, opening, suggesting } from "../threads.ts";
 import { lead } from "../ultracode.ts";
-import { engineWith, sandbox } from "./engine.ts";
+import { engineWith, sandbox, standInCli } from "./engine.ts";
 
 /// What a thread with no rays is told of its tools.
 const mayOpen = `${opening}\n\n${suggesting}`;
@@ -441,4 +441,143 @@ test("a Claude head gets the tools as an HTTP server loaded with its prompt, all
   assert.equal(launched[1].mcpServers, undefined);
   assert.deepEqual(launched[1].systemPrompt, { type: "preset", preset: "claude_code", append: drawing });
   thread.close();
+});
+
+/// An engine with a Codex head on gpt-small whose head chooses, Heads choose being on: the app
+/// offers both Codex models, keeps heads off gpt-large, and hasn't read OpenCode's models yet.
+async function chooser(t: { after: (fn: () => unknown) => void }, threadId: string, choose: object) {
+  const { bin, env } = await sandbox();
+  const logs = await mkdtemp(join(tmpdir(), "oricode-rays-logs-"));
+  await agents(bin, logs);
+  const cwd = await repository();
+  const engine = engineWith(env);
+  t.after(engine.kill);
+  await engine.request("hello", { agents: { codex: { path: join(bin, "codex") }, opencode: { path: join(bin, "opencode") } } });
+  const send = { threadId, cwd, text: "hello", model: "gpt-small", effort: "low", permissionMode: "bypassPermissions", provider: "codex", choose };
+  return { engine, logs, send, cwd };
+}
+
+test("a head that chooses is told so, lists every model it may use, starts a worker on one at the level it names, and moves itself with a reason", async (t) => {
+  const { engine, logs, send } = await chooser(t, "k287", { models: ["codex/gpt-small", "codex/gpt-large"], unread: ["opencode"], keepOff: ["codex/gpt-large"], spent: 0 });
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k287");
+  const sent = await logged(join(logs, "codex.log"));
+  const opened = sent.find((message) => message.method === "thread/start").params;
+  const url: string = opened.config["mcp_servers.oricode"].url;
+  const init = await mcp(url, "initialize", { protocolVersion: "2025-06-18" });
+  assert.match(init.instructions, /^You run this thread: you choose which models do its work/);
+  // Its parts go to workers, so it isn't told to open threads for them, only what threads are.
+  assert.equal(init.instructions.includes("first open a thread for each part"), false);
+  assert.match(init.instructions, /Those tools are the oricode MCP server's, and with them you do to the user's other threads/);
+  assert.ok(sent.find((message) => message.method === "turn/start").params.input[0].text.startsWith(`${choosingLead("gpt-small", "low")}\n\nhello`));
+  assert.ok((await mcp(url, "tools/list")).tools.some((tool: { name: string }) => tool.name === "change_my_model"));
+
+  const listed = await call(url, "list_agents");
+  assert.deepEqual(listed.you, { agent: "codex", model: "gpt-small", level: "low" });
+  assert.equal(listed.budget, undefined);
+  // gpt-large is kept off; OpenCode's list, which the app hadn't read, comes from its CLI.
+  assert.deepEqual(
+    listed.agents.map((agent: any) => [agent.id, agent.models.map((model: any) => [model.id, model.levels ?? null])]),
+    [
+      ["codex", [["gpt-small", ["low", "medium", "high"]]]],
+      ["opencode", [["small", []]]],
+    ],
+  );
+  assert.match((await call(url, "start_worker", { agent: "codex", model: "gpt-large", task: "x" })).error, /^codex gpt-large isn't one of the models you may use: codex gpt-small, opencode small\./);
+  const worker = await call(url, "start_worker", { agent: "codex", model: "gpt-small", effort: "high", task: "look" });
+  assert.equal(worker.effort, "high");
+  await call(url, "worker_result", { worker: worker.worker, wait: true });
+  const turns = (await logged(join(logs, "codex.log"))).filter((message) => message.method === "turn/start");
+  assert.equal(turns.at(-1).params.effort, "high");
+
+  assert.match((await call(url, "change_my_model", { effort: "high" })).error, /^Say why in `reason`/);
+  assert.match((await call(url, "change_my_model", { model: "gpt-large", reason: "x" })).error, /^gpt-large isn't one of the Codex models you may move to: gpt-small\./);
+  assert.match((await call(url, "change_my_model", { effort: "max", reason: "x" })).error, /^GPT Small has no max level\. Its levels: low, medium, high\./);
+  assert.match((await call(url, "change_my_model", { effort: "low", reason: "x" })).error, /^You're on GPT Small at low already\./);
+  const from = engine.lines.length;
+  const moved = await call(url, "change_my_model", { effort: "high", reason: "The migration touches every table" });
+  // Codex takes a level with each turn, so the move holds from its next one, which the app sends.
+  assert.deepEqual(moved, { model: "gpt-small", level: "high", takesEffect: "from your next turn" });
+  const told = engine.lines.slice(from).find((line) => line.event === "head.changed");
+  assert.deepEqual({ ...told }, { event: "head.changed", threadId: "k287", agent: "codex", model: "gpt-small", name: "GPT Small", modelChanged: false, effort: "high", reason: "The migration touches every table", live: false });
+  assert.deepEqual((await call(url, "list_agents")).you, { agent: "codex", model: "gpt-small", level: "high" });
+  await engine.end();
+});
+
+test("with a budget, a thread that has spent it takes no message, and no worker starts on an agent that doesn't say what it spends", async (t) => {
+  const { engine, logs, send } = await chooser(t, "k287-budget", { models: ["codex/gpt-small"], unread: [], keepOff: [], budget: 1, spent: 1 });
+  assert.match((await engine.request("send", send)).error, /^This thread has spent its \$1 budget\. Raise it or lift it in Settings › Agents to go on\.$/);
+  assert.deepEqual((await engine.request("send", { ...send, choose: { models: ["codex/gpt-small"], budget: 0.5, spent: 0.2 } })).result, { ok: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k287-budget");
+  const opened = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start").params;
+  const url: string = opened.config["mcp_servers.oricode"].url;
+  assert.match(opened.developerInstructions, /This thread may spend \$0\.50 in all, you and your workers together/);
+  const listed = await call(url, "list_agents");
+  assert.deepEqual(listed.budget, { usd: 0.5, spent: 0.2, left: 0.3 });
+  assert.equal(listed.agents[0].spendCounted, false);
+  assert.match((await call(url, "start_worker", { agent: "codex", model: "gpt-small", task: "x" })).error, /^Codex doesn't say what it spends, so with a budget set OriCode can't start a worker on it\./);
+  await engine.end();
+});
+
+test("a head that chooses may still use a ray the user picked that the menu no longer shows, but none that heads keep off", async (t) => {
+  const { engine, logs, send } = await chooser(t, "k287-picked", { models: ["codex/gpt-small"], unread: [], keepOff: ["opencode/small"], spent: 0 });
+  assert.deepEqual((await engine.request("send", { ...send, rays: ["codex/gpt-large", "opencode/small"] })).result, { ok: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k287-picked");
+  const opened = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start").params;
+  const url: string = opened.config["mcp_servers.oricode"].url;
+  assert.match(opened.developerInstructions, /The user picked these models for this thread, so lean to them: codex gpt-large\./);
+  const listed = await call(url, "list_agents");
+  assert.deepEqual(
+    listed.agents.map((agent: any) => [agent.id, agent.models.map((model: any) => [model.id, model.pickedByUser ?? false])]),
+    [["codex", [["gpt-large", true], ["gpt-small", false]]]],
+  );
+  const worker = await call(url, "start_worker", { agent: "codex", model: "gpt-large", task: "look" });
+  assert.equal(worker.model, "gpt-large");
+  await call(url, "worker_result", { worker: worker.worker, wait: true });
+  assert.match((await call(url, "start_worker", { agent: "opencode", model: "small", task: "x" })).error, /^opencode small isn't one of the models you may use: codex gpt-large, codex gpt-small\./);
+  await engine.end();
+});
+
+test("under a budget a head opens no thread and messages none, since what they spend isn't counted in it", async (t) => {
+  const { engine, logs, send } = await chooser(t, "k287-open", { models: ["codex/gpt-small"], unread: [], keepOff: [], budget: 1, spent: 0 });
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k287-open");
+  const opened = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start").params;
+  const url: string = opened.config["mcp_servers.oricode"].url;
+  assert.match(opened.developerInstructions, /refuses open_thread and message_thread, since another thread's spending isn't this one's\./);
+  const refused = /^This thread has a \$1 budget, and what another thread spends isn't counted in it, so (open|message)_thread is off while it's set\. Give the part to a worker with start_worker instead\.$/;
+  assert.match((await call(url, "open_thread", { message: "go", reason: "a part", agent: "codex" })).error, refused);
+  assert.match((await call(url, "message_thread", { thread: "x", text: "go", reason: "a part" })).error, refused);
+  await engine.end();
+});
+
+test("a Claude worker under a budget, started again with its next allowance, counts each turn once though its resumed session reports the turns before", async (t) => {
+  const { bin, env } = await sandbox();
+  const logs = await mkdtemp(join(tmpdir(), "oricode-rays-logs-"));
+  await agents(bin, logs);
+  const claude = await standInCli(bin, "claude-spend", "claude-spend.ts", { CLAUDE_SPEND_STATE: join(logs, "spend.json"), CLAUDE_SPEND_LOG: join(logs, "spend.log"), CLAUDE_SPEND_COSTS: "0.4,0.1" });
+  const cwd = await repository();
+  const engine = engineWith({ ...env, ORICODE_CLAUDE: claude });
+  t.after(engine.kill);
+  await engine.request("hello", { agents: { codex: { path: join(bin, "codex") } } });
+  const send = { threadId: "k287-resume", cwd, text: "hello", model: "gpt-small", permissionMode: "bypassPermissions", provider: "codex", choose: { models: ["claude/haiku"], unread: [], keepOff: [], budget: 2, spent: 0 } };
+  assert.deepEqual((await engine.request("send", send)).result, { ok: true });
+  await engine.until((line) => line.event === "turn.done" && line.threadId === "k287-resume");
+  const url: string = (await logged(join(logs, "codex.log"))).find((message) => message.method === "thread/start").params.config["mcp_servers.oricode"].url;
+
+  const worker = await call(url, "start_worker", { agent: "claude", model: "haiku", task: "one" });
+  assert.equal(worker.maySpendUSD, 1);
+  await call(url, "worker_result", { worker: worker.worker, wait: true });
+  assert.equal((await call(url, "worker_status", { worker: worker.worker })).costUSD, 0.4);
+  // Its allowance moved, so its CLI starts again on the same session, whose result says 0.5.
+  assert.equal((await call(url, "message_worker", { worker: worker.worker, text: "two" })).sent, "as its next turn");
+  await call(url, "worker_result", { worker: worker.worker, wait: true });
+  assert.ok(Math.abs((await call(url, "worker_status", { worker: worker.worker })).costUSD - 0.5) < 1e-9);
+  // The launches that ran its turns, past the one that listed Claude's models.
+  const launches = (await readFile(join(logs, "spend.log"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as string[]).filter((args) => args.includes("--model"));
+  assert.deepEqual(launches.map((args) => [args[args.indexOf("--max-budget-usd") + 1], args.find((arg) => arg.startsWith("--resume")) ?? null]), [["1", null], ["0.8", "--resume=spend-session"]]);
+  const turns = engine.lines.filter((line) => line.event === "worker" && line.threadId === "k287-resume" && typeof line.costUSD === "number" && line.costUSD > 0);
+  assert.deepEqual(turns.map((line) => Math.round(line.costUSD * 100) / 100), [0.4, 0.1]);
+  assert.deepEqual((await call(url, "list_agents")).budget, { usd: 2, spent: 0.5, left: 1.5 });
+  await engine.end();
 });
