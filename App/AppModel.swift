@@ -223,6 +223,10 @@ final class AppModel {
     }
     /// The thread the engine is telling what its heads are doing.
     var headsWatched: UUID?
+    /// ⌘⇧I's screen of everything running, and how each thread's latest turn in this launch went,
+    /// which only that screen reads.
+    var overviewShown = false
+    var outcomes: [UUID: Outcome] = [:]
     /// The workflow agents' threads whose transcripts the engine reads for the app while they're
     /// on the glass.
     @ObservationIgnored var followed: Set<UUID> = []

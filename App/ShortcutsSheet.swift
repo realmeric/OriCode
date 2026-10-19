@@ -73,6 +73,7 @@ enum ShortcutList {
             .action(.commandCenter),
             .action(.shellPrompt),
             .action(.heads),
+            .action(.overview),
             .action(.findFile),
             .action(.sideQuestion),
             .action(.review),

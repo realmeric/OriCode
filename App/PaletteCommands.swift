@@ -462,6 +462,8 @@ extension AppModel {
             items.append(command("heads", "Show heads", icon: "circle.dotted", shortcut: shortcuts.label(.heads), keywords: ["agents", "tasks", "running"],
                                  unavailable: noThread) { [weak self] in self?.toggleHeads() })
         }
+        items.append(command("overview", "Show everything running", icon: "square.stack.3d.up", shortcut: shortcuts.label(.overview),
+                             keywords: ["threads", "agents", "workflows", "running", "overview", "status"]) { [weak self] in self?.toggleOverview() })
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: shortcuts.label(.findFile), unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })

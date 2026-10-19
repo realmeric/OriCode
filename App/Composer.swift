@@ -35,6 +35,9 @@ struct Composer: View {
     @State private var height: CGFloat = 48
     /// Where the composer's top is in the window, for which side the picker opens on.
     @State private var top: CGFloat = .infinity
+    /// Where the whole composer is, for the thread that comes into it next; out of the body, so a
+    /// resize doesn't draw it again.
+    @State private var place = Place()
     @State private var attachHovered = false
     /// An image or file held over the composer, about to land in it.
     @State private var dropTarget = false
@@ -120,6 +123,10 @@ struct Composer: View {
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
             top = $0
             state.top = $0
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            place.frame = $0
+            state.frame = $0
         }
         // A click anywhere on it puts the keyboard in its thread, as one on the field does.
         .simultaneousGesture(TapGesture().onEnded { choose() })
@@ -209,6 +216,10 @@ struct Composer: View {
                 }
                 // Esc puts the files away as it does Tab's list.
                 .onChange(of: completions.isEmpty && mentionMatches.isEmpty) { _, none in state.menu = !none }
+                // A list rises into the place of the screen of everything running, which goes.
+                .onChange(of: slashMatches.isEmpty && completions.isEmpty && mentionMatches.isEmpty) { _, none in
+                    if !none, selected { model.closeOverview() }
+                }
                 // Typing anything but what Tab left puts its list away; only watched while there is one.
                 .onChange(of: completions.isEmpty ? 0 : draft.edits) {
                     if !completions.isEmpty, text != completed { completions = [] }
@@ -253,6 +264,7 @@ struct Composer: View {
             // Where this composer is on the glass is the view's, and the thread it shows now
             // hasn't been told.
             state.top = top
+            state.frame = place.frame
             if selected, !model.keyboardTaken { draft.keyboard(takesKeyboard) }
         }
         .onAppear {
@@ -928,4 +940,9 @@ private struct QueuedLine: View {
         .animation(Motion.fade, value: sendHovered)
         .animation(Motion.fade, value: removeHovered)
     }
+}
+
+/// Where a composer is in the window, held by reference so writing it draws nothing.
+private final class Place {
+    var frame = CGRect.zero
 }

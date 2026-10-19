@@ -17,6 +17,9 @@ final class ComposerState {
     var focus = 0
     /// Where the composer's top edge is in the window, which the terminal stops above.
     var top: CGFloat = 0
+    /// Where the composer is in the window, so a click on it leaves the screen of everything
+    /// running up.
+    @ObservationIgnored var frame = CGRect.zero
     /// Where the model button is in the window, so a click on it is left to the button.
     @ObservationIgnored var modelButtonFrame = CGRect.zero
     /// The prompt the latest click on a suggested thread handed the composer, which the next
@@ -104,6 +107,11 @@ extension AppModel {
     var composerMenu: Bool {
         get { composer(for: chat).menu }
         set { composer(for: chat).menu = newValue }
+    }
+
+    /// Whether a point in the window is on a composer on the glass.
+    func onComposer(_ point: CGPoint) -> Bool {
+        ([composer(for: chat)] + [besideShown].compactMap { $0 }.map { composer(for: $0) }).contains { $0.frame.contains(point) }
     }
 
     /// The higher of the composers on the glass, which the review and a full block stop above.

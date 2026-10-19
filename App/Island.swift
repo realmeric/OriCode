@@ -13,7 +13,7 @@ struct Island: View {
     @AppStorage(ReviewDesign.key) private var reviewDesign = ReviewDesign.witness
 
     enum Piece: Hashable {
-        case capsule, command, heads, files, side, pull, review
+        case capsule, command, heads, overview, files, side, pull, review
 
         /// What VoiceOver calls the surface.
         var name: String {
@@ -21,6 +21,7 @@ struct Island: View {
             case .capsule: "Title"
             case .command: "Command center"
             case .heads: "Heads"
+            case .overview: "Everything running"
             case .files: "Files"
             case .side: "Side question"
             case .pull: "Pull request"
@@ -95,6 +96,7 @@ struct Island: View {
     private var shown: Piece {
         if model.commandCenterShown { return .command }
         if model.headsShown { return .heads }
+        if model.overviewShown { return .overview }
         if model.fileFinderShown { return .files }
         if model.sideShown { return .side }
         if model.pullShown, model.pull != nil { return .pull }
@@ -117,6 +119,11 @@ struct Island: View {
             HeadsSurface(island: island)
                 .frame(width: min(HeadsSurface.width, room.width))
                 .surface(.heads, in: island, glass: reduceMotion)
+                .transition(arrival)
+        case .overview:
+            Overview(tallest: overviewHeight(room))
+                .frame(width: min(Overview.width, room.width))
+                .surface(.overview, in: island, glass: reduceMotion)
                 .transition(arrival)
         case .files:
             FileFinder()
@@ -152,6 +159,13 @@ struct Island: View {
         let low = model.currentConversation?.started ?? false
         let bottom = low ? model.composerTop - 12 : room.height - 20
         return max(160, bottom - Self.top)
+    }
+
+    /// Down to 12pt above the composer, wherever it sits, so the composer stays in sight under it:
+    /// in the middle of an empty thread, a long draft grows it up into the screen's room.
+    private func overviewHeight(_ room: CGSize) -> CGFloat {
+        let bottom = model.composerTop > 0 ? model.composerTop - 12 : room.height - 90
+        return max(0, bottom - Self.top)
     }
 
     /// What a piece shows comes in once the glass is on its way, and goes before the glass does.
@@ -204,6 +218,7 @@ extension AppModel {
     func openInIsland(_ piece: Island.Piece) {
         commandCenterShown = piece == .command
         headsShown = piece == .heads
+        overviewShown = piece == .overview
         fileFinderShown = piece == .files
         if piece != .side, sideShown { stopSide() }
         sideShown = piece == .side

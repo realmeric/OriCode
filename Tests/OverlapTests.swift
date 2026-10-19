@@ -12,8 +12,8 @@ import Testing
 @MainActor
 struct OverlapTests {
     /// Every surface over a titled thread, a pair and a new thread, the drawer pinned and not,
-    /// at the narrowest window, the default one and a wide one: 154 states and some forty
-    /// seconds. make test walks the 58 where words have the least room, one thread at 720pt and
+    /// at the narrowest window, the default one and a wide one: 170 states and some forty
+    /// seconds. make test walks the 64 where words have the least room, one thread at 720pt and
     /// two at 1180pt, and the rest while scratch/frames/overlap exists, which a card that
     /// touches layout makes before it's called done.
     @Test func noTwoWordsShareAPlace() async throws {
@@ -34,7 +34,7 @@ struct OverlapTests {
         }
         // A tree with no words in it would pass whatever was drawn.
         #expect(stage.most > 40, "the accessibility tree had \(stage.most) words at most")
-        #expect(states == (OverlapStage.whole ? 154 : 58))
+        #expect(states == (OverlapStage.whole ? 170 : 64))
         // Under no pointer, so what was read doesn't turn on where one rests.
         #expect(!stage.onScreen)
         for fault in stage.verdict() {
@@ -67,6 +67,19 @@ struct OverlapTests {
         let surfaces = stage.read().surfaces
         #expect(surfaces.contains { $0.name == "Threads" })
         #expect(surfaces.first { $0.name == "Review" }?.frame == alone.frame)
+    }
+
+    /// Everything running over a thread not begun, in the least window, with a draft of nine lines
+    /// that grows the centred composer up into the screen's room and a dozen threads on it: the
+    /// screen's glass ends 12pt above the composer, and the model's picker opening puts it away.
+    @Test func everythingRunningStopsAboveADraftInTheMiddle() async throws {
+        let stage = try OverlapStage()
+        defer { stage.close() }
+        let (glass, composer) = try await stage.everythingRunningOverADraft(lines: 9)
+        let surface = try #require(glass)
+        #expect(composer > 100 && composer < 240, "the composer's top was at \(composer)")
+        #expect(surface.maxY <= composer - 11, "the screen ends at \(surface.maxY), the composer starts at \(composer)")
+        #expect(try await stage.pickerPutsEverythingRunningAway())
     }
 
     @Test func theLaneStopsShortOfTheReviewsButton() {
@@ -120,7 +133,7 @@ struct OverlapTests {
 final class OverlapStage {
     static let widths: [CGFloat] = [720, 1180, 1710]
 
-    /// All 154 states, where make test walks 58.
+    /// All 170 states, where make test walks 64.
     nonisolated static var whole: Bool {
         FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Library/Developer/OriCode/scratch/frames/overlap")
     }
@@ -138,7 +151,7 @@ final class OverlapStage {
     enum Over: String, CaseIterable {
         case nothing = "nothing open", command = "the command center", heads = "the heads", files = "the file finder"
         case side = "the side question", pull = "the pull request", witness = "the review", legacy = "the Legacy review"
-        case file = "a file", block = "a terminal"
+        case file = "a file", block = "a terminal", overview = "everything running"
     }
 
     /// A word on the glass: a text, a button or a field, where it shows.
@@ -211,6 +224,9 @@ final class OverlapStage {
             conversation.receive(EngineEvent(name: "text", threadId: chat.id.uuidString, body: ["event": "text", "delta": "Read, and here is what I found in it."]))
             conversation.receive(EngineEvent(name: "turn.done", threadId: chat.id.uuidString, body: ["event": "turn.done", "stopReason": "end_turn"]))
         }
+        // Each ended a turn in this launch, so everything running lists them, the longest line each.
+        model.outcomes[titled.id] = Outcome(state: .done, line: "Kept each composer's draft with its thread, and the tests for it pass on both columns")
+        model.outcomes[other.id] = Outcome(state: .stopped, line: "Read git once in the review for both columns before it was stopped")
         model.pulls[project.path] = PullRequest(
             number: 1234, title: other.title, url: "https://github.com/realmeric/OriCode/pull/1234", state: "OPEN", head: Self.branch, base: "main",
             checks: [PullCheck(name: "CI / test", state: "fail", link: nil, seconds: 64), PullCheck(name: "CI / build", state: "pass", link: nil, seconds: 6)])
@@ -338,6 +354,7 @@ final class OverlapStage {
         case .nothing: break
         case .command: model.openInIsland(.command)
         case .heads: model.openInIsland(.heads)
+        case .overview: model.openInIsland(.overview)
         case .files: model.openInIsland(.files)
         case .side: model.openInIsland(.side)
         case .pull: model.openInIsland(.pull)
@@ -360,6 +377,32 @@ final class OverlapStage {
         }
         try await settle()
         return "\(Int(width))pt, \(pinned ? "the drawer pinned, " : "")\(threads.rawValue), \(over.rawValue)"
+    }
+
+    func everythingRunningOverADraft(lines: Int) async throws -> (glass: CGRect?, composer: CGFloat) {
+        window.setContentSize(NSSize(width: 720, height: 480))
+        model.closeOtherSide()
+        let project = try #require(titled.project)
+        for index in 1...10 {
+            let chat = Chat(project: project, title: "A thread that has worked since OriCode opened, number \(index)")
+            chat.started = true
+            chat.position = Double(index + 1)
+            container.mainContext.insert(chat)
+            model.outcomes[chat.id] = Outcome(state: .done, line: "What it said last, at length, number \(index)")
+        }
+        let draft = try #require(model.newChat())
+        model.composer(for: draft).draft.text = (1...lines).map { "Line \($0) of the draft" }.joined(separator: "\n")
+        try await Task.sleep(for: .milliseconds(900))
+        model.openInIsland(.overview)
+        try await settle()
+        return (read().surfaces.first { $0.name == Island.Piece.overview.name }?.frame, model.composerTop)
+    }
+
+    func pickerPutsEverythingRunningAway() async throws -> Bool {
+        model.modelPickerShown = true
+        try await settle()
+        defer { model.modelPickerShown = false }
+        return !model.overviewShown
     }
 
     func callDrawer() async throws {

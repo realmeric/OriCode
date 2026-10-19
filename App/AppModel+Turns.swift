@@ -440,6 +440,7 @@ extension AppModel {
             conversation(for: chat).receive(event)
         }
         if event.name == "workflow" { syncAgents(of: chat, event.body) }
+        if event.name == "turn.started" || event.name == "turn.done" { noteOutcome(event, of: chat) }
         if event.name == "turn.done", let spent = event.body["spent"]?.string {
             startOver(chat, spent: spent, held: event.body["held"]?.bool == true)
         }
@@ -515,7 +516,11 @@ extension AppModel {
         for conversation in conversations.values where !conversation.waitingAfterQuit {
             let midTurn = conversation.running
             conversation.stopped()
-            if midTurn { conversation.note("The engine stopped in the middle of this turn.") }
+            guard midTurn else { continue }
+            conversation.note("The engine stopped in the middle of this turn.")
+            // No turn.done comes from an engine that died, so the screen of everything running
+            // hears it here.
+            outcomes[conversation.chat.id] = Outcome(state: .stopped, line: Self.turnLine(conversation))
         }
         for conversation in conversations.values { conversation.endWorkflows() }
         // A new engine watches nothing until it's asked again.

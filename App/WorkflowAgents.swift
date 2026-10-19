@@ -41,6 +41,8 @@ extension AppModel {
             if let result, chat.agentResult != result { chat.agentResult = result; changed = true }
             if let transcript, chat.agentTranscript != transcript { chat.agentTranscript = transcript; changed = true }
             if let model = agent["model"]?.string, chat.model != model { chat.model = model; changed = true }
+            // Heard of in this launch, so the screen of everything running lists it.
+            if outcomes[chat.id] == nil { outcomes[chat.id] = Outcome() }
         }
         guard changed else { return }
         save()
@@ -64,7 +66,11 @@ extension AppModel {
     func settleAgents() {
         let open = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.agentState == "running" || $0.agentState == "queued" }))) ?? []
         guard !open.isEmpty else { return }
-        for chat in open { chat.agentState = "stopped" }
+        for chat in open {
+            chat.agentState = "stopped"
+            // Stopped by this launch, at its start or with the engine, so the screen lists it.
+            outcomes[chat.id] = Outcome()
+        }
         save()
     }
 

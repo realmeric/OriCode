@@ -42,6 +42,8 @@ struct OriCodeCommands: Commands {
                     .keyboardShortcut(shortcuts.key(.heads))
                     .disabled(model.chat == nil)
             }
+            Button(model.overviewShown ? "Hide Everything Running" : "Show Everything Running") { model.toggleOverview() }
+                .keyboardShortcut(shortcuts.key(.overview))
             Button("Find File…") { model.toggleFileFinder() }
                 .keyboardShortcut(shortcuts.key(.findFile))
                 .disabled(model.chat == nil)

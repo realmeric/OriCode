@@ -28,6 +28,10 @@ extension AppModel {
             closeHeads()
             return true
         }
+        if overviewShown {
+            closeOverview()
+            return true
+        }
         if commandCenterShown {
             // Back one level, and at the top, away.
             if !palette.pop() {

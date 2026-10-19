@@ -139,10 +139,12 @@ struct RootView: View {
                 .onChange(of: beside?.id) { _, drawn in
                     if let drawn { model.notifier.clear(chatID: drawn) }
                 }
-                .simultaneousGesture(TapGesture().onEnded {
+                .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { tap in
                     if !model.drawerDocked { model.hideDrawer() }
                     if model.commandCenterShown { model.closeCommandCenter() }
                     if model.headsShown { model.closeHeads() }
+                    // The composer under the screen of everything running writes with it up.
+                    if model.overviewShown, !model.onComposer(tap.location) { model.closeOverview() }
                     if model.fileFinderShown { model.toggleFileFinder() }
                     if model.sideShown { model.closeSide() }
                     if model.pullShown { model.closePull() }
@@ -162,6 +164,7 @@ struct RootView: View {
             if shown {
                 model.closeBlock()
                 if model.reviewShown { model.closeReview() }
+                model.closeOverview()
             }
         }
         .confirmationDialog(

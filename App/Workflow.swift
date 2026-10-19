@@ -12,6 +12,8 @@ struct WorkflowRun: Hashable {
             case queued, running, done, failed
         }
 
+        /// Claude Code's id for it, which a queued agent doesn't have yet.
+        let id: String?
         let label: String
         let phase: String
         let state: State
@@ -34,6 +36,7 @@ struct WorkflowRun: Hashable {
         phases = body["phases"]?.array?.compactMap(\.string) ?? []
         agents = (body["agents"]?.array ?? []).map { agent in
             Agent(
+                id: agent["agentId"]?.string,
                 label: agent["label"]?.string ?? "agent",
                 phase: agent["phase"]?.string ?? "",
                 state: Agent.State(rawValue: agent["state"]?.string ?? "") ?? .queued,
