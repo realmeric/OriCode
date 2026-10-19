@@ -60,5 +60,11 @@ export function engineWith(env: Record<string, string | undefined>) {
   };
   /// For a test that failed before it ended the engine, which would otherwise hold the run open.
   const kill = () => engine.exitCode === null && engine.kill();
-  return { lines, until, request, end, kill };
+  /// SIGTERM, as the app's quit and restart send it, and the engine gone.
+  const quit = async () => {
+    const closed = new Promise((done) => engine.on("close", done));
+    engine.kill("SIGTERM");
+    await closed;
+  };
+  return { lines, until, request, end, kill, quit };
 }

@@ -14,7 +14,7 @@ import { opencode, opencodeSessions } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
-import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, usd, type Choice, type Seam } from "./rays.ts";
+import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, settleMerges, usd, type Choice, type Seam } from "./rays.ts";
 import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
 import { taskLead } from "./plan.ts";
 import { seeing } from "./mac.ts";
@@ -725,19 +725,29 @@ input.on("line", (line) => {
 // Stdin closing means the app is gone. Finish what was asked (so a piped request from
 // Terminal still gets its answer), then take the CLIs down with us.
 input.on("close", () => {
-  setInterval(() => {
+  const waiting = setInterval(() => {
     // Reparented to launchd means the app died; a turn nobody can see isn't worth finishing.
     const orphaned = process.ppid === 1;
     if (!orphaned && (inFlight > 0 || [...sessions.values()].some((found) => found.isRunning))) return;
-    stopAll();
-    for (const found of sessions.values()) found.close();
-    process.exit(0);
+    clearInterval(waiting);
+    void shutDown();
   }, 200);
 });
 
 // The app's restart and its quit end the engine with SIGTERM; quiet actions go with it.
-process.on("SIGTERM", () => {
+process.on("SIGTERM", () => void shutDown());
+
+let goingDown = false;
+
+/// A merge open on its conflicts lives only here, so it's undone before the engine goes, ten
+/// seconds at most: one under way may be waiting on an app that has gone.
+async function shutDown(): Promise<void> {
+  if (goingDown) return;
+  goingDown = true;
+  // A line written to an app that has gone fails with EPIPE, which unheard ends the engine.
+  process.stdout.on("error", () => {});
+  await Promise.race([settleMerges(), new Promise((done) => setTimeout(done, 10_000))]);
   stopAll();
   for (const found of sessions.values()) found.close();
   process.exit(0);
-});
+}

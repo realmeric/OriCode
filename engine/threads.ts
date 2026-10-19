@@ -56,7 +56,8 @@ export const waitThread = {
   name: "wait_thread",
   description:
     "Wait for another thread's turn to end, and get its last reply. A thread that isn't working answers at once with the reply it last gave. " +
-    "Waits up to five minutes; a thread still working then comes back with its state and no reply, and you can call again. A thread waiting on the user to answer a question waits on them, and says so.",
+    "Waits up to five minutes; a thread still working then comes back with its state and no reply, and you can call again. A thread waiting on the user to answer a question waits on them, and says so. " +
+    "When its turn edited a file another working thread of the project edited too, the answer names each in `sameFiles`: merging both will meet it.",
   inputSchema: {
     type: "object",
     properties: { thread },
@@ -72,6 +73,36 @@ export const stopThread = {
     type: "object",
     properties: { thread, reason },
     required: ["thread", "reason"],
+  },
+};
+
+export const mergeThread = {
+  name: "merge_thread",
+  description:
+    "Bring the work of a thread you opened with a worktree into your own folder, once its turn has ended: what's uncommitted in its worktree is committed to its branch, and git merges the branch into your folder as it is, so the files arrive uncommitted beside your own edits for the user to review. Returns what came in. " +
+    "When nothing in its worktree is left unmerged, OriCode removes the worktree and its branch, and the thread works in your folder from then on. " +
+    "When git meets a conflict, the merge stays open: you get each conflicting file with its hunks, marked in the file as git marks them. Settle each in the file, or ask the user which side to keep where you can't tell, then call finish_merge; or finish_merge with undo, which puts every file the merge wrote back as it was. A merge still open when your turn ends is undone.",
+  inputSchema: {
+    type: "object",
+    properties: { thread },
+    required: ["thread"],
+  },
+};
+
+export const finishMerge = {
+  name: "finish_merge",
+  description:
+    "Finish the merge merge_thread or merge_worker left open on a conflict, once no conflict's markers are left in its files and a side is kept for each conflict git couldn't mark; or with undo, take it back, every file it wrote put back as it was before the merge.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      undo: { type: "boolean", description: "Take the merge back instead of finishing it." },
+      keep: {
+        type: "object",
+        additionalProperties: { type: "string", enum: ["folder", "branch"] },
+        description: "For each conflict git couldn't mark, a file one side deleted or a binary one, by its path: \"folder\" keeps your folder's side as it was before the merge, \"branch\" the merged thread's, the file removed where that side has none.",
+      },
+    },
   },
 };
 
@@ -136,11 +167,11 @@ export const suggesting =
 /// The first half of `opening`: parts that don't depend on each other go to threads. A head that
 /// chooses its models is told to give them to workers instead (rays.ts's `choosing`).
 export const parts =
-  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. Only a task that is one part, or a question, you do yourself. When parts wait on others, write every part first as a task of the project's plan with add_tasks, with what each waits on, then open a thread for each task that waits on nothing with open_thread's `task`, and one for each of the rest once what it waits on is done. ";
+  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. A thread that edits files while another does gets a worktree of its own with open_thread's `worktree`, and once its turn is done you bring its work into your folder with merge_thread. Only a task that is one part, or a question, you do yourself. When parts wait on others, write every part first as a task of the project's plan with add_tasks, with what each waits on, then open a thread for each task that waits on nothing with open_thread's `task`, and one for each of the rest once what it waits on is done. ";
 
 /// The second half: what the tools do to the user's threads, which every session with them hears.
 export const reach =
-  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, and add_tasks, claim_task and update_task keep the plan. You decide when to use them. " +
+  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, merge_thread brings the work of one you opened with a worktree into your folder, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, and add_tasks, claim_task and update_task keep the plan. You decide when to use them. " +
   "Each open, message and stop takes a one-line reason, which both threads show the user. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
 
 /// What every session with the tools is told of them, where its agent has somewhere to hear it:

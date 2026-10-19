@@ -11,7 +11,8 @@ import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
 import { Hands, isMacTool, macTools, Pictured } from "./mac.ts";
 import { planTools } from "./plan.ts";
-import { askApp, listThreads, longestTurnWait, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
+import { begin, cameIn, conflictsOf, ignoredLeft, keep, marked, snapshot, summary, undo, type Counted, type Merge } from "./merge.ts";
+import { askApp, finishMerge, listThreads, longestTurnWait, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -183,7 +184,7 @@ const tools = [
   {
     name: "merge_worker",
     description:
-      "Bring an isolated worker's edits into this thread's folder with git merge --squash, so they arrive uncommitted, for the user to review beside yours. Reports the files that conflict, which git leaves marked for you to settle.",
+      "Bring an isolated worker's edits into this thread's folder: git merges its branch into the folder as it is, so they arrive uncommitted, for the user to review beside yours. A conflict leaves the merge open, as merge_thread's does, for finish_merge.",
     inputSchema: { type: "object", properties: { worker: { type: "string" } }, required: ["worker"] },
   },
 ];
@@ -261,6 +262,12 @@ export function raysOf(threadId: string): Rays | undefined {
   return heads.get(threadId);
 }
 
+/// Before the engine goes, each thread's merge under way is waited for and one left open is
+/// undone, so a quit never leaves git's markers in a folder with nothing to take them back.
+export async function settleMerges(): Promise<void> {
+  await Promise.all([...heads.values()].map((head) => head.settle()));
+}
+
 /// Every thread forgets the apps it was let see and use, and its asks waiting are taken back.
 export function forgetMac(): void {
   for (const head of heads.values()) head.forgetMac();
@@ -336,6 +343,15 @@ export class Rays {
   /// thread's calls on it with the apps it was let use.
   private mac = false;
   private hands: Hands;
+  /// A merge that met a conflict, until finish_merge finishes or undoes it or the turn ends, with
+  /// the side named for each conflict git couldn't mark.
+  private merging: { merge: Merge; name: string; who: Record<string, unknown>; done: (files: Counted[]) => Promise<Record<string, unknown>>; kept: Set<string> } | undefined;
+  /// A merge from its first git call to its answer, and the turn it began in: one that meets a
+  /// conflict after its turn has ended, or the thread has closed, is undone at once.
+  private underway: Promise<unknown> | undefined;
+  private startedIn = 0;
+  private turns = 0;
+  private closing = false;
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -350,6 +366,8 @@ export class Rays {
       if (name === "turn.done") {
         this.tally(typeof fields.costUSD === "number" ? fields.costUSD : 0);
         this.hands.turnEnded();
+        this.turns += 1;
+        void this.undoOpen("the turn ended");
       }
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
@@ -387,7 +405,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread, ...planTools, ...(this.mac ? macTools : [])] } };
+        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, mergeThread, finishMerge, suggestThread, listThreads, readThread, ...planTools, ...(this.mac ? macTools : [])] } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
@@ -431,7 +449,7 @@ export class Rays {
       case "stop_worker":
         return this.stop(args.worker).then(() => this.status(this.worker(args.worker)));
       case "merge_worker":
-        return this.merge(this.worker(args.worker));
+        return this.once(() => this.merge(this.worker(args.worker)));
       case "change_my_model":
         return this.retune(args);
       case "open_thread":
@@ -443,6 +461,10 @@ export class Rays {
         return this.wait(args);
       case "stop_thread":
         return this.act("thread.stop", args, {});
+      case "merge_thread":
+        return this.once(() => this.mergeThread(args));
+      case "finish_merge":
+        return this.finishMerge(args.undo === true, args.keep);
       case "suggest_thread":
         return this.suggest(args);
       case "list_threads":
@@ -876,23 +898,115 @@ export class Rays {
     const root = await top(this.cwd);
     const patch = await gitRun(root, [...diffArgs, base, branch]);
     if (!patch.trim()) return { worker: worker.id, merged: false, note: `${worker.id} changed nothing.` };
-    let conflicts: string[] = [];
-    try {
-      await git(root, ["merge", "--squash", branch]);
-    } catch (error) {
-      conflicts = (await git(root, ["diff", "--name-only", "--diff-filter=U"]).catch(() => "")).split("\n").filter(Boolean);
-      if (!conflicts.length) throw new Error(friendly(describe(error)));
-    }
     const chunks = parsePatch(patch);
-    this.tellWorker(worker, 0, chunks.map((chunk) => ({ path: join(root, chunk.path), hunks: chunk.hunks.map(({ oldStart, newStart, lines }) => ({ oldStart, newStart, lines })) })), branch);
+    return this.bring(await begin(this.cwd, branch, "this thread's folder"), worker.id, { worker: worker.id, branch }, async () => {
+      this.tellWorker(worker, 0, chunks.map((chunk) => ({ path: join(root, chunk.path), hunks: chunk.hunks.map(({ oldStart, newStart, lines }) => ({ oldStart, newStart, lines })) })), branch);
+      return {};
+    });
+  }
+
+  /// A thread this one opened with a worktree: the app says where it is, once it has checked the
+  /// thread is this one's and its turn is over; what's uncommitted there goes onto its branch, the
+  /// branch comes into this thread's folder, and the app is told what came in, which removes the
+  /// worktree when nothing in it is left out.
+  async mergeThread(args: Record<string, any>): Promise<unknown> {
+    const named = required(args.thread, "Name the thread by its id, which list_threads gives.");
+    const found = (await askApp("thread.merge", { threadId: this.threadId, thread: named })) as { id: string; title: string; folder: string; worktree: string; branch: string };
+    await commitAll(found.worktree, found.title);
+    const merge = await begin(found.folder, found.branch, "this thread's folder");
+    return this.bring(merge, found.title, { thread: found.title, id: found.id, branch: found.branch }, async (files) => {
+      const clean = !(await git(found.worktree, ["status", "--porcelain"]).catch(() => "?")).trim();
+      const moved = (await git(merge.root, ["rev-parse", "--verify", "-q", found.branch]).catch(() => "")).trim() !== merge.tip;
+      const ignored = await ignoredLeft(found.worktree, merge.root).catch(() => undefined);
+      return (await askApp("thread.merged", { threadId: this.threadId, thread: found.id, files, summary: summary(files), unmerged: !clean || moved || ignored?.length !== 0, ignored: ignored ?? [] })) as Record<string, unknown>;
+    });
+  }
+
+  /// A merge that came in clean is done, and `done` says what follows from it. One that met a
+  /// conflict stays open for finish_merge, with what the agent needs to settle it.
+  private async bring(merge: Merge, name: string, who: Record<string, unknown>, done: (files: Counted[]) => Promise<Record<string, unknown>>): Promise<unknown> {
+    if (!merge.conflicts.length) {
+      const files = await cameIn(merge);
+      return { ...who, merged: true, files, summary: summary(files), ...(await done(files)) };
+    }
+    if (this.closing || this.turns !== this.startedIn) {
+      const why = this.closing ? "the thread closed" : "the turn ended";
+      await undo(merge);
+      emit({ event: "note", threadId: this.threadId, text: `The merge of ${name} was undone: ${why} before it met its conflicts, and the files it wrote are as they were.` });
+      return { ...who, merged: false, undone: true, note: `The merge met a conflict after ${why}, so it was undone.` };
+    }
+    this.merging = { merge, name, who, done, kept: new Set() };
+    const files = await cameIn(merge);
     return {
-      worker: worker.id,
-      merged: true,
-      branch,
-      files: chunks.map((chunk) => ({ path: chunk.path, ...counted(chunk.hunks) })),
-      conflicts,
-      ...(conflicts.length ? { note: "git left conflict markers in these files. Settle them, and the edits stay uncommitted for the user to review." } : {}),
+      ...who,
+      merged: false,
+      open: true,
+      files: files.filter((file) => !merge.conflicts.includes(file.path)),
+      conflicts: await conflictsOf(merge),
+      note: "git met a conflict, so the merge is open: every file it wrote is in this thread's folder, the conflicting ones with git's markers. Settle each conflict in its file, or ask the user which side to keep where you can't tell, then call finish_merge; finish_merge with undo puts the folder back as it was. A conflict git couldn't mark, a file one side deleted or a binary file, comes with what git said of it instead of hunks: name the side to keep for each in finish_merge's keep. A merge still open when your turn ends is undone.",
     };
+  }
+
+  async finishMerge(undoing: boolean, sides: unknown): Promise<unknown> {
+    const open = this.merging;
+    if (!open) throw new Error("This thread has no merge open.");
+    if (undoing) {
+      this.merging = undefined;
+      await undo(open.merge);
+      return { ...open.who, merged: false, undone: true, note: "Every file the merge wrote is as it was before it." };
+    }
+    for (const [path, side] of Object.entries(sides && typeof sides === "object" ? sides : {})) {
+      if (!open.merge.unmarked.some((file) => file.path === path)) throw new Error(`${path} isn't a conflict git left unmarked in this merge, so keep doesn't take it.`);
+      if (side !== "folder" && side !== "branch") throw new Error(`Keep "folder" or "branch" for ${path}.`);
+      await keep(open.merge, path, side);
+      open.kept.add(path);
+    }
+    const left = await marked(open.merge);
+    if (left.length) {
+      throw new Error(`Conflict markers are left in ${left.map((file) => `${file.path} at line ${file.line}`).join(", ")}. Settle them in the file, then call finish_merge again, or call it with undo.`);
+    }
+    const unchosen = open.merge.unmarked.filter((file) => !open.kept.has(file.path));
+    if (unchosen.length) {
+      throw new Error(`No side is kept yet for ${unchosen.map((file) => `${file.path} (${file.conflict})`).join(", ")}: name "folder" or "branch" for each in finish_merge's keep, or call it with undo.`);
+    }
+    this.merging = undefined;
+    const files = await cameIn(open.merge, await snapshot(open.merge.root));
+    return { ...open.who, merged: true, files, summary: summary(files), ...(await open.done(files)) };
+  }
+
+  /// One merge at a time, from its first git call to its answer, so an undo puts back what was
+  /// there before it. A thread on Plan edits nothing, and a merge writes into its folder.
+  private async once<T>(merging: () => Promise<T>): Promise<T> {
+    if (this.mode === "plan") throw new Error("This thread is on Plan, which edits no files, and a merge writes them into its folder. Ask the user to take it off Plan first.");
+    if (this.underway) throw new Error("Another merge is under way in this thread: wait for its answer, then call again.");
+    if (this.merging) throw new Error(`The merge of ${this.merging.name} is open on its conflicts: finish it with finish_merge, or take it back with finish_merge's undo, first.`);
+    this.startedIn = this.turns;
+    const going = merging();
+    this.underway = going;
+    try {
+      return await going;
+    } finally {
+      this.underway = undefined;
+    }
+  }
+
+  /// The engine is going: a merge under way finishes, undone if it met a conflict, and one open
+  /// is undone.
+  async settle(): Promise<void> {
+    this.closing = true;
+    await this.underway?.catch(() => {});
+    await this.undoOpen("the thread closed");
+  }
+
+  /// The turn ended, or the thread went, with a merge open: it's undone, and the thread says so.
+  private async undoOpen(why: string): Promise<void> {
+    const open = this.merging;
+    if (!open) return;
+    this.merging = undefined;
+    await undo(open.merge).then(
+      () => emit({ event: "note", threadId: this.threadId, text: `The merge of ${open.name} was undone: ${why} with its conflicts unsettled, and the files it wrote are as they were.` }),
+      (error) => emit({ event: "note", threadId: this.threadId, text: `The merge of ${open.name} couldn't be undone: ${describe(error)}` }),
+    );
   }
 
   /// Heads' detail goes out only while the app's Heads surface shows this thread.
@@ -909,6 +1023,7 @@ export class Rays {
   /// they may hold work nobody has merged.
   close(): void {
     clearTimeout(this.timer);
+    void this.settle();
     for (const worker of this.workers.values()) {
       if (worker.state === "running") this.ended(worker, "stopped");
       worker.session.close();
@@ -1034,10 +1149,7 @@ export class Rays {
 
   /// An isolated worker's edits go onto its branch as it finishes each turn, which is where they live.
   private async commit(worker: Worker): Promise<void> {
-    const { path } = worker.isolated!;
-    if (!(await git(path, ["status", "--porcelain"])).trim()) return;
-    await git(path, ["add", "-A"]);
-    await git(path, ["commit", "-q", "-m", worker.label]);
+    await commitAll(worker.isolated!.path, worker.label);
   }
 
   private async changes(worker: Worker): Promise<{ path: string; added: number; deleted: number }[]> {
@@ -1166,6 +1278,15 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
 }
 
 /// A tool's argument as trimmed text, or the tool's error when there is none.
+/// What's uncommitted in a worktree, committed to its branch before a merge takes it. The commit
+/// is the merge's own, on a branch that goes once it's merged, so the repository's hooks and
+/// signing, which a fresh worktree may not have what to run with, don't run on it.
+async function commitAll(worktree: string, message: string): Promise<void> {
+  if (!(await git(worktree, ["status", "--porcelain"])).trim()) return;
+  await git(worktree, ["add", "-A"]);
+  await git(worktree, ["-c", "commit.gpgsign=false", "commit", "--no-verify", "-q", "-m", message]);
+}
+
 function required(value: unknown, why: string): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) throw new Error(why);

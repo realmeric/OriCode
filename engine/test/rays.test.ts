@@ -121,7 +121,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.equal(init.protocolVersion, "2025-06-18");
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
-    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "message_thread", "wait_thread", "stop_thread", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task"],
+    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "message_thread", "wait_thread", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task"],
   );
 
   const from = engine.lines.length;
@@ -172,7 +172,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
 
   const merged = await call(url, "merge_worker", { worker: "worker-1" });
   assert.equal(merged.merged, true);
-  assert.deepEqual(merged.conflicts, []);
+  assert.equal(merged.conflicts, undefined);
   assert.deepEqual(merged.files, [{ path: "greet.test.ts", added: 1, deleted: 0 }]);
   // Squashed in, uncommitted, for the review.
   assert.equal(await readFile(join(cwd, "greet.test.ts"), "utf8"), "test('greets', () => {});\n");

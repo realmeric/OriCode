@@ -489,6 +489,9 @@ final class Conversation {
     /// What goes under a turn that's still running here, for its end: lines for threads this one
     /// opened whose first turn ended meanwhile, and the threads the turn suggested.
     @ObservationIgnored private var underTurn: [(kind: String, line: JSON)] = []
+    /// The files this turn edited that another working thread of the project edited in its own
+    /// turn, each with that thread, which wait_thread tells the thread waiting on this one.
+    @ObservationIgnored private(set) var sameFiles: [SameFile] = []
     let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -816,11 +819,16 @@ final class Conversation {
     /// The same line for a thread whose transcript isn't in memory, written after its last event
     /// without reading the rest.
     static func threadDone(_ thread: Chat, finished: Bool, unread chat: Chat, in context: ModelContext) {
+        line("thread.done", threadDone(thread, finished: finished), unread: chat, in: context)
+    }
+
+    /// A line stored after a thread's last event, its transcript left unread.
+    static func line(_ kind: String, _ line: JSON, unread chat: Chat, in context: ModelContext) {
         let id = chat.id
         var last = FetchDescriptor<Event>(predicate: #Predicate { $0.chat?.id == id }, sortBy: [SortDescriptor(\.seq, order: .reverse)])
         last.fetchLimit = 1
         let latest = try? context.fetch(last).first
-        let event = Event(turn: latest?.turn ?? 0, seq: (latest?.seq ?? -1) + 1, kind: "thread.done", payload: (try? threadDone(thread, finished: finished).data()) ?? Data())
+        let event = Event(turn: latest?.turn ?? 0, seq: (latest?.seq ?? -1) + 1, kind: kind, payload: (try? line.data()) ?? Data())
         context.insert(event)
         event.chat = chat
         chat.updatedAt = .now
@@ -832,6 +840,37 @@ final class Conversation {
         let line = act.json
         guard !running else { return underTurn.append(("thread.act", line)) }
         record("thread.act", line)
+    }
+
+    /// A line under the turn for a file this thread and another both edit, as threadAct's.
+    func sameFile(_ same: SameFile) {
+        if same.with == nil { sameFiles.append(same) }
+        guard !running else { return underTurn.append(("thread.overlap", same.json)) }
+        record("thread.overlap", same.json)
+    }
+
+    /// The file a call that just came back edited, from the thread's folder, or nil for a call
+    /// that edits none or failed.
+    func editedFile(_ toolUseId: String?) -> String? {
+        guard let toolUseId, let item = items.last(where: { if case .tool(_, let call) = $0 { call.toolUseId == toolUseId } else { false } }),
+              case .tool(_, let call) = item
+        else { return nil }
+        return Self.edited(call, cwd: chat.cwd)
+    }
+
+    /// Every file the turn running here has edited, from the thread's folder.
+    var editedThisTurn: Set<String> {
+        var paths = Set<String>()
+        for item in items.reversed() {
+            if item.startsTurn { break }
+            if case .tool(_, let call) = item, let path = Self.edited(call, cwd: chat.cwd) { paths.insert(path) }
+        }
+        return paths
+    }
+
+    private static func edited(_ call: ToolCall, cwd: String) -> String? {
+        guard call.isEdit || call.kind == .delete || call.kind == .move, call.result != nil, !call.isError, let file = call.file else { return nil }
+        return ToolSummary.relative(file, to: cwd)
     }
 
     private func writeUnderTurn() {
@@ -859,6 +898,7 @@ final class Conversation {
             retrying = "Trying again, \(attempt) of \(max)…"
         case "turn.started":
             running = true
+            sameFiles = []
             // A turn nobody sent, a background agent reporting back, doesn't carry the last one's error.
             failed = false
             // A session of the new agent's own is up, and has been handed the thread.
@@ -1411,6 +1451,9 @@ final class Conversation {
         case "thread.act":
             guard let act = ThreadAct(body) else { break }
             items.append(.act(id: id, thread: act.thread, text: act.words))
+        case "thread.overlap":
+            guard let same = SameFile(body) else { break }
+            items.append(.act(id: id, thread: same.with?.id ?? same.thread, text: same.words))
         case "thread.suggested":
             guard let prompt = body["text"]?.string?.nonEmpty else { break }
             items.append(.suggested(id: id, title: body["title"]?.string?.nonEmpty ?? Chat.title(from: prompt), prompt: prompt))

@@ -94,7 +94,7 @@ extension AppModel {
     }
 
     /// An event that asks the app for something and waits on its answer.
-    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.stop", "threads.list", "thread.read"]).union(planAsks)
+    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.stop", "thread.merge", "thread.merged", "threads.list", "thread.read"]).union(planAsks)
 
     func answerTool(_ event: EngineEvent, from thread: UUID) {
         guard let requestId = event.body["requestId"]?.string else { return }
@@ -140,6 +140,10 @@ extension AppModel {
             return try await wait(on: event.body["thread"]?.string ?? "", from: thread)
         case "thread.stop":
             return try stop(event.body["thread"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
+        case "thread.merge":
+            return try mergeTarget(event.body["thread"]?.string ?? "", from: thread)
+        case "thread.merged":
+            return try await merged(event.body, from: thread)
         case "threads.list":
             return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
         case "thread.read":
@@ -408,6 +412,10 @@ extension AppModel {
         }
         guard let thread = chat(withID: id) else { throw Refused(why: "That thread was deleted while you waited on it.") }
         var answer: [String: JSON] = ["thread": .string(thread.title), "id": .string(id.uuidString), "state": .string(state(of: thread))]
+        // What its turn edited that another working thread edited in its own: the merge will meet it.
+        if let same = conversations[id]?.sameFiles, !same.isEmpty {
+            answer["sameFiles"] = .array(same.map { ["path": .string($0.path), "thread": .string($0.title), "id": .string($0.thread.uuidString)] })
+        }
         if let conversation = conversations[id], conversation.running {
             answer["note"] = .string(conversation.waitingAsk != nil
                 ? "It's waiting on the user to answer it. Call wait_thread again to wait longer."
@@ -542,8 +550,9 @@ struct TurnWait {
 /// What one thread did to another, as the line each of them stores: which act, whether this
 /// thread did it or had it done to it, the other thread then, and the agent's reason.
 struct ThreadAct: Equatable {
-    /// `stoppedWith`: Stop on the opener reached the thread it opened.
-    enum Kind: String { case opened, messaged, stopped, stoppedWith }
+    /// `stoppedWith`: Stop on the opener reached the thread it opened. `merged`: the opener
+    /// brought its work into its own folder.
+    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged }
 
     let act: Kind
     /// This thread did it; false when the other did it to this one.
@@ -579,6 +588,8 @@ struct ThreadAct: Equatable {
         case (.stopped, false): "\(title) stopped this thread"
         case (.stoppedWith, true): "Stopped \(title) with this thread"
         case (.stoppedWith, false): "Stopped with \(title), which opened it"
+        case (.merged, true): "Merged \(title)"
+        case (.merged, false): "\(title) merged this thread's work"
         }
         return reason.isEmpty ? done : "\(done) · \(reason)"
     }

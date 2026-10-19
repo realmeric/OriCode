@@ -517,7 +517,10 @@ extension AppModel {
         tellIfAway(event, chat: chat)
         if event.name == "limited" { scheduleResumes() }
         if event.name == "limits" { takeLimits(event.body, for: chat.providerID) }
-        if event.name == "tool.result", event.body["parent"]?.string == nil, inView(chat.id) { followWater(chat) }
+        if event.name == "tool.result", event.body["parent"]?.string == nil {
+            if inView(chat.id) { followWater(chat) }
+            sameFile(after: event, in: chat)
+        }
         if event.name == "turn.done" {
             // A thread out of view is counted when it comes into view.
             if inView(chat.id) { readWater(for: chat, turnEnded: true) }
