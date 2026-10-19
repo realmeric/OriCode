@@ -232,6 +232,9 @@ final class AppModel {
     @ObservationIgnored var followed: Set<UUID> = []
     /// The pieces of a read of an agent's transcript before its last: where they end, and their events.
     @ObservationIgnored var heldPieces: [UUID: (offset: Int, events: [JSON])] = [:]
+    /// The subagents' and workers' threads this engine has told of, by the agent's id, which each of
+    /// a worker's events names.
+    @ObservationIgnored var agentThreads: [String: UUID] = [:]
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
     let shortcuts = Shortcuts()

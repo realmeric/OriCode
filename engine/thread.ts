@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { basename } from "node:path";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 import {
   query,
   type FastModeDisabledReason,
@@ -15,6 +16,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
+import { subagentTranscript } from "./follow.ts";
 import { Heads } from "./heads.ts";
 import { asks, told, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
@@ -101,6 +103,10 @@ export class Thread implements Session {
   /// and the folder their agents' transcripts are written to, which the call's result names. One
   /// the CLI has said is over stays until its notification brings the run's last snapshot.
   private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape; transcriptDir: string | null; ended: boolean }>();
+  /// The Task subagents the thread's own loop started, by task, each a thread under this one in the
+  /// app, with where the CLI writes its transcript. One the CLI has said is over stays until its
+  /// notification brings what it returned.
+  private subagents = new Map<string, { label: string; transcript: string | null; ended: boolean }>();
   /// The commands out in the background, by their task and by the call that started each,
   /// until the CLI says how each ended. Kept here and not read off the heads, which let a
   /// background task go as soon as the CLI stops listing it, before its notification.
@@ -354,10 +360,13 @@ export class Thread implements Session {
     this.endHeads();
   }
 
-  /// What the CLI ran goes with it: its workflows stop, and its heads end with their watchers.
+  /// What the CLI ran goes with it: its workflows and subagents stop, and its heads end with their
+  /// watchers.
   private endHeads(): void {
     for (const [taskId, workflow] of this.workflows) if (!workflow.ended) this.tellWorkflow(taskId, "stopped");
     this.workflows.clear();
+    for (const [taskId, subagent] of this.subagents) if (!subagent.ended) this.tellSubagent(taskId, "stopped");
+    this.subagents.clear();
     this.heads.clear();
     this.commandCalls.clear();
     this.backgroundCalls.clear();
@@ -471,6 +480,8 @@ export class Thread implements Session {
           this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] }, transcriptDir: null, ended: false });
           this.tellWorkflow(message.task_id, "running");
         }
+        // A subagent's own subagents stay calls in its transcript.
+        if (message.task_type === "local_agent" && (message.spawn_depth ?? 1) === 1 && !message.ambient) this.subagentStarted(message.task_id, message.description, message.session_id);
         if (message.task_type === "local_bash" && message.tool_use_id) {
           this.commandCalls.set(message.task_id, message.tool_use_id);
           if (message.is_backgrounded) this.backgroundCalls.add(message.tool_use_id);
@@ -489,6 +500,10 @@ export class Thread implements Session {
         if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
         this.commandEnded(message.task_id, message.tool_use_id, message.status);
         if (this.workflows.has(message.task_id)) void this.endWorkflow(message.task_id, message.status, message.summary, message.output_file || null);
+        if (this.subagents.has(message.task_id)) {
+          this.tellSubagent(message.task_id, subagentState(message.status), message.summary);
+          this.subagents.delete(message.task_id);
+        }
         break;
       case "task_updated":
         if (message.patch.is_backgrounded) {
@@ -501,11 +516,33 @@ export class Thread implements Session {
           this.tellWorkflow(message.task_id, status);
           const workflow = this.workflows.get(message.task_id);
           if (workflow) workflow.ended = true;
+          const subagent = this.subagents.get(message.task_id);
+          if (subagent) {
+            subagent.ended = true;
+            this.tellSubagent(message.task_id, subagentState(status));
+          }
           this.commandEnded(message.task_id, undefined, status);
         }
         break;
     }
     return this.heads.track(message);
+  }
+
+  /// A subagent the thread's loop started, or one it picked up again, which the app makes a thread
+  /// under this one. Its transcript is wherever the CLI keeps this session.
+  private subagentStarted(taskId: string, label: string, sessionId: string | undefined): void {
+    const session = sessionId ?? this.sessionId;
+    const config = this.env.CLAUDE_CONFIG_DIR ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
+    const transcript = this.subagents.get(taskId)?.transcript ?? (session ? subagentTranscript(join(config, "projects"), this.heads.cwd, session, taskId) : null);
+    this.subagents.set(taskId, { label, transcript, ended: false });
+    this.tellSubagent(taskId, "running");
+  }
+
+  /// A subagent's state for its thread, and once it's over what it returned.
+  private tellSubagent(taskId: string, state: string, result?: string): void {
+    const subagent = this.subagents.get(taskId);
+    if (!subagent) return;
+    event("agent.thread", { threadId: this.id, agentId: taskId, kind: "subagent", label: subagent.label, state, transcript: subagent.transcript, ...(result !== undefined ? { result } : {}) });
   }
 
   /// Where a workflow the thread started has got, with its last snapshot, whole each time.
@@ -879,6 +916,11 @@ export function lifecycleEvent(frame: Lifecycle, waiting: ReadonlySet<string>, r
   if (!waiting.has(id) || frame.state === "queued") return undefined;
   if (frame.state === "started") return { name: "message.taken", id, fields: { messageId: id, newTurn: !running } };
   return { name: "message.cancelled", id, fields: { messageId: id } };
+}
+
+/// A task's ending in the words an agent's thread keeps.
+function subagentState(status: string): string {
+  return status === "completed" ? "done" : status === "failed" ? "failed" : "stopped";
 }
 
 /// Whether a send starts its CLI as Ultracode: workflows on at xhigh, which Claude Code runs as

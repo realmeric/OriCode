@@ -111,7 +111,7 @@ extension AppModel {
     func askToDelete(_ chat: Chat?) {
         guard let chat else { return }
         guard chat.agentID == nil || !workflowRuns(in: chat) else {
-            say("Stop its workflow before deleting it")
+            say("Stop \(chat.agentStopFirst) before deleting it")
             return
         }
         deletingLoss = nil

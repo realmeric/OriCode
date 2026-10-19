@@ -171,4 +171,96 @@ struct WorkflowAgentsTests {
         model.delete(lead)
         #expect(model.projects.flatMap(\.chats).isEmpty)
     }
+
+    private func told(_ id: String, kind: String, state: String, result: String? = nil) -> JSON {
+        var body: [String: JSON] = ["agentId": .string(id), "kind": .string(kind), "label": "look around", "state": .string(state)]
+        if kind == "subagent" { body["transcript"] = .string("/c/s/subagents/agent-\(id).jsonl") }
+        if kind == "worker" { body["task"] = "worker-1"; body["agent"] = "codex"; body["model"] = "gpt-small" }
+        if let result { body["result"] = .string(result) }
+        return .object(body)
+    }
+
+    @Test func aSubagentIsAThreadUnderItsThreadWithAStopOfItsOwn() throws {
+        let (model, lead) = try model()
+        model.syncAgent(of: lead, told("a7", kind: "subagent", state: "running"))
+        let agent = try #require(model.agents(under: lead).first)
+        #expect(model.drawerTree.first?.children?.map(\.chat.title) == ["look around"])
+        #expect(agent.agentKind == "subagent" && agent.agentTask == "a7" && agent.agentWorking)
+        #expect(agent.agentTranscript == "/c/s/subagents/agent-a7.jsonl" && agent.provider == lead.provider)
+        #expect(agent.agentStop == "Stop" && agent.agentStopFirst == "the agent")
+        model.select(agent)
+        #expect(model.canStop)
+        // Told again as it ends: the same thread, with the first line of what it returned.
+        model.syncAgent(of: lead, told("a7", kind: "subagent", state: "done", result: "the note says hello\nmore"))
+        #expect(model.agents(under: lead).count == 1)
+        #expect(agent.agentLine == "the note says hello" && !model.canStop)
+        #expect(!model.send("hello", images: [], in: agent))
+        #expect(throws: AppModel.Refused.self) { try model.message(agent.id.uuidString, text: "hi", reason: "test", from: lead.id) }
+        // stop_thread on one that has ended has nothing to stop.
+        #expect(throws: AppModel.Refused.self) { try model.stop(agent.id.uuidString, reason: "test", from: lead.id) }
+    }
+
+    @Test func aSubagentAtWorkKeepsItsRowAndItsThread() throws {
+        let (model, lead) = try model()
+        model.syncAgent(of: lead, told("a7", kind: "subagent", state: "running"))
+        let agent = try #require(model.agents(under: lead).first)
+        model.archive(agent)
+        model.archive(lead)
+        model.delete(agent)
+        #expect(!agent.archived && !lead.archived && model.agents(under: lead).count == 1)
+        model.syncAgent(of: lead, told("a7", kind: "subagent", state: "stopped"))
+        #expect(agent.agentLine == "Stopped")
+        model.archive(lead)
+        #expect(lead.archived && agent.archived)
+    }
+
+    @Test func aWorkersEventsAreItsThreadsOwn() throws {
+        let (model, lead) = try model()
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "running"))
+        let worker = try #require(model.agents(under: lead).first)
+        #expect(worker.agentKind == "worker" && worker.agentTask == "worker-1" && worker.provider == "codex" && worker.model == "gpt-small")
+        let said = { (event: JSON) in model.workerSaid(["agentId": "k1", "said": event]) }
+        said(["event": "user", "text": "write greet.test.ts"])
+        said(["event": "turn.started"])
+        said(["event": "tool.use", "toolUseId": "c1", "name": "Write", "input": ["file_path": "greet.test.ts"]])
+        said(["event": "tool.result", "toolUseId": "c1", "content": "ok", "isError": false])
+        said(["event": "text", "delta": "Wrote greet.test.ts."])
+        let conversation = model.conversation(for: worker)
+        #expect(conversation.running)
+        said(["event": "turn.done", "stopReason": "end_turn"])
+        #expect(!conversation.running)
+        // An id this engine never told of is nobody's.
+        model.workerSaid(["agentId": "k9", "said": ["event": "user", "text": "lost"]])
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "done", result: "Wrote greet.test.ts."))
+        #expect(worker.agentLine == "Wrote greet.test.ts." && worker.title == "look around" && worker.sessionId == nil)
+        // A relaunch reads it from the store, as a thread's own transcript.
+        let read = Conversation(chat: worker, context: model.context)
+        #expect(read.items.count == 4)
+        if case .user(_, let text, _, _) = read.items.first { #expect(text == "write greet.test.ts") } else { Issue.record("no message first") }
+        #expect(throws: AppModel.Refused.self) { try model.message(worker.id.uuidString, text: "hi", reason: "test", from: lead.id) }
+    }
+
+    @Test func aWorkerMessagedAgainKeepsWhatItsHeadSentAndEndsItsTurnHoweverItEnds() throws {
+        let (model, lead) = try model()
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "done", result: "Wrote greet.test.ts."))
+        let worker = try #require(model.agents(under: lead).first)
+        let conversation = model.conversation(for: worker)
+        let said = { (event: JSON) in model.workerSaid(["agentId": "k1", "said": event]) }
+        // Messaged again: a turn of its own, then a message steered into it, which starts none.
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "running"))
+        said(["event": "user", "text": "slow"])
+        said(["event": "user", "text": "go on", "midTurn": true])
+        #expect(conversation.running)
+        if case .user(_, "go on", _, true) = conversation.items.last {} else { Issue.record("not a message taken up mid-turn") }
+        said(["event": "turn.done", "stopReason": "end_turn"])
+        // A turn that said nothing leaves no earlier reply as its result.
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "done", result: ""))
+        #expect(worker.agentLine == "Done")
+        // One whose turn never came to its turn.done, its head's thread gone, ends with its state.
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "running"))
+        said(["event": "user", "text": "again"])
+        #expect(conversation.running)
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "stopped"))
+        #expect(!conversation.running && !worker.agentWorking)
+    }
 }

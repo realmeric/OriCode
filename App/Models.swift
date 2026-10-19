@@ -85,15 +85,19 @@ final class Chat {
     /// The session in another tool it was imported from, as `source/id`, so Import sessions knows
     /// it's here already after its session id has changed or it moved to another agent.
     var importedFrom: String?
-    /// Claude Code's id for the workflow agent it is, when it's one: a thread its opener's workflow
-    /// writes and nobody else, read-only, under that thread in the drawer.
+    /// The agent it is, when it's one: a thread its opener's workflow, Task call or head writes and
+    /// nobody else, read-only, under that thread in the drawer. Claude Code's id for a workflow's
+    /// agent or a subagent, OriCode's for a worker.
     var agentID: String?
-    /// The workflow that runs it, by its task, which Stop stops whole.
+    /// `subagent` for a Task subagent of its opener's loop, `worker` for a worker its opener's head
+    /// sent out on a ray, nil for an agent of its opener's workflow.
+    var agentKind: String?
+    /// The task Stop stops: a workflow's whole, a subagent's or a worker's its own.
     var agentTask: String?
     /// Where Claude Code writes its transcript, and how many bytes of it are stored here.
     var agentTranscript: String?
     var agentRead: Int = 0
-    /// `queued`, `running`, `done`, `failed` or `stopped`, as its workflow last told.
+    /// `queued`, `running`, `done`, `failed` or `stopped`, as its workflow or its opener last told.
     var agentState: String?
     /// The first line of what it returned, or why it failed.
     var agentResult: String?

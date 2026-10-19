@@ -354,7 +354,7 @@ extension AppModel {
         return .object(params)
     }
 
-    /// Whether Stop has something in the open thread: its turn, or a workflow agent's workflow.
+    /// Whether Stop has something in the open thread: its turn, or the agent it is.
     var canStop: Bool {
         currentConversation?.running == true || chat?.agentWorking == true
     }
@@ -364,9 +364,9 @@ extension AppModel {
     /// ending by itself as the interrupt goes out would still send its next.
     func stop(in thread: Chat? = nil) {
         guard let chat = thread ?? chat else { return }
-        // A workflow's agent has no turn of its own, and Claude Code stops it only with its workflow.
+        // An agent has no turn of its own here: its opener stops it, or its workflow.
         guard chat.agentID == nil else {
-            if chat.agentWorking { stopWorkflow(of: chat) }
+            if chat.agentWorking { stopAgent(chat) }
             return
         }
         let conversation = conversation(for: chat)
@@ -427,6 +427,14 @@ extension AppModel {
         guard let chat = chat(withID: id) else { return }
         if event.name == "agent.lines" {
             transcribed(event.body, into: chat)
+            return
+        }
+        if event.name == "agent.thread" {
+            syncAgent(of: chat, event.body)
+            return
+        }
+        if event.name == "worker.said" {
+            workerSaid(event.body)
             return
         }
         if event.name.hasPrefix("message.") {
@@ -527,6 +535,7 @@ extension AppModel {
         headsWatched = nil
         followed = []
         heldPieces = [:]
+        agentThreads = [:]
         settleAgents()
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]

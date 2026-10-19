@@ -48,6 +48,9 @@ type Edit = { path: string; hunks: Hunk[] };
 
 type Worker = {
   id: string;
+  /// Its thread's key in the app, which outlives this engine: a later engine counts its workers
+  /// from one again.
+  key: string;
   /// The session's own thread id, which its events carry and the app never sees.
   threadId: string;
   agent: Provider;
@@ -84,6 +87,9 @@ type Worker = {
 const longestWait = 300_000;
 /// Workers at work at once in a thread, one to a ray.
 const mostAtWork = 6;
+/// A worker's own events its thread in the app keeps. Its asks go to the head's thread, and its
+/// session's other news, its limits, its effort and its heads, belong to no transcript.
+const shown = new Set(["turn.started", "text", "thinking", "tool.use", "tool.result", "tool.ended", "note", "error", "limited", "compacted", "retrying", "turn.done"]);
 
 const tools = [
   {
@@ -438,6 +444,7 @@ export class Rays {
     const threadId = `${this.threadId}/${workerId}`;
     const worker: Worker = {
       id: workerId,
+      key: randomUUID(),
       threadId,
       agent,
       model,
@@ -522,6 +529,7 @@ export class Rays {
     }
     if (worker.agent.capabilities.steer) {
       await worker.session.send(this.params(worker, text, randomUUID()));
+      this.show(worker, "user", { text, midTurn: true });
       return { worker: worker.id, state: worker.state, sent: "into its turn" };
     }
     worker.pending.push(text);
@@ -581,6 +589,7 @@ export class Rays {
   close(): void {
     clearTimeout(this.timer);
     for (const worker of this.workers.values()) {
+      if (worker.state === "running") this.ended(worker, "stopped");
       worker.session.close();
       untap(worker.threadId);
       this.seam.forget(worker.threadId);
@@ -614,16 +623,22 @@ export class Rays {
   private async run(worker: Worker, text: string): Promise<void> {
     Object.assign(worker, { state: "running", text: "", error: null, endedAt: null, step: null, turnEdits: [] });
     this.tell();
+    this.tellThread(worker);
+    this.show(worker, "user", { text });
     try {
       await worker.session.send(this.params(worker, text));
     } catch (error) {
       worker.error = describe(error);
+      // Its thread took the message as a turn begun, which only a turn.done ends.
+      this.show(worker, "error", { message: worker.error });
+      this.show(worker, "turn.done", { stopReason: "error_during_execution" });
       this.ended(worker, "failed");
     }
   }
 
   /// A worker's own events: kept for its status and result, and its asks put to the thread.
   private heard(worker: Worker, name: string, fields: Record<string, any>): boolean {
+    if (shown.has(name)) this.show(worker, name, fields);
     switch (name) {
       case "turn.started":
         worker.sessionId = fields.sessionId ?? worker.sessionId;
@@ -686,6 +701,7 @@ export class Rays {
     worker.state = state;
     worker.endedAt = Date.now();
     this.tell();
+    this.tellThread(worker);
     for (const done of worker.waiters.splice(0)) done();
   }
 
@@ -733,6 +749,30 @@ export class Rays {
       files,
       ...(merged ? { merged } : {}),
     });
+  }
+
+  /// The worker's thread under the head's in the app: made as it starts, and told how each of its
+  /// turns ended with what it said last, or why it failed.
+  private tellThread(worker: Worker): void {
+    emit({
+      event: "agent.thread",
+      threadId: this.threadId,
+      agentId: worker.key,
+      task: worker.id,
+      kind: "worker",
+      label: worker.label,
+      state: worker.state,
+      agent: worker.agent.id,
+      model: worker.model,
+      ...(worker.state === "running" ? {} : { result: worker.error ?? worker.text }),
+    });
+  }
+
+  /// One of the worker's events, for its thread in the app, as a thread's own. Its cost is the
+  /// head's already, through `worker`, and its session is its own, which the app never resumes.
+  private show(worker: Worker, name: string, fields: Record<string, any>): void {
+    const { threadId: _, sessionId: __, costUSD: ___, ...said } = fields;
+    emit({ event: "worker.said", threadId: this.threadId, agentId: worker.key, said: { ...said, event: name } });
   }
 
   /// Detail changed: one send in 250ms, and only while the surface watches.

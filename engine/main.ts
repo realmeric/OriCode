@@ -582,7 +582,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     following?.stop();
     follows.delete(threadId);
     if (!on) return { ok: true };
-    if (!/\/subagents\/workflows\/[^/]+\/agent-[\w-]+\.jsonl$/.test(path)) throw new Error("That isn't a workflow agent's transcript.");
+    if (!/\/subagents\/(workflows\/[^/]+\/)?agent-[\w-]+\.jsonl$/.test(path)) throw new Error("That isn't an agent's transcript.");
     const follow = new Follow(threadId, path, Math.max(0, from));
     follows.set(threadId, follow);
     follow.start();

@@ -1,11 +1,11 @@
-import { watch, type FSWatcher } from "node:fs";
+import { existsSync, readdirSync, watch, type FSWatcher } from "node:fs";
 import { open } from "node:fs/promises";
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { messageEvents, type Transcript } from "./sessions.ts";
 import { event } from "./wire.ts";
 
-// A workflow agent's transcript, which Claude Code writes to disk and never sends through the
-// SDK, read while the app shows that agent's thread: what's there past what the app has stored,
+// A workflow agent's or a Task subagent's transcript, which Claude Code writes to disk, read while
+// the app shows that agent's thread: what's there past what the app has stored,
 // then each line as the CLI appends it. A watcher on the file says when; nothing polls, and an
 // agent nobody is looking at is never read.
 
@@ -20,11 +20,14 @@ export class Follow {
   private reading = false;
   private again = false;
   private stopped = false;
+  /// What a stop reads as: a workflow's agent stops only with its workflow.
+  private note: string;
 
   constructor(threadId: string, path: string, from: number) {
     this.threadId = threadId;
     this.path = path;
     this.offset = from;
+    this.note = path.includes("/subagents/workflows/") ? "Stopped with its workflow." : "Stopped.";
   }
 
   start(): void {
@@ -91,7 +94,7 @@ export class Follow {
       let pending: Transcript = [];
       const whole = buffer.lastIndexOf(10) + 1;
       for (let end = buffer.indexOf(10); end !== -1; end = buffer.indexOf(10, start)) {
-        pending.push(...lineEvents(buffer.subarray(start, end).toString("utf8")));
+        pending.push(...lineEvents(buffer.subarray(start, end).toString("utf8"), this.note));
         start = end + 1;
         if (pending.length >= batch) {
           this.send(from, base + start, pending, start < whole);
@@ -120,7 +123,7 @@ export class Follow {
 /// A line of an agent's transcript as the events a thread stores. Of the rest, the context the
 /// CLI attached to the session and the requests it sent, nothing is kept: those lines hold the
 /// user's email and organisation among much else.
-export function lineEvents(line: string): Transcript {
+export function lineEvents(line: string, stopped = "Stopped with its workflow."): Transcript {
   let record: { type?: string; message?: { content?: unknown }; toolUseResult?: { structuredPatch?: unknown } };
   try {
     record = JSON.parse(line);
@@ -132,7 +135,7 @@ export function lineEvents(line: string): Transcript {
   return messageEvents(record.type, record.message?.content).map((told) => {
     if (told.event === "tool.result" && patch) return { ...told, patch };
     if (told.event !== "user" || typeof told.text !== "string") return told;
-    if (told.text.startsWith("[Request interrupted")) return { event: "note", text: "Stopped with its workflow." };
+    if (told.text.startsWith("[Request interrupted")) return { event: "note", text: stopped };
     return { ...told, text: unframed(told.text) };
   });
 }
@@ -152,4 +155,23 @@ export function unframed(text: string): string {
 function patchOf(hunks: unknown): { oldStart: number; newStart: number; lines: string[] }[] | undefined {
   if (!Array.isArray(hunks)) return undefined;
   return hunks.map((hunk) => ({ oldStart: hunk.oldStart, newStart: hunk.newStart, lines: hunk.lines }));
+}
+
+/// Where Claude Code writes a Task subagent's transcript: in a folder named for the session, beside
+/// the session's own file under `projects`. The CLI names a project's folder for its path with
+/// every character but a letter or a digit made a hyphen, and a long path otherwise, so a session
+/// not found under that name is looked for in every project's folder. Null when it's nowhere.
+export function subagentTranscript(projects: string, cwd: string, sessionId: string, agentId: string): string | null {
+  const named = join(projects, cwd.replace(/[^a-zA-Z0-9]/g, "-"));
+  let folder: string | undefined = existsSync(join(named, `${sessionId}.jsonl`)) ? named : undefined;
+  if (!folder) {
+    try {
+      folder = readdirSync(projects)
+        .map((name) => join(projects, name))
+        .find((path) => existsSync(join(path, `${sessionId}.jsonl`)));
+    } catch {
+      return null;
+    }
+  }
+  return folder ? join(folder, sessionId, "subagents", `agent-${agentId}.jsonl`) : null;
 }

@@ -653,6 +653,11 @@ final class Conversation {
         recordUser(text, previews: previews, midTurn: false, id: id)
     }
 
+    /// A message a worker's head sent into its running turn, which doesn't start one.
+    func sentIntoWorkerTurn(_ text: String) {
+        recordUser(text, previews: [], midTurn: true, id: UUID())
+    }
+
     private func recordUser(_ text: String, previews: [Data], midTurn: Bool, id: UUID) {
         var body: [String: JSON] = ["event": "user", "text": .string(text)]
         if !previews.isEmpty { body["images"] = .array(previews.map { .string($0.base64EncodedString()) }) }
@@ -1013,7 +1018,8 @@ final class Conversation {
     func quitting() {
         guard working else { return }
         writeUnderTurn()
-        chat.quitMidTurn = true
+        // A worker's turn goes with the engine that ran it, and the next launch reads it Stopped.
+        chat.quitMidTurn = chat.agentID == nil
         unsaved = true
         flush()
     }

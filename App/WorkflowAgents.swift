@@ -1,9 +1,11 @@
 import SwiftData
 import SwiftUI
 
-/// A workflow's agents as threads under the thread that started it: each made as its workflow
-/// first names it, kept up with each snapshot, its transcript read from Claude Code's copy while
-/// it's on the glass, and left folded with its result once the run is over.
+/// The agents a thread starts, as threads under it: a workflow's, each made as its workflow first
+/// names it and kept up with each snapshot; a Task subagent of its own loop, made as the CLI starts
+/// it; and a worker its head sends out on a ray. A workflow's agent's or a subagent's transcript is
+/// read from Claude Code's copy while it's on the glass; a worker's comes as it works, since the
+/// engine runs its session. Each is left folded with its result once it's over.
 extension AppModel {
     /// The workflow's agents as its latest `workflow` event tells them. One still queued has no id
     /// yet and comes once it starts.
@@ -62,6 +64,59 @@ extension AppModel {
         return String(line.prefix(200))
     }
 
+    /// A subagent or a worker as the engine tells of it, `agent.thread`: made as it starts, and told
+    /// each time it ends with what it returned. A worker messaged after it has finished starts again
+    /// in the same thread.
+    func syncAgent(of parent: Chat, _ body: JSON) {
+        guard let project = parent.project, let id = body["agentId"]?.string else { return }
+        let agent: Chat
+        if let found = agentThreads[id].flatMap({ chat(withID: $0) }) ?? project.chats.first(where: { $0.openedBy == parent.id && $0.agentID == id }) {
+            agent = found
+        } else {
+            agent = Chat(project: project, title: body["label"]?.string ?? "Agent", permissionMode: parent.permissionMode)
+            agent.cwd = parent.cwd
+            agent.provider = body["agent"]?.string ?? parent.provider
+            agent.model = body["model"]?.string
+            agent.started = true
+            agent.titleIsCustom = true
+            agent.openedBy = parent.id
+            agent.agentID = id
+            agent.agentKind = body["kind"]?.string
+            agent.agentTask = body["task"]?.string ?? id
+            agent.agentTranscript = body["transcript"]?.string
+            context.insert(agent)
+        }
+        agentThreads[id] = agent.id
+        let state = body["state"]?.string ?? "running"
+        if agent.agentState != state { agent.agentState = state }
+        // A turn ended with nothing said leaves no reply of an earlier turn behind.
+        if body["result"] != nil { agent.agentResult = Self.oneLine(body["result"]?.string) }
+        // A worker's turn that ended without its turn.done, its head's thread gone, ends here.
+        if state != "running" { conversations[agent.id]?.stopped() }
+        // Heard of in this launch, so the screen of everything running lists it.
+        if outcomes[agent.id] == nil { outcomes[agent.id] = Outcome() }
+        save()
+        followAgents()
+    }
+
+    /// One of a worker's events, `worker.said`, kept in its thread as the thread's own: what its
+    /// head asked of it as the user's message, one sent into its turn as one taken up mid-turn, the
+    /// rest as a turn's.
+    func workerSaid(_ body: JSON) {
+        guard let id = body["agentId"]?.string, let agent = agentThreads[id].flatMap({ chat(withID: $0) }),
+              let said = body["said"], let name = said["event"]?.string
+        else { return }
+        let conversation = conversation(for: agent)
+        if name == "user", said["midTurn"]?.bool == true {
+            conversation.sentIntoWorkerTurn(said["text"]?.string ?? "")
+        } else if name == "user" {
+            conversation.userSent(said["text"]?.string ?? "")
+        } else {
+            conversation.receive(EngineEvent(name: name, threadId: agent.id.uuidString, body: said))
+        }
+        if name == "user" || name == "turn.done" { holdWhileWorking() }
+    }
+
     /// Agents a run was at work on when OriCode quit or its engine went: they went with it.
     func settleAgents() {
         let open = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.agentState == "running" || $0.agentState == "queued" }))) ?? []
@@ -113,9 +168,10 @@ extension AppModel {
         conversation(for: chat).transcribe(events)
     }
 
+    /// An agent's Stop, through the thread that started it. A subagent and a worker stop alone.
     /// Claude Code stops a workflow whole: an agent's own stop says it worked and leaves the agent
-    /// going. So an agent's Stop is its workflow's, and its thread says so beside the button.
-    func stopWorkflow(of agent: Chat) {
+    /// going. So a workflow agent's Stop is its workflow's, and its thread says so beside the button.
+    func stopAgent(_ agent: Chat) {
         guard let parent = agent.openedBy, let task = agent.agentTask else { return }
         Task {
             do {
@@ -126,9 +182,10 @@ extension AppModel {
         }
     }
 
-    /// Whether the workflow a thread's CLI runs, or the one an agent's thread is part of, is still
-    /// at work. Archiving the thread would let its CLI go and the run with it, between agents as
-    /// much as during one, and an agent's row taken away would come back with the next snapshot.
+    /// Whether the workflow a thread's CLI runs, or the agent a thread is, or the workflow it's part
+    /// of, is still at work. Archiving the thread would let its CLI go and the run with it, between
+    /// agents as much as during one, and an agent's row taken away would come back with the next
+    /// snapshot or event.
     func workflowRuns(in chat: Chat) -> Bool {
         guard let parent = chat.openedBy, let task = chat.agentTask else {
             return conversations[chat.id]?.heads.workflowRuns() == true
@@ -136,7 +193,7 @@ extension AppModel {
         return chat.agentWorking || conversations[parent]?.heads.workflowRuns(task) == true
     }
 
-    /// The workflow agents under a thread that goes, which nothing else writes or reads.
+    /// The agents under a thread that goes, which nothing else writes or reads.
     func agents(under chat: Chat) -> [Chat] {
         chat.project?.chats.filter { $0.openedBy == chat.id && $0.agentID != nil } ?? []
     }
@@ -144,6 +201,11 @@ extension AppModel {
 
 extension Chat {
     var agentWorking: Bool { agentState == "running" }
+
+    /// What a thread's Stop is called: a workflow's agent stops with its workflow. And what has to
+    /// stop before an agent's row can go.
+    var agentStop: String { agentID != nil && agentKind == nil ? "Stop workflow" : "Stop" }
+    var agentStopFirst: String { agentKind == nil ? "its workflow" : "the agent" }
 
     /// The row's second line for a workflow agent: its result once it has one, and how it ended.
     var agentLine: String? {
@@ -156,9 +218,9 @@ extension Chat {
     }
 }
 
-/// Where a workflow agent's thread has its composer: it takes no messages, since only its
-/// workflow writes there, and while it runs Stop stops the workflow, which is as small a stop as
-/// Claude Code has.
+/// Where an agent's thread has its composer: it takes no messages, since only its workflow, its
+/// opener's Task call or its head writes there. While it runs, Stop stops it, or for a workflow's
+/// agent the workflow, which is as small a stop as Claude Code has there.
 struct AgentBar: View {
     @Environment(AppModel.self) private var model
     let chat: Chat
@@ -174,9 +236,9 @@ struct AgentBar: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if chat.agentWorking {
-                Button("Stop workflow") { model.stopWorkflow(of: chat) }
+                Button(chat.agentStop) { model.stopAgent(chat) }
                     .buttonStyle(ActionButtonStyle(small: true))
-                    .help("Stops every agent of this workflow")
+                    .help(chat.agentKind == nil ? "Stops every agent of this workflow" : "Stops this agent alone")
             }
         }
         .padding(.leading, 18)
@@ -197,10 +259,18 @@ struct AgentBar: View {
     }
 
     private var words: String {
-        switch chat.agentState {
-        case "running": "Only its workflow writes here. Claude Code can't stop one agent alone, so Stop stops the workflow."
-        case "done": "Done. Only its workflow wrote here, and it takes no messages."
-        case "failed": "Failed. Only its workflow wrote here, and it takes no messages."
+        switch (chat.agentKind, chat.agentState) {
+        case ("subagent", "running"): "A subagent of the thread above. Only it writes here."
+        case ("subagent", "done"): "Done. A subagent of the thread above wrote here, and it takes no messages."
+        case ("subagent", "failed"): "Failed. A subagent of the thread above wrote here, and it takes no messages."
+        case ("subagent", _): "Stopped. It takes no messages."
+        case ("worker", "running"): "A worker of the thread above. Only it writes here, and its head messages it."
+        case ("worker", "done"): "Done. Its head can message it again from the thread above."
+        case ("worker", "failed"): "Failed. Its head can message it again from the thread above."
+        case ("worker", _): "Stopped. Its head can message it again from the thread above."
+        case (_, "running"): "Only its workflow writes here. Claude Code can't stop one agent alone, so Stop stops the workflow."
+        case (_, "done"): "Done. Only its workflow wrote here, and it takes no messages."
+        case (_, "failed"): "Failed. Only its workflow wrote here, and it takes no messages."
         default: "Stopped with its workflow. It takes no messages."
         }
     }

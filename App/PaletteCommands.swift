@@ -227,7 +227,7 @@ extension AppModel {
         guard let chat, let conversation = currentConversation else { return [] }
         var now: [PaletteItem] = []
         if canStop {
-            now.append(command("thread.stop", chat.agentID == nil ? "Stop" : "Stop workflow", icon: "stop.circle", shortcut: shortcuts.label(.stop)) { [weak self] in self?.stop() })
+            now.append(command("thread.stop", chat.agentStop, icon: "stop.circle", shortcut: shortcuts.label(.stop)) { [weak self] in self?.stop() })
         } else {
             if chat.sessionId != nil, agent(for: chat).capabilities.compact, chat.contextWindow > 0, Double(chat.contextUsed) / Double(chat.contextWindow) > 0.7 {
                 now.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left",
@@ -328,7 +328,7 @@ extension AppModel {
         }
         items.append(command("thread.noFolder", "New thread without a folder", icon: "laptopcomputer",
                              keywords: ["no folder", "no project", "laptop", "scratch", "anywhere"]) { [weak self] in self?.openThreadWithoutFolder() })
-        items.append(command("thread.stop", chat?.agentID == nil ? "Stop" : "Stop workflow", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
+        items.append(command("thread.stop", chat?.agentStop ?? "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
                              unavailable: canStop ? nil : "Nothing is running") { [weak self] in self?.stop() })
         if agent.capabilities.compact {
             items.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left", keywords: ["context", "summarize"],

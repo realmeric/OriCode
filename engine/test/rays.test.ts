@@ -244,6 +244,59 @@ test("Stop on the head stops its workers, a worker's row stops that worker, and 
   await engine.end();
 });
 
+test("a worker is a thread under its head's in the app: told as it starts and ends, its events as the thread's own, Stop through its own task, a steered message, and a turn that never starts", async (t) => {
+  const { engine, cwd, url } = await head(t, "k291");
+  const from = engine.lines.length;
+  await call(url, "start_worker", { agent: "codex", model: "gpt-small", task: "write greet.test.ts" });
+  assert.equal((await call(url, "worker_result", { worker: "worker-1", wait: true })).state, "done");
+  await engine.until((line) => line.event === "agent.thread" && line.state === "done", from);
+  const threads = engine.lines.slice(from).filter((line) => line.event === "agent.thread");
+  assert.deepEqual(
+    threads.map((line) => [line.threadId, line.task, line.kind, line.label, line.state, line.agent, line.model, line.result ?? null]),
+    [
+      ["k291", "worker-1", "worker", "write greet.test.ts", "running", "codex", "gpt-small", null],
+      ["k291", "worker-1", "worker", "write greet.test.ts", "done", "codex", "gpt-small", "Wrote greet.test.ts."],
+    ],
+  );
+  // Its key outlives this engine, whose next would count from worker-1 again.
+  assert.notEqual(threads[0].agentId, "worker-1");
+  assert.equal(threads[1].agentId, threads[0].agentId);
+  const said = engine.lines.slice(from).filter((line) => line.event === "worker.said");
+  assert.equal(said.every((line) => line.threadId === "k291" && line.agentId === threads[0].agentId), true);
+  const events = said.map((line) => line.said);
+  assert.deepEqual(events[0], { event: "user", text: "write greet.test.ts" });
+  assert.deepEqual([...new Set(events.map((event) => event.event))], ["user", "turn.started", "tool.use", "tool.result", "text", "turn.done"]);
+  // The head's thread takes its cost in, and the worker's session is its own.
+  assert.equal(events.some((event) => "costUSD" in event || "sessionId" in event || "threadId" in event), false);
+
+  const slow = await call(url, "start_worker", { agent: "codex", task: "slow" });
+  const running = await engine.until((line) => line.event === "agent.thread" && line.task === slow.worker && line.state === "running", from);
+  assert.deepEqual((await engine.request("task.stop", { threadId: "k291", taskId: running.task })).result, { ok: true });
+  const stopped = await engine.until((line) => line.event === "agent.thread" && line.task === slow.worker && line.state !== "running", from);
+  assert.equal(stopped.state, "stopped");
+
+  // A message steered into a worker's turn is in its thread, as one taken up mid-turn.
+  const steered = await call(url, "start_worker", { agent: "codex", task: "slow" });
+  const key = (await engine.until((line) => line.event === "agent.thread" && line.task === steered.worker, from)).agentId;
+  await engine.until((line) => line.event === "worker.said" && line.agentId === key && line.said.event === "text", from);
+  assert.equal((await call(url, "message_worker", { worker: steered.worker, text: "go on" })).sent, "into its turn");
+  await engine.until((line) => line.event === "agent.thread" && line.agentId === key && line.state === "done", from);
+  const steeredSaid = engine.lines.slice(from).filter((line) => line.event === "worker.said" && line.agentId === key).map((line) => line.said);
+  assert.deepEqual(steeredSaid.filter((event) => event.event === "user"), [{ event: "user", text: "slow" }, { event: "user", text: "go on", midTurn: true }]);
+
+  // One whose folder has gone fails before its turn starts, and its thread is told the turn ended.
+  const isolated = await call(url, "start_worker", { agent: "codex", task: "hello", isolated: true });
+  assert.equal((await call(url, "worker_result", { worker: isolated.worker, wait: true })).state, "done");
+  git(cwd, "worktree", "remove", "--force", isolated.folder);
+  const goneFrom = engine.lines.length;
+  assert.equal((await call(url, "message_worker", { worker: isolated.worker, text: "again" })).state, "failed");
+  const failed = await engine.until((line) => line.event === "agent.thread" && line.task === isolated.worker && line.state === "failed", goneFrom);
+  assert.match(failed.result, /isn't where it was/);
+  const goneSaid = engine.lines.slice(goneFrom).filter((line) => line.event === "worker.said" && line.agentId === failed.agentId).map((line) => line.said.event);
+  assert.deepEqual(goneSaid, ["user", "error", "turn.done"]);
+  await engine.end();
+});
+
 test("an OpenCode head names the tools in session/new, since it takes MCP over HTTP", async (t) => {
   const { bin, env } = await sandbox();
   const logs = await mkdtemp(join(tmpdir(), "oricode-rays-logs-"));

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Follow, lineEvents, unframed } from "../follow.ts";
+import { Follow, lineEvents, subagentTranscript, unframed } from "../follow.ts";
 import { Thread } from "../thread.ts";
 
 const prompt = {
@@ -169,4 +169,95 @@ test("a stopped workflow's last snapshot comes from the run's record beside the 
   const shape = await finalShape(outputFile, transcriptDir);
   assert.deepEqual(shape?.agents.map((agent) => [agent.agentId, agent.state]), [["a1", "running"]]);
   assert.equal(await finalShape(null, null), undefined);
+});
+
+test("a Task subagent's transcript is beside its session's file, which a long path's folder is looked for by", () => {
+  const projects = mkdtempSync(join(tmpdir(), "projects-"));
+  mkdirSync(join(projects, "-tmp-my-app-v2"));
+  writeFileSync(join(projects, "-tmp-my-app-v2", "s1.jsonl"), "");
+  assert.equal(subagentTranscript(projects, "/tmp/my app.v2", "s1", "a1"), join(projects, "-tmp-my-app-v2", "s1", "subagents", "agent-a1.jsonl"));
+  mkdirSync(join(projects, "-long-cut-1a2b"));
+  writeFileSync(join(projects, "-long-cut-1a2b", "s2.jsonl"), "");
+  assert.equal(subagentTranscript(projects, "/long/" + "x".repeat(300), "s2", "a2"), join(projects, "-long-cut-1a2b", "s2", "subagents", "agent-a2.jsonl"));
+  assert.equal(subagentTranscript(projects, "/tmp/my app.v2", "gone", "a3"), null);
+  assert.equal(subagentTranscript(join(projects, "none"), "/tmp", "s1", "a4"), null);
+  // A subagent stopped reads as stopped alone, not with a workflow.
+  const stopped = JSON.stringify({ type: "user", message: { content: [{ type: "text", text: "[Request interrupted by user]" }] } });
+  assert.deepEqual(lineEvents(stopped, "Stopped."), [{ event: "note", text: "Stopped." }]);
+});
+
+test("a Task subagent of the thread's own loop is told as it starts, with its transcript, and as it ends, with what it returned", async () => {
+  const config = mkdtempSync(join(tmpdir(), "config-"));
+  mkdirSync(join(config, "projects", "-w"), { recursive: true });
+  writeFileSync(join(config, "projects", "-w", "s.jsonl"), "");
+  const thread = new Thread("t", "/nowhere/claude") as any;
+  thread.env = { CLAUDE_CONFIG_DIR: config };
+  thread.heads.cwd = "/w";
+  const started = (id: string, depth = 1) => ({ type: "system", subtype: "task_started", task_id: id, tool_use_id: `call-${id}`, description: `look ${id}`, subagent_type: "general-purpose", is_backgrounded: true, spawn_depth: depth, task_type: "local_agent", session_id: "s", uuid: "u" });
+  async function* cli() {
+    yield started("a1");
+    // A subagent's own subagent stays a call in its transcript.
+    yield started("a9", 2);
+    yield started("a2");
+    yield { type: "system", subtype: "task_updated", task_id: "a1", patch: { status: "completed" }, session_id: "s", uuid: "u" };
+    yield { type: "system", subtype: "task_notification", task_id: "a1", tool_use_id: "call-a1", status: "completed", output_file: "/tmp/x", summary: "the note says hello\nmore", session_id: "s", uuid: "u" };
+    await new Promise(() => {});
+  }
+  thread.query = cli();
+  const events = await told(
+    () => void thread.pump(thread.query),
+    (events) => events.filter((event) => event.event === "agent.thread").length >= 4,
+  );
+  const threads = events.filter((event) => event.event === "agent.thread");
+  const transcript = (id: string) => join(config, "projects", "-w", "s", "subagents", `agent-${id}.jsonl`);
+  assert.deepEqual(threads.map((event) => [event.agentId, event.kind, event.label, event.state, event.transcript, event.result ?? null]), [
+    ["a1", "subagent", "look a1", "running", transcript("a1"), null],
+    ["a2", "subagent", "look a2", "running", transcript("a2"), null],
+    ["a1", "subagent", "look a1", "done", transcript("a1"), null],
+    ["a1", "subagent", "look a1", "done", transcript("a1"), "the note says hello\nmore"],
+  ]);
+  // The CLI going takes the one still at work with it.
+  thread.query = { close() {} };
+  const ended = await told(() => thread.close(), (events) => events.some((event) => event.event === "agent.thread"));
+  assert.deepEqual(ended.filter((event) => event.event === "agent.thread").map((event) => [event.agentId, event.state]), [["a2", "stopped"]]);
+});
+
+test("a Task subagent's Stop stops that subagent alone, through its own task, and its thread is told it stopped", async () => {
+  const thread = new Thread("t", "/nowhere/claude") as any;
+  thread.heads.cwd = "/w";
+  const started = (id: string) => ({ type: "system", subtype: "task_started", task_id: id, tool_use_id: `call-${id}`, description: `look ${id}`, subagent_type: "general-purpose", is_backgrounded: true, spawn_depth: 1, task_type: "local_agent", session_id: "s", uuid: "u" });
+  const stops: string[] = [];
+  let stop: (id: string) => void = () => {};
+  async function* cli() {
+    yield started("a1");
+    yield started("a2");
+    const id = await new Promise<string>((resolve) => (stop = resolve));
+    yield { type: "system", subtype: "task_updated", task_id: id, patch: { status: "killed" }, session_id: "s", uuid: "u" };
+    yield { type: "system", subtype: "task_notification", task_id: id, tool_use_id: `call-${id}`, status: "stopped", output_file: "/tmp/x", summary: "", session_id: "s", uuid: "u" };
+    await new Promise(() => {});
+  }
+  const query = Object.assign(cli(), {
+    async stopTask(id: string) {
+      stops.push(id);
+      stop(id);
+    },
+  });
+  thread.query = query;
+  await told(
+    () => void thread.pump(query),
+    (events) => events.filter((event) => event.event === "agent.thread").length >= 2,
+  );
+  const events = await told(
+    () => thread.stopTask("a2"),
+    (events) => events.filter((event) => event.event === "agent.thread").length >= 2,
+  );
+  assert.deepEqual(stops, ["a2"]);
+  assert.deepEqual(events.filter((event) => event.event === "agent.thread").map((event) => [event.agentId, event.state, event.result ?? null]), [
+    ["a2", "stopped", null],
+    ["a2", "stopped", ""],
+  ]);
+  // Once it has stopped there's nothing of it left to stop; the other is still at work.
+  await assert.rejects(thread.stopTask("a2"), /already stopped/);
+  await thread.stopTask("a1");
+  assert.deepEqual(stops, ["a2", "a1"]);
 });

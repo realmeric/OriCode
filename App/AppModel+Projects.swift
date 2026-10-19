@@ -106,7 +106,7 @@ extension AppModel {
             return
         }
         guard !workflowRuns(in: chat) else {
-            say("Stop its workflow before archiving it")
+            say("Stop \(chat.agentStopFirst) before archiving it")
             return
         }
         let under = threads(under: chat).filter { !$0.archived }
@@ -394,7 +394,7 @@ extension AppModel {
 
     func delete(_ chat: Chat) {
         guard chat.agentID == nil || !workflowRuns(in: chat) else {
-            say("Stop its workflow before deleting it")
+            say("Stop \(chat.agentStopFirst) before deleting it")
             return
         }
         let deleted = chat.id

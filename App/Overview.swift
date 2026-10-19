@@ -149,7 +149,7 @@ private struct OverviewLine: View {
         let working = status.state == .working
         let stops = under && working
         // A workflow's agent stops only with its workflow, which Claude Code stops whole.
-        let stop = chat.agentID == nil ? "Stop" : "Stop workflow"
+        let stop = chat.agentStop
         HStack(spacing: 10) {
             mark(status)
                 .frame(width: 14, height: 14)
@@ -336,7 +336,19 @@ extension AppModel {
     }
 
     /// A workflow agent's last tool, from its workflow's latest snapshot in the thread that runs it.
+    /// A worker's step is its own transcript's, which comes as it works, and a subagent's the one
+    /// ⌘I last heard for it in the thread that started it.
     private func agentStep(_ chat: Chat) -> String? {
+        if chat.agentKind != nil {
+            if let conversation = conversations[chat.id], conversation.running {
+                let step = conversation.mainStep(cwd: chat.cwd)
+                return [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
+            }
+            guard let parent = chat.openedBy, let task = chat.agentTask,
+                  let step = conversations[parent]?.heads.list.first(where: { $0.id == task })?.step
+            else { return nil }
+            return [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
+        }
         guard let parent = chat.openedBy, let task = chat.agentTask, let id = chat.agentID,
               let run = conversations[parent]?.heads.list.first(where: { $0.id == task })?.run,
               let agent = run.agents.first(where: { $0.id == id }),

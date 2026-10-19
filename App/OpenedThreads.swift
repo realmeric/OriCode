@@ -312,16 +312,27 @@ extension AppModel {
         return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "sent": true, "intoTurn": .bool(busy)]
     }
 
-    /// Why a workflow agent's thread refuses a tool: only its workflow writes there, and Claude
-    /// Code stops a workflow whole.
+    /// Why an agent's thread refuses a tool: only its workflow, its opener's Task call or its head
+    /// writes there, and Claude Code stops a workflow whole.
     static func agentRefusal(_ thread: Chat, doing: String) -> String {
-        "\(thread.title) is an agent of a workflow its opener started, and \(doing): only the workflow writes to it, and Claude Code stops a workflow whole. Stop its opener's workflow, or read it with read_thread."
+        switch thread.agentKind {
+        case "subagent": "\(thread.title) is a subagent its opener started, and takes no message: only the subagent writes to it. Stop it with stop_thread, or read it with read_thread."
+        case "worker": "\(thread.title) is a worker its opener's head sent out, and takes no message here: its head messages it with message_worker. Stop it with stop_thread, or read it with read_thread."
+        default: "\(thread.title) is an agent of a workflow its opener started, and \(doing): only the workflow writes to it, and Claude Code stops a workflow whole. Stop its opener's workflow, or read it with read_thread."
+        }
     }
 
     /// stop_thread: the thread's Stop, with the line in both threads.
     func stop(_ named: String, reason: String, from asking: UUID) throws -> JSON {
         let (chat, thread) = try other(named, from: asking, doing: "stop_thread")
-        if thread.agentID != nil { throw Refused(why: Self.agentRefusal(thread, doing: "can't be stopped alone")) }
+        if thread.agentID != nil {
+            // A subagent or a worker stops alone; a workflow's agent only with its workflow.
+            guard thread.agentKind != nil else { throw Refused(why: Self.agentRefusal(thread, doing: "can't be stopped alone")) }
+            guard thread.agentWorking else { throw Refused(why: "\(thread.title) isn't working, so there's nothing to stop.") }
+            stopAgent(thread)
+            conversation(for: chat).threadAct(ThreadAct(act: .stopped, by: true, thread: thread.id, title: thread.title, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)))
+            return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "stopped": true]
+        }
         guard let conversation = conversations[thread.id], conversation.running || conversation.waitingAfterQuit else {
             throw Refused(why: "\(thread.title) isn't working, so there's nothing to stop.")
         }
