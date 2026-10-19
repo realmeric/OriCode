@@ -219,6 +219,7 @@ extension AppModel {
         commandCenterShown = piece == .command
         headsShown = piece == .heads
         overviewShown = piece == .overview
+        if piece != .overview { overviewAsk = nil }
         fileFinderShown = piece == .files
         if piece != .side, sideShown { stopSide() }
         sideShown = piece == .side

@@ -3,7 +3,6 @@ import SwiftUI
 
 /// Claude waiting on you: a permission for a tool, or a question with options.
 struct AskCard: View {
-    @Environment(AppModel.self) private var model
     let ask: PendingAsk
     let cwd: String
     /// The thread that asked, which an answer goes back to.
@@ -15,7 +14,7 @@ struct AskCard: View {
 
     var body: some View {
         if ask.state == .waiting {
-            waiting
+            AskForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
                 .padding(14)
                 .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
                 .transition(.opacity.animation(.easeOut(duration: 0.12)))
@@ -25,28 +24,6 @@ struct AskCard: View {
                 .foregroundStyle(Ink.faint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .transition(.opacity.animation(Motion.fade.delay(0.08)))
-        }
-    }
-
-    private var waiting: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // A head's worker asking, which the user answers here as the thread's own ask.
-            if let worker = ask.worker {
-                HStack(spacing: 5) {
-                    AgentMark(agent: worker.agent)
-                        .frame(width: 10, height: 10)
-                    Text("\(model.providers.first { $0.id == worker.agent }?.name ?? worker.agent)'s worker · \(worker.label)")
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
-            }
-            if ask.kind == "question" {
-                QuestionForm(ask: ask, thread: thread, listens: listens)
-            } else {
-                PermissionForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
-            }
         }
     }
 
@@ -60,12 +37,46 @@ struct AskCard: View {
     }
 }
 
+/// What an ask asks and its answers, in its thread's card or in the queue of everything waiting,
+/// which is `compact`: the entry names who asks, and a long command or plan is cut short there.
+struct AskForm: View {
+    @Environment(AppModel.self) private var model
+    let ask: PendingAsk
+    let cwd: String
+    let thread: UUID?
+    let listens: Bool
+    var compact = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // A head's worker asking, which the user answers here as the thread's own ask.
+            if !compact, let worker = ask.worker {
+                HStack(spacing: 5) {
+                    AgentMark(agent: worker.agent)
+                        .frame(width: 10, height: 10)
+                    Text("\(model.providers.first { $0.id == worker.agent }?.name ?? worker.agent)'s worker · \(worker.label)")
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+            }
+            if ask.kind == "question" {
+                QuestionForm(ask: ask, thread: thread, listens: listens)
+            } else {
+                PermissionForm(ask: ask, cwd: cwd, thread: thread, listens: listens, compact: compact)
+            }
+        }
+    }
+}
+
 private struct PermissionForm: View {
     @Environment(AppModel.self) private var model
     let ask: PendingAsk
     let cwd: String
     let thread: UUID?
     let listens: Bool
+    let compact: Bool
     @State private var showDiff = false
     @AppStorage(ReviewDesign.key) private var design = ReviewDesign.witness
 
@@ -120,10 +131,9 @@ private struct PermissionForm: View {
     @ViewBuilder
     private var detail: some View {
         if ask.toolKind == .run {
-            Text(ask.call.shown("command") ?? "")
-                .font(Type.mono)
-                .foregroundStyle(Ink.secondary)
-                .textSelection(.enabled)
+            // All of it, scrolling in the queue past four lines and a half, the half saying there's
+            // more: Allow is never under a command cut short.
+            whole(ask.call.shown("command") ?? "", tallest: compact ? 66 : nil)
         } else if ask.toolKind == .planning, let plan = ask.input["plan"]?.string {
             ScrollView {
                 Markdown(plan).markdownTheme(.glass)
@@ -132,7 +142,7 @@ private struct PermissionForm: View {
             }
             // The plan scrolls in its own view, whose top edge nothing covers.
             .environment(\.codeCopyLine, 8)
-            .frame(maxHeight: 320)
+            .frame(maxHeight: compact ? 160 : 320)
             .fixedSize(horizontal: false, vertical: true)
         } else if let diff = Diff.of(tool: ask.tool, input: ask.input, cwd: cwd) {
             DisclosureGroup(isExpanded: $showDiff) {
@@ -145,7 +155,7 @@ private struct PermissionForm: View {
                             .padding(.vertical, 10)
                     }
                     .scrollIndicators(.never)
-                    .frame(maxHeight: 360)
+                    .frame(maxHeight: compact ? 200 : 360)
                     .fixedSize(horizontal: false, vertical: true)
                 } else {
                     DiffLinesView(lines: diff.lines)
@@ -162,11 +172,24 @@ private struct PermissionForm: View {
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
         } else {
-            Text(compact(ask.input))
-                .font(Type.mono)
-                .foregroundStyle(Ink.secondary)
-                .lineLimit(6)
-                .textSelection(.enabled)
+            whole(compact(ask.input), tallest: compact ? 52 : 97)
+        }
+    }
+
+    /// Mono text the user reads before allowing it, scrolling once it's taller than `tallest`.
+    @ViewBuilder
+    private func whole(_ text: String, tallest: CGFloat?) -> some View {
+        let shown = Text(text)
+            .font(Type.mono)
+            .foregroundStyle(Ink.secondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        if let tallest {
+            ScrollView { shown }
+                .frame(maxHeight: tallest)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            shown
         }
     }
 

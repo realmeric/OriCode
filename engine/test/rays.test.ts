@@ -190,13 +190,16 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   await engine.end();
 });
 
-test("a worker's ask goes to the head's thread labelled with its agent and task, and the answer goes back to it", async (t) => {
+test("a worker's ask goes to the head's thread labelled with its agent and task and named by its thread, and the answer goes back to it", async (t) => {
   const { engine, url } = await head(t, "k193-ask");
   const from = engine.lines.length;
   await call(url, "start_worker", { agent: "opencode", task: "work" });
   const ask = await engine.until((line) => line.event === "ask", from);
   assert.equal(ask.threadId, "k193-ask");
   assert.deepEqual(ask.worker, { id: "worker-1", agent: "opencode", label: "work" });
+  // Named by the worker's thread in the app, which the ask is counted under there.
+  const thread = engine.lines.slice(from).find((line) => line.event === "agent.thread");
+  assert.equal(ask.agentId, thread.agentId);
   assert.deepEqual(ask.choices.map((choice: { id: string }) => choice.id), ["once", "always", "reject"]);
   assert.deepEqual((await engine.request("answer", { requestId: ask.requestId, allow: true, optionId: "once" })).result, { ok: true });
   const result = await call(url, "worker_result", { worker: "worker-1", wait: true });

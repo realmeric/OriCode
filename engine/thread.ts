@@ -421,7 +421,7 @@ export class Thread implements Session {
         env,
         stderr: (data) => process.stderr.write(data),
         debugFile: cliDebugFile(this.id),
-        canUseTool: (tool, input, { signal, toolUseID }) => this.ask(tool, input, toolUseID, signal),
+        canUseTool: (tool, input, { signal, toolUseID, agentID }) => this.ask(tool, input, toolUseID, signal, agentID),
         // Loaded with the prompt rather than behind tool search, so a head knows it can start workers.
         mcpServers: params.tools ? { [toolsServer]: { type: "http", url: params.tools, alwaysLoad: true, timeout: toolsTimeout } } : undefined,
       },
@@ -618,7 +618,8 @@ export class Thread implements Session {
     this.push(fresh);
   }
 
-  private ask(tool: string, input: Record<string, unknown>, toolUseId: string, signal: AbortSignal): Promise<PermissionResult> {
+  /// `agentId` is the subagent or workflow agent that asks, which the app counts the ask under.
+  private ask(tool: string, input: Record<string, unknown>, toolUseId: string, signal: AbortSignal, agentId?: string): Promise<PermissionResult> {
     // The thread allowed workers, and what each worker does is asked about as it does it.
     if (tool.startsWith(`mcp__${toolsServer}__`)) return Promise.resolve({ behavior: "allow", updatedInput: input });
     if (this.grant && sameCall(this.grant, tool, input)) {
@@ -651,6 +652,7 @@ export class Thread implements Session {
         toolUseId,
         input,
         options: kind === "question" ? input.questions : undefined,
+        ...(agentId ? { agentId } : {}),
       });
     });
   }

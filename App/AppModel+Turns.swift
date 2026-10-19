@@ -335,6 +335,12 @@ extension AppModel {
         let params = Self.answerParams(ask, allow: allow, answers: answers, message: message, choice: choice)
         // The card folds into its one line and what's under it closes up, rather than jumping.
         withAnimation(Motion.move) { conversation(for: chat).answered(ask.requestId, allow: allow) }
+        askers[ask.requestId] = nil
+        // Answered from the queue, what the notification asked is settled too.
+        if conversation(for: chat).waitingAsk == nil { notifier.clear(chatID: chat.id) }
+        // A card's field that had the keyboard went with the card, and the composer under the
+        // queue or beside doesn't see the open thread's ask change.
+        if chat.id != selectedChatID { returnKeyboardSoon() }
         Task {
             do {
                 _ = try await engine.request("answer", params)
@@ -374,7 +380,7 @@ extension AppModel {
         if conversation.waitingAfterQuit {
             withAnimation(Motion.move) { conversation.stopAfterQuit() }
             holdWhileWorking()
-            notifier.badge(conversations.values.count { $0.waitingAsk != nil })
+            notifier.badge(waitingCount)
             return
         }
         Task { _ = try? await engine.request("interrupt", ["threadId": .string(chat.id.uuidString)]) }
@@ -447,6 +453,11 @@ extension AppModel {
         } else {
             conversation(for: chat).receive(event)
         }
+        if event.name == "ask", let requestId = event.body["requestId"]?.string,
+           let asker = event.body["agentId"]?.string.flatMap({ agentThread($0, under: chat) }) {
+            askers[requestId] = asker
+        }
+        if event.name == "ask.cancelled", let requestId = event.body["requestId"]?.string { askers[requestId] = nil }
         if event.name == "workflow" { syncAgents(of: chat, event.body) }
         if event.name == "turn.started" || event.name == "turn.done" { noteOutcome(event, of: chat) }
         if event.name == "turn.done", let spent = event.body["spent"]?.string {
@@ -484,7 +495,7 @@ extension AppModel {
 
     /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.
     private func tellIfAway(_ event: EngineEvent, chat: Chat) {
-        notifier.badge(conversations.values.count { $0.waitingAsk != nil })
+        notifier.badge(waitingCount)
         guard event.name == "turn.done" || event.name == "ask", isAway(chat) else { return }
         if event.name == "ask" {
             let tool = event.body["tool"]?.string ?? ""
@@ -493,7 +504,10 @@ extension AppModel {
                 : "Waiting on you: " + ToolSummary.line(for: ToolCall(
                     toolUseId: "", name: tool, input: event.body["input"] ?? .null,
                     declared: ToolKind(event.body["toolKind"], tool: tool), view: event.body["view"] ?? .null), cwd: chat.cwd)
-            notifier.post(title: chat.title, body: summary, chatID: chat.id)
+            // Named by the thread that asks, a worker or subagent under this one included; its
+            // click opens the queue on the ask.
+            let asker = event.body["requestId"]?.string.flatMap { askers[$0] } ?? chat
+            notifier.post(title: asker.title, body: summary, chatID: chat.id, ask: event.body["requestId"]?.string)
         } else if let limit = conversation(for: chat).turnLimit {
             let when = chat.resumeAt.map { "It goes on at \(Limit.time($0))." } ?? "Resets at \(Limit.time(limit.resetsAt))."
             notifier.post(title: chat.title, body: "Stopped at \(agent(for: chat).agent)'s \(Limit.name(of: limit.window)). " + when, chatID: chat.id)
@@ -536,6 +550,7 @@ extension AppModel {
         followed = []
         heldPieces = [:]
         agentThreads = [:]
+        askers = [:]
         settleAgents()
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]

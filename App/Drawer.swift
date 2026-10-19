@@ -37,8 +37,9 @@ struct Drawer: View {
             List {
                 let tree = model.drawerTree
                 let end = pinnedEnd(tree)
+                let asks = model.asksByThread
                 ForEach(Array(tree.enumerated()), id: \.element.id) { index, node in
-                    branch(node, index: index, end: end)
+                    branch(node, index: index, end: end, asks: asks)
                         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -185,8 +186,10 @@ struct Drawer: View {
 
     /// A thread and, when it opened any, the threads under it in the list's own fold. Only the
     /// top rows drag: a thread under another stays where it was opened.
-    private func branch(_ node: DrawerNode, index: Int?, end: UUID?) -> AnyView {
-        guard let children = node.children else { return AnyView(row(node.chat, index: index, end: end)) }
+    private func branch(_ node: DrawerNode, index: Int?, end: UUID?, asks: [UUID: Int]) -> AnyView {
+        guard let children = node.children else {
+            return AnyView(row(node.chat, index: index, end: end, asking: asks[node.chat.id] ?? 0, asks: asks[node.chat.id] != nil))
+        }
         let id = node.chat.id
         let unfolded = Binding(
             get: { model.unfolded.contains(id) },
@@ -195,14 +198,14 @@ struct Drawer: View {
             })
         return AnyView(DisclosureGroup(isExpanded: unfolded) {
             ForEach(children) { child in
-                branch(child, index: nil, end: end)
+                branch(child, index: nil, end: end, asks: asks)
                     .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .moveDisabled(true)
             }
         } label: {
-            row(node.chat, index: index, end: end, working: working(under: children))
+            row(node.chat, index: index, end: end, working: working(under: children), asking: asking(at: node, asks), asks: asks[node.chat.id] != nil)
         })
     }
 
@@ -222,8 +225,15 @@ struct Drawer: View {
         }
     }
 
+    /// How many asks wait at a thread and under it, at any depth.
+    private func asking(at node: DrawerNode, _ asks: [UUID: Int]) -> Int {
+        (node.children ?? []).reduce(asks[node.chat.id] ?? 0) { $0 + asking(at: $1, asks) }
+    }
+
     /// A top row has its place in the list and its ⌘digit; one under another has neither.
-    private func row(_ chat: Chat, index: Int?, end: UUID?, working under: Int = 0) -> some View {
+    /// `asking` counts the asks at the row and under it; `asks` is whether the thread itself asks,
+    /// which pulses its mark.
+    private func row(_ chat: Chat, index: Int?, end: UUID?, working under: Int = 0, asking: Int = 0, asks: Bool = false) -> some View {
         let child = index == nil
         let selected = chat.id == model.chat?.id
         let beside = chat.id == model.besideChatID
@@ -268,7 +278,9 @@ struct Drawer: View {
                     // Under the title, which keeps its width: a row with threads under it at
                     // work would otherwise leave it a word.
                     // A workflow's agent says what it returned, or how it ended.
-                    let below = [missing ? "folder missing" : nil, under > 0 ? "\(under) working" : nil, chat.agentLine].compactMap(\.self)
+                    // What waits on you first, since it holds the rest up.
+                    let below = [missing ? "folder missing" : nil, asking > 0 ? (asking == 1 ? "1 ask waiting" : "\(asking) asks waiting") : nil,
+                                 under > 0 ? "\(under) working" : nil, chat.agentLine].compactMap(\.self)
                     if !below.isEmpty {
                         Text(below.joined(separator: " · "))
                             .font(.system(size: 11))
@@ -282,11 +294,11 @@ struct Drawer: View {
             if let conversation = model.conversations[chat.id], conversation.working {
                 // Still while the drawer is away: hidden, it stays in the tree, and a turning
                 // mark would redraw for nobody.
-                ThreadMark(conversation: conversation, moving: model.drawerShown)
+                ThreadMark(conversation: conversation, moving: model.drawerShown, waiting: asks)
                     .frame(width: 14, height: 14)
             } else if chat.agentWorking {
                 // An agent of a workflow is a main loop of its own, with no rays.
-                RaysMark(restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
+                RaysMark(waiting: asks && model.drawerShown, restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
                     .frame(width: 14, height: 14)
                     .accessibilityLabel("Working")
             }

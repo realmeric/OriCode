@@ -103,6 +103,11 @@ struct PendingAsk: Hashable {
     var choices: [Choice] = []
     /// The head's worker that asked, when one did.
     var worker: Worker?
+    /// The worker, subagent or workflow agent that asked, by the id its thread keeps in
+    /// `agentID`; nil when the thread's own loop did.
+    var agentID: String?
+    /// When it came, which orders the asks of every thread in the queue.
+    var askedAt: Date = .distantPast
 
     /// A worker as its ask names it: the agent it runs on and its task.
     struct Worker: Hashable {
@@ -423,6 +428,8 @@ final class Conversation {
     private(set) var started = false
     /// The oldest ask still waiting, which is the one Return and Esc answer.
     private(set) var waitingAsk: PendingAsk?
+    /// Every ask still waiting, oldest first, which the queue of everything waiting reads.
+    private(set) var waitingAsks: [PendingAsk] = []
     private(set) var running = false
     /// Subagents, commands and workflows out for this thread, as the engine last listed them.
     let heads = Heads()
@@ -622,10 +629,11 @@ final class Conversation {
     /// Looked for again whenever an ask comes or goes, so what shows it isn't drawn again by
     /// every delta.
     private func findWaitingAsk() {
-        let found = items.lazy.compactMap { item -> PendingAsk? in
+        let found = items.compactMap { item -> PendingAsk? in
             if case .ask(_, let ask) = item, ask.state == .waiting { ask } else { nil }
-        }.first
-        if found != waitingAsk { waitingAsk = found }
+        }
+        if found != waitingAsks { waitingAsks = found }
+        if found.first != waitingAsk { waitingAsk = found.first }
     }
 
     /// Whether it has anything the composer mustn't lose by letting the conversation go.
@@ -1326,7 +1334,9 @@ final class Conversation {
                         id: choice["id"]?.string ?? "", name: choice["name"]?.string ?? "", kind: choice["kind"]?.string ?? "",
                         help: choice["help"]?.string)
                 },
-                worker: body["worker"]?["agent"]?.string.map { PendingAsk.Worker(agent: $0, label: body["worker"]?["label"]?.string ?? "") })
+                worker: body["worker"]?["agent"]?.string.map { PendingAsk.Worker(agent: $0, label: body["worker"]?["label"]?.string ?? "") },
+                agentID: body["agentId"]?.string,
+                askedAt: date)
             items.append(.ask(id: id, ask: ask))
         case "answer", "ask.cancelled":
             let requestId = body["requestId"]?.string

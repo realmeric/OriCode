@@ -323,6 +323,8 @@ final class OverlapStage {
         model.openInIsland(.capsule)
         model.openFile = nil
         model.closeBlock()
+        // The queue's asks are the screen's state alone; answered, they leave a line in the thread.
+        for ask in model.conversations[other.id]?.waitingAsks ?? [] { model.conversation(for: other).answered(ask.requestId, allow: false) }
         // A drawer that stood aside for the last state's review comes back as the window sees
         // the review gone, and not before.
         for _ in 0..<50 where model.drawerAside { try await Task.sleep(for: .milliseconds(20)) }
@@ -354,7 +356,21 @@ final class OverlapStage {
         case .nothing: break
         case .command: model.openInIsland(.command)
         case .heads: model.openInIsland(.heads)
-        case .overview: model.openInIsland(.overview)
+        case .overview:
+            // Its queue at its tallest: a long command, and a question with options.
+            let conversation = model.conversation(for: other)
+            conversation.receive(EngineEvent(name: "ask", threadId: other.id.uuidString, body: [
+                "event": "ask", "requestId": .string(UUID().uuidString), "kind": "permission", "tool": "Bash",
+                "input": ["command": .string((1...30).map { "swift build --product Tool\($0)" }.joined(separator: " && "))],
+            ]))
+            let questions: JSON = [["question": "Which of the two builds should the release use from here on?", "options": [
+                ["label": "The signed one", "description": "Notarised with the OriCode certificate"], ["label": "The ad hoc one"],
+            ]]]
+            conversation.receive(EngineEvent(name: "ask", threadId: other.id.uuidString, body: [
+                "event": "ask", "requestId": .string(UUID().uuidString), "kind": "question", "tool": "AskUserQuestion",
+                "input": ["questions": questions], "options": questions,
+            ]))
+            model.openInIsland(.overview)
         case .files: model.openInIsland(.files)
         case .side: model.openInIsland(.side)
         case .pull: model.openInIsland(.pull)

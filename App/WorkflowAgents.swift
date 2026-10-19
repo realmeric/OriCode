@@ -87,6 +87,10 @@ extension AppModel {
             context.insert(agent)
         }
         agentThreads[id] = agent.id
+        // An ask it sent before the engine told of its thread is counted at it from here.
+        for ask in conversations[parent.id]?.waitingAsks ?? [] where ask.agentID == id && askers[ask.requestId] == nil {
+            askers[ask.requestId] = agent
+        }
         let state = body["state"]?.string ?? "running"
         if agent.agentState != state { agent.agentState = state }
         // A turn ended with nothing said leaves no reply of an earlier turn behind.

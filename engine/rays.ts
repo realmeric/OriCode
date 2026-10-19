@@ -663,7 +663,7 @@ export class Rays {
         break;
       }
       case "ask":
-        event("ask", { ...fields, threadId: this.threadId, worker: { id: worker.id, agent: worker.agent.id, label: worker.label } });
+        event("ask", { ...fields, threadId: this.threadId, agentId: worker.key, worker: { id: worker.id, agent: worker.agent.id, label: worker.label } });
         break;
       case "ask.cancelled":
         event("ask.cancelled", { ...fields, threadId: this.threadId });

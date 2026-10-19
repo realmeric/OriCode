@@ -87,7 +87,11 @@ extension AppModel {
         case .all: return all
         case .project(let id): return all.filter { $0.project?.id == id }
         case .working: return all.filter { conversations[$0.id]?.working == true || $0.agentWorking }
-        case .waiting: return all.filter { conversations[$0.id]?.waitingAsk != nil }
+        // The thread that asks, as the queue names it: a worker asking is listed and its head,
+        // working on, isn't, the way Working lists a worker without its head.
+        case .waiting:
+            let asking = Set(waitingAsks.map(\.thread.id))
+            return all.filter { asking.contains($0.id) }
         case .archived: return archivedChats
         }
     }
@@ -402,6 +406,8 @@ extension AppModel {
         let agents = agents(under: chat)
         let wasSelected = deleted == selectedChatID || agents.contains { $0.id == selectedChatID }
         if deleted == besideChatID || agents.contains(where: { $0.id == besideChatID }) { besideChatID = nil }
+        let gone = Set([deleted] + agents.map(\.id))
+        askers = askers.filter { !gone.contains($0.value.id) }
         for agent in agents {
             conversations[agent.id]?.forget()
             conversations[agent.id] = nil

@@ -54,10 +54,11 @@ struct OverviewStatus: Equatable {
     }
 }
 
-/// ⌘⇧I: every project's threads that have worked since OriCode opened, or work or wait now, each
-/// under the thread that opened it, with where it stands and what it's on. It grows out of the
-/// title capsule like ⌘I, over both columns, and stops above the composer, which still sends to
-/// the open thread. It reads what the app already holds and asks the engine for nothing.
+/// ⌘⇧I: every ask waiting on you, oldest first, then every project's threads that have worked
+/// since OriCode opened, or work or wait now, each under the thread that opened it, with where it
+/// stands and what it's on. It grows out of the title capsule like ⌘I, over both columns, and
+/// stops above the composer, which still sends to the open thread. It reads what the app already
+/// holds and asks the engine for nothing.
 struct Overview: View {
     @Environment(AppModel.self) private var model
     /// How tall it may grow before its rows scroll.
@@ -69,66 +70,88 @@ struct Overview: View {
 
     var body: some View {
         let sections = model.overview
+        let asks = model.waitingAsks
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Text("Everything running")
                     .font(Type.body)
                     .foregroundStyle(Ink.primary)
                     .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(tally(sections))
-                    .font(Type.secondary)
-                    .foregroundStyle(Ink.faint)
-                    .lineLimit(1)
                     .fixedSize()
+                Spacer(minLength: 8)
+                // In a narrow window the tally gives way, its first count and then all of it,
+                // and never the name.
+                let parts = tally(sections)
+                ViewThatFits(in: .horizontal) {
+                    Text(parts.joined(separator: ", ")).fixedSize()
+                    Text(parts.first ?? "").fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
+                .font(Type.secondary)
+                .foregroundStyle(Ink.faint)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            if sections.isEmpty {
+            if sections.isEmpty, asks.isEmpty {
                 Text("No thread has worked since \(Build.name) opened.")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.faint)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 14)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(sections) { section in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 8) {
-                                    ProjectBadge(project: section.project)
-                                    Text(section.project.isNoFolder ? Project.noFolderName : section.project.name)
-                                        .font(Type.secondary)
-                                        .foregroundStyle(Ink.secondary)
-                                        .lineLimit(1)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                ForEach(section.rows) { row in
-                                    OverviewLine(chat: row.chat, depth: row.depth, hovered: $hovered)
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if !asks.isEmpty {
+                                AskQueue(asks: asks)
+                            }
+                            ForEach(sections) { section in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 8) {
+                                        ProjectBadge(project: section.project)
+                                        Text(section.project.isNoFolder ? Project.noFolderName : section.project.name)
+                                            .font(Type.secondary)
+                                            .foregroundStyle(Ink.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    ForEach(section.rows) { row in
+                                        OverviewLine(chat: row.chat, depth: row.depth, hovered: $hovered)
+                                    }
                                 }
                             }
                         }
+                        .padding(.horizontal, 6)
+                        .padding(.bottom, 6)
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 6)
+                    .scrollBounceBehavior(.basedOnSize)
+                    // Never past the composer, which may stand in the middle of the window and grow up.
+                    .frame(maxHeight: max(0, tallest - 44))
+                    .fixedSize(horizontal: false, vertical: true)
+                    // A notification's ask, which may have come below the fold of a long queue.
+                    // Once the rows are laid out: on the first pass the queue has no height yet.
+                    .onAppear {
+                        guard let ask = model.overviewAsk else { return }
+                        DispatchQueue.main.async { scroller.scrollTo(ask, anchor: .top) }
+                    }
+                    .onChange(of: model.overviewAsk) { _, ask in
+                        guard let ask else { return }
+                        withAnimation(Motion.move) { scroller.scrollTo(ask, anchor: .top) }
+                    }
                 }
-                .scrollBounceBehavior(.basedOnSize)
-                // Never past the composer, which may stand in the middle of the window and grow up.
-                .frame(maxHeight: max(0, tallest - 44))
-                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    /// "2 working, 1 waiting, 3 ended" across every project.
-    private func tally(_ sections: [OverviewSection]) -> String {
+    /// "2 working", "1 waiting" and "3 ended" across every project.
+    private func tally(_ sections: [OverviewSection]) -> [String] {
         let states = sections.flatMap(\.rows).map { model.status(of: $0.chat).state }
         let working = states.count { $0 == .working }
         let waiting = states.count { $0 == .waiting || $0 == .queued }
         let ended = states.count { $0 == .done || $0 == .stopped || $0 == .failed }
         let parts = [(working, "working"), (waiting, "waiting"), (ended, "ended")].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
-        return parts.joined(separator: ", ")
+        return parts
     }
 }
 
@@ -208,11 +231,12 @@ private struct OverviewLine: View {
 
     @ViewBuilder
     private func mark(_ status: OverviewStatus) -> some View {
+        // Pulsing where the row reads Waiting: a worker's ask is its own row's, not its head's.
         if let conversation = model.conversations[chat.id], conversation.working || conversation.waitingAsk != nil {
-            ThreadMark(conversation: conversation)
-        } else if status.state == .working {
+            ThreadMark(conversation: conversation, waiting: status.state == .waiting)
+        } else if chat.agentWorking {
             // A workflow's agent is a main loop of its own, with no rays.
-            RaysMark(restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
+            RaysMark(waiting: status.state == .waiting, restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
         } else {
             RaysMark(restingOpacity: 0.16, dotOpacity: status.live ? 0.92 : 0.28)
         }
@@ -224,19 +248,22 @@ extension AppModel {
         withAnimation(Motion.move) {
             if overviewShown {
                 overviewShown = false
+                overviewAsk = nil
             } else {
                 openInIsland(.overview)
                 // Tab's and @'s lists rise into the screen's place, and the composer under it keeps
                 // the keyboard, which ⌘K or ⌘P going in the same turn would leave with nobody.
                 composerMenu = false
-                returnKeyboardSoon()
             }
+            // Going, from a question's Other field in the queue, it hands the keyboard back too.
+            returnKeyboardSoon()
         }
     }
 
     func closeOverview() {
         guard overviewShown else { return }
         withAnimation(Motion.move) { overviewShown = false }
+        overviewAsk = nil
     }
 
     /// A row's Stop: the turn, or with the turn over, what the thread left running, each the way
@@ -307,6 +334,9 @@ extension AppModel {
     func status(of chat: Chat) -> OverviewStatus {
         if chat.agentID != nil {
             switch chat.agentState {
+            // Its ask waits in the thread whose agent runs it, which the answer goes to.
+            case "running" where chat.openedBy.flatMap({ conversations[$0] })?.waitingAsks.contains(where: { askers[$0.requestId]?.id == chat.id }) == true:
+                return OverviewStatus(state: .waiting, step: "Waiting on you")
             case "running": return OverviewStatus(state: .working, step: agentStep(chat) ?? "Starting…")
             case "queued": return OverviewStatus(state: .queued, step: nil)
             case "done": return OverviewStatus(state: .done, step: chat.agentResult)
@@ -316,7 +346,9 @@ extension AppModel {
             }
         }
         let conversation = conversations[chat.id]
-        if let conversation, conversation.waitingAsk != nil || conversation.waitingAfterQuit {
+        // A worker's or subagent's ask is its own row's; the thread that runs it works on.
+        if let conversation, conversation.waitingAfterQuit
+            || conversation.waitingAsks.contains(where: { asker(of: $0) == nil }) {
             return OverviewStatus(state: .waiting, step: "Waiting on you")
         }
         if let conversation, conversation.working {

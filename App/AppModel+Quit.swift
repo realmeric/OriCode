@@ -49,7 +49,7 @@ extension AppModel {
             conversation.userSent(Self.quitLine)
             startTurn(in: chat, text: Self.quitLine)
         }
-        notifier.badge(conversations.values.count { $0.waitingAsk != nil })
+        notifier.badge(waitingCount)
     }
 
     /// The CLI that asked went with the quit, so the answer reaches the session as a message of its
@@ -60,7 +60,7 @@ extension AppModel {
         withAnimation(Motion.move) { conversation.answeredAfterQuit(ask.requestId, allow: allow) }
         let text = Self.afterQuit(ask, allow: allow, answers: answers, message: message, cwd: chat.cwd)
         startTurn(in: chat, text: text, allowing: allow && ask.kind == "permission" ? ask : nil)
-        notifier.badge(conversations.values.count { $0.waitingAsk != nil })
+        notifier.badge(waitingCount)
     }
 
     /// What Claude is told when an ask a quit cut off is answered: what it had asked, and what the

@@ -7,11 +7,14 @@ struct ThreadMark: View {
     /// Turning and pulsing only where someone can see it.
     var moving = true
     var focus: RaysMark.Focus?
+    /// Whether the thread itself asks, where a row stands for it alone: a head whose worker asks
+    /// works on, and the worker's row pulses. Elsewhere, any card waiting in its transcript.
+    var waiting: Bool?
 
     var body: some View {
         let heads = conversation.heads
         let lit = heads.lit
-        RaysMark(slots: lit, focus: focus, turning: moving && !lit.isEmpty, waiting: moving && conversation.waitingAsk != nil,
+        RaysMark(slots: lit, focus: focus, turning: moving && !lit.isEmpty, waiting: moving && (waiting ?? (conversation.waitingAsk != nil)),
                  restingOpacity: 0.28, dotOpacity: conversation.running ? 0.92 : 0.28,
                  colors: MarkPalette.colors(heads.rayAgents),
                  dotColor: conversation.running ? MarkPalette.color(for: conversation.chat.providerID) : nil)

@@ -30,6 +30,8 @@ extension AppModel {
         }
         if overviewShown {
             closeOverview()
+            // From a question's Other field in the queue, which goes with the screen.
+            returnKeyboardSoon()
             return true
         }
         if commandCenterShown {
