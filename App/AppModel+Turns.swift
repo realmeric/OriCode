@@ -131,6 +131,7 @@ extension AppModel {
         let id = UUID()
         conversation.userSent(text, previews: shown.map { $0.preview }, id: id)
         conversation.pictures?.keep(shown.map { $0.image }, thread: chat.id, message: id)
+        chat.turnFrom = sender?.id
         startTurn(in: chat, text: text, images: images, from: sender)
         return true
     }
@@ -361,15 +362,25 @@ extension AppModel {
         return .object(params)
     }
 
-    /// Whether Stop has something in the open thread: its turn, or the agent it is.
+    /// Whether Stop has something in the open thread: its turn, the agent it is, or with its turn
+    /// over what it left working.
     var canStop: Bool {
-        currentConversation?.running == true || chat?.agentWorking == true
+        currentConversation?.running == true || chat?.agentWorking == true || chat.map(leftWorking) == true
+    }
+
+    /// Its turn is over and it left something working: a worker, a workflow, a subagent or a
+    /// command its turn started, or a thread it set going.
+    func leftWorking(_ chat: Chat) -> Bool {
+        guard chat.agentID == nil, let conversation = conversations[chat.id], !conversation.running, !conversation.waitingAfterQuit else { return false }
+        return conversation.heads.list.contains { !$0.ending } || !setGoing(by: chat, sparing: nil).isEmpty
     }
 
     /// Stop ends the turn and takes back everything still to go: the engine cancels what was sent
     /// into the turn, and the queue goes back now, not when the turn ends, since a turn already
-    /// ending by itself as the interrupt goes out would still send its next.
-    func stop(in thread: Chat? = nil) {
+    /// ending by itself as the interrupt goes out would still send its next. With the turn over it
+    /// stops what the thread left working, since an interrupt with no turn running does nothing.
+    /// `sparing` is a thread that asked for this stop with stop_thread, whose own turn goes on.
+    func stop(in thread: Chat? = nil, sparing: UUID? = nil) {
         guard let chat = thread ?? chat else { return }
         // An agent has no turn of its own here: its opener stops it, or its workflow.
         guard chat.agentID == nil else {
@@ -378,6 +389,13 @@ extension AppModel {
         }
         let conversation = conversation(for: chat)
         conversation.handBackQueue()
+        stopOpened(by: chat, sparing: sparing)
+        if !conversation.running, !conversation.waitingAfterQuit {
+            for head in conversation.heads.list where !head.ending {
+                stop(head, in: chat)
+            }
+            return
+        }
         if conversation.waitingAfterQuit {
             withAnimation(Motion.move) { conversation.stopAfterQuit() }
             holdWhileWorking()
@@ -385,6 +403,27 @@ extension AppModel {
             return
         }
         Task { _ = try? await engine.request("interrupt", ["threadId": .string(chat.id.uuidString)]) }
+    }
+
+    /// The threads it opened whose turn it set going, with open_thread or message_thread, that are
+    /// working. A turn the user or another thread started there isn't its to stop.
+    func setGoing(by chat: Chat, sparing: UUID?) -> [Conversation] {
+        // A thread at work has its conversation in memory, so nothing is fetched for this.
+        conversations.values.filter {
+            $0.chat.openedBy == chat.id && $0.chat.turnFrom == chat.id && $0.chat.id != sparing && $0.chat.agentID == nil && ($0.running || $0.waitingAfterQuit)
+        }
+    }
+
+    /// Stop on a thread reaches what it started: each thread it set going stops too, and so on
+    /// down, with a line in both saying so. Its workers and subagents stop with its turn.
+    func stopOpened(by chat: Chat, sparing: UUID? = nil) {
+        for other in setGoing(by: chat, sparing: sparing) {
+            let thread = other.chat
+            stop(in: thread, sparing: sparing)
+            // After the stop, so a thread waiting from before a quit, which stops at once, says it now.
+            other.threadAct(ThreadAct(act: .stoppedWith, by: false, thread: chat.id, title: chat.title, reason: ""))
+            conversation(for: chat).threadAct(ThreadAct(act: .stoppedWith, by: true, thread: thread.id, title: thread.title, reason: ""))
+        }
     }
 
     func route(_ event: EngineEvent) {

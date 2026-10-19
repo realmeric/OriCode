@@ -201,7 +201,7 @@ private struct OverviewLine: View {
                     .fixedSize()
                     .opacity(stops ? 0 : 1)
                 if stops {
-                    Button(stop) { model.stopFromOverview(chat) }
+                    Button(stop) { model.stop(in: chat) }
                         .buttonStyle(.action(small: true))
                         .fixedSize()
                         .transition(.opacity)
@@ -224,7 +224,7 @@ private struct OverviewLine: View {
         .accessibilityAction { model.openFromOverview(chat, beside: false) }
         .accessibilityActions {
             if working {
-                Button(stop) { model.stopFromOverview(chat) }
+                Button(stop) { model.stop(in: chat) }
             }
         }
     }
@@ -264,18 +264,6 @@ extension AppModel {
         guard overviewShown else { return }
         withAnimation(Motion.move) { overviewShown = false }
         overviewAsk = nil
-    }
-
-    /// A row's Stop: the turn, or with the turn over, what the thread left running, each the way
-    /// ⌘I stops it, since an interrupt with no turn running does nothing.
-    func stopFromOverview(_ chat: Chat) {
-        guard chat.agentID == nil, let conversation = conversations[chat.id], !conversation.running else {
-            stop(in: chat)
-            return
-        }
-        for head in conversation.heads.list where !head.ending {
-            stop(head, in: chat)
-        }
     }
 
     /// A row's click: that thread opens, or with ⌥ comes beside the open one, unfolded in the

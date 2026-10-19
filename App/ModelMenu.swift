@@ -50,6 +50,9 @@ struct ModelMenu: View {
     /// How much of itself the button says, which its composer's width decides.
     var says = Says.all
     @State private var hovering = false
+    /// Settings › Agents' switches, read here so the button follows them as they change.
+    @AppStorage(Rays.allowKey) private var workersAllowed = true
+    @AppStorage(Rays.chooseKey) private var headsChoose = true
     /// Where the button is in the window, kept for the next thread this composer shows, which
     /// comes without the button moving.
     @State private var frame = CGRect.zero
@@ -76,8 +79,8 @@ struct ModelMenu: View {
                         .id(name)
                         .transition(.blurReplace)
                 }
-                // The head's rays beside it, each its agent's mark.
-                if !rays.isEmpty {
+                // The head's rays beside it, each its agent's mark, unless the head chooses.
+                if !chooses, !rays.isEmpty {
                     HStack(spacing: 2) {
                         ForEach(rays, id: \.self) { ray in
                             AgentMark(agent: ray.provider)
@@ -103,7 +106,13 @@ struct ModelMenu: View {
                 }
                 // The level in effect: faint when it's Default's, brighter when picked, and at
                 // full strength while workflows are on, so a thread can't stay on them unnoticed.
-                if says == .all, let level {
+                // A head that chooses picks its level and its workers' models itself, which the
+                // button says in place of the level.
+                if says == .all, chooses {
+                    Text("Choosing")
+                        .foregroundStyle(Ink.secondary)
+                        .transition(.blurReplace)
+                } else if says == .all, let level {
                     Text(Self.effortName(level))
                         .foregroundStyle(workflows ? Ink.primary : shownEffort == nil ? Ink.faint : Ink.secondary)
                         .id(level)
@@ -116,7 +125,7 @@ struct ModelMenu: View {
             .font(Type.secondary)
             // The picker's choices arrive here as it makes them; the button grows leftwards,
             // since the composer's field gives way and the send button holds its right.
-            .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil, workflows ? "workflows" : nil] + rays.map(\.stored))
+            .animation(Motion.move, value: [selectedModel?.id, shownEffort, fast ? "fast" : nil, workflows ? "workflows" : nil, chooses ? "chooses" : nil] + rays.map(\.stored))
             .padding(.horizontal, 8)
             .frame(height: 30)
             .background(hovering || model.modelPickerShown && selected ? Surface.hover : .clear, in: .capsule)
@@ -131,9 +140,11 @@ struct ModelMenu: View {
         }
         .onChange(of: ObjectIdentifier(state)) { state.modelButtonFrame = frame }
         // The words a narrow composer's button leaves out are here.
-        .help(says == .all ? "Model and permission mode" : ([name] + (level.map { [Self.effortName($0)] } ?? [])).joined(separator: ", ") + ". Model and permission mode")
+        .help(chooses ? choosingLine : says == .all ? "Model and permission mode" : ([name] + (level.map { [Self.effortName($0)] } ?? [])).joined(separator: ", ") + ". Model and permission mode")
         .accessibilityLabel("Model: \(selectedModel?.name ?? "none")")
-        .accessibilityValue([accessibilityEffort, workflows ? "workflows on" : nil, rays.isEmpty ? nil : raysLine].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityValue(chooses
+            ? ["the head chooses", level.map { "now at \(Self.effortName($0))" }].compactMap { $0 }.joined(separator: ", ")
+            : [accessibilityEffort, workflows ? "workflows on" : nil, rays.isEmpty ? nil : raysLine].compactMap { $0 }.joined(separator: ", "))
         .task(id: "\(model.providerID(for: chat)) \(model.engineState == .ready)") { model.readModels(for: chat) }
     }
 
@@ -149,6 +160,18 @@ struct ModelMenu: View {
     private var workflows: Bool { model.workflows(of: chat) }
 
     private var rays: [ModelRef] { model.rays(for: chat) }
+
+    /// Heads choose is on and the thread's agent can be a head. With workflows on the level stays,
+    /// since the head fans the work out at it.
+    private var chooses: Bool {
+        workersAllowed && headsChoose && model.offersWorkers(chat) && !workflows
+    }
+
+    /// The help a head that chooses gives: where it is now, and what it picks.
+    private var choosingLine: String {
+        let now = [name] + (level.map { [Self.effortName($0)] } ?? [])
+        return "The head chooses its workers' models and its own effort, now \(now.joined(separator: " at ")). Model and permission mode"
+    }
 
     private var raysLine: String {
         "Rays: " + model.rayNames(for: chat).joined(separator: ", ")

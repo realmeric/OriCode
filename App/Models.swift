@@ -82,6 +82,9 @@ final class Chat {
     /// The thread that opened it, through open_thread, when one did: its first turn's end is told
     /// to that thread, and the drawer lists it under that thread.
     var openedBy: UUID?
+    /// The thread whose open_thread or message_thread started its latest turn, nil when the user
+    /// did: Stop on that thread stops the turn, where a turn the user started stays theirs.
+    var turnFrom: UUID?
     /// The thread whose archive took it along, so restoring that one brings it back and one
     /// archived on its own stays.
     var archivedWith: UUID?

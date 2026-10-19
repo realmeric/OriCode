@@ -440,6 +440,8 @@ final class Conversation {
     private(set) var workerCost: Double = 0
     /// The edits workers brought into the thread's folder, which the review credits to their rays.
     private(set) var rayEdits: [RayEdit] = []
+    /// What the head chose, oldest first: the workers it started and its own moves, with why.
+    private(set) var choices: [HeadChoice] = []
     /// What each subagent called, by the call that started it. The transcript draws none of
     /// it; the review reads what a subagent ran and what it edited.
     @ObservationIgnored private(set) var under: [String: [ToolCall]] = [:]
@@ -905,6 +907,9 @@ final class Conversation {
             // A worker's turn: its cost is the thread's too, and its edits are credited to its ray.
             chat.costUSD += event.body["costUSD"]?.double ?? 0
             record(event.name, event.body)
+        case "head.chose":
+            // Kept for ⌘I, without closing a reply that may be streaming beside it.
+            keep(event.name, event.body)
         case "tool.use" where event.body["parent"]?.string != nil:
             keep("subagent.use", event.body)
         case "tool.result" where event.body["parent"]?.string != nil:
@@ -1385,6 +1390,9 @@ final class Conversation {
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
         case "head.changed":
             items.append(.note(id: id, text: Self.headChanged(body)))
+            if let choice = HeadChoice(kind, body, id: id, at: date) { choices.append(choice) }
+        case "head.chose":
+            if let choice = HeadChoice(kind, body, id: id, at: date) { choices.append(choice) }
         case "limited":
             let resetsAt = Date(timeIntervalSince1970: (body["resetsAt"]?.double ?? 0) / 1000)
             items.append(.limited(id: id, resetsAt: resetsAt, window: body["window"]?.string))

@@ -94,6 +94,42 @@ final class Head: Identifiable {
     }
 }
 
+/// A choice a head that chooses made, as the thread stored it: a worker it started on a model at a
+/// level, or a move of its own, each with the one line it gave for it. ⌘I lists them.
+struct HeadChoice: Identifiable, Equatable {
+    let id: UUID
+    let at: Date
+    let agent: String
+    let model: String?
+    /// The model's name as its agent lists it.
+    let name: String?
+    let effort: String?
+    let reason: String
+    /// The worker's task, nil for the head's own move.
+    let task: String?
+    /// A move of its own that changed its model, not only its level.
+    let modelChanged: Bool
+
+    /// From a `head.chose` or a `head.changed`.
+    init?(_ kind: String, _ body: JSON, id: UUID, at: Date) {
+        guard kind == "head.chose" || kind == "head.changed" else { return nil }
+        self.id = id
+        self.at = at
+        agent = body["agent"]?.string ?? ""
+        model = body["model"]?.string
+        name = body["name"]?.string
+        effort = body["effort"]?.string
+        reason = body["reason"]?.string ?? ""
+        task = kind == "head.chose" ? body["label"]?.string ?? "" : nil
+        modelChanged = body["modelChanged"]?.bool ?? false
+    }
+
+    /// The level in words, as the model button names it: "at low", or the model's own.
+    var level: String {
+        effort.map { "at \(ModelMenu.effortName($0).lowercased())" } ?? "at its default level"
+    }
+}
+
 /// A thread's heads, kept apart from its transcript's items so that nothing here re-runs the
 /// transcript. The six rays are given out here: an agent keeps the ray it was given for as long
 /// as it runs, a workflow holds one for each of its agents at work, a head that comes when all six

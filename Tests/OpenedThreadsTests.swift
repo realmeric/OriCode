@@ -241,6 +241,95 @@ struct OpenedThreadsTests {
         #expect(acts(own).last == "Stopped Rename sum.txt · The rename isn't wanted after all")
     }
 
+    @Test func stopOnAThreadStopsTheThreadsItOpenedThatWorkAndTheirsAndEachSaysSo() async throws {
+        let (model, parent) = try model()
+        parent.titleIsCustom = true
+        let asked = request(parent)
+        let rename = try model.open(model.opening(for: asked), asked)
+        rename.titleIsCustom = true
+        var deeper = AppModel.ThreadRequest(parent: rename.id, text: "Update the docs for total.txt.")
+        deeper.title = "Docs"
+        let docs = try model.open(model.opening(for: deeper), deeper)
+        docs.titleIsCustom = true
+        var idle = AppModel.ThreadRequest(parent: parent.id, text: "Count the lines.")
+        idle.title = "Lines"
+        let lines = try model.open(model.opening(for: idle), idle)
+        try await working(model, parent)
+        try await working(model, rename)
+        try await working(model, docs)
+        model.route(done(lines))
+
+        model.stop(in: parent)
+        // Each line waits for its thread's turn to end, as the interrupt ends it.
+        for chat in [docs, rename, parent] { model.route(done(chat, "interrupted")) }
+        #expect(Array(acts(model.conversation(for: rename)).suffix(2)) == ["Stopped Docs with this thread", "Stopped with Sums, which opened it"])
+        #expect(acts(model.conversation(for: docs)).last == "Stopped with Rename sum.txt, which opened it")
+        #expect(acts(model.conversation(for: parent)).filter { $0.hasPrefix("Stopped") } == ["Stopped Rename sum.txt with this thread"])
+        // A thread it opened that isn't working has nothing to stop, and no line.
+        #expect(!acts(model.conversation(for: lines)).contains { $0.hasPrefix("Stopped") })
+    }
+
+    @Test func stopOnAThreadReachesOnlyTheTurnsItSetGoingInTheThreadsItOpened() async throws {
+        let (model, parent) = try model()
+        parent.titleIsCustom = true
+        let asked = request(parent)
+        let rename = try model.open(model.opening(for: asked), asked)
+        rename.titleIsCustom = true
+        try await working(model, rename)
+        model.route(done(rename))
+        // The user works in it now, beside its opener.
+        #expect(model.send("Rename it back", in: rename))
+        try await working(model, rename)
+        try await working(model, parent)
+        #expect(!model.leftWorking(parent))
+        model.stop(in: parent)
+        for chat in [rename, parent] { model.route(done(chat, "interrupted")) }
+        #expect(!acts(model.conversation(for: rename)).contains { $0.hasPrefix("Stopped with") })
+        #expect(!acts(model.conversation(for: parent)).contains { $0.hasPrefix("Stopped") })
+
+        // A message from its opener sets it going again, and that turn is the opener's to stop.
+        _ = try model.message(rename.id.uuidString, text: "Undo that", reason: "Wrong name", from: parent.id)
+        try await working(model, rename)
+        try await working(model, parent)
+        model.stop(in: parent)
+        for chat in [rename, parent] { model.route(done(chat, "interrupted")) }
+        #expect(acts(model.conversation(for: rename)).last == "Stopped with Sums, which opened it")
+    }
+
+    @Test func aThreadThatStopsItsOpenerGoesOnItself() async throws {
+        let (model, parent) = try model()
+        parent.titleIsCustom = true
+        let asked = request(parent)
+        let rename = try model.open(model.opening(for: asked), asked)
+        rename.titleIsCustom = true
+        try await working(model, rename)
+        try await working(model, parent)
+        #expect(try model.stop(parent.id.uuidString, reason: "Done here", from: rename.id)["stopped"] == true)
+        model.route(done(parent, "interrupted"))
+        model.route(done(rename))
+        #expect(!acts(model.conversation(for: rename)).contains { $0.hasPrefix("Stopped with") })
+        #expect(acts(model.conversation(for: parent)).last == "Rename sum.txt stopped this thread · Done here")
+    }
+
+    @Test func stopOnAThreadWhoseTurnIsOverStopsTheThreadsItLeftWorking() async throws {
+        let (model, parent) = try model()
+        parent.titleIsCustom = true
+        let asked = request(parent)
+        let rename = try model.open(model.opening(for: asked), asked)
+        rename.titleIsCustom = true
+        try await working(model, parent)
+        try await working(model, rename)
+        model.route(done(parent))
+        #expect(model.leftWorking(parent) && model.canStop)
+        // stop_thread on it from another thread finds work to stop, as the composer's ⌘. does.
+        let docs = try sibling(model)
+        #expect(try model.stop(parent.id.uuidString, reason: "Enough", from: docs.id)["stopped"] == true)
+        model.route(done(rename, "interrupted"))
+        #expect(acts(model.conversation(for: rename)).last == "Stopped with Sums, which opened it")
+        #expect(acts(model.conversation(for: parent)).contains("Stopped Rename sum.txt with this thread"))
+        #expect(!model.leftWorking(parent))
+    }
+
     /// A turn under way as the engine reports it. With no engine in a test the send itself fails a
     /// moment after it's made, so the turn is started again from here once it has.
     private func working(_ model: AppModel, _ chat: Chat) async throws {

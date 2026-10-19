@@ -66,7 +66,10 @@ struct OverlapTests {
         try await stage.callDrawer()
         let surfaces = stage.read().surfaces
         #expect(surfaces.contains { $0.name == "Threads" })
-        #expect(surfaces.first { $0.name == "Review" }?.frame == alone.frame)
+        // Its side edges stay. Its foot may rise: the drawer draws the composer back, whose draft can
+        // wrap a line more beside a wider model button, and the review stops above the composer.
+        let after = try #require(surfaces.first { $0.name == "Review" })
+        #expect(after.frame.minX == alone.frame.minX && after.frame.width == alone.frame.width)
     }
 
     /// Everything running over a thread not begun, in the least window, with a draft of nine lines

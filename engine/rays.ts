@@ -186,6 +186,26 @@ const tools = [
   },
 ];
 
+/// start_worker as a head that chooses has it: it says why it picked the model and the level, which
+/// the user reads in ⌘I beside the worker.
+const startChosen = (() => {
+  const start = tools.find((tool) => tool.name === "start_worker")!;
+  return {
+    ...start,
+    description: start.description.replace("on one of this thread's rays", "on any model list_agents gives"),
+    inputSchema: {
+      ...start.inputSchema,
+      properties: {
+        ...start.inputSchema.properties,
+        agent: { type: "string", description: "An agent from list_agents, such as codex or claude." },
+        model: { type: "string", description: "One of that agent's models from list_agents." },
+        reason: { type: "string", description: "Why this model at this level for this part, in one line the user reads, such as \"Mechanical rename, so Luna at low\"." },
+      },
+      required: ["agent", "model", "task", "reason"],
+    },
+  };
+})();
+
 /// What a head is told of its rays, in the engine's words and not the user's: its tools' MCP
 /// instructions, which the ACP agents have no other way to hear, Claude Code's appended system
 /// prompt and Codex's developer instructions.
@@ -204,7 +224,7 @@ export function choosing(picked: Ray[], budget: number | null): string {
   return [
     "You run this thread: you choose which models do its work and how hard each one thinks, your own model and level included. The user doesn't pick them; they watch and talk to you. " +
       "list_agents gives every model you may use, on each agent that's ready, with its effort levels and each agent's plan windows where its CLI says them. " +
-      "When a task has parts that don't depend on each other, don't start on them yourself: first give each part a worker with start_worker, on the model and at the level that part needs, then bring their work together with worker_result, however small the parts are. " +
+      "When a task has parts that don't depend on each other, don't start on them yourself: first give each part a worker with start_worker, on the model and at the level that part needs, with a one-line reason the user reads, then bring their work together with worker_result, however small the parts are. " +
       "A quick model at low effort does something mechanical; a stronger model or a higher level does something hard. Spread the parts across agents where more than one is ready: each agent's plan has windows of its own, so a part on Codex leaves Claude's untouched. " +
       "Keep for yourself what needs the whole picture. Workers that edit files work isolated, and you merge what you keep with merge_worker.",
     "Your own model and level are yours to change with change_my_model, with a one-line reason the user reads: move up before a part that needs more thought than you're on, and back down once it's done. Starting low and moving up when the work asks for it is the point.",
@@ -350,7 +370,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.rays.length || this.choice ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread] } };
+        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread] } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
@@ -650,6 +670,9 @@ export class Rays {
     const id = String(args.agent ?? "");
     const task = String(args.task ?? "").trim();
     if (!task) throw new Error("A worker needs a task.");
+    // A head that chooses names the model it chose; the first of the agent's would be one it never picked.
+    if (this.choice) required(args.model, "Name the model in `model`, one of that agent's from list_agents.");
+    const why = this.choice ? required(args.reason, "Say why this model at this level in `reason`, one line the user reads.") : undefined;
     const offered = await this.offered();
     const model = typeof args.model === "string" && args.model ? args.model : offered.find((ray) => ray.agent === id)?.model;
     const agent = offered.some((ray) => ray.agent === id && ray.model === model) ? this.seam.provider(id) : undefined;
@@ -665,13 +688,9 @@ export class Rays {
     const cli = await this.seam.cli(agent);
     const named = typeof args.effort === "string" && args.effort ? args.effort : undefined;
     const level = this.level;
-    const inherited =
-      named || !level
-        ? undefined
-        : await this.seam.models(agent).then(
-            (models) => (models.find((known) => known.id === model)?.efforts.includes(level) ? level : undefined),
-            () => undefined,
-          );
+    // The agent's list is asked only when there is a level to take from it or a choice to name.
+    const known = why || (!named && level) ? (await this.seam.models(agent).catch(() => [] as Model[])).find((listed) => listed.id === model) : undefined;
+    const inherited = !named && level && known?.efforts.includes(level) ? level : undefined;
     const workerId = `worker-${++this.count}`;
     let cwd = this.cwd;
     let isolated: Worker["isolated"] = null;
@@ -721,6 +740,8 @@ export class Rays {
       waiters: [],
     };
     this.workers.set(workerId, worker);
+    // The head's choice, which the app keeps for ⌘I: the model, the level and why.
+    if (why) event("head.chose", { threadId: this.threadId, worker: workerId, agent: agent.id, model, name: known?.name ?? model, effort: worker.effort, label: worker.label, reason: why });
     tap(threadId, (name, fields) => this.heard(worker, name, fields));
     this.seam.adopt(threadId, worker.session);
     log(`worker ${workerId} for thread=${this.threadId} on ${agent.id}${isolated ? ` in ${isolated.branch}` : ""}`);

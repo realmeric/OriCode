@@ -77,9 +77,10 @@ extension AppModel {
     /// ready agent, as `agent/model`, less the ones heads keep off; the agents whose models haven't
     /// been read yet, which the engine lists itself if the head asks; the budget and what
     /// the thread has spent since it had one, its workers' share in it. Nil when the head works on
-    /// its rays.
+    /// its rays, and with workflows on, which hand the parts out at the level picked, as the model
+    /// button says.
     func choice(for chat: Chat) -> JSON? {
-        guard Rays.choose, offersWorkers(chat) else { return nil }
+        guard Rays.choose, offersWorkers(chat), !workflows(of: chat) else { return nil }
         let keepOff = headsKeepOff
         var models: [JSON] = []
         var unread: [JSON] = []

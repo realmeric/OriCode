@@ -341,12 +341,14 @@ extension AppModel {
             conversation(for: chat).threadAct(ThreadAct(act: .stopped, by: true, thread: thread.id, title: thread.title, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)))
             return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "stopped": true]
         }
-        guard let conversation = conversations[thread.id], conversation.running || conversation.waitingAfterQuit else {
+        // With its turn over, what it left working is what there is to stop.
+        guard let conversation = conversations[thread.id], conversation.running || conversation.waitingAfterQuit || leftWorking(thread) else {
             throw Refused(why: "\(thread.title) isn't working, so there's nothing to stop.")
         }
         let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         conversation.threadAct(ThreadAct(act: .stopped, by: false, thread: chat.id, title: chat.title, reason: reason))
-        stop(in: thread)
+        // A thread that stops its opener, or one above it, goes on itself.
+        stop(in: thread, sparing: chat.id)
         turnEnded(thread.id)
         self.conversation(for: chat).threadAct(ThreadAct(act: .stopped, by: true, thread: thread.id, title: thread.title, reason: reason))
         return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "stopped": true]
@@ -503,7 +505,8 @@ struct TurnWait {
 /// What one thread did to another, as the line each of them stores: which act, whether this
 /// thread did it or had it done to it, the other thread then, and the agent's reason.
 struct ThreadAct: Equatable {
-    enum Kind: String { case opened, messaged, stopped }
+    /// `stoppedWith`: Stop on the opener reached the thread it opened.
+    enum Kind: String { case opened, messaged, stopped, stoppedWith }
 
     let act: Kind
     /// This thread did it; false when the other did it to this one.
@@ -537,6 +540,8 @@ struct ThreadAct: Equatable {
         case (.opened, false): "\(title) opened this thread"
         case (.messaged, false): "Message from \(title)"
         case (.stopped, false): "\(title) stopped this thread"
+        case (.stoppedWith, true): "Stopped \(title) with this thread"
+        case (.stoppedWith, false): "Stopped with \(title), which opened it"
         }
         return reason.isEmpty ? done : "\(done) · \(reason)"
     }

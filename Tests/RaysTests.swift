@@ -231,6 +231,14 @@ struct RaysTests {
         #expect(sent()["choose"] == nil)
         UserDefaults.standard.removeObject(forKey: Rays.allowKey)
         UserDefaults.standard.removeObject(forKey: Rays.budgetKey)
+
+        // Workflows hand the parts out at the level picked, as the model button says, so a send
+        // with them on carries no choose.
+        model.models = [ModelOption(id: "opus", name: "Opus", description: "", efforts: ["high", "xhigh"], fast: false, defaultEffort: nil, ultra: true, ultraBlocked: nil, more: nil, needs: nil)]
+        chat.workflows = true
+        #expect(sent()["workflows"] == true && sent()["choose"] == nil)
+        chat.workflows = false
+        #expect(sent()["choose"] != nil)
     }
 
     @Test func aHeadThatMovesItselfPutsTheThreadOnWhatItChoseWithALineSayingWhy() {
@@ -258,5 +266,20 @@ struct RaysTests {
             if case .note(_, let text) = item { text } else { nil }
         }
         #expect(replayed == lines)
+    }
+
+    @Test func whatTheHeadChoseIsKeptForTheHeadsSurfaceOldestFirstAndAfterARelaunch() {
+        receive("head.chose", ["worker": "worker-1", "agent": "codex", "model": "gpt-6-luna", "name": "GPT-6 Luna", "effort": "low", "label": "Write primes.py", "reason": "Mechanical, so Luna at low"])
+        receive("head.changed", ["agent": "claude", "model": "sonnet", "name": "Sonnet", "modelChanged": false, "effort": "high", "reason": "The review needs judgment", "live": true])
+        receive("head.chose", ["worker": "worker-2", "agent": "claude", "model": "sonnet", "name": "Sonnet", "effort": .null, "label": "Parse dates", "reason": "Edge cases"])
+        let choices = model.conversation(for: chat).choices
+        #expect(choices.map(\.task) == ["Write primes.py", nil, "Parse dates"])
+        #expect(choices.map(\.level) == ["at low", "at high", "at its default level"])
+        #expect(choices.map(\.reason) == ["Mechanical, so Luna at low", "The review needs judgment", "Edge cases"])
+        // A choice of a worker is no line in the transcript; the head's own move is.
+        #expect(model.conversation(for: chat).items.count == 1)
+        model.conversation(for: chat).flush()
+        try? container.mainContext.save()
+        #expect(Conversation(chat: chat, context: container.mainContext).choices == choices)
     }
 }

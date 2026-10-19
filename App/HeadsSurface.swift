@@ -34,6 +34,9 @@ struct HeadsSurface: View {
 
     static let width: CGFloat = 560
     private static let tallest: CGFloat = 420
+    /// The choices drawn, the latest, about what the surface shows at its tallest: each row cost
+    /// about a millisecond of the frame the surface opens in, and 200 drew a 130ms frame.
+    static let choicesShown = 8
     static let main = "main"
     /// The mark the capsule holds, which moves into the header as the surface grows.
     static let mark = "mark"
@@ -70,6 +73,33 @@ struct HeadsSurface: View {
                             HeadRow(head: head, chat: chat, hovered: $hovered)
                                 .arriving(index + 1, shown: shown)
                                 .transition(.opacity)
+                        }
+                        // What the head chose, under the rows of what's at work, oldest first. Only
+                        // the latest are drawn: a thread keeps every choice it ever made, and the
+                        // surface grows out of the capsule in one frame.
+                        if !conversation.choices.isEmpty {
+                            let choices = conversation.choices.suffix(Self.choicesShown)
+                            let earlier = conversation.choices.count - choices.count
+                            HStack(spacing: 6) {
+                                Text("What the head chose")
+                                    .foregroundStyle(Ink.secondary)
+                                    .accessibilityAddTraits(.isHeader)
+                                if earlier > 0 {
+                                    Text("\(earlier) earlier not shown")
+                                        .foregroundStyle(Ink.faint)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .font(Type.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
+                            .arriving(heads.list.count + 1, shown: shown)
+                            ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
+                                ChoiceRow(choice: choice)
+                                    .arriving(heads.list.count + 2 + index, shown: shown)
+                            }
                         }
                     }
                     .padding(.horizontal, 6)
@@ -113,7 +143,8 @@ private struct MainRow: View {
     var body: some View {
         let step = conversation.mainStep(cwd: cwd)
         let planStep = conversation.planStep
-        HeadLine(id: HeadsSurface.main, hovered: $hovered, stop: conversation.running ? { model.stop() } : nil) {
+        // With the turn over, Stop here stops what the thread left working, threads it set going included.
+        HeadLine(id: HeadsSurface.main, hovered: $hovered, stop: conversation.running || model.leftWorking(conversation.chat) ? { model.stop(in: conversation.chat) } : nil) {
             RaysMark(restingOpacity: 0.16, dotOpacity: conversation.running ? 0.92 : 0.3,
                      dotColor: conversation.running ? MarkPalette.color(for: conversation.chat.providerID) : nil)
         } title: {
@@ -264,6 +295,62 @@ private struct HeadRow: View {
         case .agent, .other:
             StepText(step: head.step)
         }
+    }
+}
+
+/// One choice the head made: its agent's mark, the model and level, the worker's task, and the
+/// head's reason under them, with when it chose.
+private struct ChoiceRow: View {
+    @Environment(AppModel.self) private var model
+    let choice: HeadChoice
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            // Centred on the title's line.
+            AgentMark(agent: choice.agent)
+                .frame(width: 14, height: 14)
+                .frame(width: 22, height: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(Type.body)
+                        .foregroundStyle(Ink.primary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    if let task = choice.task, !task.isEmpty {
+                        Text(task)
+                            .font(Type.secondary)
+                            .foregroundStyle(Ink.faint)
+                            .lineLimit(1)
+                    }
+                }
+                if !choice.reason.isEmpty {
+                    Text(choice.reason)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+            Text(choice.at, style: .time)
+                .font(Type.secondary)
+                .foregroundStyle(Ink.faint)
+                .fixedSize()
+                .frame(height: 18)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// "GPT-6 Luna at low" for a worker; "Moved itself to high effort", or to another model, for
+    /// the head's own move.
+    private var title: String {
+        let name = ModelMenu.shortName(choice.name ?? choice.model.flatMap { id in model.modelsByAgent[choice.agent]?.first { $0.id == id }?.name } ?? choice.model ?? "")
+        guard choice.task == nil else { return name.isEmpty ? "A worker \(choice.level)" : "\(name) \(choice.level)" }
+        if choice.modelChanged { return "Moved itself to \(name) \(choice.level)" }
+        return choice.effort.map { "Moved itself to \(ModelMenu.effortName($0).lowercased()) effort" } ?? "Moved itself to the model's own effort"
     }
 }
 

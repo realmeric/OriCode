@@ -144,9 +144,10 @@ type Choose = { models?: string[]; unread?: string[]; keepOff?: string[]; budget
 async function threadTools(params: SendParams & { rays?: string[]; choose?: Choose }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions"> & { choice?: Choice }> {
   const takes = agent.capabilities.workers === true;
   const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
-  // Workflows hand the parts out on the rays picked, or the head's own model, as they always did.
+  // Workflows, Claude Code's own, Codex's or OriCode's, hand the parts out on the rays picked, or
+  // the head's own model, as they always did, so a head running them doesn't choose.
   const choice: Choice | undefined =
-    takes && !fans && params.choose
+    takes && !params.workflows && params.choose
       ? {
           picked,
           unread: (params.choose.unread ?? []).filter((id) => providers.has(id)),
