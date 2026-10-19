@@ -3,12 +3,18 @@ import SwiftUI
 struct OriCodeCommands: Commands {
     let model: AppModel
     let updates: Updates
+    let quit: () -> Void
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             if updates.enabled {
                 Button("Check for Updates…") { updates.check() }
             }
+        }
+        // The system's Quit does nothing while a sheet is up; this one ends the sheet first.
+        CommandGroup(replacing: .appTermination) {
+            Button("Quit \(ProcessInfo.processInfo.processName)", action: quit)
+                .keyboardShortcut("q")
         }
         CommandGroup(replacing: .newItem) {
             Button("New Thread") { model.openNewThread() }

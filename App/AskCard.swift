@@ -28,7 +28,7 @@ struct AskCard: View {
     }
 
     private var settledLine: String {
-        let what = ask.kind == "question" ? "Question" : ToolSummary.line(for: ask.call, cwd: cwd)
+        let what = ask.kind == "question" ? "Question" : ask.app.map { "See and use \($0)" } ?? ToolSummary.line(for: ask.call, cwd: cwd)
         switch ask.state {
         case .allowed: return ask.kind == "question" ? "Answered" : "Allowed · \(what)"
         case .denied: return "Denied · \(what)"
@@ -114,7 +114,8 @@ private struct PermissionForm: View {
     }
 
     private var title: String {
-        switch ask.toolKind {
+        if let app = ask.app { return "Let this thread see and use \(app)?" }
+        return switch ask.toolKind {
         case .run: "Run a command?"
         case .edit: "Edit \(path)?"
         case .write: "Write \(path)?"
@@ -130,7 +131,12 @@ private struct PermissionForm: View {
 
     @ViewBuilder
     private var detail: some View {
-        if ask.toolKind == .run {
+        if let app = ask.app {
+            Text("It can take pictures of \(app)'s windows and click, type and scroll in them, until OriCode quits.")
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if ask.toolKind == .run {
             // All of it, scrolling in the queue past four lines and a half, the half saying there's
             // more: Allow is never under a command cut short.
             whole(ask.call.shown("command") ?? "", tallest: compact ? 66 : nil)

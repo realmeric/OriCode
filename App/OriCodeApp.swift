@@ -32,6 +32,7 @@ struct OriCodeApp: App {
                     delegate.runningCommands = { [model] in model.runningCommands }
                     delegate.endCommands = { [model] in model.endShells() }
                     delegate.markCutOffTurns = { [model] in model.markCutOffTurns() }
+                    delegate.dismissSheets = { [model] in model.askingMacAccess = false }
                     updates.say = { [model] line in model.say(line) }
                     // SwiftUI gives the window's first focus to the thread list as it shows the
                     // window, after the composer has taken the keyboard, so it's handed back.
@@ -39,6 +40,11 @@ struct OriCodeApp: App {
                     // The test host opens this build's own store, whose threads booting would pick up
                     // and send; a test that needs the engine makes its own model.
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+#if !PERF
+                    // Asked once, at the first launch that hasn't answered: a new install's, or an
+                    // install's first since the update that brought it. The bench's window has no sheet.
+                    if MacAccess.unanswered { model.askingMacAccess = true }
+#endif
                     // Here and not in the model: a test's model has a store of its own, with
                     // none of this build's threads in it, and would drop every draft kept.
                     model.pruneDrafts()
@@ -48,7 +54,7 @@ struct OriCodeApp: App {
                 .containerBackground(for: .window) { BehindWindowGlass() }
                 .preferredColorScheme(.dark)
         }
-        .commands { OriCodeCommands(model: model, updates: updates) }
+        .commands { OriCodeCommands(model: model, updates: updates, quit: { [delegate] in delegate.quit() }) }
         // A toolbar row, so the traffic lights sit where a toolbar window's do: in from the
         // corner, inside the drawer's first row, level with the sidebar button and the capsule.
         .windowToolbarStyle(.unified(showsTitle: false))

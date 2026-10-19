@@ -139,6 +139,7 @@ extension AppModel {
         case "thread.read":
             return try await readThread(event.body["thread"]?.string ?? "", before: event.body["before"]?.int, for: thread)
         default:
+            if MacHands.asks.contains(event.name) { return try await MacHands.answer(event, from: thread) }
             throw Refused(why: "OriCode doesn't know what \(event.name) asks for.")
         }
     }

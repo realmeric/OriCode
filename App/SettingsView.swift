@@ -125,7 +125,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     private var words: [String] {
         switch self {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
-        case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "anthropic", "console", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in"]
+        case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "anthropic", "console", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in", "mac", "screen", "screenshot", "screen recording", "accessibility", "click", "computer use"]
         case .mcp: ["mcp", "server", "servers", "connector", "tools", "linear"]
         case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "water", "litres", "liters", "fun", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .activity: ["tokens", "usage", "activity", "daily", "weekly", "cumulative", "chart"]

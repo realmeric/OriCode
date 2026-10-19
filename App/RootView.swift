@@ -220,6 +220,9 @@ struct RootView: View {
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()
         }
+        .sheet(isPresented: Binding(get: { model.askingMacAccess }, set: { model.askingMacAccess = $0 })) {
+            MacAccessSheet()
+        }
         .overlay(alignment: .top) {
             TitleBarGlass()
                 .frame(height: TitleBar.height)

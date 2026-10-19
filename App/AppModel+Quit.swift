@@ -76,7 +76,7 @@ extension AppModel {
         }
         let call = ask.call
         let detail = call.shown("command").map(ToolSummary.firstLine) ?? call.file.map { ToolSummary.relative($0, to: cwd) }
-        let opening = "The app was quit while you waited for permission to use \(ask.tool)\(detail.map { " (\($0))" } ?? "")."
+        let opening = "The app was quit while you waited for permission to \(ask.app.map { "see and use \($0)" } ?? "use \(ask.tool)")\(detail.map { " (\($0))" } ?? "")."
         guard allow else { return opening + " " + (message ?? deniedMessage) }
         return opening + " The user has allowed it now. Please continue from where you left off."
     }

@@ -308,6 +308,8 @@ extension AppModel {
         // The engine tells the session its folder is nobody's project.
         if chat.project?.isNoFolder == true { params["noFolder"] = true }
         if workflows(of: chat) { params["workflows"] = true }
+        // Off, the engine offers the agent no tools for the Mac at all.
+        if MacAccess.isOn { params["mac"] = true }
         // A message from another thread says which, so the session can answer it.
         if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
         if !images.isEmpty {
@@ -466,7 +468,7 @@ extension AppModel {
             return
         }
         // A tool of OriCode's own asks the app for something, a thread opened say, and waits.
-        if Self.asks.contains(event.name) {
+        if Self.asks.contains(event.name) || MacHands.asks.contains(event.name) {
             answerTool(event, from: id)
             return
         }

@@ -9,6 +9,7 @@ import type { Provider, SendParams, Session } from "./provider.ts";
 import type { Usage } from "./usage.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
+import { Hands, isMacTool, macTools, Pictured } from "./mac.ts";
 import { askApp, listThreads, longestTurnWait, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
@@ -259,6 +260,11 @@ export function raysOf(threadId: string): Rays | undefined {
   return heads.get(threadId);
 }
 
+/// Every thread forgets the apps it was let see and use, and its asks waiting are taken back.
+export function forgetMac(): void {
+  for (const head of heads.values()) head.forgetMac();
+}
+
 function serve(): Promise<number> {
   listening ??= new Promise((done, fail) => {
     const server = createServer((request, response) => void reply(request, response));
@@ -325,6 +331,10 @@ export class Rays {
   private queued: Promise<boolean> | undefined;
   /// How many threads its turn has suggested.
   private suggested = 0;
+  /// Whether Settings › Agents lets agents see and use the Mac, as the latest send said, and the
+  /// thread's calls on it with the apps it was let use.
+  private mac = false;
+  private hands: Hands;
 
   constructor(threadId: string, seam: Seam, port: number, watched: boolean) {
     this.threadId = threadId;
@@ -332,10 +342,14 @@ export class Rays {
     this.watched = watched;
     this.path = `/${randomUUID()}`;
     this.url = `http://127.0.0.1:${port}${this.path}`;
+    this.hands = new Hands(threadId);
     // The thread's own `heads` go out with its workers after them.
     tap(threadId, (name, fields) => {
       if (name === "turn.started") this.suggested = 0;
-      if (name === "turn.done") this.tally(typeof fields.costUSD === "number" ? fields.costUSD : 0);
+      if (name === "turn.done") {
+        this.tally(typeof fields.costUSD === "number" ? fields.costUSD : 0);
+        this.hands.turnEnded();
+      }
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
       this.tell();
@@ -346,8 +360,10 @@ export class Rays {
   /// What the thread's latest send says: where it works, in which mode, at what level, and its
   /// rays, none when it has none left, with what the head is told of them: `brief`, or what
   /// workflows on tell it.
-  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string, choice?: Choice): void {
+  update(cwd: string, mode: string, rays: Ray[], instructions = brief(rays), level?: string, choice?: Choice, mac = false): void {
     this.cwd = cwd;
+    this.mac = mac;
+    if (!mac) this.hands.forget();
     this.mode = mode;
     this.rays = choice ? rays.filter((ray) => !choice.keepOff.includes(`${ray.agent}/${ray.model}`)) : rays;
     this.instructions = instructions;
@@ -370,11 +386,12 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread] } };
+        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread, ...(this.mac ? macTools : [])] } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
           const out = await this.call(params.name, params.arguments ?? {});
+          if (out instanceof Pictured) return { result: { content: [{ type: "image", data: out.data, mimeType: out.mimeType }, { type: "text", text: JSON.stringify(out.rest, null, 2) }] } };
           return { result: { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] } };
         } catch (error) {
           return { result: { content: [{ type: "text", text: describe(error) }], isError: true } };
@@ -384,7 +401,21 @@ export class Rays {
     }
   }
 
+  /// An app the user allowed on a Mac ask that a quit cut off.
+  allowMac(bundleId: string): void {
+    this.hands.grant(bundleId);
+  }
+
+  /// The switch in Settings › Agents went off.
+  forgetMac(): void {
+    this.hands.forget();
+  }
+
   call(name: string, args: Record<string, any>): Promise<unknown> {
+    if (isMacTool(name)) {
+      if (!this.mac) return Promise.reject(new Error("The user hasn't let agents see and use the Mac. It's in OriCode's Settings › Agents, theirs to turn on."));
+      return this.hands.call(name, args);
+    }
     switch (name) {
       case "list_agents":
         return this.agents();

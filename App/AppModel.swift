@@ -335,6 +335,8 @@ final class AppModel {
     var removingProject: Project?
     var deletingLoss: WorktreeLoss?
     var showingShortcuts = false
+    /// The one ask whether agents may see and use the Mac, at a launch that hasn't answered it.
+    var askingMacAccess = false
     var mouseInDrawer = false
     var drawerTask: Task<Void, Never>?
     var peekTask: Task<Void, Never>?
@@ -666,6 +668,13 @@ final class AppModel {
         guard engineState == .ready else { return }
         let params: JSON = ["threadId": selectedChatID.map { .string($0.uuidString) } ?? .null, "visible": .bool(windowVisible)]
         Task { _ = try? await engine.request("window", params) }
+    }
+
+    /// Settings › Agents' switch went off, so the apps each thread was let use are asked about
+    /// again once it's back on.
+    func tellMacOff() {
+        guard engineState == .ready else { return }
+        Task { _ = try? await engine.request("macOff", [:]) }
     }
 
     var nodeOverride: String? {

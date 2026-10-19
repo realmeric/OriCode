@@ -74,6 +74,7 @@ struct AgentsPane: View {
                 }
             }
         }
+        MacAccessCard()
     }
 
     private func cards(_ agents: [AgentInfo]) -> some View {
