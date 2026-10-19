@@ -29,6 +29,7 @@ export const openThread = {
       model: { type: "string", description: "A model of that agent's, by its id. Yours when left out, or on another agent its first." },
       folder: { type: "string", description: "The folder of another of the user's projects, by its full path. This thread's project when left out." },
       worktree: { type: "boolean", description: "Work on a new branch in a git worktree of its own, so its edits can't run into yours." },
+      task: { type: "string", description: "A task of the plan the thread is for, by its id, T2: the thread takes it as it opens, and is told it ahead of its messages. Only a task that waits on nothing left undone." },
     },
     required: ["title", "message", "reason"],
   },
@@ -135,11 +136,11 @@ export const suggesting =
 /// The first half of `opening`: parts that don't depend on each other go to threads. A head that
 /// chooses its models is told to give them to workers instead (rays.ts's `choosing`).
 export const parts =
-  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. Only a task that is one part, or a question, you do yourself. ";
+  "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't start on them yourself: first open a thread for each part with open_thread, then wait for each with wait_thread and bring their replies together, however small the parts are. The user watches each thread work on its own, which is why they use OriCode. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. Only a task that is one part, or a question, you do yourself. When parts wait on others, write every part first as a task of the project's plan with add_tasks, with what each waits on, then open a thread for each task that waits on nothing with open_thread's `task`, and one for each of the rest once what it waits on is done. ";
 
 /// The second half: what the tools do to the user's threads, which every session with them hears.
 export const reach =
-  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, and list_threads and read_thread show what there is. You decide when to use them. " +
+  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, and add_tasks, claim_task and update_task keep the plan. You decide when to use them. " +
   "Each open, message and stop takes a one-line reason, which both threads show the user. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
 
 /// What every session with the tools is told of them, where its agent has somewhere to hear it:

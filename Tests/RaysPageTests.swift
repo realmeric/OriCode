@@ -184,7 +184,7 @@ struct RaysPageTests {
         let url = folder.appending(path: "OriCode.store")
         let id: UUID
         do {
-            let container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(url: url))
+            let container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: url))
             container.mainContext.autosaveEnabled = false
             let project = Project(name: "alpha", path: "/tmp/alpha")
             container.mainContext.insert(project)
@@ -194,7 +194,7 @@ struct RaysPageTests {
             model.setRay(ModelRef(provider: "codex", id: "gpt-2"), true, for: chat)
             model.setRay(ModelRef(provider: ProviderInfo.claudeID, id: "sonnet"), true, for: chat)
         }
-        let again = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(url: url))
+        let again = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: url))
         again.mainContext.autosaveEnabled = false
         let read = try #require(try again.mainContext.fetch(FetchDescriptor<Chat>()).first { $0.id == id })
         #expect(read.rays == ["codex/gpt-2", "sonnet"])

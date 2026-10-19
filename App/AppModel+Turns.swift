@@ -312,6 +312,8 @@ extension AppModel {
         if MacAccess.isOn { params["mac"] = true }
         // A message from another thread says which, so the session can answer it.
         if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
+        // So does the task of the plan it works, while it isn't done.
+        if let task = taskParams(for: chat) { params["task"] = task }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]

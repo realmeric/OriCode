@@ -16,6 +16,7 @@ import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
 import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, usd, type Choice, type Seam } from "./rays.ts";
 import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
+import { taskLead } from "./plan.ts";
 import { seeing } from "./mac.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
@@ -348,8 +349,9 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// for with each message below it; Codex its own ultra at Max on a model that has it; and any
   /// other head OriCode's, told to fan each task out to workers on its rays, with the message too.
   /// Every one of them at the thread's own level. `from` is the thread that sent the message
-  /// through message_thread or open_thread, which the session is told ahead of it.
-  async send({ rays, choose, mac, handover, concise, noFolder, from, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string } }) {
+  /// through message_thread or open_thread, which the session is told ahead of it, and `task` the
+  /// task of the plan the thread works, if it does.
+  async send({ rays, choose, mac, handover, concise, noFolder, from, task, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string } }) {
     const agent = provider(params.provider);
     const budget = choose?.budget ?? 0;
     if (budget > 0 && (choose?.spent ?? 0) >= budget) throw new Error(`This thread has spent its ${usd(budget)} budget. Raise it or lift it in Settings › Agents to go on.`);
@@ -369,7 +371,9 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     // again ahead of each message that starts a turn, unless workflows hand its parts to workers,
     // and a head that chooses hears `choosingLead` there, Claude Code's too.
     const parts = head.tools && !running && !told ? (choice ? `${choosingLead(params.model, params.effort)}\n\n` : agent.id !== claude.id ? `${leading}\n\n` : "") : "";
-    const text = `${opening}${told && !running ? `${told}\n\n` : ""}${parts}${sender}${params.text}`;
+    // A thread working a task of the plan hears it ahead of each message that starts a turn.
+    const held = task?.id && !running ? `${taskLead(task)}\n\n` : "";
+    const text = `${opening}${told && !running ? `${told}\n\n` : ""}${parts}${held}${sender}${params.text}`;
     // Concise replies, asked for in Settings, go where a head's rays do, ahead of them, and after
     // what a thread without a folder is told of where it is.
     const instructions = [noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;

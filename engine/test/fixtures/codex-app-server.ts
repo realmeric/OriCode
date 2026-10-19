@@ -265,7 +265,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   void handle(message);
 });
 
-/// The message as the user wrote it, without the line OriCode puts ahead of it on threads.
+/// The message as the user wrote it, without the lines OriCode puts ahead of it on threads.
 function unled(text: string): string {
-  return text.replace(/^\[OriCode\][^\n]*\n\n/, "");
+  return text.replace(/^(\[OriCode\][^\n]*\n\n)+/, "");
 }

@@ -19,9 +19,10 @@ struct OverviewRow: Identifiable {
     var id: UUID { chat.id }
 }
 
-/// One project's rows, under its badge and name.
+/// One project's plan and rows, under its badge and name.
 struct OverviewSection: Identifiable {
     let project: Project
+    var plan = ProjectPlan([])
     let rows: [OverviewRow]
 
     var id: UUID { project.id }
@@ -54,9 +55,9 @@ struct OverviewStatus: Equatable {
     }
 }
 
-/// ⌘⇧I: every ask waiting on you, oldest first, then every project's threads that have worked
-/// since OriCode opened, or work or wait now, each under the thread that opened it, with where it
-/// stands and what it's on. It grows out of the title capsule like ⌘I, over both columns, and
+/// ⌘⇧I: every ask waiting on you, oldest first, then each project's plan and its threads that
+/// have worked since OriCode opened, or work or wait now, each under the thread that opened it,
+/// with where it stands and what it's on. It grows out of the title capsule like ⌘I, over both columns, and
 /// stops above the composer, which still sends to the open thread. It reads what the app already
 /// holds and asks the engine for nothing.
 struct Overview: View {
@@ -116,6 +117,10 @@ struct Overview: View {
                                     }
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
+                                    if !section.plan.tasks.isEmpty {
+                                        PlanLines(plan: section.plan, hovered: $hovered)
+                                            .padding(.bottom, section.rows.isEmpty ? 0 : 6)
+                                    }
                                     ForEach(section.rows) { row in
                                         OverviewLine(chat: row.chat, depth: row.depth, hovered: $hovered)
                                     }
@@ -278,7 +283,8 @@ extension AppModel {
         closeOverview()
     }
 
-    /// The threads the screen lists, each project's under its name in the projects' order: every
+    /// Each project's plan while a task of it isn't done or has changed since OriCode opened, and
+    /// the threads the screen lists, each project's under its name in the projects' order: every
     /// thread that works, waits or has had a turn since OriCode opened, every workflow agent this
     /// launch has heard of, and the threads above each of them up to its top thread in the drawer.
     /// The tree is the drawer's: top threads in the drawer's order, each with the threads it
@@ -294,7 +300,6 @@ extension AppModel {
                 at = byID[id]?.openedBy
             }
         }
-        guard !kept.isEmpty else { return [] }
         let listed = all.filter { kept.contains($0.id) }
         let opened = Dictionary(grouping: listed.filter { $0.openedBy.map { byID[$0] != nil } == true }) { $0.openedBy! }
         func rows(_ chat: Chat, depth: Int) -> [OverviewRow] {
@@ -304,7 +309,10 @@ extension AppModel {
         let tops = listed.filter { $0.openedBy.map { byID[$0] == nil } ?? true }.sorted(by: Chat.drawerOrder)
         return projects.compactMap { project in
             let mine = tops.filter { $0.project?.id == project.id }
-            return mine.isEmpty ? nil : OverviewSection(project: project, rows: mine.flatMap { rows($0, depth: 0) })
+            // As a thread is shown while it works or has worked since OriCode opened.
+            let plan = ProjectPlan(project)
+            let shown = plan.tasks.contains { $0.state != "done" || $0.updatedAt >= openedAt }
+            return mine.isEmpty && !shown ? nil : OverviewSection(project: project, plan: shown ? plan : ProjectPlan([]), rows: mine.flatMap { rows($0, depth: 0) })
         }
     }
 

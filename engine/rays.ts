@@ -10,6 +10,7 @@ import type { Usage } from "./usage.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
 import { Hands, isMacTool, macTools, Pictured } from "./mac.ts";
+import { planTools } from "./plan.ts";
 import { askApp, listThreads, longestTurnWait, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
@@ -386,7 +387,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread, ...(this.mac ? macTools : [])] } };
+        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, suggestThread, listThreads, readThread, ...planTools, ...(this.mac ? macTools : [])] } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
@@ -449,6 +450,16 @@ export class Rays {
       case "read_thread":
         if (!String(args.thread ?? "").trim()) return Promise.reject(new Error("read_thread needs a thread's id, which list_threads gives."));
         return this.read("thread.read", { thread: String(args.thread).trim(), ...(Number.isSafeInteger(args.before) && args.before >= 0 ? { before: args.before } : {}) });
+      case "read_plan":
+        return this.read("plan.read", {});
+      case "add_tasks":
+        if (!Array.isArray(args.tasks) || !args.tasks.length) return Promise.reject(new Error("add_tasks needs `tasks`, each with its title and what done means."));
+        // A task named by its number, 1, waits on T1 as "1" would: the app reads only strings.
+        return this.keep("plan.add", { tasks: args.tasks.map((task: any) => (task && Array.isArray(task.waitsOn) ? { ...task, waitsOn: task.waitsOn.map(String) } : task)) });
+      case "claim_task":
+        return this.keep("plan.claim", { task: required(args.task, "Name the task by its id, which read_plan gives.") });
+      case "update_task":
+        return this.keep("plan.update", { ...pick(args, ["task", "state", "note", "title", "done"]), ...(Array.isArray(args.waitsOn) ? { waitsOn: args.waitsOn.map(String) } : {}) });
       default:
         return Promise.reject(new Error(`OriCode has no tool called ${name}.`));
     }
@@ -648,7 +659,7 @@ export class Rays {
       title: String(args.title ?? "").trim(),
       text,
       reason: why,
-      ...pick(args, ["agent", "model", "folder"]),
+      ...pick(args, ["agent", "model", "folder", "task"]),
       worktree: args.worktree === true,
     });
   }
@@ -693,6 +704,16 @@ export class Rays {
       return await askApp(name, { threadId: this.threadId, ...fields });
     } catch (error) {
       if (error instanceof Unanswered) throw new Error("OriCode took too long to read that. Nothing was started or changed, so ask again.");
+      throw error;
+    }
+  }
+
+  /// A change to the plan, which the app makes and stores. One that came late may have been made.
+  async keep(name: string, fields: Record<string, unknown>): Promise<unknown> {
+    try {
+      return await askApp(name, { threadId: this.threadId, ...fields });
+    } catch (error) {
+      if (error instanceof Unanswered) throw new Error("OriCode took too long to answer. The plan may have changed, so read it with read_plan before you try again.");
       throw error;
     }
   }

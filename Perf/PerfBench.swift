@@ -1359,7 +1359,7 @@ final class Stage {
     private let host: NSHostingController<AnyView>
 
     init(cwd: String = NSTemporaryDirectory(), seed: (ModelContext, Project) throws -> Chat) throws {
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let project = Project(name: "alpha", path: cwd)
         project.colorIndex = 2
         container.mainContext.insert(project)

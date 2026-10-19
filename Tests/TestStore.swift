@@ -9,7 +9,7 @@ import SwiftData
 @MainActor
 enum TestStore {
     static func memory() throws -> ModelContainer {
-        let container = try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         container.mainContext.autosaveEnabled = false
         return container
     }

@@ -42,6 +42,8 @@ extension AppModel {
         var model: String?
         var folder: String?
         var worktree = false
+        /// The task of the plan it's opened for, by its id.
+        var task: String?
 
         init(parent: UUID, text: String) {
             self.parent = parent
@@ -56,6 +58,7 @@ extension AppModel {
             model = body["model"]?.string?.nonEmpty
             folder = body["folder"]?.string?.nonEmpty
             worktree = body["worktree"]?.bool ?? false
+            task = body["task"]?.string?.nonEmpty
         }
     }
 
@@ -68,6 +71,9 @@ extension AppModel {
         let mode: String
         /// Whether it works where its parent does, a worktree included.
         let beside: Bool
+        /// The task of the plan it takes as it opens, by its id and name, and the project whose
+        /// plan it's in. open() finds it again there, since git may have run in between.
+        var task: (id: UUID, name: String, plan: Project)?
     }
 
     /// The modes, tightest first: a thread opened on another agent gets none looser than its parent's.
@@ -88,7 +94,7 @@ extension AppModel {
     }
 
     /// An event that asks the app for something and waits on its answer.
-    static let asks: Set<String> = ["thread.open", "thread.message", "thread.wait", "thread.stop", "threads.list", "thread.read"]
+    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.stop", "threads.list", "thread.read"]).union(planAsks)
 
     func answerTool(_ event: EngineEvent, from thread: UUID) {
         guard let requestId = event.body["requestId"]?.string else { return }
@@ -127,7 +133,7 @@ extension AppModel {
                 throw error
             }
             refreshBranch(for: chat)
-            return Self.made(chat, on: opening.agent)
+            return Self.made(chat, on: opening.agent, opening)
         case "thread.message":
             return try message(event.body["thread"]?.string ?? "", text: event.body["text"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
         case "thread.wait":
@@ -138,6 +144,8 @@ extension AppModel {
             return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
         case "thread.read":
             return try await readThread(event.body["thread"]?.string ?? "", before: event.body["before"]?.int, for: thread)
+        case _ where Self.planAsks.contains(event.name):
+            return try answerPlan(event, from: thread)
         default:
             if MacHands.asks.contains(event.name) { return try await MacHands.answer(event, from: thread) }
             throw Refused(why: "OriCode doesn't know what \(event.name) asks for.")
@@ -146,12 +154,13 @@ extension AppModel {
 
     /// What the tool answers: the thread as it was made, for the agent to tell the user, and the
     /// id read_thread takes to see what it did.
-    static func made(_ chat: Chat, on agent: ProviderInfo) -> JSON {
+    static func made(_ chat: Chat, on agent: ProviderInfo, _ opening: Opening? = nil) -> JSON {
         var made: [String: JSON] = [
             "thread": .string(chat.title), "id": .string(chat.id.uuidString), "agent": .string(agent.id), "mode": .string(chat.permissionMode), "folder": .string(chat.cwd),
         ]
         if let model = chat.model { made["model"] = .string(model) }
         if let branch = chat.worktreeBranch { made["branch"] = .string(branch) }
+        if let task = opening?.task { made["task"] = .string(task.name) }
         return .object(made)
     }
 
@@ -209,18 +218,34 @@ extension AppModel {
             project = found
         }
         guard !request.worktree || !project.isNoFolder else { throw Refused(why: "A thread without a folder has nothing to branch.") }
+        // The task is the opener's plan's, wherever the thread works on it.
+        var task: (id: UUID, name: String, plan: Project)?
+        if let named = request.task, let planned = planProject(of: parent) {
+            let plan = ProjectPlan(planned)
+            guard let found = plan.task(named: named) else { throw Refused(why: "\(planned.name)'s plan has no task \(named). read_plan gives the ones there are.") }
+            if let why = whyUnclaimable(found, for: nil, in: plan) { throw Refused(why: why) }
+            task = (found.id, found.name, planned)
+        }
         return Opening(
             parent: parent, project: project, agent: agent, model: model, mode: mode,
-            beside: project.id == own.id && !request.worktree)
+            beside: project.id == own.id && !request.worktree, task: task)
     }
 
     /// Makes the thread and sends it its first message through the composer's own send. The
     /// thread on screen stays the one on screen.
     @discardableResult
     func open(_ opening: Opening, _ request: ThreadRequest, in worktree: (path: String, branch: String)? = nil) throws -> Chat {
-        // Again, since threads may have started while git made the worktree. Nothing from here to
-        // the send waits, so two opens can't both pass it.
+        // Again, since threads may have started while git made the worktree, and its task may
+        // have been taken or deleted. Nothing from here to the send waits, so two opens can't
+        // both pass it.
         try checkCeiling()
+        var task: PlanTask?
+        if let (id, name, planned) = opening.task {
+            let plan = ProjectPlan(planned)
+            guard let found = plan.tasks.first(where: { $0.id == id }) else { throw Refused(why: "\(name) was deleted from \(planned.name)'s plan while the thread was being made.") }
+            if let why = whyUnclaimable(found, for: nil, in: plan) { throw Refused(why: why) }
+            task = found
+        }
         let parent = opening.parent
         let chat = Chat(project: opening.project, permissionMode: opening.mode)
         chat.provider = opening.agent.id
@@ -245,9 +270,20 @@ extension AppModel {
             chat.titleIsCustom = true
         }
         context.insert(chat)
+        // Taken before the send, so its first message is told the task.
+        let held = task.map { ($0, $0.thread, $0.state) }
+        if let task {
+            task.thread = chat.id
+            task.state = "working"
+            task.updatedAt = .now
+        }
         let reason = request.reason.trimmingCharacters(in: .whitespacesAndNewlines)
         conversation(for: chat).threadAct(ThreadAct(act: .opened, by: false, thread: parent.id, title: parent.title, reason: reason))
         guard send(request.text, images: [], in: chat, from: parent) else {
+            if let (task, thread, state) = held {
+                task.thread = thread
+                task.state = state
+            }
             conversations[chat.id] = nil
             context.delete(chat)
             save()
@@ -278,7 +314,7 @@ extension AppModel {
         return Self.tightness.firstIndex(of: chat.permissionMode) ?? loosest
     }
 
-    private func modeWords(of chat: Chat) -> String {
+    func modeWords(of chat: Chat) -> String {
         let agent = agent(for: chat)
         if agent.unsupervised || agent.modes.isEmpty { return "on \(agent.name), which asks before nothing" }
         return "on " + (PermissionModeOption(rawValue: chat.permissionMode)?.title ?? chat.permissionMode)

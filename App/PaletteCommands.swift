@@ -464,6 +464,10 @@ extension AppModel {
         }
         items.append(command("overview", "Show everything running", icon: "square.stack.3d.up", shortcut: shortcuts.label(.overview),
                              keywords: ["threads", "agents", "workflows", "running", "overview", "status"]) { [weak self] in self?.toggleOverview() })
+        // What ⌘⇧I's plan rows offer the pointer and VoiceOver, for the keyboard.
+        let planned = chat.flatMap(planProject(of:)) ?? project
+        items.append(PaletteItem(id: "plan.tasks", kind: .command, title: "Stop, reopen or delete a task…", keywords: ["plan", "tasks"], icon: "checklist",
+                                 unavailable: planned?.tasks.isEmpty == false ? nil : "The plan has no tasks", action: .list(planList(of: planned))))
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: shortcuts.label(.findFile), unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })

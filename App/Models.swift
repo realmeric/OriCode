@@ -13,6 +13,11 @@ final class Project {
     /// as a build or a test beside the ones it knows. Typed in Settings › Source Control.
     var check: String?
     @Relationship(deleteRule: .cascade, inverse: \Chat.project) var chats: [Chat] = []
+    /// Its plan, which agents keep through the oricode tools (ProjectPlan.swift).
+    @Relationship(deleteRule: .cascade, inverse: \PlanTask.project) var tasks: [PlanTask] = []
+    /// The highest number a task of its plan has had, so a deleted task's is never given again: a
+    /// thread still told it works T4 can't then change a new T4.
+    var lastTaskNumber = 0
 
     init(name: String, path: String) {
         id = UUID()
@@ -120,6 +125,40 @@ final class Chat {
     }
 }
 
+/// A task of a project's plan. Agents add it, take it for a thread and keep its state and note
+/// through the oricode tools, and the user stops, reopens or deletes it on ⌘⇧I's screen.
+@Model
+final class PlanTask {
+    @Attribute(.unique) var id: UUID
+    var project: Project?
+    /// What names it in its project's plan, as T3: one more than the highest there when it came.
+    var number: Int
+    var title: String
+    /// What done means for it, one line someone can check.
+    var doneWhen: String
+    /// The numbers of the tasks it can't start before.
+    var waitsOn: [Int] = []
+    /// The thread working it, or that last did.
+    var thread: UUID?
+    /// `open`, `working`, `done` or `stuck`. An open task is waiting or ready by what it waits on.
+    var state: String = "open"
+    /// Where it stands, in its thread's words.
+    var note: String = ""
+    var createdAt: Date
+    var updatedAt: Date
+
+    /// Not given its project here, for the reason Event isn't given its chat.
+    init(number: Int, title: String, doneWhen: String, waitsOn: [Int] = []) {
+        id = UUID()
+        self.number = number
+        self.title = title
+        self.doneWhen = doneWhen
+        self.waitsOn = waitsOn
+        createdAt = .now
+        updatedAt = .now
+    }
+}
+
 /// One wire event, stored as the JSON it arrived as. `seq` orders events that share a timestamp.
 @Model
 final class Event {
@@ -179,7 +218,7 @@ enum Store {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let configuration = ModelConfiguration(url: folder.appending(path: "OriCode.store"))
         do {
-            return try ModelContainer(for: Project.self, Chat.self, Event.self, configurations: configuration)
+            return try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: configuration)
         } catch {
             fatalError("The store at \(folder.path) can't be opened: \(error)")
         }
