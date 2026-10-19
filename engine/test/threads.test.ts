@@ -52,7 +52,7 @@ test("a thread with no rays has the thread tools alone, is told it decides, and 
   assert.equal(started.developerInstructions, told(`${opening}\n\n${suggesting}`));
   assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, `${opening}\n\n${suggesting}`);
   const tools = (await mcp(url, "tools/list")).tools;
-  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "message_thread", "wait_thread", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task"]);
+  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task"]);
   assert.match(tools[0].description, /Open one when you judge the work wants it/);
   assert.doesNotMatch(tools[0].description, /asked|own words/);
   assert.deepEqual(tools[0].inputSchema.required, ["title", "message", "reason"]);
@@ -62,10 +62,10 @@ test("a thread with no rays has the thread tools alone, is told it decides, and 
 
   // The call waits on the app, which makes the thread and says what it made.
   const from = engine.lines.length;
-  const calling = call(url, "open_thread", { title: "Rename sum.txt", message: " Rename sum.txt to total.txt. ", reason: " The rename can go on alone. ", model: "gpt-large", folder: "/elsewhere", worktree: true, mode: "bypassPermissions" });
+  const calling = call(url, "open_thread", { title: "Rename sum.txt", message: " Rename sum.txt to total.txt. ", reason: " The rename can go on alone. ", model: "gpt-large", folder: "/elsewhere", worktree: true, mode: "default" });
   const asked = await engine.until((line) => line.event === "thread.open", from);
   const { requestId, ...fields } = asked;
-  assert.deepEqual(fields, { event: "thread.open", threadId: "parent", title: "Rename sum.txt", text: "Rename sum.txt to total.txt.", reason: "The rename can go on alone.", model: "gpt-large", folder: "/elsewhere", worktree: true });
+  assert.deepEqual(fields, { event: "thread.open", threadId: "parent", title: "Rename sum.txt", text: "Rename sum.txt to total.txt.", reason: "The rename can go on alone.", model: "gpt-large", folder: "/elsewhere", mode: "default", worktree: true });
   const made = { thread: "Rename sum.txt", agent: "codex", model: "gpt-large", mode: "default", folder: "/elsewhere" };
   assert.deepEqual((await engine.request("app.reply", { requestId, result: made })).result, { ok: true });
   assert.deepEqual(await calling, made);
@@ -131,7 +131,7 @@ test("a thread another opened has every thread tool, and a message from a thread
   await turn("child", { from: { id: "PARENT-1", title: "Sums" } });
   await turn("child", { text: "and you?" });
   const [child] = await starts();
-  assert.deepEqual((await mcp(child.config["mcp_servers.oricode"].url, "tools/list")).tools.map((tool: { name: string }) => tool.name).slice(0, 4), ["open_thread", "message_thread", "wait_thread", "stop_thread"]);
+  assert.deepEqual((await mcp(child.config["mcp_servers.oricode"].url, "tools/list")).tools.map((tool: { name: string }) => tool.name).slice(0, 5), ["open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread"]);
   assert.equal(child.developerInstructions, told(`${opening}\n\n${suggesting}`));
   const [first, second] = await logged("turn/start");
   // Codex hears the lead on parts ahead of each message, then who sent it.
@@ -169,6 +169,38 @@ test("message_thread, wait_thread and stop_thread go to the app with the thread 
   assert.deepEqual(await call(url, "message_thread", { thread: "T2", text: "x" }), { error: "Say why in `reason`, one line the user reads." });
   assert.deepEqual(await call(url, "stop_thread", { reason: "x" }), { error: "Name the thread by its id, which list_threads gives." });
   assert.deepEqual(await call(url, "wait_thread", {}), { error: "Name the thread by its id, which list_threads gives." });
+  assert.equal(engine.lines.slice(from).some((line) => line.requestId), false);
+  await engine.end();
+});
+
+test("answer_ask goes to the app with the ask, what to do with it and the reason, and the app's answer is the tool's", async (t) => {
+  const { engine, turn, starts } = await codex(t);
+  await turn("parent");
+  const url: string = (await starts())[0].config["mcp_servers.oricode"].url;
+  const tool = (await mcp(url, "tools/list")).tools.find((listed: { name: string }) => listed.name === "answer_ask");
+  assert.deepEqual(tool.inputSchema.required, ["ask", "answer", "reason"]);
+  assert.match(tool.description, /only what your own permission mode would have done without asking the user/);
+  assert.match(opening, /pass up what your mode can't allow or you aren't sure of/);
+  const answered = async (args: object, answer: object) => {
+    const from = engine.lines.length;
+    const calling = call(url, "answer_ask", args);
+    const { requestId, ...asked } = await engine.until((line) => line.event === "thread.answer", from);
+    await engine.request("app.reply", { requestId, ...answer });
+    return { asked, answer: await calling };
+  };
+  const allowed = await answered({ ask: " r1 ", answer: "allow", reason: " An edit in its own worktree. " }, { result: { ask: "r1", answered: "allow" } });
+  assert.deepEqual(allowed.asked, { event: "thread.answer", threadId: "parent", ask: "r1", answer: "allow", reason: "An edit in its own worktree." });
+  assert.deepEqual(allowed.answer, { ask: "r1", answered: "allow" });
+  const told = await answered({ ask: "r2", answer: "answer", answers: { "Which file?": "sum.py", count: 2 }, reason: "The task names it." }, { result: { ask: "r2", answered: "answer" } });
+  assert.deepEqual(told.asked, { event: "thread.answer", threadId: "parent", ask: "r2", answer: "answer", reason: "The task names it.", answers: { "Which file?": "sum.py", count: "2" } });
+  const refused = await answered({ ask: "r3", answer: "allow", reason: "Tests." }, { error: "This thread is on Accept edits, which allows edits to files and nothing else without the user, so it can't allow Bash: npm test." });
+  assert.match(refused.answer.error, /can't allow Bash: npm test/);
+  // What's missing is refused before the app hears of it.
+  const from = engine.lines.length;
+  assert.deepEqual(await call(url, "answer_ask", { ask: "r1", answer: "maybe", reason: "x" }), { error: "Say allow, deny, answer or pass in `answer`." });
+  assert.deepEqual(await call(url, "answer_ask", { ask: "r1", answer: "pass" }), { error: "Say why in `reason`, one line the user reads in both threads." });
+  assert.deepEqual(await call(url, "answer_ask", { ask: "r1", answer: "answer", reason: "x" }), { error: "A question is answered with `answers`, each question's text to its answer." });
+  assert.deepEqual(await call(url, "answer_ask", { answer: "deny", reason: "x" }), { error: "Name the ask by its id, from wait_thread's `asks`." });
   assert.equal(engine.lines.slice(from).some((line) => line.requestId), false);
   await engine.end();
 });

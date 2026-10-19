@@ -9,6 +9,7 @@ struct AgentsPane: View {
     @AppStorage(Rays.chooseKey) private var choose = true
     @AppStorage(Rays.budgetKey) private var budget = 0.0
     @AppStorage(AppModel.ceilingKey) private var ceiling = AppModel.defaultCeiling
+    @AppStorage(AppModel.openersAnswerKey) private var openersAnswer = true
 
     var body: some View {
         PaneTitle(text: "Agents")
@@ -72,6 +73,17 @@ struct AgentsPane: View {
                 Stepper(value: $ceiling, in: 1...20) {
                     Text("\(ceiling)").monospacedDigit().foregroundStyle(Ink.primary)
                 }
+            }
+            SettingsRow(
+                title: "Threads answer first",
+                detail: openersAnswer
+                    ? "What a thread asks goes first to the thread that set it going, while that one works. It allows only what its own permission mode would, answers questions about the task, and passes the rest up with its reason, to you from the top. Each answer is a line in both threads."
+                    : "Every ask comes straight to you."
+            ) {
+                Toggle("Threads answer first", isOn: $openersAnswer).labelsHidden().toggleStyle(.switch)
+                    .onChange(of: openersAnswer) { _, on in
+                        if !on { model.handAsksToUser() }
+                    }
             }
         }
         MacAccessCard()

@@ -306,8 +306,9 @@ extension Conversation {
 
     /// What the main loop is on, read off the end of the transcript: thinking, writing, a call still
     /// out and what on, waiting on you, or, with its turn over, waiting on its agents.
-    func mainStep(cwd: String) -> Head.Step {
-        if waitingAsk != nil { return Head.Step(tool: "Waiting on you", detail: nil) }
+    /// `asking` is the thread an ask is with first, when one is (K-296).
+    func mainStep(cwd: String, asking: String? = nil) -> Head.Step {
+        if waitingAsk != nil { return Head.Step(tool: asking.map { "Asking \($0)" } ?? "Waiting on you", detail: nil) }
         guard running else {
             let agents = heads.agents
             return Head.Step(tool: agents == 0 ? "Idle" : "Waiting on \(agents) \(agents == 1 ? "agent" : "agents")", detail: nil)

@@ -240,6 +240,17 @@ final class AppModel {
     /// once as the ask comes, or as the engine tells of the asker's thread after it, so a view
     /// reading who asks does a lookup. An ask from before a quit isn't here, and stays its holder's.
     var askers: [String: Chat] = [:]
+    /// The thread answering for each ask before the user, by its request id, while one is: the
+    /// thread that set the asker's turn going, or one above it (K-296). An ask not here is the user's.
+    var askHolders: [String: UUID] = [:]
+    /// Each held ask's deadline, after which it goes up by itself, and whether its holder has read
+    /// it in a wait_thread yet.
+    @ObservationIgnored var holdDeadlines: [String: (read: Bool, timer: Task<Void, Never>)] = [:]
+    /// How long a thread has to read an ask in a wait_thread, and then to answer it.
+    @ObservationIgnored var holdLimits = (unread: Duration.seconds(30), unanswered: Duration.seconds(120))
+    /// The threads Stop has sent an interrupt to, until their turn ends: an ask of one is about to
+    /// be cancelled, so the turn's end of the thread holding it doesn't send it up.
+    @ObservationIgnored var interrupting: Set<UUID> = []
     /// The workflow agents' threads whose transcripts the engine reads for the app while they're
     /// on the glass.
     @ObservationIgnored var followed: Set<UUID> = []

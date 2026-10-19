@@ -343,9 +343,13 @@ extension AppModel {
         }
         let conversation = conversations[chat.id]
         // A worker's or subagent's ask is its own row's; the thread that runs it works on.
+        // One a thread above answers first isn't waiting on you; the thread works on, asking it.
         if let conversation, conversation.waitingAfterQuit
-            || conversation.waitingAsks.contains(where: { asker(of: $0) == nil }) {
+            || conversation.waitingAsks.contains(where: { asker(of: $0) == nil && holder(of: $0.requestId) == nil }) {
             return OverviewStatus(state: .waiting, step: "Waiting on you")
+        }
+        if let held = conversation?.waitingAsks.lazy.compactMap({ self.holder(of: $0.requestId) }).first {
+            return OverviewStatus(state: .working, step: "Asking \(held.title)")
         }
         if let conversation, conversation.working {
             let step = conversation.mainStep(cwd: chat.cwd)

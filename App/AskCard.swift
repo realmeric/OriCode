@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Claude waiting on you: a permission for a tool, or a question with options.
 struct AskCard: View {
+    @Environment(AppModel.self) private var model
     let ask: PendingAsk
     let cwd: String
     /// The thread that asked, which an answer goes back to.
@@ -14,7 +15,13 @@ struct AskCard: View {
 
     var body: some View {
         if ask.state == .waiting {
-            AskForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
+            VStack(alignment: .leading, spacing: 10) {
+                // A thread above this one answers first; the user can answer here all the same.
+                if let line = model.heldLine(of: ask, in: thread.flatMap(model.chat(withID:)) ?? model.chat) {
+                    HeldLine(text: line)
+                }
+                AskForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
+            }
                 .padding(14)
                 .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
                 .transition(.opacity.animation(.easeOut(duration: 0.12)))
@@ -29,11 +36,34 @@ struct AskCard: View {
 
     private var settledLine: String {
         let what = ask.kind == "question" ? "Question" : ask.app.map { "See and use \($0)" } ?? ToolSummary.line(for: ask.call, cwd: cwd)
+        // Answered by the thread that set this one going, which the line names with its reason.
+        if let by = ask.answeredBy, ask.state != .cancelled {
+            let done = ask.kind == "question" ? "\(by) answered" : ask.state == .allowed ? "\(by) allowed" : "\(by) denied"
+            return [done, what, ask.answerReason ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        // Sent up to the user by a thread above, which the line still names.
+        if let pass = ask.passes.last, pass.to == nil, ask.state == .allowed || ask.state == .denied {
+            let done = ask.kind == "question" ? "You answered" : ask.state == .allowed ? "You allowed" : "You denied"
+            return "\(done) · \(what) · passed to you by \(pass.by)"
+        }
         switch ask.state {
         case .allowed: return ask.kind == "question" ? "Answered" : "Allowed · \(what)"
         case .denied: return "Denied · \(what)"
         case .cancelled, .waiting: return "No longer waiting · \(what)"
         }
+    }
+}
+
+/// Who has an ask first, or who sent it up and why, over the ask in its card and in the queue.
+struct HeldLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(Type.secondary)
+            .foregroundStyle(Ink.secondary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -662,7 +662,12 @@ export class CodexSession implements Session {
     const known = this.items.get(params.itemId);
     const item: Item = known ?? (command ? { type: "commandExecution", id: params.itemId, command: params.command ?? "", cwd: params.cwd, commandActions: params.commandActions ?? [] } : { type: "fileChange", id: params.itemId, changes: [] });
     this.use(item);
-    const call = toolCalls(item)[0] ?? { id: params.itemId, name: "Edit", input: {}, kind: "edit", view: {} };
+    const calls = toolCalls(item);
+    const call = calls[0] ?? { id: params.itemId, name: "Edit", input: {}, kind: "edit", view: {} };
+    // An allow answers for every change of the patch, so the ask names each one: a thread
+    // answering for this one allows no more than it can see (K-296).
+    const paths = item.type === "fileChange" && calls.length ? { paths: calls.map((change) => ({ path: change.input.path, kind: change.kind })) } : {};
+    const view = { ...call.view, ...paths, ...(params.reason ? { description: params.reason } : {}) };
     const offered: Decision[] = params.availableDecisions ?? decisions;
     const choices = offered.map(choiceOf);
     const settled = byMode(this.mode, call.kind, choices);
@@ -679,7 +684,7 @@ export class CodexSession implements Session {
       toolUseId: call.id,
       input: call.input,
       toolKind: call.kind,
-      view: params.reason ? { ...call.view, description: params.reason } : call.view,
+      view,
       choices,
     });
   }

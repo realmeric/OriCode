@@ -120,7 +120,8 @@ test("a turn: reasoning, text, a read, a command asked and approved, a plan, a f
   const edit = await until((event) => named("ask", "work")(event) && event.requestId !== run.requestId, from);
   assert.equal(edit.toolUseId, "patch-1:0");
   assert.equal(edit.toolKind, "edit");
-  assert.deepEqual(edit.view, { path: "/w/a.txt" });
+  // Every change of the patch, which a thread answering for this one checks (K-296).
+  assert.deepEqual(edit.view, { path: "/w/a.txt", paths: [{ path: "/w/a.txt", kind: "edit" }, { path: "/w/b.txt", kind: "write" }] });
   assert.deepEqual(edit.choices.map((choice: { id: string }) => choice.id), ["accept", "acceptForSession", "decline", "cancel"]);
   answer({ requestId: edit.requestId, allow: true, optionId: "acceptForSession" });
   const done = await until(named("turn.done", "work"), from);

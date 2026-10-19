@@ -108,6 +108,18 @@ struct PendingAsk: Hashable {
     var agentID: String?
     /// When it came, which orders the asks of every thread in the queue.
     var askedAt: Date = .distantPast
+    /// The thread that answered it for the user, and why, when one did (K-296).
+    var answeredBy: String?
+    var answerReason: String?
+    /// Each time a thread it went to first sent it up, oldest first.
+    var passes: [Pass] = []
+
+    /// A thread sending an ask up: to the thread above it, or to the user when `to` is nil.
+    struct Pass: Hashable {
+        let by: String
+        let to: String?
+        let reason: String
+    }
 
     /// A worker as its ask names it: the agent it runs on and its task.
     struct Worker: Hashable {
@@ -1029,8 +1041,21 @@ final class Conversation {
                           "resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000), "said": .number(Date.now.timeIntervalSince1970 * 1000)])
     }
 
-    func answered(_ requestId: String, allow: Bool) {
-        record("answer", ["event": "answer", "requestId": .string(requestId), "allow": .bool(allow)])
+    /// `by` is the thread that answered for the user, with its reason.
+    func answered(_ requestId: String, allow: Bool, by: (title: String, reason: String)? = nil) {
+        var body: [String: JSON] = ["event": "answer", "requestId": .string(requestId), "allow": .bool(allow)]
+        if let by {
+            body["by"] = .string(by.title)
+            body["reason"] = .string(by.reason)
+        }
+        record("answer", .object(body))
+    }
+
+    /// The thread an ask went to first sent it up, to `to` or to the user, with its reason.
+    func askPassed(_ requestId: String, _ pass: PendingAsk.Pass) {
+        var body: [String: JSON] = ["event": "ask.passed", "requestId": .string(requestId), "by": .string(pass.by), "reason": .string(pass.reason)]
+        if let to = pass.to { body["to"] = .string(to) }
+        record("ask.passed", .object(body))
     }
 
     /// A command from the shell prompt starts: its block goes into the thread, which it starts if
@@ -1410,6 +1435,16 @@ final class Conversation {
                case .ask(let itemId, var ask) = items[index], ask.state == .waiting
             {
                 ask.state = state
+                ask.answeredBy = body["by"]?.string
+                ask.answerReason = body["reason"]?.string
+                items[index] = .ask(id: itemId, ask: ask)
+            }
+        case "ask.passed":
+            let requestId = body["requestId"]?.string
+            if let index = items.lastIndex(where: { if case .ask(_, let ask) = $0 { ask.requestId == requestId } else { false } }),
+               case .ask(let itemId, var ask) = items[index], ask.state == .waiting
+            {
+                ask.passes.append(PendingAsk.Pass(by: body["by"]?.string ?? Chat.untitled, to: body["to"]?.string, reason: body["reason"]?.string ?? ""))
                 items[index] = .ask(id: itemId, ask: ask)
             }
         case "turn.done":
@@ -1468,7 +1503,7 @@ final class Conversation {
             break
         }
         if !started, !items.isEmpty { started = true }
-        if kind == "ask" || kind == "answer" || kind == "ask.cancelled" { findWaitingAsk() }
+        if kind == "ask" || kind == "answer" || kind == "ask.cancelled" || kind == "ask.passed" { findWaitingAsk() }
     }
 
     /// A TodoWrite's list goes onto the card of the plan it carries on, or, for a new plan, onto a

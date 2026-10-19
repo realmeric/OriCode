@@ -12,7 +12,7 @@ import { describe } from "./thread.ts";
 import { Hands, isMacTool, macTools, Pictured } from "./mac.ts";
 import { planTools } from "./plan.ts";
 import { begin, cameIn, conflictsOf, ignoredLeft, keep, marked, snapshot, summary, undo, type Counted, type Merge } from "./merge.ts";
-import { askApp, finishMerge, listThreads, longestTurnWait, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
+import { answerAsk, askApp, finishMerge, listThreads, longestTurnWait, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -405,7 +405,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, stopThread, mergeThread, finishMerge, suggestThread, listThreads, readThread, ...planTools, ...(this.mac ? macTools : [])] } };
+        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, answerAsk, stopThread, mergeThread, finishMerge, suggestThread, listThreads, readThread, ...planTools, ...(this.mac ? macTools : [])] } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
@@ -459,6 +459,8 @@ export class Rays {
         return this.act("thread.message", args, { text: required(args.text, "A message needs its text.") });
       case "wait_thread":
         return this.wait(args);
+      case "answer_ask":
+        return this.answerAsk(args);
       case "stop_thread":
         return this.act("thread.stop", args, {});
       case "merge_thread":
@@ -681,7 +683,7 @@ export class Rays {
       title: String(args.title ?? "").trim(),
       text,
       reason: why,
-      ...pick(args, ["agent", "model", "folder", "task"]),
+      ...pick(args, ["agent", "model", "folder", "task", "mode"]),
       worktree: args.worktree === true,
     });
   }
@@ -702,6 +704,23 @@ export class Rays {
       return await askApp("thread.wait", { threadId: this.threadId, thread: other }, longestTurnWait + 30_000);
     } catch (error) {
       if (error instanceof Unanswered) throw new Error("OriCode didn't say how that thread is doing. Nothing was changed, so call wait_thread again.");
+      throw error;
+    }
+  }
+
+  /// The app answers the ask as the user's card would, or sends it up, once it has checked the ask
+  /// is with this thread and its mode allows what it allows.
+  async answerAsk(args: Record<string, any>): Promise<unknown> {
+    const ask = required(args.ask, "Name the ask by its id, from wait_thread's `asks`.");
+    const answer = String(args.answer ?? "");
+    if (!["allow", "deny", "answer", "pass"].includes(answer)) throw new Error("Say allow, deny, answer or pass in `answer`.");
+    const why = required(args.reason, "Say why in `reason`, one line the user reads in both threads.");
+    const answers = args.answers && typeof args.answers === "object" && !Array.isArray(args.answers) ? Object.fromEntries(Object.entries(args.answers).map(([question, given]) => [question, String(given)])) : undefined;
+    if (answer === "answer" && !answers) throw new Error("A question is answered with `answers`, each question's text to its answer.");
+    try {
+      return await askApp("thread.answer", { threadId: this.threadId, ask, answer, reason: why, ...(answers ? { answers } : {}) });
+    } catch (error) {
+      if (error instanceof Unanswered) throw new Error("OriCode hasn't said whether it took the answer. Call wait_thread to see whether the ask is still with you.");
       throw error;
     }
   }

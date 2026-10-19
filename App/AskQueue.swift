@@ -61,6 +61,9 @@ private struct AskEntry: View {
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
             .help("Open \(waiting.thread.title)")
+            if let line = model.heldLine(of: waiting.ask, in: waiting.holder) {
+                HeldLine(text: line)
+            }
             AskForm(ask: waiting.ask, cwd: waiting.holder.cwd, thread: waiting.holder.id, listens: false, compact: true)
         }
         .padding(12)
@@ -79,11 +82,12 @@ private struct AskEntry: View {
 
 extension AppModel {
     /// Every ask waiting on the user, oldest first. A thread waiting on one is never let go
-    /// (`letGo`), so every ask is in a conversation in memory.
+    /// (`letGo`), so every ask is in a conversation in memory. One a thread answers first isn't
+    /// the user's until that thread sends it up.
     var waitingAsks: [WaitingAsk] {
         conversations.values
             .flatMap { conversation in
-                conversation.waitingAsks.map { ask in
+                conversation.waitingAsks.filter { holder(of: $0.requestId) == nil }.map { ask in
                     WaitingAsk(ask: ask, holder: conversation.chat, thread: asker(of: ask) ?? conversation.chat)
                 }
             }
@@ -92,7 +96,7 @@ extension AppModel {
 
     /// How many asks wait, which the Dock shows.
     var waitingCount: Int {
-        conversations.values.reduce(0) { $0 + $1.waitingAsks.count }
+        conversations.values.reduce(0) { $0 + $1.waitingAsks.count { holder(of: $0.requestId) == nil } }
     }
 
     /// How many asks each thread has waiting, by the thread that asks, for the drawer's rows.

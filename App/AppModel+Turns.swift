@@ -281,6 +281,8 @@ extension AppModel {
                 shellReads[message.id] = nil
                 withAnimation(Motion.fade) { conversation.handBack(message.id) }
                 conversation.note(error.localizedDescription)
+                // The turn this was to follow had ended, and none follows now.
+                turnEnded(chat.id)
                 holdWhileWorking()
             }
         }
@@ -331,8 +333,9 @@ extension AppModel {
 
     /// `thread` is the ask's own, which with two in view isn't always the open one; without it
     /// the ask is the open thread's. `choice` is one of the agent's own answers, which it gets
-    /// back by its id.
-    func answer(_ ask: PendingAsk, in thread: UUID? = nil, allow: Bool, answers: [String: String]? = nil, message: String? = nil, choice: PendingAsk.Choice? = nil) {
+    /// back by its id. `by` is the thread that answered it for the user, with its reason.
+    func answer(_ ask: PendingAsk, in thread: UUID? = nil, allow: Bool, answers: [String: String]? = nil, message: String? = nil, choice: PendingAsk.Choice? = nil,
+                by: (title: String, reason: String)? = nil) {
         guard let chat = thread == nil ? chat : thread.flatMap(chat(withID:)) else { return }
         if conversation(for: chat).askedBeforeQuit.contains(ask.requestId) {
             answerAfterQuit(ask, in: chat, allow: allow, answers: answers, message: message)
@@ -340,13 +343,15 @@ extension AppModel {
         }
         let params = Self.answerParams(ask, allow: allow, answers: answers, message: message, choice: choice)
         // The card folds into its one line and what's under it closes up, rather than jumping.
-        withAnimation(Motion.move) { conversation(for: chat).answered(ask.requestId, allow: allow) }
+        withAnimation(Motion.move) { conversation(for: chat).answered(ask.requestId, allow: allow, by: by) }
         askers[ask.requestId] = nil
+        release(ask.requestId)
         // Answered from the queue, what the notification asked is settled too.
         if conversation(for: chat).waitingAsk == nil { notifier.clear(chatID: chat.id) }
         // A card's field that had the keyboard went with the card, and the composer under the
         // queue or beside doesn't see the open thread's ask change.
-        if chat.id != selectedChatID { returnKeyboardSoon() }
+        // A thread answering for the user moves no keyboard.
+        if chat.id != selectedChatID, by == nil { returnKeyboardSoon() }
         Task {
             do {
                 _ = try await engine.request("answer", params)
@@ -406,6 +411,7 @@ extension AppModel {
             notifier.badge(waitingCount)
             return
         }
+        interrupting.insert(chat.id)
         Task { _ = try? await engine.request("interrupt", ["threadId": .string(chat.id.uuidString)]) }
     }
 
@@ -501,7 +507,11 @@ extension AppModel {
            let asker = event.body["agentId"]?.string.flatMap({ agentThread($0, under: chat) }) {
             askers[requestId] = asker
         }
-        if event.name == "ask.cancelled", let requestId = event.body["requestId"]?.string { askers[requestId] = nil }
+        if event.name == "ask", let requestId = event.body["requestId"]?.string { routeAsk(requestId, in: chat) }
+        if event.name == "ask.cancelled", let requestId = event.body["requestId"]?.string {
+            askers[requestId] = nil
+            release(requestId)
+        }
         if event.name == "workflow" { syncAgents(of: chat, event.body) }
         if event.name == "turn.started" || event.name == "turn.done" { noteOutcome(event, of: chat) }
         if event.name == "turn.done", let spent = event.body["spent"]?.string {
@@ -545,16 +555,11 @@ extension AppModel {
         notifier.badge(waitingCount)
         guard event.name == "turn.done" || event.name == "ask", isAway(chat) else { return }
         if event.name == "ask" {
-            let tool = event.body["tool"]?.string ?? ""
-            let summary = event.body["kind"]?.string == "question"
-                ? "A question for you."
-                : "Waiting on you: " + ToolSummary.line(for: ToolCall(
-                    toolUseId: "", name: tool, input: event.body["input"] ?? .null,
-                    declared: ToolKind(event.body["toolKind"], tool: tool), view: event.body["view"] ?? .null), cwd: chat.cwd)
-            // Named by the thread that asks, a worker or subagent under this one included; its
-            // click opens the queue on the ask.
-            let asker = event.body["requestId"]?.string.flatMap { askers[$0] } ?? chat
-            notifier.post(title: asker.title, body: summary, chatID: chat.id, ask: event.body["requestId"]?.string)
+            // One a thread answers first is told of when it comes to the user.
+            guard let requestId = event.body["requestId"]?.string, holder(of: requestId) == nil,
+                  let ask = conversations[chat.id]?.waitingAsks.first(where: { $0.requestId == requestId })
+            else { return }
+            postAsk(ask, in: chat)
         } else if let limit = conversation(for: chat).turnLimit {
             let when = chat.resumeAt.map { "It goes on at \(Limit.time($0))." } ?? "Resets at \(Limit.time(limit.resetsAt))."
             notifier.post(title: chat.title, body: "Stopped at \(agent(for: chat).agent)'s \(Limit.name(of: limit.window)). " + when, chatID: chat.id)
@@ -566,7 +571,15 @@ extension AppModel {
         }
     }
 
-    private func isAway(_ chat: Chat) -> Bool {
+    /// The one notification of an ask waiting on the user, named by the thread that asks, a
+    /// worker or subagent under this one included; its click opens the queue on the ask.
+    func postAsk(_ ask: PendingAsk, in chat: Chat) {
+        let summary = ask.kind == "question" ? "A question for you." : "Waiting on you: " + ToolSummary.line(for: ask.call, cwd: chat.cwd)
+        let asker = askers[ask.requestId] ?? chat
+        notifier.post(title: asker.title, body: summary, chatID: chat.id, ask: ask.requestId)
+    }
+
+    func isAway(_ chat: Chat) -> Bool {
         !NSApp.isActive || !onGlass(chat.id)
     }
 
@@ -598,6 +611,8 @@ extension AppModel {
         heldPieces = [:]
         agentThreads = [:]
         askers = [:]
+        releaseAll()
+        interrupting = []
         settleAgents()
         // Whatever was sent into a turn went with the engine; it goes back to the composer.
         shellReads = [:]

@@ -241,7 +241,11 @@ extension AppModel {
     /// The words list_threads gives for what a thread is doing.
     func state(of chat: Chat) -> String {
         let conversation = conversations[chat.id]
-        if conversation?.waitingAsk != nil { return "waiting on the user" }
+        if let ask = conversation?.waitingAsk {
+            // With the thread that set it going, which answers first.
+            if let held = holder(of: ask.requestId) { return "waiting on \(held.title) to answer it" }
+            return "waiting on the user"
+        }
         if conversation?.working == true { return "working" }
         if chat.resumeAt != nil { return "waiting for a limit to reset" }
         return "idle"

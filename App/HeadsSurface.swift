@@ -141,7 +141,7 @@ private struct MainRow: View {
     @Binding var hovered: String?
 
     var body: some View {
-        let step = conversation.mainStep(cwd: cwd)
+        let step = conversation.mainStep(cwd: cwd, asking: conversation.waitingAsk.flatMap { model.holder(of: $0.requestId)?.title })
         let planStep = conversation.planStep
         // With the turn over, Stop here stops what the thread left working, threads it set going included.
         HeadLine(id: HeadsSurface.main, hovered: $hovered, stop: conversation.running || model.leftWorking(conversation.chat) ? { model.stop(in: conversation.chat) } : nil) {

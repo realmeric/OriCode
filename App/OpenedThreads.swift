@@ -44,6 +44,8 @@ extension AppModel {
         var worktree = false
         /// The task of the plan it's opened for, by its id.
         var task: String?
+        /// A mode tighter than the parent's, asked for by its id.
+        var mode: String?
 
         init(parent: UUID, text: String) {
             self.parent = parent
@@ -59,6 +61,7 @@ extension AppModel {
             folder = body["folder"]?.string?.nonEmpty
             worktree = body["worktree"]?.bool ?? false
             task = body["task"]?.string?.nonEmpty
+            mode = body["mode"]?.string?.nonEmpty
         }
     }
 
@@ -94,7 +97,7 @@ extension AppModel {
     }
 
     /// An event that asks the app for something and waits on its answer.
-    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.stop", "thread.merge", "thread.merged", "threads.list", "thread.read"]).union(planAsks)
+    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.answer", "thread.stop", "thread.merge", "thread.merged", "threads.list", "thread.read"]).union(planAsks)
 
     func answerTool(_ event: EngineEvent, from thread: UUID) {
         guard let requestId = event.body["requestId"]?.string else { return }
@@ -138,6 +141,8 @@ extension AppModel {
             return try message(event.body["thread"]?.string ?? "", text: event.body["text"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
         case "thread.wait":
             return try await wait(on: event.body["thread"]?.string ?? "", from: thread)
+        case "thread.answer":
+            return try answerAsk(event.body, from: thread)
         case "thread.stop":
             return try stop(event.body["thread"]?.string ?? "", reason: event.body["reason"]?.string ?? "", from: thread)
         case "thread.merge":
@@ -206,11 +211,21 @@ extension AppModel {
         if let model, keptOff.contains("\(id)/\(model)") {
             throw Refused(why: "This thread is on \(model), which the user keeps heads off in Settings › Agents, so a thread it opens can't take it. Name another \(agent.name) model.")
         }
-        guard let mode = Self.mode(under: parent.permissionMode, on: agent, same: same) else {
+        guard var mode = Self.mode(under: parent.permissionMode, on: agent, same: same) else {
             let title = PermissionModeOption(rawValue: parent.permissionMode)?.title ?? parent.permissionMode
             throw Refused(why: agent.unsupervised || agent.modes.isEmpty
                 ? "\(agent.name) asks before nothing, and this thread is on \(title)."
                 : "\(agent.name) has no permission mode as tight as this thread's, \(title).")
+        }
+        if let asked = request.mode, asked != mode {
+            guard agent.modes.contains(asked) else {
+                throw Refused(why: "\(agent.name) has no permission mode called \(asked). It has: \(agent.modes.joined(separator: ", ")).")
+            }
+            guard let tighter = Self.tightness.firstIndex(of: asked), let limit = Self.tightness.firstIndex(of: mode), tighter <= limit else {
+                let title = PermissionModeOption(rawValue: mode)?.title ?? mode
+                throw Refused(why: "\(asked) is looser than \(title), the loosest a thread this one opens may have.")
+            }
+            mode = asked
         }
 
         var project = own
@@ -400,26 +415,38 @@ extension AppModel {
     func wait(on named: String, from asking: UUID, within limit: Duration = .seconds(300)) async throws -> JSON {
         let (_, thread) = try other(named, from: asking, doing: "wait_thread")
         let id = thread.id
-        if conversations[id]?.running == true {
+        // An ask of a thread it set going wakes the wait, whichever thread it waits on.
+        if conversations[id]?.running == true, asksHeld(by: asking).isEmpty {
             let key = UUID()
             await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
                 let timer = Task {
                     guard (try? await Task.sleep(for: limit)) != nil else { return }
                     self.turnWaits[id]?.removeValue(forKey: key)?.done.resume()
                 }
-                turnWaits[id, default: [:]][key] = TurnWait(done: done, timer: timer)
+                turnWaits[id, default: [:]][key] = TurnWait(done: done, timer: timer, waiter: asking)
             }
         }
         guard let thread = chat(withID: id) else { throw Refused(why: "That thread was deleted while you waited on it.") }
         var answer: [String: JSON] = ["thread": .string(thread.title), "id": .string(id.uuidString), "state": .string(state(of: thread))]
+        if let holder = chat(withID: asking) {
+            let held = asksHeld(by: asking)
+            if !held.isEmpty {
+                answer["asks"] = .array(held.map { told($0, to: holder) })
+                for waiting in held { heldAskRead(waiting.id) }
+                answer["note"] = .string("A thread you set going asks you something. Answer each ask with answer_ask, then call wait_thread again.")
+                return .object(answer)
+            }
+        }
         // What its turn edited that another working thread edited in its own: the merge will meet it.
         if let same = conversations[id]?.sameFiles, !same.isEmpty {
             answer["sameFiles"] = .array(same.map { ["path": .string($0.path), "thread": .string($0.title), "id": .string($0.thread.uuidString)] })
         }
         if let conversation = conversations[id], conversation.running {
-            answer["note"] = .string(conversation.waitingAsk != nil
-                ? "It's waiting on the user to answer it. Call wait_thread again to wait longer."
-                : "Still working. Call wait_thread again to wait longer.")
+            // An ask a third thread holds first is waiting on that thread, not the user.
+            let asking = conversation.waitingAsk.map { ask in
+                holder(of: ask.requestId).map { "It's waiting on \($0.title), which set it going, to answer it." } ?? "It's waiting on the user to answer it."
+            }
+            answer["note"] = .string((asking ?? "Still working.") + " Call wait_thread again to wait longer.")
             return .object(answer)
         }
         conversations[id]?.saveHeld()
@@ -431,8 +458,12 @@ extension AppModel {
     }
 
     /// A thread's turn ended, or its work did: whoever waits on it hears now.
+    /// Whichever way it ended, the asks still with it go up.
     func turnEnded(_ id: UUID) {
-        guard conversations[id]?.running != true, let waits = turnWaits.removeValue(forKey: id) else { return }
+        guard conversations[id]?.running != true else { return }
+        interrupting.remove(id)
+        if let chat = conversations[id]?.chat { passHeld(by: chat) }
+        guard let waits = turnWaits.removeValue(forKey: id) else { return }
         for wait in waits.values {
             wait.timer.cancel()
             wait.done.resume()
@@ -541,18 +572,21 @@ struct OpenedLine: View {
 }
 
 /// A wait_thread call: what wakes it, and the timer that answers it once the wait is up, called
-/// off when the turn ends first so it never wakes the Mac for nothing.
+/// off when the turn ends first so it never wakes the Mac for nothing. `waiter` is the thread
+/// waiting, which an ask of a thread it set going wakes too.
 struct TurnWait {
     let done: CheckedContinuation<Void, Never>
     let timer: Task<Void, Never>
+    var waiter: UUID?
 }
 
 /// What one thread did to another, as the line each of them stores: which act, whether this
 /// thread did it or had it done to it, the other thread then, and the agent's reason.
 struct ThreadAct: Equatable {
     /// `stoppedWith`: Stop on the opener reached the thread it opened. `merged`: the opener
-    /// brought its work into its own folder.
-    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged }
+    /// brought its work into its own folder. `allowed`, `denied`, `answered` and `passed`: the
+    /// opener settled an ask of the thread's or sent it up (K-296).
+    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed }
 
     let act: Kind
     /// This thread did it; false when the other did it to this one.
@@ -560,22 +594,32 @@ struct ThreadAct: Equatable {
     let thread: UUID
     let title: String
     let reason: String
+    /// The ask's call, or a question's answer.
+    var what = ""
+    /// Who a passed ask went to; nil is the user.
+    var to: String?
 
-    init(act: Kind, by: Bool, thread: UUID, title: String, reason: String) {
+    init(act: Kind, by: Bool, thread: UUID, title: String, reason: String, what: String = "", to: String? = nil) {
         self.act = act
         self.by = by
         self.thread = thread
         self.title = title
         self.reason = reason
+        self.what = what
+        self.to = to
     }
 
     init?(_ body: JSON) {
         guard let act = body["act"]?.string.flatMap(Kind.init(rawValue:)), let thread = body["thread"]?.string.flatMap(UUID.init(uuidString:)) else { return nil }
-        self.init(act: act, by: body["by"]?.bool ?? false, thread: thread, title: body["title"]?.string ?? Chat.untitled, reason: body["reason"]?.string ?? "")
+        self.init(act: act, by: body["by"]?.bool ?? false, thread: thread, title: body["title"]?.string ?? Chat.untitled, reason: body["reason"]?.string ?? "",
+                  what: body["what"]?.string ?? "", to: body["to"]?.string)
     }
 
     var json: JSON {
-        ["event": "thread.act", "act": .string(act.rawValue), "by": .bool(by), "thread": .string(thread.uuidString), "title": .string(title), "reason": .string(reason)]
+        var json: [String: JSON] = ["event": "thread.act", "act": .string(act.rawValue), "by": .bool(by), "thread": .string(thread.uuidString), "title": .string(title), "reason": .string(reason)]
+        if !what.isEmpty { json["what"] = .string(what) }
+        if let to { json["to"] = .string(to) }
+        return .object(json)
     }
 
     var words: String {
@@ -590,6 +634,14 @@ struct ThreadAct: Equatable {
         case (.stoppedWith, false): "Stopped with \(title), which opened it"
         case (.merged, true): "Merged \(title)"
         case (.merged, false): "\(title) merged this thread's work"
+        case (.allowed, true): "Allowed for \(title): \(what)"
+        case (.allowed, false): "\(title) allowed: \(what)"
+        case (.denied, true): "Denied for \(title): \(what)"
+        case (.denied, false): "\(title) denied: \(what)"
+        case (.answered, true): "Answered \(title)'s question: \(what)"
+        case (.answered, false): "\(title) answered: \(what)"
+        case (.passed, true): "Passed \(title)'s ask to \(to ?? "you"): \(what)"
+        case (.passed, false): "\(title) passed this to \(to ?? "you"): \(what)"
         }
         return reason.isEmpty ? done : "\(done) · \(reason)"
     }

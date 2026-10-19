@@ -30,6 +30,7 @@ export const openThread = {
       folder: { type: "string", description: "The folder of another of the user's projects, by its full path. This thread's project when left out." },
       worktree: { type: "boolean", description: "Work on a new branch in a git worktree of its own, so its edits can't run into yours." },
       task: { type: "string", description: "A task of the plan the thread is for, by its id, T2: the thread takes it as it opens, and is told it ahead of its messages. Only a task that waits on nothing left undone." },
+      mode: { type: "string", description: "A permission mode for it tighter than yours, by its id: plan, default (Ask), acceptEdits or auto. Yours when left out." },
     },
     required: ["title", "message", "reason"],
   },
@@ -57,11 +58,35 @@ export const waitThread = {
   description:
     "Wait for another thread's turn to end, and get its last reply. A thread that isn't working answers at once with the reply it last gave. " +
     "Waits up to five minutes; a thread still working then comes back with its state and no reply, and you can call again. A thread waiting on the user to answer a question waits on them, and says so. " +
+    "While your turn runs, an ask of a thread you set going comes to you before the user: the wait answers at once with it in `asks`, whichever thread you wait on, and you answer it with answer_ask before you wait again. Keep waiting while threads you set going work: an ask you haven't read in a wait within 30 seconds, or answered within two minutes of reading it, goes on up without you. " +
     "When its turn edited a file another working thread of the project edited too, the answer names each in `sameFiles`: merging both will meet it.",
   inputSchema: {
     type: "object",
     properties: { thread },
     required: ["thread"],
+  },
+};
+
+export const answerAsk = {
+  name: "answer_ask",
+  description:
+    "Answer an ask of a thread you set going with open_thread or message_thread, which wait_thread gives you in `asks`. OriCode sends it to you before the user while your turn runs. " +
+    "`allow` lets the call run, and takes only what your own permission mode would have done without asking the user: on Accept edits or Auto an edit to a file in your folder or the thread's, on Don't ask anything, on Ask or Plan nothing; `youMayAllow` says which. `deny` refuses it, and the thread is told your reason. `answer` answers its question from what you know of the task, with `answers`. " +
+    "`pass` sends it up, to the thread that set yours going while its turn runs and otherwise to the user, with your reason: pass what your mode can't allow, and what you aren't sure the user would want. " +
+    "Each answer is a line in both threads' transcripts, so the user reads what was allowed on their behalf and by whom. An ask still with you when your turn ends goes up by itself.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      ask: { type: "string", description: "The ask's id, from wait_thread's `asks`." },
+      answer: { type: "string", enum: ["allow", "deny", "answer", "pass"], description: "What you do with it." },
+      answers: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description: "For a question: each question's text to its answer, one of its options' labels or your own words.",
+      },
+      reason,
+    },
+    required: ["ask", "answer", "reason"],
   },
 };
 
@@ -171,8 +196,8 @@ export const parts =
 
 /// The second half: what the tools do to the user's threads, which every session with them hears.
 export const reach =
-  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, stop_thread stops one, merge_thread brings the work of one you opened with a worktree into your folder, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, and add_tasks, claim_task and update_task keep the plan. You decide when to use them. " +
-  "Each open, message and stop takes a one-line reason, which both threads show the user. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
+  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, answer_ask answers what one you set going asks, stop_thread stops one, merge_thread brings the work of one you opened with a worktree into your folder, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, and add_tasks, claim_task and update_task keep the plan. You decide when to use them. " +
+  "Each open, message and stop takes a one-line reason, which both threads show the user. While your turn runs, what a thread you set going asks comes to you before the user, in wait_thread's answer: allow what your own mode would allow, answer its questions from what you know, deny what shouldn't happen, and pass up what your mode can't allow or you aren't sure of, each with answer_ask and a reason. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
 
 /// What every session with the tools is told of them, where its agent has somewhere to hear it:
 /// that it decides, asks where it isn't sure, and keeps to the project's instruction file.
