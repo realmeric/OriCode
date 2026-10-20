@@ -65,13 +65,31 @@ launches=${PERF_LAUNCHES:-10}
     [[ size =~ $only ]] && echo "size 1"
   fi
 } > "$OUT/plan.txt"
+# The same steps for scripts/progress.mts, each with a guess at its seconds, which only the first
+# step of a kind leans on: after it, a kind takes what it took in this run.
+typeset -A guess=(keys 25 stream 35 palette 25 earlyj 25 codesettle 35 scroll 35 edits 35 switch 25
+  review 70 jwalk 70 backstep 70 mem 90)
+steps=()
+for run in $(seq $runs); do
+  for line in $configs; do
+    parts=("${(@s:|:)line}")
+    [[ $parts[1] =~ $only ]] && steps+=("$parts[1]:$guess[$parts[2]]")
+  done
+done
+if [ $mode = full ]; then
+  [[ launch =~ $only ]] && steps+=(launch-warm-one:$((launches * 6)) launch-fresh-one:$((launches * 12)) launch-warm-pair:20)
+  [[ idle =~ $only ]] && steps+=($(for i in $(seq 6); do echo idle:$((${PERF_IDLE:-180} + 15)); done))
+fi
+progress() { PATH=/opt/homebrew/bin:/usr/local/bin:$PATH node $HERE/../progress.mts "$@" }
+progress plan "$OUT/progress.txt" $steps
+step() { progress step "$OUT/progress.txt" "$@" }
 for run in $(seq $runs); do
   for line in $configs; do
     parts=("${(@s:|:)line}")
     [[ $parts[1] =~ $only ]] || continue
     $HERE/run.sh "$parts[1]-r$run" "$parts[2]" $parts[3] ${=parts[4]}
     [ $? = 3 ] && unquiet
-    echo "$(date +%H:%M:%S) $parts[1] $run of $runs"
+    step $parts[1] $run of $runs
     sleep 2
   done
 done
@@ -84,15 +102,15 @@ if [[ launch =~ $only ]]; then
     parts=(${=launch})
     $HERE/launch.sh $parts[1] $parts[2] launch-$parts[2]-$parts[1] $parts[3]
     [ $? = 3 ] && unquiet
+    step launch $parts[2] $parts[1]
   done
-  echo "$(date +%H:%M:%S) launches"
 fi
 if [[ idle =~ $only ]]; then
   for threads in one pair; do
     for state in front hidden background; do
       $HERE/idle.sh $threads $state idle-$state-$threads ${PERF_IDLE:-180}
       [ $? = 3 ] && unquiet
-      echo "$(date +%H:%M:%S) idle $state $threads"
+      step idle $state $threads
       sleep 3
     done
   done
