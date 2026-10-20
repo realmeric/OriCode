@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { networkInterfaces } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { addWorktree, friendly, git } from "./git.ts";
 import { stepOf, type Step } from "./heads.ts";
@@ -109,7 +110,56 @@ type Worker = {
   /// Messages for after the turn, for an agent that takes none during one.
   pending: string[];
   waiters: (() => void)[];
+  /// How its latest turn ended early, a limit and when it resets, or tries the CLI made at a
+  /// request that failed, which is what a lost connection looks like.
+  limit: { resetsAt: number; window: string | null } | null;
+  retried: boolean;
+  /// Since when, and how many times, it has gone on into a connection that wasn't there.
+  offline: { since: number; tries: number } | null;
+  /// While it waits to go on by itself: what it waits on, in the head's words, and the wait.
+  waits: { line: string; timer: ReturnType<typeof setTimeout> } | null;
 };
+
+/// What a worker's turn that ended early waits on before it goes on by itself, as a thread's does
+/// (K-299), and until when; null when it doesn't. A limit waits for its reset, when it's the
+/// session's or another that resets within six hours and Settings has threads go on; a lost
+/// connection is tried again, after half a minute and then less and less often, for an hour.
+export function goesOn(
+  ended: { limit: Worker["limit"]; error: string | null; retried: boolean; offline: Worker["offline"] },
+  goOn: boolean,
+  now: number,
+): { on: "limit" | "connection"; at: number } | null {
+  if (ended.limit) {
+    const { window, resetsAt } = ended.limit;
+    if (!goOn || !(window === "five_hour" || (window === null && resetsAt - now < 6 * 3_600_000))) return null;
+    // A little past the reset, for a Mac whose clock runs ahead of the agent's.
+    return { on: "limit", at: Math.max(resetsAt, now) + 20_000 };
+  }
+  if (!ended.error || !(ended.retried || unreachable.test(ended.error))) return null;
+  if (ended.offline && now - ended.offline.since >= 3_600_000) return null;
+  return { on: "connection", at: now + offlineWaits[Math.min(ended.offline?.tries ?? 0, offlineWaits.length - 1)]! };
+}
+
+/// The words a failed request's error has when the network is what failed.
+const unreachable = /connection|network|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN|ENETUNREACH|socket|fetch failed|disconnected|offline/i;
+const offlineWaits = [30_000, 60_000, 120_000, 300_000, 600_000];
+
+/// The session limit, the weekly limit, as the app names them.
+function limitName(window: string | null): string {
+  switch (window) {
+    case "five_hour":
+      return "session limit";
+    case "seven_day":
+      return "weekly limit";
+    default:
+      return "usage limit";
+  }
+}
+
+/// Whether the Mac has a network to reach an agent through, a way in other than its own loopback.
+function online(): boolean {
+  return Object.values(networkInterfaces()).some((addresses) => addresses?.some((address) => !address.internal));
+}
 
 /// A worker's reply to worker_result waits this long at most, under every head's MCP timeout.
 const longestWait = 300_000;
@@ -344,6 +394,8 @@ export class Rays {
   /// Whether Settings › Agents lets agents see and use the Mac, as the latest send said, and the
   /// thread's calls on it with the apps it was let use.
   private mac = false;
+  /// Settings' "Go on when a limit resets", for a worker a limit stopped.
+  goOn = true;
   private hands: Hands;
   /// What the menu's tools do, and the user's answers to what they loosen.
   private menu: UserAsks;
@@ -878,6 +930,10 @@ export class Rays {
       edits: [],
       pending: [],
       waiters: [],
+      limit: null,
+      retried: false,
+      offline: null,
+      waits: null,
     };
     this.workers.set(workerId, worker);
     // The head's choice, which the app keeps for ⌘I: the model, the level and why.
@@ -901,7 +957,7 @@ export class Rays {
       tokens: worker.tokens,
       costUSD: worker.cost,
       branch: worker.isolated?.branch ?? null,
-      ...(worker.error ? { error: worker.error } : {}),
+      ...(worker.waits ? { waits: worker.waits.line } : worker.error ? { error: worker.error } : {}),
     };
   }
 
@@ -924,8 +980,9 @@ export class Rays {
       files,
       summary: files.length ? `${files.length} ${files.length === 1 ? "file" : "files"}, +${added} −${deleted}` : "No files changed",
       branch: worker.isolated?.branch ?? null,
-      ...(worker.error ? { error: worker.error } : {}),
-      ...(worker.state === "running" ? { note: "Still working. Call worker_result again to wait longer." } : {}),
+      ...(worker.waits ? { waits: worker.waits.line, note: "It goes on by itself. Call worker_result again to wait for it." } : {}),
+      ...(!worker.waits && worker.error ? { error: worker.error } : {}),
+      ...(worker.state === "running" && !worker.waits ? { note: "Still working. Call worker_result again to wait longer." } : {}),
     };
   }
 
@@ -935,6 +992,11 @@ export class Rays {
       worker.cap = await this.allowance(worker.agent);
       await this.run(worker, text);
       return { worker: worker.id, state: worker.state, sent: "as its next turn" };
+    }
+    // One waiting to go on takes it with the line that sends it on.
+    if (worker.waits) {
+      worker.pending.push(text);
+      return { worker: worker.id, state: worker.state, sent: "after it goes on" };
     }
     if (worker.agent.capabilities.steer) {
       await worker.session.send(this.params(worker, text, randomUUID()));
@@ -948,6 +1010,12 @@ export class Rays {
   async stop(workerId: string): Promise<void> {
     const worker = this.worker(workerId);
     worker.pending = [];
+    if (worker.waits) {
+      clearTimeout(worker.waits.timer);
+      worker.waits = null;
+      worker.offline = null;
+      return this.ended(worker, "stopped");
+    }
     if (worker.state === "running") await worker.session.interrupt();
   }
 
@@ -1091,6 +1159,8 @@ export class Rays {
     clearTimeout(this.timer);
     void this.settle();
     for (const worker of this.workers.values()) {
+      if (worker.waits) clearTimeout(worker.waits.timer);
+      worker.waits = null;
       if (worker.state === "running") this.ended(worker, "stopped");
       worker.session.close();
       untap(worker.threadId);
@@ -1126,7 +1196,7 @@ export class Rays {
   }
 
   private async run(worker: Worker, text: string): Promise<void> {
-    Object.assign(worker, { state: "running", text: "", error: null, endedAt: null, step: null, turnEdits: [] });
+    Object.assign(worker, { state: "running", text: "", error: null, endedAt: null, step: null, turnEdits: [], limit: null, retried: false });
     this.tell();
     this.tellThread(worker);
     this.show(worker, "user", { text });
@@ -1178,6 +1248,10 @@ export class Rays {
         break;
       case "limited":
         worker.error = `${worker.agent.name} reached a usage limit.`;
+        if (typeof fields.resetsAt === "number") worker.limit = { resetsAt: fields.resetsAt, window: typeof fields.window === "string" ? fields.window : null };
+        break;
+      case "retrying":
+        worker.retried = true;
         break;
       case "turn.done":
         void this.finished(worker, fields);
@@ -1199,10 +1273,53 @@ export class Rays {
     this.tally(cost);
     // A message sent into the turn that it didn't take up runs next, as a turn of its own.
     if ((done.waiting ?? 0) > 0) return;
+    if (done.stopReason !== "interrupted" && this.holdOn(worker)) return;
     const next = worker.pending.shift();
     if (next !== undefined && done.stopReason !== "interrupted") return void this.run(worker, next);
     if (worker.isolated) await this.commit(worker).catch((error) => (worker.error = `Its edits couldn't be committed to ${worker.isolated!.branch}: ${describe(error)}`));
     this.ended(worker, done.stopReason === "interrupted" ? "stopped" : worker.error || done.stopReason === "error_during_execution" ? "failed" : "done");
+  }
+
+  /// A turn a limit or a lost connection ended goes on by itself, at the reset or once the
+  /// connection is back, in its own session; the head hears it waits, and that it went on. It
+  /// stays at work meanwhile, and worker_result waiting on it answers now. True when it waits.
+  private holdOn(worker: Worker): boolean {
+    const now = Date.now();
+    const next = worker.sessionId !== undefined && worker.agent.capabilities.resume ? goesOn(worker, this.goOn, now) : null;
+    const offline = worker.offline;
+    worker.offline = next?.on === "connection" ? { since: offline?.since ?? now, tries: (offline?.tries ?? 0) + 1 } : null;
+    if (!next) {
+      if (offline && !worker.limit && worker.error && now - offline.since >= 3_600_000) {
+        worker.error = `It couldn't reach ${worker.agent.name} for an hour, so it stopped: ${worker.error}`;
+        emit({ event: "note", threadId: this.threadId, text: `${worker.id} couldn't reach ${worker.agent.name} for an hour, so it stopped.` });
+      }
+      return false;
+    }
+    const at = new Date(next.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    const limit = limitName(worker.limit?.window ?? null);
+    const line = next.on === "limit" ? `Waits on the ${limit}, which resets at ${at}, and goes on by itself then` : `Lost its connection to ${worker.agent.name}, and goes on by itself once it's back`;
+    worker.waits = { line, timer: setTimeout(() => this.goOnNow(worker, next.on, limit), next.at - now) };
+    worker.step = { tool: next.on === "limit" ? `Waits on the ${limit}` : "Waits on the connection", detail: next.on === "limit" ? `resets at ${at}` : null };
+    // Told once as it starts waiting, not again at each try of a connection.
+    if (!offline) emit({ event: "note", threadId: this.threadId, text: `${worker.id}, ${worker.label}: ${line[0]!.toLowerCase()}${line.slice(1)}.` });
+    this.tell();
+    for (const done of worker.waiters.splice(0)) done();
+    return true;
+  }
+
+  /// The reset came, or a try at the connection is due: with no network still, the next try waits
+  /// without spending a turn on this one.
+  private goOnNow(worker: Worker, on: "limit" | "connection", limit: string): void {
+    if (!worker.waits) return;
+    worker.waits = null;
+    if (on === "connection" && !online()) {
+      if (!this.holdOn(worker)) this.ended(worker, "failed");
+      return;
+    }
+    const pending = worker.pending.splice(0);
+    const line = on === "limit" ? `The ${limit} has reset. Please continue from where you left off.` : "The connection is back. Please continue from where you left off.";
+    emit({ event: "note", threadId: this.threadId, text: `${worker.id} went on ${on === "limit" ? `after the ${limit} reset` : "with its connection back"}.` });
+    void this.run(worker, [line, ...pending].join("\n\n"));
   }
 
   private ended(worker: Worker, state: Worker["state"]): void {

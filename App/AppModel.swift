@@ -309,6 +309,9 @@ final class AppModel {
     @ObservationIgnored var pullWatches: [String: Task<Void, Never>] = [:]
     /// wait_thread's calls by the thread they wait on, each woken when that thread's turn ends.
     @ObservationIgnored var turnWaits: [UUID: [UUID: TurnWait]] = [:]
+    /// Each thread's plan that runs, how far it is and the time left, in engine/progress.ts's words,
+    /// while a task of it works.
+    var planLines: [UUID: String] = [:]
     /// Tasks of a plan that runs whose thread is being made, a worktree say, so none starts twice.
     @ObservationIgnored var startingTasks: Set<UUID> = []
     /// Threads the user stopped whose turn hasn't ended yet, so a task of a plan there says so.

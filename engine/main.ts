@@ -16,7 +16,7 @@ import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
 import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, settleMerges, usd, type Choice, type Seam } from "./rays.ts";
 import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
-import { taskLead } from "./plan.ts";
+import { planProgress, taskLead } from "./plan.ts";
 import { seeing } from "./mac.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
@@ -144,7 +144,7 @@ type Choose = { models?: string[]; unread?: string[]; keepOff?: string[]; budget
 /// has no rays; the tools for the user's threads, which every such thread has, a thread another
 /// opened included; and suggest_thread, which it is told when to call. A thread with no rays left
 /// keeps the workers it has, and can't start more.
-async function threadTools(params: SendParams & { rays?: string[]; choose?: Choose; mac?: boolean }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions"> & { choice?: Choice }> {
+async function threadTools(params: SendParams & { rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions"> & { choice?: Choice }> {
   const takes = agent.capabilities.workers === true;
   const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
   // Workflows, Claude Code's own, Codex's or OriCode's, hand the parts out on the rays picked, or
@@ -174,6 +174,8 @@ async function threadTools(params: SendParams & { rays?: string[]; choose?: Choo
   const instructions = [told, takes ? (choice ? reach : opening) : undefined, takes ? suggesting : undefined, mac ? seeing : undefined].filter(Boolean).join("\n\n") || undefined;
   const head = takes ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
   head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort, choice, mac);
+  // A worker a limit stopped goes on at the reset unless Settings says threads don't.
+  if (head) head.goOn = params.goOn !== false;
   // An app allowed on a Mac ask that a quit cut off is allowed before the agent calls on it again.
   const allowed = params.grant?.tool === "Mac" ? params.grant.input.bundleId : undefined;
   if (mac && typeof allowed === "string") head?.allowMac(allowed);
@@ -352,7 +354,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// Every one of them at the thread's own level. `from` is the thread that sent the message
   /// through message_thread or open_thread, which the session is told ahead of it, and `task` the
   /// task of the plan the thread works, if it does.
-  async send({ rays, choose, mac, handover, concise, noFolder, from, task, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean } }) {
+  async send({ rays, choose, mac, goOn, handover, concise, noFolder, from, task, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean } }) {
     const agent = provider(params.provider);
     const budget = choose?.budget ?? 0;
     if (budget > 0 && (choose?.spent ?? 0) >= budget) throw new Error(`This thread has spent its ${usd(budget)} budget. Raise it or lift it in Settings › Agents to go on.`);
@@ -361,7 +363,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const model = params.workflows ? await workflowsModel(agent, path, params.model) : undefined;
     const own = agent.id === claude.id ? params.workflows === true : model !== undefined && !model.ultraRays && params.effort === "max";
     const fans = own ? undefined : model;
-    const { choice, ...head } = await threadTools({ ...params, rays, choose, mac }, agent, fans);
+    const { choice, ...head } = await threadTools({ ...params, rays, choose, mac, goOn }, agent, fans);
     const told = agent.id === claude.id && own && params.effort !== "xhigh" ? claudeLead : fans ? lead : undefined;
     // A message into a running turn joins one that was told already.
     const running = sessions.get(params.threadId)?.isRunning;
@@ -602,6 +604,11 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   /// A custom action run quietly; the app has already quoted every value in the line.
+  /// The line of a plan that runs, from the app's tasks (plan.ts).
+  async "plan.progress"({ kinds, began, ended }: { kinds: string[]; began: number; ended: number[] }) {
+    return { line: planProgress(kinds, began, ended, Date.now() / 1000) };
+  },
+
   async "shell.run"({ cwd, command }: { cwd: string; command: string }) {
     return run(cwd, command);
   },

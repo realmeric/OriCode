@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
+import { goesOn } from "../rays.ts";
 import { brevity, drawing, scratch, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
 import { choosingLead, menuTools, opening, suggesting } from "../threads.ts";
@@ -665,4 +666,18 @@ test("a Claude worker under a budget, started again with its next allowance, cou
   assert.deepEqual(turns.map((line) => Math.round(line.costUSD * 100) / 100), [0.4, 0.1]);
   assert.deepEqual((await call(url, "list_agents")).budget, { usd: 2, spent: 0.5, left: 1.5 });
   await engine.end();
+});
+
+test("a worker a limit or a lost connection stopped goes on by itself: at the session limit's reset while Settings has it, on the connection less and less often for an hour", () => {
+  const now = 1_000_000_000;
+  const stopped = { limit: null, error: null, retried: false, offline: null };
+  const session = { ...stopped, limit: { resetsAt: now + 3_600_000, window: "five_hour" } };
+  assert.deepEqual(goesOn(session, true, now), { on: "limit", at: now + 3_620_000 });
+  assert.equal(goesOn(session, false, now), null);
+  assert.equal(goesOn({ ...stopped, limit: { resetsAt: now + 86_400_000, window: "seven_day" } }, true, now), null);
+  const lost = { ...stopped, error: "API Error: Connection error.", retried: true };
+  assert.deepEqual(goesOn(lost, true, now), { on: "connection", at: now + 30_000 });
+  assert.deepEqual(goesOn({ ...lost, offline: { since: now - 600_000, tries: 9 } }, false, now), { on: "connection", at: now + 600_000 });
+  assert.equal(goesOn({ ...lost, offline: { since: now - 3_600_000, tries: 12 } }, true, now), null);
+  assert.equal(goesOn({ ...stopped, error: "The file couldn't be read." }, true, now), null);
 });

@@ -307,6 +307,8 @@ extension AppModel {
         if workflows(of: chat) { params["workflows"] = true }
         // Off, the engine offers the agent no tools for the Mac at all.
         if MacAccess.isOn { params["mac"] = true }
+        // A worker a limit stops goes on at the reset as a thread does, unless Settings says not.
+        if !Limit.goesOn { params["goOn"] = false }
         // A message from another thread says which, so the session can answer it.
         if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
         // So does the task of the plan it works, while it isn't done.
