@@ -14,6 +14,8 @@ struct TranscriptView: View {
     /// Where the transcript stands against its end.
     @State private var end = TranscriptEnd.Standing()
     @State private var showAll = false
+    /// The row that was under Show earlier, held where it stood while the earlier items come in.
+    @State private var kept: TranscriptEnd.Kept?
     /// The item a reveal brought into view, lit for a moment.
     @State private var lit: UUID?
     /// What the scroll view last said of itself, kept where reading it draws nothing.
@@ -46,6 +48,8 @@ struct TranscriptView: View {
     /// The room under the last row, a row of its own with a name: the one place in a lazy stack
     /// that is the thread's end whatever the rows above it turn out to measure.
     private static let end = "end"
+    /// The scroll view's content, where a row stands whatever the scroll.
+    private static let thread = "thread"
 
     private static let logger = Logger(subsystem: "com.realmeric.oricode", category: "transcript")
 
@@ -76,7 +80,7 @@ struct TranscriptView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if shown.count < conversation.items.count {
-                    Button("Show \(conversation.items.count - shown.count) earlier") { showAll = true }
+                    Button("Show \(conversation.items.count - shown.count) earlier", action: showEarlier)
                         .buttonStyle(.plain)
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
@@ -101,6 +105,17 @@ struct TranscriptView: View {
                                     .clipShape(.rect(cornerRadius: 14, style: .continuous))
                                     .padding(-8)
                                     .transition(.opacity)
+                            }
+                            if let kept, kept.id == entry.id {
+                                Color.clear.onGeometryChange(for: TranscriptEnd.Kept.Frame.self) {
+                                    .init(screen: $0.frame(in: .scrollView).minY, thread: $0.frame(in: .named(Self.thread)).minY)
+                                } action: { frame in
+                                    if self.kept?.under == nil {
+                                        showEarlier(at: frame)
+                                    } else if let y = self.kept?.scroll(for: frame, visible: content.visible) {
+                                        position.scrollTo(y: y)
+                                    }
+                                }
                             }
                         }
                         .id(entry.id)
@@ -131,6 +146,7 @@ struct TranscriptView: View {
             .column()
             // Under the toolbar's row, and under the title a column beside the open thread has.
             .padding(.top, active ? TitleBar.height : Self.besideTop)
+            .coordinateSpace(.named(Self.thread))
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.links(in: conversation.chat.id))
@@ -148,7 +164,11 @@ struct TranscriptView: View {
             place(reached: reached)
         }
         .onScrollGeometryChange(for: CGFloat.self, of: \.contentSize.height) { content.height = $1 }
-        .onScrollPhaseChange { content.resting = $1 == .idle }
+        .onScrollPhaseChange {
+            content.resting = $1 == .idle
+            // A hand on the scroll has it from there.
+            if $1 == .tracking || $1 == .interacting { kept = nil }
+        }
         .onScrollGeometryChange(for: CGFloat.self, of: \.containerSize.height) { content.visible = $1 }
         // Only what's laid out is growth to tell of: thinking left out, or a call folded into
         // the run above it, adds no row.
@@ -384,6 +404,41 @@ struct TranscriptView: View {
         }
     }
 
+    /// Keeps the row under Show earlier where it stands on screen while the whole thread is
+    /// laid out above it. Scrolled up, the scroll view holds its distance from the top as the
+    /// thread grows, which would put the thread's first item there instead. So the row is
+    /// measured first, then the scroll goes to it, and as it's laid out, and the rows over it
+    /// are measured and move it, it's put back where it stood: for a second, or until a hand
+    /// takes the scroll.
+    private func showEarlier() {
+        let first = TranscriptEntry.fold(shown, thinking: showThinking).first?.id
+        // A run the cut went through is a longer run once it's whole, and starts further up.
+        guard let first, TranscriptEntry.fold(conversation.items, thinking: showThinking).contains(where: { $0.id == first }) else {
+            return showAll = true
+        }
+        kept = TranscriptEnd.Kept(id: first)
+        Task {
+            // A row that isn't laid out is measured nowhere, and the earlier items come in anyway.
+            try? await Task.sleep(for: .milliseconds(100))
+            if kept?.id == first, kept?.under == nil {
+                kept = nil
+                showAll = true
+            }
+        }
+    }
+
+    /// The row under Show earlier was measured where it stands; the earlier items come in.
+    private func showEarlier(at frame: TranscriptEnd.Kept.Frame) {
+        guard let row = kept?.id else { return }
+        kept?.measured(at: frame)
+        showAll = true
+        position.scrollTo(id: row, anchor: .top)
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            if kept?.id == row { kept = nil }
+        }
+    }
+
     /// How long a reveal's move is given to settle, out of the time its item stays lit.
     private static let settling = Duration.milliseconds(400)
 
@@ -441,6 +496,37 @@ enum TranscriptEnd {
         case near
         /// Further up, where something is being read: it stays where it is.
         case away
+    }
+
+    /// A row held where it stood on screen while rows come in above it.
+    struct Kept: Equatable {
+        let id: UUID
+        /// How far under the view's top edge it starts, once it's been measured.
+        private(set) var under: CGFloat?
+        /// Where the scroll stood then.
+        private var from: CGFloat = 0
+
+        /// Where a row starts, under the view's top edge and from the top of the thread.
+        struct Frame: Equatable {
+            var screen: CGFloat
+            var thread: CGFloat
+
+            /// Where the scroll stands.
+            var scroll: CGFloat { thread - screen }
+        }
+
+        mutating func measured(at frame: Frame) {
+            under = frame.screen
+            from = frame.scroll
+        }
+
+        /// Where the scroll goes to put the row back, or nil while it's where it stood. Until the
+        /// scroll to it has moved, the row is where the lazy stack guesses it is, or where it was
+        /// laid out before; out of a view `visible` tall, it's a guess too.
+        func scroll(for frame: Frame, visible: CGFloat) -> CGFloat? {
+            guard let under, abs(frame.scroll - from) >= 0.5, abs(frame.screen) < visible, abs(frame.screen - under) >= 0.5 else { return nil }
+            return max(0, frame.thread - under)
+        }
     }
 
     /// How much of the thread lies under what's showing.

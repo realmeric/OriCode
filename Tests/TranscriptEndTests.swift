@@ -156,6 +156,29 @@ struct TranscriptEndTests {
         #expect(!standing.news)
     }
 
+    @Test func showEarlierPutsTheRowBackWhereItStood() {
+        // The frames a thread of 520 items gave: the row under Show earlier at 87, then the
+        // layout before the scroll and the lazy stack's guess, which are left alone, then the row
+        // where the scroll took it and where the rows measured over it moved it.
+        var kept = TranscriptEnd.Kept(id: UUID())
+        #expect(kept.scroll(for: .init(screen: 87, thread: 87), visible: 684) == nil)
+        kept.measured(at: .init(screen: 87, thread: 87))
+        #expect(kept.scroll(for: .init(screen: 94, thread: 94), visible: 684) == nil)
+        #expect(kept.scroll(for: .init(screen: 1780, thread: 1780), visible: 684) == nil)
+        #expect(kept.scroll(for: .init(screen: 14, thread: 34661), visible: 684) == 34574)
+        #expect(kept.scroll(for: .init(screen: -22, thread: 34625), visible: 684) == 34538)
+        // Back where it stood, to within a pixel, it stays.
+        #expect(kept.scroll(for: .init(screen: 87.25, thread: 34625.75), visible: 684) == nil)
+    }
+
+    @Test func showEarlierFromFurtherDownKeepsItsPlaceToo() {
+        var kept = TranscriptEnd.Kept(id: UUID())
+        kept.measured(at: .init(screen: 57, thread: 87))
+        // Where the scroll was, the row is the earlier layout's still.
+        #expect(kept.scroll(for: .init(screen: 64, thread: 94), visible: 684) == nil)
+        #expect(kept.scroll(for: .init(screen: 14, thread: 34661), visible: 684) == 34604)
+    }
+
     @Test func aRevealThatLandsAtTheEndLeavesNoPill() {
         // An item in the last screenful, or a thread shorter than the window: the scroll view's
         // place is the end before and after, so it says nothing.
