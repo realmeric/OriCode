@@ -139,12 +139,33 @@ struct WitnessCardTests {
         let plain = ReviewLine(kind: .added, text: "\tlet a = 1", old: nil, new: 4)
         #expect(WitnessDiff.row(plain) == plain)
         let minified = WitnessDiff.row(ReviewLine(kind: .added, text: String(repeating: "a", count: 300_000), old: nil, new: 1))
-        #expect(minified.text.count == WitnessDiff.widest)
+        #expect(minified.text.count == WitnessDiff.widest + 1)
+        #expect(minified.text.hasSuffix("a…"))
         #expect(minified.new == 1)
         let broken = WitnessDiff.row(ReviewLine(kind: .deleted, text: "one\u{2028}two\u{0C}three\rfour\r", old: 7, new: nil))
         #expect(broken.text == "one two three four")
         #expect(broken.old == 7)
         #expect(WitnessDiff.row(ReviewLine(kind: .context, text: "let ş = \"ğ\"", old: 1, new: 1)).text == "let ş = \"ğ\"")
+    }
+
+    @Test func aCardsLongLineWrapsWholeWithItsLaterRowsMarked() throws {
+        let long = "let x = [" + String(repeating: "1, ", count: 97) + "0]"
+        #expect(long.count == 302)
+        let diff = try #require(Diff.of(edit([Hunk(oldStart: 10, newStart: 10, lines: [" keep()", "+" + long, " after()"])]), cwd: Self.root))
+        let laid = WitnessDiff.lay(diff, rows: 12)
+        let drawn = WitnessDiff.drawn(laid, digits: laid.digits, columns: 80)
+        let rows = String(drawn.text.characters).components(separatedBy: "\n")
+        // keep(), the long line in four rows of 80, 80, 80 and 62, and after().
+        #expect(rows.count == 6)
+        #expect(rows[1].hasPrefix("11"))
+        #expect(rows[2...4].allSatisfy { $0.hasPrefix(" " + WitnessDiff.wrapMark) })
+        #expect(rows[1].dropFirst(2) + rows[2...4].map { $0.dropFirst(2) }.joined() == long)
+        #expect(drawn.added == [1..<5])
+
+        // Short lines are the rows they were, whatever the width.
+        let short = try #require(Diff.of(edit([Hunk(oldStart: 1, newStart: 1, lines: ["-a", "+b"])]), cwd: Self.root))
+        let shortLaid = WitnessDiff.lay(short, rows: 12)
+        #expect(WitnessDiff.drawn(shortLaid, digits: shortLaid.digits, columns: 20).text == WitnessDiff.drawn(shortLaid, digits: shortLaid.digits).text)
     }
 
     @Test func aCardPairsWordsWithinItsBudgetAndDrawsWhatItCouldNotPair() throws {
