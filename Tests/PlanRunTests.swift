@@ -201,6 +201,30 @@ struct PlanRunTests {
         #expect(model.startingTasks.contains(try task("T4").id))
     }
 
+    @Test func aTaskALimitStoppedStillWorksGoesOnAtTheResetAndItsOwnerHearsIt() throws {
+        UserDefaults.standard.removeObject(forKey: Limit.goOnKey)
+        let (model, lead) = try model()
+        _ = try ask(model, "plan.add", ["tasks": Self.four, "run": true], from: lead)
+        let words = try opened("T2", in: model)
+        words.sessionId = "session"
+        let resetsAt = Date.now.addingTimeInterval(3600)
+        model.route(EngineEvent(name: "limited", threadId: words.id.uuidString,
+                                body: ["resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000), "window": "five_hour"]))
+        for event in done(words, "stop_sequence", replying: "Counting") { model.route(event) }
+        let waiting = try task("T2")
+        #expect(waiting.state == "working" && waiting.note == "Waits on the session limit, which resets at \(Limit.time(resetsAt))")
+        _ = model.conversation(for: lead)
+        #expect(model.goingOn(lead)?.hasPrefix("Plan · 0 of 4 tasks done") == true)
+
+        // The reset comes, the thread goes on by itself, and its owner hears it did.
+        words.resumeAt = Date.now.addingTimeInterval(-60)
+        model.resumeDue()
+        #expect(model.conversation(for: words).running && waiting.note.isEmpty)
+        #expect(acts(model.conversation(for: lead)).last == "Write words.sh went on after the limit reset")
+        for event in done(words, replying: "12 words.") { model.route(event) }
+        #expect(waiting.state == "done")
+    }
+
     @Test func stopOnTheOwnerHoldsItsPlanUntilItWorksAgain() throws {
         let (model, lead) = try model()
         _ = try ask(model, "plan.add", ["tasks": Self.four, "run": true], from: lead)

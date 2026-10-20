@@ -132,7 +132,18 @@ struct HeadsTests {
         #expect(conversation.mainStep(cwd: "/tmp/alpha").tool == "Thinking")
         list(head("a", "agent"), head("b", "agent"), head("c", "command"), in: conversation)
         receive("turn.done", ["stopReason": "end_turn"], in: conversation)
-        #expect(conversation.mainStep(cwd: "/tmp/alpha").tool == "Waiting on 2 agents")
+        #expect(conversation.mainStep(cwd: "/tmp/alpha").tool == "2 agents and a command · goes on when they end")
         #expect(conversation.working)
+    }
+
+    @Test func aWorkflowLeftRunningSaysHowFarItIsUntilATurnStarts() {
+        let conversation = Conversation(chat: chat, context: context)
+        #expect(conversation.goingOn == nil)
+        receive("workflow", ["taskId": "w", "name": "review", "state": "running", "progress": "1 of 3 done · about 20 min left",
+                             "agents": [], "phases": []], in: conversation)
+        list(head("w", "workflow"), in: conversation)
+        #expect(conversation.goingOn == "review · 1 of 3 done · about 20 min left · goes on when it ends")
+        conversation.userSent("Go")
+        #expect(conversation.goingOn == nil)
     }
 }

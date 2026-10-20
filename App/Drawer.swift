@@ -279,8 +279,9 @@ struct Drawer: View {
                     // work would otherwise leave it a word.
                     // A workflow's agent says what it returned, or how it ended.
                     // What waits on you first, since it holds the rest up.
+                    // With its turn over, what it left running and that it goes on after.
                     let below = [missing ? "folder missing" : nil, asking > 0 ? (asking == 1 ? "1 ask waiting" : "\(asking) asks waiting") : nil,
-                                 under > 0 ? "\(under) working" : nil, chat.agentLine].compactMap(\.self)
+                                 under > 0 ? "\(under) working" : nil, chat.agentLine, model.conversations[chat.id]?.goingOn].compactMap(\.self)
                     if !below.isEmpty {
                         Text(below.joined(separator: " · "))
                             .font(.system(size: 11))

@@ -15,6 +15,27 @@ extension AppModel {
         projects.flatMap(\.tasks).filter { $0.owner == owner }
     }
 
+    /// With a thread's turn over, what it started that still runs, in the line above its composer
+    /// and on ⌘⇧I: what it left running, or else the plan it runs while a task's thread works.
+    func goingOn(_ chat: Chat) -> String? {
+        guard let conversation = conversations[chat.id], !conversation.running else { return nil }
+        if let line = conversation.goingOn { return line }
+        let tasks = runTasks(of: chat.id)
+        guard tasks.contains(where: { $0.state == "working" }) else { return nil }
+        return "Plan · \(tasks.count { $0.state == "done" }) of \(tasks.count) tasks done · goes on as each ends"
+    }
+
+    /// A thread a limit stopped has gone on at the reset: a run task it works no longer waits, and
+    /// the thread that opened it, its owner for a task, hears that it went on.
+    func wentOn(_ chat: Chat) {
+        for task in projects.flatMap(\.tasks) where task.thread == chat.id && task.owner != nil && task.state == "working" {
+            task.note = ""
+            task.updatedAt = .now
+        }
+        guard let opener = chat.openedBy.flatMap(self.chat(withID:)) else { return }
+        conversation(for: opener).threadAct(ThreadAct(act: .wentOn, by: false, thread: chat.id, title: chat.title, reason: ""))
+    }
+
     /// Whether a task its plan runs can start now, by what it waits on: each done, its thread's
     /// turn over and its work, from a worktree, merged.
     func startable(_ task: PlanTask) -> Bool {
@@ -83,9 +104,17 @@ extension AppModel {
                 if conversation.endedByItself, !stopped {
                     task.state = "done"
                     if task.note.isEmpty { task.note = Self.firstLine(of: Self.lastText(in: conversation) ?? "Its turn ended with no reply.") }
+                } else if !stopped, !byUser, let resumeAt = conversation.chat.resumeAt {
+                    // A limit stopped it and it goes on by itself at the reset, so it still works,
+                    // and its owner hears once it has gone on (resumeDue).
+                    task.note = "Waits on the \(Limit.name(of: conversation.lastLimitWindow)), which resets at \(Limit.time(resumeAt))"
+                    task.updatedAt = .now
+                    save()
+                    continue
                 } else {
                     task.state = "stuck"
-                    task.note = byUser && !stopped ? Self.stoppedByYou : Self.whyStopped(conversation)
+                    task.note = byUser && !stopped ? Self.stoppedByYou
+                        : conversation.turnLimit.map { "A \(Limit.name(of: $0.window)) stopped its turn, and it won't go on by itself." } ?? Self.whyStopped(conversation)
                 }
                 task.heard = false
                 task.updatedAt = .now

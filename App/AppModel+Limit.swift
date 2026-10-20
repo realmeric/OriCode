@@ -45,6 +45,7 @@ extension AppModel {
             let line = Self.limitLine(conversation.lastLimitWindow)
             conversation.userSent(line)
             startTurn(in: chat, text: line)
+            wentOn(chat)
         }
         scheduleResumes()
     }
@@ -75,5 +76,7 @@ extension AppModel {
         let waited = chat.resumeAt != nil
         withAnimation(Motion.fade) { conversation.cancelResume() }
         if waited, chat.owesOpener == true, !conversation.running, conversation.turnsEnded > 0 { tellOpener(of: chat, stopped: true) }
+        // A run task waiting on the reset won't go on now: it's stuck, and its owner hears.
+        if waited, !conversation.running { planTurnEnded(chat.id) }
     }
 }

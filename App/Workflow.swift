@@ -28,6 +28,8 @@ struct WorkflowRun: Hashable {
     let name: String
     let phases: [String]
     let agents: [Agent]
+    /// How far it is and the time left, in the engine's words: "3 of 8 done · about 12 min left".
+    let progress: String?
     let summary: String?
 
     init(_ body: JSON) {
@@ -46,6 +48,7 @@ struct WorkflowRun: Hashable {
                 lastDetail: agent["lastDetail"]?.string,
                 error: agent["error"]?.string)
         }
+        progress = body["progress"]?.string
         summary = body["summary"]?.string
     }
 

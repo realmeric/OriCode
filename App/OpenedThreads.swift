@@ -673,7 +673,8 @@ struct ThreadAct: Equatable {
     /// brought its work into its own folder. `allowed`, `denied`, `answered` and `passed`: the
     /// opener settled an ask of the thread's or sent it up (K-296).
     /// `stuck`: a task of the plan this thread runs got stuck in the other, and what waits on it won't start (K-297).
-    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed, stuck }
+    /// `wentOn`: the thread a limit stopped went on by itself at the reset (REA-245).
+    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed, stuck, wentOn }
 
     let act: Kind
     /// This thread did it; false when the other did it to this one.
@@ -731,6 +732,8 @@ struct ThreadAct: Equatable {
         case (.passed, false): "\(title) passed this to \(to ?? "you"): \(what)"
         case (.stuck, true): "Stuck on \(what)"
         case (.stuck, false): "\(title) is stuck on \(what)"
+        case (.wentOn, true): "Went on after the limit reset"
+        case (.wentOn, false): "\(title) went on after the limit reset"
         }
         return reason.isEmpty ? done : "\(done) · \(reason)"
     }

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Thread } from "../thread.ts";
-import { workflowShape } from "../workflow.ts";
+import { stampEnds, workflowProgress, workflowShape } from "../workflow.ts";
 
 test("phases and agents come in order, each agent in a state the app draws", () => {
   const shape = workflowShape([
@@ -59,4 +59,37 @@ test("a CLI that exits by itself stops the workflows and heads it had out", asyn
   ]);
   assert.equal(thread.workflows.size, 0);
   assert.equal(thread.heads.size, 0);
+});
+
+test("a run says how far it is by its agents, and the time left once one has ended", () => {
+  const agent = (phase: string, state: string) => ({ type: "workflow_agent", phaseTitle: phase, state, startedAt: 1 });
+  const ends: number[] = [];
+  let shape = workflowShape([agent("Build", "progress"), agent("Build", "progress"), agent("Review", "start")]);
+  stampEnds(shape, ends, 100);
+  assert.equal(workflowProgress(shape, 0, ends, 100), "0 of 3 done · time left: can't tell yet");
+  shape = workflowShape([agent("Build", "done"), agent("Build", "progress"), agent("Review", "start")]);
+  stampEnds(shape, ends, 600);
+  assert.equal(workflowProgress(shape, 0, ends, 600), "1 of 3 done · about 20 min left");
+  assert.equal(workflowProgress(workflowShape([]), 0, [], 0), null);
+});
+
+test("a turn nobody sent says what woke it", async () => {
+  const thread = new Thread("t", "/nowhere/claude") as any;
+  thread.sessionId = "s";
+  async function* cli() {
+    yield { type: "system", subtype: "task_started", task_id: "w", tool_use_id: "call", description: "Review", task_type: "local_workflow", workflow_name: "review", session_id: "s", uuid: "u" };
+    yield { type: "system", subtype: "task_notification", task_id: "w", status: "completed", output_file: "", summary: "", session_id: "s", uuid: "u" };
+    yield { type: "assistant", parent_tool_use_id: null, message: { id: "m", content: [] }, session_id: "s", uuid: "u" };
+  }
+  thread.query = cli();
+  const lines: string[] = [];
+  const write = process.stdout.write;
+  process.stdout.write = ((chunk: string) => (lines.push(chunk), true)) as typeof process.stdout.write;
+  try {
+    await thread.pump(thread.query);
+  } finally {
+    process.stdout.write = write;
+  }
+  const started = lines.map((line) => JSON.parse(line)).find((event) => event.event === "turn.started");
+  assert.equal(started?.woke, "The workflow review finished");
 });

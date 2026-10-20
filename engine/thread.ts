@@ -23,7 +23,7 @@ import { subagentTranscript } from "./follow.ts";
 import { Heads } from "./heads.ts";
 import { asks, told, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
-import { finalShape, workflowShape, type WorkflowShape } from "./workflow.ts";
+import { finalShape, stampEnds, workflowProgress, workflowShape, type WorkflowShape } from "./workflow.ts";
 
 /// What an `effort` event tells the app: the level the session sends, null for none, and
 /// whether it runs as Ultracode.
@@ -105,7 +105,11 @@ export class Thread implements Session {
   /// Workflows the thread started, by task, with the call that started them, their last snapshot
   /// and the folder their agents' transcripts are written to, which the call's result names. One
   /// the CLI has said is over stays until its notification brings the run's last snapshot.
-  private workflows = new Map<string, { toolUseId: string | null; name: string; shape: WorkflowShape; transcriptDir: string | null; ended: boolean }>();
+  /// `began` and `ends`, in seconds, are when it started and when each of its agents was seen over.
+  private workflows = new Map<
+    string,
+    { toolUseId: string | null; name: string; shape: WorkflowShape; transcriptDir: string | null; ended: boolean; began: number; ends: number[] }
+  >();
   /// The Task subagents the thread's own loop started, by task, each a thread under this one in the
   /// app, with where the CLI writes its transcript. One the CLI has said is over stays until its
   /// notification brings what it returned.
@@ -114,6 +118,10 @@ export class Thread implements Session {
   /// until the CLI says how each ended. Kept here and not read off the heads, which let a
   /// background task go as soon as the CLI stops listing it, before its notification.
   private commandCalls = new Map<string, string>();
+  /// What of the thread's ended last while no turn ran, and the turn nobody sent that it woke,
+  /// which turn.started names as `woke`.
+  private ended: string | undefined;
+  private woke: string | undefined;
   private backgroundCalls = new Set<string>();
   /// A subagent's calls the app was told of and whose results it's owed, each with its tool.
   private subcalls = new Map<string, string>();
@@ -241,6 +249,7 @@ export class Thread implements Session {
     }
     log(`send thread=${this.id} model=${params.model ?? "default"} effort=${params.effort ?? "default"} mode=${params.permissionMode}`);
     this.running = true;
+    this.ended = undefined;
     this.started = false;
     this.interrupted = false;
     this.errored = false;
@@ -527,7 +536,15 @@ export class Thread implements Session {
       case "task_started":
         if (message.task_type === "local_workflow") {
           const name = message.workflow_name ?? message.description;
-          this.workflows.set(message.task_id, { toolUseId: message.tool_use_id ?? null, name, shape: { phases: [], agents: [] }, transcriptDir: null, ended: false });
+          this.workflows.set(message.task_id, {
+            toolUseId: message.tool_use_id ?? null,
+            name,
+            shape: { phases: [], agents: [] },
+            transcriptDir: null,
+            ended: false,
+            began: Date.now() / 1000,
+            ends: [],
+          });
           this.tellWorkflow(message.task_id, "running");
         }
         // A subagent's own subagents stay calls in its transcript.
@@ -542,11 +559,13 @@ export class Thread implements Session {
         const progress = (message as { workflow_progress?: unknown }).workflow_progress;
         if (workflow && Array.isArray(progress)) {
           workflow.shape = workflowShape(progress);
+          stampEnds(workflow.shape, workflow.ends, Date.now() / 1000);
           this.tellWorkflow(message.task_id, "running");
         }
         break;
       }
       case "task_notification":
+        if (!this.running) this.ended = this.endedWhat(message.task_id, message.status, message.summary) ?? this.ended;
         if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
         this.commandEnded(message.task_id, message.tool_use_id, message.status);
         if (this.workflows.has(message.task_id)) void this.endWorkflow(message.task_id, message.status, message.summary, message.output_file || null);
@@ -578,6 +597,17 @@ export class Thread implements Session {
     return this.heads.track(message);
   }
 
+  /// Something the thread left running that has ended, in words: "The workflow review finished".
+  private endedWhat(taskId: string, status: string, summary: string): string | undefined {
+    const how = status === "completed" ? "finished" : status === "failed" ? "failed" : "was stopped";
+    const workflow = this.workflows.get(taskId);
+    if (workflow) return `The workflow ${workflow.name} ${how}`;
+    const subagent = this.subagents.get(taskId);
+    if (subagent) return `${subagent.label} ${how}`;
+    if (this.commandCalls.has(taskId)) return summary || `A background command ${how}`;
+    return undefined;
+  }
+
   /// A subagent the thread's loop started, or one it picked up again, which the app makes a thread
   /// under this one. Its transcript is wherever the CLI keeps this session.
   private subagentStarted(taskId: string, label: string, sessionId: string | undefined): void {
@@ -599,7 +629,8 @@ export class Thread implements Session {
   private tellWorkflow(taskId: string, state: string, summary?: string): void {
     const workflow = this.workflows.get(taskId);
     if (!workflow) return;
-    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, summary: summary ?? null, transcriptDir: workflow.transcriptDir });
+    const progress = workflowProgress(workflow.shape, workflow.began, workflow.ends, Date.now() / 1000);
+    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, progress, summary: summary ?? null, transcriptDir: workflow.transcriptDir });
   }
 
   /// A workflow's end, with what every agent returned: the snapshots are thinned out while it
@@ -609,7 +640,10 @@ export class Thread implements Session {
     if (!workflow) return;
     const shape = await finalShape(outputFile, workflow.transcriptDir);
     if (this.workflows.get(taskId) !== workflow) return;
-    if (shape) workflow.shape = shape;
+    if (shape) {
+      workflow.shape = shape;
+      stampEnds(shape, workflow.ends, Date.now() / 1000);
+    }
     this.tellWorkflow(taskId, status, summary);
     this.workflows.delete(taskId);
   }
@@ -640,6 +674,7 @@ export class Thread implements Session {
   /// between the two turns and reaches the second.
   private begin(stopped = false): void {
     this.running = true;
+    this.ended = undefined;
     this.started = false;
     this.interrupted = stopped;
     this.errored = false;
@@ -742,10 +777,15 @@ export class Thread implements Session {
       this.begin(this.interrupted);
     }
     // A background agent reporting back makes the CLI start a turn nobody sent.
-    if (!this.running && (message.type === "stream_event" || message.type === "assistant") && !message.parent_tool_use_id) this.begin();
+    if (!this.running && (message.type === "stream_event" || message.type === "assistant") && !message.parent_tool_use_id) {
+      const ended = this.ended;
+      this.begin();
+      this.woke = ended;
+    }
     if (this.running && !this.started && this.sessionId) {
       this.started = true;
-      event("turn.started", { threadId: this.id, sessionId: this.sessionId });
+      event("turn.started", { threadId: this.id, sessionId: this.sessionId, ...(this.woke ? { woke: this.woke } : {}) });
+      this.woke = undefined;
     }
     switch (message.type) {
       case "stream_event": {

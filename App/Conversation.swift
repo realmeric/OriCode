@@ -925,6 +925,10 @@ final class Conversation {
                 chat.sessionId = sessionId
                 unsaved = true
             }
+            // A turn nobody sent says what it left running ended and woke it.
+            if let woke = event.body["woke"]?.string {
+                record("note", ["event": "note", "text": .string("\(woke), so the thread goes on.")])
+            }
         case "text", "thinking":
             let delta = event.body["delta"]?.string ?? ""
             if let open, open.kind == event.name {

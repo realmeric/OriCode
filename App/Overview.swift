@@ -359,11 +359,13 @@ extension AppModel {
         if let resumeAt = chat.resumeAt {
             return OverviewStatus(state: .waiting, step: "Goes on at \(Limit.time(resumeAt))")
         }
+        // A plan it runs goes on while a task's thread works, which its line says over the turn's.
+        let going = goingOn(chat)
         switch outcomes[chat.id]?.state {
-        case .done: return OverviewStatus(state: .done, step: outcomes[chat.id]?.line)
-        case .stopped: return OverviewStatus(state: .stopped, step: outcomes[chat.id]?.line)
-        case .failed: return OverviewStatus(state: .failed, step: outcomes[chat.id]?.line)
-        case nil: return OverviewStatus(state: .idle, step: nil)
+        case .done: return OverviewStatus(state: .done, step: going ?? outcomes[chat.id]?.line)
+        case .stopped: return OverviewStatus(state: .stopped, step: going ?? outcomes[chat.id]?.line)
+        case .failed: return OverviewStatus(state: .failed, step: going ?? outcomes[chat.id]?.line)
+        case nil: return OverviewStatus(state: .idle, step: going)
         }
     }
 
