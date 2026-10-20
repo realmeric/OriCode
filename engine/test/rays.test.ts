@@ -12,7 +12,7 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { toolsConfig } from "../codex.ts";
 import { brevity, drawing, scratch, told } from "../provider.ts";
 import { Thread } from "../thread.ts";
-import { choosingLead, opening, suggesting } from "../threads.ts";
+import { choosingLead, menuTools, opening, suggesting } from "../threads.ts";
 import { lead } from "../ultracode.ts";
 import { engineWith, sandbox, standInCli } from "./engine.ts";
 
@@ -121,7 +121,7 @@ test("a head starts workers on Codex and OpenCode, reads their status and result
   assert.equal(init.protocolVersion, "2025-06-18");
   assert.deepEqual(
     (await mcp(url, "tools/list")).tools.map((tool: { name: string }) => tool.name),
-    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task", "wait_plan"],
+    ["list_agents", "start_worker", "worker_status", "worker_result", "message_worker", "stop_worker", "merge_worker", "open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task", "wait_plan", ...menuTools.map((tool) => tool.name)],
   );
 
   const from = engine.lines.length;

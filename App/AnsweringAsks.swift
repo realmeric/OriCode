@@ -30,7 +30,7 @@ extension AppModel {
     /// Seeing and using the Mac, a finished plan and what a worker, subagent or workflow agent
     /// asks stay the user's.
     static func answerable(_ ask: PendingAsk) -> Bool {
-        ask.agentID == nil && ask.worker == nil && ask.app == nil && ask.toolKind != .planning
+        ask.agentID == nil && ask.worker == nil && ask.app == nil && ask.loosening == nil && ask.toolKind != .planning
     }
 
     /// The thread an ask is with now, while its conversation is still here: one deleted or let go

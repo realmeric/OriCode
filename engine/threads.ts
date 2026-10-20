@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { emit } from "./wire.ts";
+import { asks } from "./provider.ts";
+import { emit, event } from "./wire.ts";
 
 // The tools an agent has for the user's threads, served beside a head's worker tools from the
 // same MCP server (rays.ts). The app keeps the threads, so a call that makes, sends to, waits on
@@ -197,7 +198,8 @@ export const parts =
 /// The second half: what the tools do to the user's threads, which every session with them hears.
 export const reach =
   "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, answer_ask answers what one you set going asks, stop_thread stops one, merge_thread brings the work of one you opened with a worktree into your folder, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, add_tasks, claim_task and update_task keep the plan, and add_tasks with `run` runs its tasks as threads under you, which wait_plan waits on. You decide when to use them. " +
-  "Each open, message and stop takes a one-line reason, which both threads show the user. While your turn runs, what a thread you set going asks comes to you before the user, in wait_thread's answer: allow what your own mode would allow, answer its questions from what you know, deny what shouldn't happen, and pass up what your mode can't allow or you aren't sure of, each with answer_ask and a reason. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why.";
+  "Each open, message and stop takes a one-line reason, which both threads show the user. While your turn runs, what a thread you set going asks comes to you before the user, in wait_thread's answer: allow what your own mode would allow, answer its questions from what you know, deny what shouldn't happen, and pass up what your mode can't allow or you aren't sure of, each with answer_ask and a reason. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why. " +
+  "Beyond threads, you do in OriCode what the user does from its menus, ⌘K and Settings, with tools named as those name them: rename_thread, archive_thread, restore_thread, delete_thread, pin_thread, open_beside, close_other_side, show, change_thread, change_setting, add_project, run_command and read_oricode, each with a one-line reason the user reads in this thread. To have the user look at something, point at it: show the review on the file, show the file, or open_beside the thread. What loosens what guards the user is theirs to allow, and OriCode asks them; tightening is yours.";
 
 /// What every session with the tools is told of them, where its agent has somewhere to hear it:
 /// that it decides, asks where it isn't sure, and keeps to the project's instruction file.
@@ -255,4 +257,187 @@ export function appReplied({ requestId, result, error }: { requestId: string; re
   clearTimeout(waiting.timer);
   if (error) waiting.fail(new Error(error));
   else waiting.done(result ?? {});
+}
+
+// What the user does from OriCode's menus, ⌘K and Settings, as tools named the way those name it
+// (K-303). Each goes to the app as one `oricode.act` event with the tool's name and arguments, and
+// the app does it as the menu would, with a quiet line in the asking thread. What would loosen what
+// guards the user, a looser permission mode, a higher budget or ceiling, a command run where the
+// thread's mode would ask, the app answers with the change instead, for the user to allow: the
+// engine asks them in the thread, and only their Allow sends the act again with `allowed`.
+// Tightening is the agent's own call. No tool reads or sets a login or an API key.
+
+const optionalThread = { type: "string", description: "The thread's id, from list_threads. This thread when left out." };
+
+export const menuTools = [
+  {
+    name: "rename_thread",
+    description: "Rename a thread, as Rename Thread… does. The name is what the user sees in their list.",
+    inputSchema: { type: "object", properties: { thread: optionalThread, title: { type: "string", description: "The new name, a few words." }, reason }, required: ["title", "reason"] },
+  },
+  {
+    name: "archive_thread",
+    description:
+      "Archive a thread, as Archive Thread does: it leaves the list and keeps everything, its transcript, its session and its worktree, and the threads it opened go with it. A thread at work, or with threads under it at work, is stopped first with stop_thread. restore_thread brings it back.",
+    inputSchema: { type: "object", properties: { thread, reason }, required: ["thread", "reason"] },
+  },
+  {
+    name: "restore_thread",
+    description: "Bring an archived thread back into the list, as Restore Thread does, with the threads archived with it.",
+    inputSchema: { type: "object", properties: { thread, reason }, required: ["thread", "reason"] },
+  },
+  {
+    name: "delete_thread",
+    description:
+      "Ask the user to delete a thread, as Delete Thread… does: OriCode puts its own confirmation in front of them, with what removing its worktree would lose, and the thread goes only if they confirm. The answer says they were asked, not that it's gone.",
+    inputSchema: { type: "object", properties: { thread, reason }, required: ["thread", "reason"] },
+  },
+  {
+    name: "pin_thread",
+    description: "Pin a thread at the top of the list, or unpin it, as Pin Thread and Unpin Thread do.",
+    inputSchema: { type: "object", properties: { thread: optionalThread, pinned: { type: "boolean", description: "true pins it, false unpins it." }, reason }, required: ["pinned", "reason"] },
+  },
+  {
+    name: "open_beside",
+    description:
+      "Put a thread beside the one the user has open, as Open Beside… does, so they watch it while they write in theirs. The keyboard stays where it is. It's how to show the user a thread.",
+    inputSchema: { type: "object", properties: { thread, reason }, required: ["thread", "reason"] },
+  },
+  {
+    name: "close_other_side",
+    description: "Take the thread beside the open one out of the window, as Close Other Side does. It goes on with whatever it was doing.",
+    inputSchema: { type: "object", properties: { reason }, required: ["reason"] },
+  },
+  {
+    name: "show",
+    description:
+      "Bring something up in front of the user, as its menu item would, so \"look at this\" points at the thing itself. `review`: Review Changes, landing on `path` at `line` when given; it shows the changes of the thread the user has open, so this thread must be that one. `file`: a file in the viewer, from this thread's folder, at `line`. `everything_running`: Show Everything Running (⌘⇧I), every thread and plan at work. `heads`: Show Heads, the open thread's head and workers. `threads`: Show Threads, the list. `settings`: Settings, on `pane`. `shortcuts`: Keyboard Shortcuts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        what: { type: "string", enum: ["review", "file", "everything_running", "heads", "threads", "settings", "shortcuts"] },
+        path: { type: "string", description: "For review or file: the file, relative to this thread's folder or in full." },
+        line: { type: "number", description: "For review or file: the line to land on." },
+        pane: { type: "string", enum: ["general", "agents", "mcp", "conversation", "sourceControl", "archive", "activity", "notifications", "actions", "shortcuts", "about"], description: "For settings: which pane." },
+        reason,
+      },
+      required: ["what", "reason"],
+    },
+  },
+  {
+    name: "change_thread",
+    description:
+      "Change what the Thread menu sets for a thread: its model, effort, fast mode, Workflows and permission mode, each held from its next message. A model is one of the thread's own agent's; a thread on another agent is open_thread's. " +
+      "A tighter permission mode is yours to set. A looser one, on this thread or another, is the user's: OriCode asks them in this thread and the call waits for their answer. If they say no, don't ask again this turn.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        thread: optionalThread,
+        model: { type: "string", description: "A model of the thread's agent, by its id." },
+        effort: { type: "string", description: "One of the model's levels, or default." },
+        fast_mode: { type: "boolean" },
+        workflows: { type: "boolean" },
+        permission_mode: { type: "string", description: "plan, default (Ask), acceptEdits, auto or bypassPermissions (Don't ask), among the agent's own." },
+        reason,
+      },
+      required: ["reason"],
+    },
+  },
+  {
+    name: "change_setting",
+    description:
+      "Change one of OriCode's Settings, by the name read_oricode lists it under. One that loosens what guards the user, a higher Spend per thread or none, more Threads working at once, Threads answer first on, a looser permission mode for new threads, is theirs: OriCode asks them in this thread and the call waits for their answer. Tightening one is yours. " +
+      "Logins, API keys, an agent's CLI, MCP servers, shortcuts, actions and seeing and using the Mac aren't here: those the user changes in Settings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        setting: { type: "string", description: "The setting's name from read_oricode's `settings`, such as threads_working_at_once." },
+        value: { description: "Its new value, of the kind read_oricode shows: true or false, a number or a word. For keep_heads_off, {\"model\": \"codex/gpt-5.5\", \"off\": true}; for agent_on, {\"agent\": \"codex\", \"on\": false}." },
+        reason,
+      },
+      required: ["setting", "value", "reason"],
+    },
+  },
+  {
+    name: "add_project",
+    description: "Add a folder on this Mac to the user's projects, as Add Project… does, without moving the user off the thread they have open. A folder that's already one stays as it is.",
+    inputSchema: { type: "object", properties: { folder: { type: "string", description: "The folder's full path." }, reason }, required: ["folder", "reason"] },
+  },
+  {
+    name: "run_command",
+    description:
+      "Run a command in a terminal block in this thread, as ⌘K's Run a command… does, for something the user should watch run: a dev server, a log, a long build. It runs in this thread's folder on its own, and its output reaches you with the user's next message; your own shell is still the way for output you need now. " +
+      "Where this thread's permission mode would ask before a command, OriCode asks the user in this thread first and the call waits for them.",
+    inputSchema: { type: "object", properties: { command: { type: "string", description: "One shell line." }, reason }, required: ["command", "reason"] },
+  },
+  {
+    name: "read_oricode",
+    description:
+      "Read what OriCode shows and how it's set: the thread open and the one beside it, whether the list, the review, a file, Everything Running or Heads is up, and every setting change_setting takes, with its value. It reads and changes nothing.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+  },
+];
+
+export const menuToolNames = new Set(menuTools.map((tool) => tool.name));
+
+/// A menu tool's act the user allows first: the app answers with `change`, the engine asks the user
+/// in the thread with an Allow and a Deny, as a Mac ask is, and an Allow sends the act again.
+export class UserAsks {
+  private waiting = new Map<string, (allow: boolean) => void>();
+  private threadId: string;
+
+  constructor(threadId: string) {
+    this.threadId = threadId;
+  }
+
+  async act(name: string, args: Record<string, unknown>): Promise<unknown> {
+    const reason = String(args.reason ?? "").trim();
+    if (!reason) throw new Error("Say why in `reason`, one line the user reads.");
+    const first = (await this.send(name, args, false)) as { change?: string };
+    if (typeof first?.change !== "string") return first;
+    if (!(await this.ask(first.change, reason))) throw new Error(`The user didn't allow it: ${first.change}. Don't ask again in this turn unless they tell you to.`);
+    return await this.send(name, args, true);
+  }
+
+  /// The turn ended with an ask still waiting: the call is gone, so the card is too.
+  turnEnded(): void {
+    for (const [requestId, settle] of this.waiting) {
+      if (!asks.delete(requestId)) continue;
+      event("ask.cancelled", { threadId: this.threadId, requestId });
+      settle(false);
+    }
+  }
+
+  private async send(tool: string, args: Record<string, unknown>, allowed: boolean): Promise<unknown> {
+    try {
+      return await askApp("oricode.act", { threadId: this.threadId, tool, args, ...(allowed ? { allowed: true } : {}) });
+    } catch (error) {
+      if (error instanceof Unanswered) throw new Error("OriCode took too long to answer. It may have done it, so read_oricode or list_threads before you try again.");
+      throw error;
+    }
+  }
+
+  private ask(change: string, reason: string): Promise<boolean> {
+    const requestId = randomUUID();
+    return new Promise((done) => {
+      const settle = (allow: boolean) => {
+        this.waiting.delete(requestId);
+        done(allow);
+      };
+      this.waiting.set(requestId, settle);
+      asks.set(requestId, { threadId: this.threadId, answer: ({ allow }) => settle(allow), stop: () => settle(false) });
+      event("ask", {
+        threadId: this.threadId,
+        requestId,
+        kind: "permission",
+        tool: "OriCode",
+        input: { change, reason },
+        choices: [
+          { id: "deny", name: "Deny", kind: "reject_once" },
+          { id: "allow", name: "Allow", kind: "allow_once" },
+        ],
+      });
+    });
+  }
 }

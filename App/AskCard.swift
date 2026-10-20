@@ -35,7 +35,7 @@ struct AskCard: View {
     }
 
     private var settledLine: String {
-        let what = ask.kind == "question" ? "Question" : ask.app.map { "See and use \($0)" } ?? ToolSummary.line(for: ask.call, cwd: cwd)
+        let what = ask.kind == "question" ? "Question" : ask.app.map { "See and use \($0)" } ?? ask.loosening ?? ToolSummary.line(for: ask.call, cwd: cwd)
         // Answered by the thread that set this one going, which the line names with its reason.
         if let by = ask.answeredBy, ask.state != .cancelled {
             let done = ask.kind == "question" ? "\(by) answered" : ask.state == .allowed ? "\(by) allowed" : "\(by) denied"
@@ -145,6 +145,7 @@ private struct PermissionForm: View {
 
     private var title: String {
         if let app = ask.app { return "Let this thread see and use \(app)?" }
+        if let change = ask.loosening { return "\(change)?" }
         return switch ask.toolKind {
         case .run: "Run a command?"
         case .edit: "Edit \(path)?"
@@ -163,6 +164,11 @@ private struct PermissionForm: View {
     private var detail: some View {
         if let app = ask.app {
             Text("It can take pictures of \(app)'s windows and click, type and scroll in them, until OriCode quits.")
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if ask.loosening != nil {
+            Text(ask.input["reason"]?.string ?? "")
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -132,6 +132,9 @@ struct PendingAsk: Hashable {
     /// The app an agent asks to see and use, on an ask of the engine's own (K-290).
     var app: String? { tool == "Mac" ? input["app"]?.string : nil }
 
+    /// What a menu tool would loosen, on an ask of the engine's own, which only the user answers (K-303).
+    var loosening: String? { tool == "OriCode" ? input["change"]?.string : nil }
+
     /// The call it asks about, as a line would show it.
     var call: ToolCall {
         ToolCall(toolUseId: toolUseId ?? "", name: tool, input: input, declared: declared, view: view)

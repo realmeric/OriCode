@@ -12,7 +12,7 @@ import { describe } from "./thread.ts";
 import { Hands, isMacTool, macTools, Pictured } from "./mac.ts";
 import { planTools } from "./plan.ts";
 import { begin, cameIn, conflictsOf, ignoredLeft, keep, marked, snapshot, summary, undo, type Counted, type Merge } from "./merge.ts";
-import { answerAsk, askApp, finishMerge, listThreads, longestTurnWait, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, waitThread } from "./threads.ts";
+import { answerAsk, askApp, finishMerge, listThreads, longestTurnWait, menuToolNames, menuTools, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, UserAsks, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
@@ -345,6 +345,8 @@ export class Rays {
   /// thread's calls on it with the apps it was let use.
   private mac = false;
   private hands: Hands;
+  /// What the menu's tools do, and the user's answers to what they loosen.
+  private menu: UserAsks;
   /// A merge that met a conflict, until finish_merge finishes or undoes it or the turn ends, with
   /// the side named for each conflict git couldn't mark.
   private merging: { merge: Merge; name: string; who: Record<string, unknown>; done: (files: Counted[]) => Promise<Record<string, unknown>>; kept: Set<string> } | undefined;
@@ -362,12 +364,14 @@ export class Rays {
     this.path = `/${randomUUID()}`;
     this.url = `http://127.0.0.1:${port}${this.path}`;
     this.hands = new Hands(threadId);
+    this.menu = new UserAsks(threadId);
     // The thread's own `heads` go out with its workers after them.
     tap(threadId, (name, fields) => {
       if (name === "turn.started") this.suggested = 0;
       if (name === "turn.done") {
         this.tally(typeof fields.costUSD === "number" ? fields.costUSD : 0);
         this.hands.turnEnded();
+        this.menu.turnEnded();
         this.turns += 1;
         void this.undoOpen("the turn ended");
       }
@@ -407,7 +411,7 @@ export class Rays {
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, answerAsk, stopThread, mergeThread, finishMerge, suggestThread, listThreads, readThread, ...planTools, ...(this.mac ? macTools : [])] } };
+        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, answerAsk, stopThread, mergeThread, finishMerge, suggestThread, listThreads, readThread, ...planTools, ...menuTools, ...(this.mac ? macTools : [])] } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
@@ -487,6 +491,7 @@ export class Rays {
       case "update_task":
         return this.keep("plan.update", { ...pick(args, ["task", "state", "note", "title", "done"]), ...(Array.isArray(args.waitsOn) ? { waitsOn: args.waitsOn.map(String) } : {}) });
       default:
+        if (menuToolNames.has(name)) return this.menu.act(name, args);
         return Promise.reject(new Error(`OriCode has no tool called ${name}.`));
     }
   }

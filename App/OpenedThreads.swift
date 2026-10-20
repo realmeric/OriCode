@@ -102,7 +102,7 @@ extension AppModel {
     }
 
     /// An event that asks the app for something and waits on its answer.
-    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.answer", "thread.stop", "thread.merge", "thread.merged", "threads.list", "thread.read"]).union(planAsks)
+    static let asks = Set(["thread.open", "thread.message", "thread.wait", "thread.answer", "thread.stop", "thread.merge", "thread.merged", "threads.list", "thread.read", "oricode.act"]).union(planAsks)
 
     func answerTool(_ event: EngineEvent, from thread: UUID) {
         guard let requestId = event.body["requestId"]?.string else { return }
@@ -138,6 +138,8 @@ extension AppModel {
             return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
         case "thread.read":
             return try await readThread(event.body["thread"]?.string ?? "", before: event.body["before"]?.int, for: thread)
+        case "oricode.act":
+            return try await menuAct(event.body, from: thread)
         case "plan.wait":
             return try await waitPlan(from: thread)
         case "plan.add" where event.body["run"]?.bool == true:
@@ -674,7 +676,8 @@ struct ThreadAct: Equatable {
     /// opener settled an ask of the thread's or sent it up (K-296).
     /// `stuck`: a task of the plan this thread runs got stuck in the other, and what waits on it won't start (K-297).
     /// `wentOn`: the thread a limit stopped went on by itself at the reset (REA-245).
-    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed, stuck, wentOn }
+    /// `did`: one of the menu's acts (K-303), `what` saying it.
+    enum Kind: String { case opened, messaged, stopped, stoppedWith, merged, allowed, denied, answered, passed, stuck, wentOn, did }
 
     let act: Kind
     /// This thread did it; false when the other did it to this one.
@@ -734,6 +737,8 @@ struct ThreadAct: Equatable {
         case (.stuck, false): "\(title) is stuck on \(what)"
         case (.wentOn, true): "Went on after the limit reset"
         case (.wentOn, false): "\(title) went on after the limit reset"
+        case (.did, true): what
+        case (.did, false): "\(title): \(what)"
         }
         return reason.isEmpty ? done : "\(done) · \(reason)"
     }

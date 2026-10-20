@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { told } from "../provider.ts";
-import { fromThread, leading, mostSuggested, opening, suggesting } from "../threads.ts";
+import { fromThread, leading, menuTools, mostSuggested, opening, suggesting } from "../threads.ts";
 import { engineWith, sandbox } from "./engine.ts";
 
 async function mcp(url: string, method: string, params: object = {}): Promise<any> {
@@ -52,7 +52,7 @@ test("a thread with no rays has the thread tools alone, is told it decides, and 
   assert.equal(started.developerInstructions, told(`${opening}\n\n${suggesting}`));
   assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, `${opening}\n\n${suggesting}`);
   const tools = (await mcp(url, "tools/list")).tools;
-  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task", "wait_plan"]);
+  assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task", "wait_plan", ...menuTools.map((tool) => tool.name)]);
   assert.match(tools[0].description, /Open one when you judge the work wants it/);
   assert.doesNotMatch(tools[0].description, /asked|own words/);
   assert.deepEqual(tools[0].inputSchema.required, ["title", "message", "reason"]);
