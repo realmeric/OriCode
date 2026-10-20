@@ -87,6 +87,10 @@ final class Chat {
     /// The thread that opened it, through open_thread, when one did: its first turn's end is told
     /// to that thread, and the drawer lists it under that thread.
     var openedBy: UUID?
+    /// Whether that thread is still owed the line its first turn's end gives: true from the open
+    /// until it's stored, through a first turn a limit stopped and the thread waits out, then
+    /// false. Nil for a thread opened before a line could wait, which tells at its first footer.
+    var owesOpener: Bool?
     /// The thread whose open_thread or message_thread started its latest turn, nil when the user
     /// did: Stop on that thread stops the turn, where a turn the user started stays theirs.
     var turnFrom: UUID?

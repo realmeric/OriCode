@@ -17,8 +17,7 @@ test("a limit with room left, or one that doesn't say when it resets, is no reas
 });
 
 /// The events a thread sends for the messages the CLI sends it, with nothing started.
-function eventsFor(messages: object[]): Record<string, any>[] {
-  const thread = new Thread("t", "/nowhere/claude") as any;
+function eventsFor(messages: object[], thread: any = new Thread("t", "/nowhere/claude")): Record<string, any>[] {
   thread.running = true;
   thread.sessionId = "s";
   const lines: string[] = [];
@@ -60,6 +59,21 @@ test("a turn the session limit refused says when it can go on, and nothing about
     ["limited", 1790281800000, "five_hour"],
     ["turn.done", undefined, undefined],
   ]);
+});
+
+// The app tells a thread's opener from these two turns: that it waits, and then that it finished.
+test("a first turn the session limit stopped says so before its end, and the turn after the reset ends with no limit", () => {
+  const thread = new Thread("t", "/nowhere/claude");
+  const limit = { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: 1790281800, rateLimitType: "five_hour" } };
+  const first = eventsFor([limit, refusal, result], thread).filter((event) => event.event !== "limits");
+  assert.deepEqual(first.map((event) => [event.event, event.resetsAt, event.window]), [
+    ["limited", 1790281800000, "five_hour"],
+    ["turn.done", undefined, undefined],
+  ]);
+  const allowed = { type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: 1790299800, rateLimitType: "five_hour" } };
+  const reply = { ...refusal, error: undefined, message: { ...refusal.message, id: "m2", content: [{ type: "text", text: "Renamed it." }] } };
+  const second = eventsFor([allowed, reply, { ...result, is_error: false, stop_reason: "end_turn" }], thread).filter((event) => event.event !== "limits");
+  assert.deepEqual(second.map((event) => [event.event, event.stopReason]), [["turn.done", "end_turn"]]);
 });
 
 test("a refusal with no limit behind it is Claude slowing requests for a moment", () => {

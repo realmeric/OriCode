@@ -82,6 +82,19 @@ test("a thread with no rays has the thread tools alone, is told it decides, and 
   await engine.end();
 });
 
+// The app tells a thread's opener at once when its first send is refused, so the engine must
+// answer that send with the error and start nothing it would later end.
+test("a first send the engine refuses is the send's error, and no turn of it starts or ends", async (t) => {
+  const { engine, turn } = await codex(t);
+  const from = engine.lines.length;
+  const reply = await engine.request("send", { threadId: "opened", cwd: "/nowhere/at/all", text: "Rename sum.txt.", permissionMode: "default", provider: "codex" });
+  assert.match(reply.error, /isn't where it was/);
+  // Another thread's whole turn later, still nothing of it.
+  await turn("parent");
+  assert.deepEqual(engine.lines.slice(from).filter((line) => line.threadId === "opened" && line.event), []);
+  await engine.end();
+});
+
 test("a turn opens as many threads as the app lets it, which is the app's ceiling to keep", async (t) => {
   const { engine, turn, starts } = await codex(t);
   await turn("parent");

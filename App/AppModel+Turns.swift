@@ -179,7 +179,6 @@ extension AppModel {
     /// Hands a message the transcript already shows, or one it needn't, to the thread's session
     /// with the thread's model, level, mode and speed.
     func startTurn(in chat: Chat, text: String, images: [ImageAttachment] = [], allowing grant: PendingAsk? = nil, from sender: Chat? = nil) {
-        let conversation = conversation(for: chat)
         holdWhileWorking()
         // The commands run from the shell prompt since Claude last read them go first.
         let (text, readShells) = withShells(text, in: chat)
@@ -191,12 +190,7 @@ extension AppModel {
                 _ = try await engine.request("send", .object(params))
                 readShells()
             } catch {
-                conversation.sendFailed(error.localizedDescription)
-                turnEnded(chat.id)
-                holdWhileWorking()
-                // A queued message the engine turned down ends the thread's work, and the turn
-                // before it held back its Finished for it.
-                if isAway(chat) { notifier.post(title: chat.title, body: error.localizedDescription, chatID: chat.id) }
+                sendRefused(in: chat, error.localizedDescription)
             }
         }
     }

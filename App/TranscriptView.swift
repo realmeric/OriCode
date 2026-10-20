@@ -812,8 +812,8 @@ struct ItemView: View {
             NearLimitLine(window: window, used: used, resetsAt: resetsAt, said: said)
         case .shell(let id, let run):
             ShellBlockView(id: id, run: run)
-        case .opened(_, let opened, let title, let finished):
-            OpenedLine(thread: opened, title: title, finished: finished, parent: thread)
+        case .opened(_, let opened, let title, let finished, let resetsAt, let window):
+            OpenedLine(thread: opened, title: title, finished: finished, resetsAt: resetsAt, window: window, parent: thread)
         case .suggested(_, let title, let prompt):
             SuggestedThread(title: title, prompt: prompt, thread: thread)
         case .act(_, let other, let text):

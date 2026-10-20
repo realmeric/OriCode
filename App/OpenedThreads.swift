@@ -303,6 +303,7 @@ extension AppModel {
         chat.provider = opening.agent.id
         chat.model = opening.model
         chat.openedBy = parent.id
+        chat.owesOpener = true
         // Beside its parent it works where the parent does. A parent's worktree stays the
         // parent's, so deleting the opened thread never takes it away, and becomes this thread's
         // when the parent is deleted first.
@@ -508,19 +509,49 @@ extension AppModel {
     }
 
     /// The first turn of a thread another opened has ended: that thread gets its one line, from
-    /// the turn.done that ended it. A parent not in memory gets it in the store alone, after its
+    /// the turn.done that ended it. A first turn a limit stopped, when the thread goes on by itself
+    /// at the reset, gives a line that it waits and until when, and the turn that ends after the
+    /// reset the ordinary one. `stopped` is a first turn that won't come: a send the engine refused,
+    /// or a wait the user called off. A parent not in memory gets it in the store alone, after its
     /// last event, and its transcript stays unread.
-    func tellOpener(of chat: Chat) {
-        guard let opener = chat.openedBy, let conversation = conversations[chat.id], conversation.turnsEnded == 1,
-              let parent = self.chat(withID: opener)
+    func tellOpener(of chat: Chat, stopped: Bool = false) {
+        guard let opener = chat.openedBy, let conversation = conversations[chat.id], let parent = self.chat(withID: opener)
         else { return }
+        var waiting: (resetsAt: Date, window: String?)?
+        switch chat.owesOpener {
+        case nil:
+            guard !stopped, conversation.turnsEnded == 1 else { return }
+        case false?:
+            return
+        case true?:
+            if !stopped, let resumeAt = chat.resumeAt, let limit = conversation.turnLimit, agent(for: chat).capabilities.resume {
+                // Said for the first turn alone: a turn after the reset that a limit stops again waits quietly.
+                guard conversation.turnsEnded == 1 else { return }
+                waiting = (resumeAt, limit.window)
+            } else {
+                chat.owesOpener = false
+            }
+        }
+        let line = OpenedLine.Told(finished: !stopped && conversation.endedByItself, waiting: waiting)
         // A thread on screen may be reading its events just now, and would miss the line.
         if conversations[opener] != nil || inView(opener) {
-            self.conversation(for: parent).threadDone(chat, finished: conversation.endedByItself)
+            self.conversation(for: parent).threadDone(chat, line)
         } else {
-            Conversation.threadDone(chat, finished: conversation.endedByItself, unread: parent, in: context)
-            save()
+            Conversation.threadDone(chat, line, unread: parent, in: context)
         }
+        save()
+    }
+
+    /// The engine turned down a send: the thread's work ends there, and a thread whose first send
+    /// it was tells its opener now.
+    func sendRefused(in chat: Chat, _ message: String) {
+        conversation(for: chat).sendFailed(message)
+        tellOpener(of: chat, stopped: true)
+        turnEnded(chat.id)
+        holdWhileWorking()
+        // A queued message the engine turned down ends the thread's work, and the turn
+        // before it held back its Finished for it.
+        if isAway(chat) { notifier.post(title: chat.title, body: message, chatID: chat.id) }
     }
 
     /// A click on that line: the thread it names comes beside the one the line is in, which has
@@ -576,21 +607,31 @@ struct SuggestedThread: View {
     }
 }
 
-/// The quiet line a thread gets when one it opened ends its first turn. A click opens that thread.
+/// The quiet line a thread gets when one it opened ends its first turn, or when a limit stopped
+/// that turn and the thread waits for it to reset. A click opens that thread.
 struct OpenedLine: View {
     @Environment(AppModel.self) private var model
     let thread: UUID
     let title: String
     let finished: Bool
+    /// When the limit that stopped its first turn resets, while it waits; nil for a turn that ended.
+    var resetsAt: Date?
+    var window: String?
     /// The thread the line is in; nil stands for the open one.
     var parent: UUID?
     @State private var hovering = false
+
+    /// What the line says: how the first turn ended, or the limit it waits on.
+    struct Told {
+        let finished: Bool
+        var waiting: (resetsAt: Date, window: String?)?
+    }
 
     var body: some View {
         Button {
             model.openOpened(thread, from: parent)
         } label: {
-            Text(Self.words(title: title, finished: finished))
+            Text(Self.words(title: title, finished: finished, resetsAt: resetsAt, window: window))
                 .underline(hovering)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -603,8 +644,14 @@ struct OpenedLine: View {
         .help("Open the thread")
     }
 
-    static func words(title: String, finished: Bool) -> String {
-        finished ? "\(title) finished its first turn" : "\(title) stopped before its first turn finished"
+    static func words(title: String, finished: Bool, resetsAt: Date? = nil, window: String? = nil) -> String {
+        if let resetsAt {
+            let limit = Limit.name(of: window)
+            return resetsAt > .now
+                ? "\(title) is waiting on the \(limit), which resets at \(Limit.time(resetsAt))"
+                : "\(title) waited on the \(limit), which reset at \(Limit.time(resetsAt))"
+        }
+        return finished ? "\(title) finished its first turn" : "\(title) stopped before its first turn finished"
     }
 }
 

@@ -79,7 +79,7 @@ extension AppModel {
     func handOff(_ chat: Chat, to block: ShellBlock) {
         open(block)
         handedOff[chat.id] = block.id
-        conversation(for: chat).cancelResume()
+        callOffResume(in: chat)
         scheduleResumes()
     }
 

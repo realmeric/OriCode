@@ -491,7 +491,7 @@ struct OpenedThreadsTests {
 
     private func lines(_ conversation: Conversation) -> [String] {
         conversation.items.compactMap { item in
-            if case .opened(_, _, let title, let finished) = item { OpenedLine.words(title: title, finished: finished) } else { nil }
+            if case .opened(_, _, let title, let finished, let resetsAt, let window) = item { OpenedLine.words(title: title, finished: finished, resetsAt: resetsAt, window: window) } else { nil }
         }
     }
 
@@ -508,7 +508,7 @@ struct OpenedThreadsTests {
         #expect(model.conversations[parent.id] == nil)
         let read = Conversation(chat: parent, context: container.mainContext)
         #expect(lines(read) == ["Rename sum.txt finished its first turn"])
-        guard case .opened(_, let thread, _, _) = read.items.last else {
+        guard case .opened(_, let thread, _, _, _, _) = read.items.last else {
             Issue.record("no line")
             return
         }
@@ -629,5 +629,140 @@ struct OpenedThreadsTests {
         let gone = UUID()
         model.openOpened(gone)
         #expect(model.selectedChatID == chat.id)
+    }
+
+    private func limited(_ chat: Chat, resetsAt: Date, window: String = "five_hour") -> EngineEvent {
+        EngineEvent(name: "limited", threadId: chat.id.uuidString, body: ["resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000), "window": .string(window)])
+    }
+
+    @Test func aFirstTurnALimitStoppedSaysItWaitsAndTheTurnAfterTheResetSaysItFinishedOnce() throws {
+        UserDefaults.standard.removeObject(forKey: Limit.goOnKey)
+        let (model, parent) = try model()
+        let asked = request(parent)
+        let chat = try model.open(model.opening(for: asked), asked)
+        let resetsAt = Date.now.addingTimeInterval(2 * 3600)
+
+        model.route(limited(chat, resetsAt: resetsAt))
+        model.route(done(chat, "stop_sequence"))
+        #expect(chat.resumeAt != nil && chat.owesOpener == true)
+        let waiting = "Rename sum.txt is waiting on the session limit, which resets at \(Limit.time(resetsAt))"
+        #expect(lines(model.conversation(for: parent)) == [waiting])
+        // Stored with its reset, so a parent read again says the same.
+        #expect(lines(Conversation(chat: parent, context: container.mainContext)) == [waiting])
+        guard case .opened(_, let thread, _, _, _, _) = model.conversation(for: parent).items.last else {
+            Issue.record("no line")
+            return
+        }
+        // A click on it still opens the thread beside.
+        model.openOpened(thread, from: parent.id)
+        #expect(model.besideChatID == chat.id)
+
+        // The reset comes and the thread goes on by itself, as resumeDue sends it on.
+        model.conversation(for: chat).userSent(AppModel.limitLine("five_hour"))
+        model.route(done(chat))
+        #expect(lines(model.conversation(for: parent)) == [waiting, "Rename sum.txt finished its first turn"])
+        #expect(chat.owesOpener == false)
+
+        // And never again.
+        #expect(model.send("And the tests", images: [], in: chat))
+        model.route(done(chat))
+        #expect(lines(Conversation(chat: parent, context: container.mainContext)).count == 2)
+    }
+
+    @Test func aWaitCalledOffOrALimitItWontWaitForSaysItStopped() throws {
+        UserDefaults.standard.removeObject(forKey: Limit.goOnKey)
+        let (model, parent) = try model()
+        let asked = request(parent)
+        let chat = try model.open(model.opening(for: asked), asked)
+        let resetsAt = Date.now.addingTimeInterval(3600)
+        model.route(limited(chat, resetsAt: resetsAt))
+        model.route(done(chat, "stop_sequence"))
+        let waiting = "Rename sum.txt is waiting on the session limit, which resets at \(Limit.time(resetsAt))"
+        let stopped = "Rename sum.txt stopped before its first turn finished"
+        model.goOn(false, at: resetsAt, in: chat.id)
+        #expect(lines(model.conversation(for: parent)) == [waiting, stopped])
+
+        // Switched on again it waits again, and the turn after the reset finishes as ever.
+        model.goOn(true, at: resetsAt, in: chat.id)
+        #expect(lines(model.conversation(for: parent)) == [waiting, stopped, waiting])
+        model.conversation(for: chat).userSent(AppModel.limitLine("five_hour"))
+        model.route(done(chat))
+        #expect(lines(model.conversation(for: parent)) == [waiting, stopped, waiting, "Rename sum.txt finished its first turn"])
+
+        // The weekly limit only says when, so there's nothing to wait for, until the card's toggle waits for it.
+        let again = request(parent)
+        let weekly = try model.open(model.opening(for: again), again)
+        let weekReset = Date.now.addingTimeInterval(3 * 86_400)
+        model.route(limited(weekly, resetsAt: weekReset, window: "seven_day"))
+        model.route(done(weekly, "stop_sequence"))
+        #expect(lines(model.conversation(for: parent)).last == stopped)
+        model.goOn(true, at: weekReset, in: weekly.id)
+        #expect(lines(model.conversation(for: parent)).last == "Rename sum.txt is waiting on the \(Limit.name(of: "seven_day")), which resets at \(Limit.time(weekReset))")
+        #expect(lines(model.conversation(for: parent)).count == 6)
+    }
+
+    @Test func atTheResetAThreadGoesOnOrItsOpenerHearsItWont() throws {
+        UserDefaults.standard.removeObject(forKey: Limit.goOnKey)
+        let (model, parent) = try model()
+        model.engineState = .ready
+        let resetsAt = Date.now.addingTimeInterval(3600)
+        func waiting() throws -> Chat {
+            let asked = request(parent)
+            let chat = try model.open(model.opening(for: asked), asked)
+            chat.sessionId = "session-\(chat.id)"
+            model.route(limited(chat, resetsAt: resetsAt))
+            model.route(done(chat, "stop_sequence"))
+            return chat
+        }
+        let goesOn = try waiting(), refused = try waiting(), lost = try waiting()
+        let stopped = "Rename sum.txt stopped before its first turn finished"
+        #expect(lines(model.conversation(for: parent)).count == 3)
+        // The reset has come, and the last of them lost its session meanwhile.
+        lost.sessionId = nil
+        for chat in [goesOn, refused, lost] { chat.resumeAt = Date.now.addingTimeInterval(-60) }
+
+        model.resumeDue()
+        #expect(model.conversation(for: goesOn).running && model.conversation(for: refused).running)
+        #expect(lost.resumeAt == nil && !model.conversation(for: lost).running && lost.owesOpener == false)
+        #expect(lines(model.conversation(for: parent)).count == 4 && lines(model.conversation(for: parent)).last == stopped)
+
+        model.route(done(goesOn))
+        #expect(lines(model.conversation(for: parent)).last == "Rename sum.txt finished its first turn")
+        // What startTurn does with a send the engine turned down.
+        model.sendRefused(in: refused, "The engine stopped.")
+        #expect(lines(model.conversation(for: parent)).last == stopped)
+        #expect(lines(model.conversation(for: parent)).count == 6)
+        #expect(lines(Conversation(chat: parent, context: container.mainContext)).count == 6)
+    }
+
+    @Test func aFirstSendTheEngineRefusedTellsItsOpenerAtOnceAndLaterTurnsNothing() throws {
+        let (model, parent) = try model()
+        let asked = request(parent)
+        let chat = try model.open(model.opening(for: asked), asked)
+        model.sendRefused(in: chat, "That folder is gone.")
+        #expect(lines(model.conversation(for: parent)) == ["Rename sum.txt stopped before its first turn finished"])
+        #expect(!model.conversation(for: chat).running)
+
+        #expect(model.send("Try again", images: [], in: chat))
+        model.route(done(chat))
+        #expect(lines(Conversation(chat: parent, context: container.mainContext)).count == 1)
+    }
+
+    @Test func aThreadOpenedBeforeALineCouldWaitAndItsStoredLineReadAsTheyDid() throws {
+        let (model, parent) = try model()
+        let asked = request(parent)
+        let chat = try model.open(model.opening(for: asked), asked)
+        chat.owesOpener = nil
+        model.route(done(chat))
+        #expect(model.send("And the tests", images: [], in: chat))
+        model.route(done(chat))
+        #expect(lines(model.conversation(for: parent)) == ["Rename sum.txt finished its first turn"])
+
+        // A line stored then has no reset, and reads as it did.
+        let old: JSON = ["event": "thread.done", "thread": .string(chat.id.uuidString), "title": "Old one", "finished": false]
+        model.conversations[parent.id] = nil
+        model.selectedChatID = nil
+        Conversation.line("thread.done", old, unread: parent, in: container.mainContext)
+        #expect(lines(Conversation(chat: parent, context: container.mainContext)).last == "Old one stopped before its first turn finished")
     }
 }

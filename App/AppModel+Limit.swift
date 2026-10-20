@@ -28,7 +28,7 @@ extension AppModel {
         }
     }
 
-    private func resumeDue() {
+    func resumeDue() {
         // Starting the engine schedules again.
         guard engineState == .ready else { return }
         let now = Date.now
@@ -38,7 +38,7 @@ extension AppModel {
             // A thread handed to its agent's CLI in a block goes on there.
             let handedOver = handedOff[chat.id].flatMap { shellBlocks[$0] }?.running == true
             guard !conversation.running, chat.sessionId != nil, !handedOver, agent(for: chat).capabilities.resume else {
-                conversation.cancelResume()
+                callOffResume(in: chat)
                 continue
             }
             Engine.logger.notice("thread \(chat.id.uuidString, privacy: .public) goes on after its limit")
@@ -54,9 +54,26 @@ extension AppModel {
     func goOn(_ on: Bool, at resetsAt: Date, in thread: UUID? = nil) {
         guard let chat = thread == nil ? chat : thread.flatMap(chat(withID:)) else { return }
         let conversation = conversation(for: chat)
-        withAnimation(Motion.fade) {
-            if on { conversation.resume(at: resetsAt) } else { conversation.cancelResume() }
+        guard on else {
+            callOffResume(in: chat)
+            return scheduleResumes()
+        }
+        withAnimation(Motion.fade) { conversation.resume(at: resetsAt) }
+        // A first turn whose opener was told it stopped waits again, and the opener is told so.
+        if chat.openedBy != nil, chat.owesOpener == false, !conversation.running, conversation.turnsEnded == 1,
+           conversation.turnLimit != nil, agent(for: chat).capabilities.resume {
+            chat.owesOpener = true
+            tellOpener(of: chat)
         }
         scheduleResumes()
+    }
+
+    /// A wait for a limit to reset is called off: on the limit card, by Continue in, or at the
+    /// reset for a thread that can't go on. An opener told the thread waits is told it stopped.
+    func callOffResume(in chat: Chat) {
+        let conversation = conversation(for: chat)
+        let waited = chat.resumeAt != nil
+        withAnimation(Motion.fade) { conversation.cancelResume() }
+        if waited, chat.owesOpener == true, !conversation.running, conversation.turnsEnded > 0 { tellOpener(of: chat, stopped: true) }
     }
 }

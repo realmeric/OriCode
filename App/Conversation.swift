@@ -224,8 +224,8 @@ enum Item: Identifiable, Hashable {
     /// A command run from the composer's shell prompt.
     case shell(id: UUID, run: ShellRun)
     /// A thread this one opened ended its first turn: which, its name then, and whether the turn
-    /// ended by itself.
-    case opened(id: UUID, thread: UUID, title: String, finished: Bool)
+    /// ended by itself; or a limit stopped it and it waits, until `resetsAt`, for `window` to reset.
+    case opened(id: UUID, thread: UUID, title: String, finished: Bool, resetsAt: Date? = nil, window: String? = nil)
     /// A thread the agent suggested for something outside the task: the button's words, and the
     /// message a thread made from it would start on.
     case suggested(id: UUID, title: String, prompt: String)
@@ -237,7 +237,7 @@ enum Item: Identifiable, Hashable {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _),
-             .opened(let id, _, _, _), .suggested(let id, _, _), .act(let id, _, _):
+             .opened(let id, _, _, _, _, _), .suggested(let id, _, _), .act(let id, _, _):
             id
         }
     }
@@ -819,20 +819,25 @@ final class Conversation {
 
     /// A thread this one opened ended its first turn: one stored line. A turn running here keeps
     /// its reply and its run of calls whole, so the line waits for that turn's end.
-    func threadDone(_ thread: Chat, finished: Bool) {
-        let line = Self.threadDone(thread, finished: finished)
+    func threadDone(_ thread: Chat, _ told: OpenedLine.Told) {
+        let line = Self.threadDone(thread, told)
         guard !running else { return underTurn.append(("thread.done", line)) }
         record("thread.done", line)
     }
 
-    private static func threadDone(_ thread: Chat, finished: Bool) -> JSON {
-        ["event": "thread.done", "thread": .string(thread.id.uuidString), "title": .string(thread.title), "finished": .bool(finished)]
+    private static func threadDone(_ thread: Chat, _ told: OpenedLine.Told) -> JSON {
+        var line: [String: JSON] = ["event": "thread.done", "thread": .string(thread.id.uuidString), "title": .string(thread.title), "finished": .bool(told.finished)]
+        if let waiting = told.waiting {
+            line["resetsAt"] = .number(waiting.resetsAt.timeIntervalSince1970 * 1000)
+            if let window = waiting.window { line["window"] = .string(window) }
+        }
+        return .object(line)
     }
 
     /// The same line for a thread whose transcript isn't in memory, written after its last event
     /// without reading the rest.
-    static func threadDone(_ thread: Chat, finished: Bool, unread chat: Chat, in context: ModelContext) {
-        line("thread.done", threadDone(thread, finished: finished), unread: chat, in: context)
+    static func threadDone(_ thread: Chat, _ told: OpenedLine.Told, unread chat: Chat, in context: ModelContext) {
+        line("thread.done", threadDone(thread, told), unread: chat, in: context)
     }
 
     /// A line stored after a thread's last event, its transcript left unread.
@@ -1483,7 +1488,10 @@ final class Conversation {
             items.append(.shell(id: id, run: ShellRun(body)))
         case "thread.done":
             guard let thread = body["thread"]?.string.flatMap(UUID.init(uuidString:)) else { break }
-            items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true))
+            // One from before a line could wait has no reset, and reads as it did.
+            let resetsAt = body["resetsAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
+            items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true,
+                                 resetsAt: resetsAt, window: body["window"]?.string))
         case "thread.act":
             guard let act = ThreadAct(body) else { break }
             items.append(.act(id: id, thread: act.thread, text: act.words))
