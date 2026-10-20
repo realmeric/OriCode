@@ -37,7 +37,9 @@ extension AppModel {
                 changed = true
             }
             let state = Self.agentState(agent["state"]?.string, run: run)
-            let result = Self.oneLine(state == "failed" ? agent["error"]?.string : agent["result"]?.string)
+            // Every snapshot names each agent again, and a finished one's reply is read once.
+            let result = chat.agentState == state && chat.agentResult != nil ? nil
+                : state == "failed" ? Self.oneLine(agent["error"]?.string) : Self.replyLine(agent["result"]?.string)
             let transcript = folder.map { "\($0)/agent-\(id).jsonl" }
             if chat.agentState != state { chat.agentState = state; changed = true }
             if let result, chat.agentResult != result { chat.agentResult = result; changed = true }
@@ -58,10 +60,35 @@ extension AppModel {
         return "stopped"
     }
 
-    /// What the drawer's row says under the title: the first line, cut where the row would.
+    /// What the drawer's row says under the title: the first line, cut where the row would. An
+    /// error is plain text and is kept as it came.
     static func oneLine(_ text: String?) -> String? {
-        guard let line = text?.split(whereSeparator: \.isNewline).lazy.map({ $0.trimmingCharacters(in: .whitespaces) }).first(where: { !$0.isEmpty }) else { return nil }
-        return String(line.prefix(200))
+        firstLine(text).map { String($0.prefix(200)) }
+    }
+
+    /// A reply's first line as `oneLine` gives it, in words, since its Markdown, a list's dash, a
+    /// link's path or a bold's stars, isn't drawn there. Read from its first 600 characters, room
+    /// for a link's path before the row's 200.
+    static func replyLine(_ text: String?) -> String? {
+        guard let line = firstLine(text)?.prefix(600) else { return nil }
+        let unmarked = literal(line.replacing(/^(?:#{1,6}|[-*+>]|\d{1,3}[.)])\s+/, with: ""))
+        let words = (try? AttributedString(markdown: unmarked, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))).map { String($0.characters) } ?? unmarked
+        return String((words.isEmpty ? String(line) : words).prefix(200))
+    }
+
+    /// Underscores, and a star between two letters or digits, kept as written outside code spans:
+    /// in a reply `__init__.py` and `2*3*4` are a file and a product, not emphasis.
+    private static func literal(_ line: Substring) -> String {
+        line.split(separator: "`", omittingEmptySubsequences: false).enumerated().map { index, part in
+            guard index.isMultiple(of: 2) else { return String(part) }
+            return String(part).replacing(/_|([[:alnum:]])\*(?=[[:alnum:]])/) { match in
+                match.output.1.map { "\($0)\\*" } ?? "\\_"
+            }
+        }.joined(separator: "`")
+    }
+
+    private static func firstLine(_ text: String?) -> String? {
+        text?.split(whereSeparator: \.isNewline).lazy.map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty }
     }
 
     /// A subagent or a worker as the engine tells of it, `agent.thread`: made as it starts, and told
@@ -94,7 +121,8 @@ extension AppModel {
         let state = body["state"]?.string ?? "running"
         if agent.agentState != state { agent.agentState = state }
         // A turn ended with nothing said leaves no reply of an earlier turn behind.
-        if body["result"] != nil { agent.agentResult = Self.oneLine(body["result"]?.string) }
+        // A failed worker's result is its error, kept as it came.
+        if body["result"] != nil { agent.agentResult = state == "failed" ? Self.oneLine(body["result"]?.string) : Self.replyLine(body["result"]?.string) }
         // A worker's turn that ended without its turn.done, its head's thread gone, ends here.
         if state != "running" { conversations[agent.id]?.stopped() }
         // Heard of in this launch, so the screen of everything running lists it.

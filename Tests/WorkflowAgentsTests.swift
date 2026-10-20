@@ -67,6 +67,41 @@ struct WorkflowAgentsTests {
         #expect(model.agents(under: lead).count == 2)
     }
 
+    @Test func aRowsLineIsTheReplysFirstLineInWords() {
+        #expect(AppModel.replyLine("\n- [App/OpenedThreads.swift:520](/Users/m/OriCode/App/OpenedThreads.swift:520): The wait notice is built from `resumeAt`.\nMore") == "App/OpenedThreads.swift:520: The wait notice is built from resumeAt.")
+        #expect(AppModel.replyLine("**T1** is done, see e56ef2e") == "T1 is done, see e56ef2e")
+        #expect(AppModel.replyLine("## Review") == "Review")
+        #expect(AppModel.replyLine("2. Fixed it") == "Fixed it")
+        #expect(AppModel.replyLine("2026. A year") == "2026. A year")
+        #expect(AppModel.replyLine("3 files changed") == "3 files changed")
+        #expect(AppModel.replyLine("Edited __init__.py and `snake_case`, 2*3*4 cases, *all* green") == "Edited __init__.py and snake_case, 2*3*4 cases, all green")
+        #expect(AppModel.replyLine("-") == "-")
+        #expect(AppModel.replyLine("  \n ") == nil)
+        #expect(AppModel.replyLine(String(repeating: "a", count: 900))?.count == 200)
+    }
+
+    @Test func aFailedAgentsLineIsItsErrorAsItCame() throws {
+        let (model, lead) = try model()
+        let error = "No module named __init__ in /Users/m/x/__snapshots__/a.snap, 2*3*4 = 24"
+        model.syncAgents(of: lead, workflow("failed", agents: [agent("alpha", id: "a1", state: "failed", error: "\n" + error)]))
+        #expect(model.agents(under: lead).first?.agentResult == error)
+        #expect(AppModel.oneLine("2026. A year\nmore") == "2026. A year")
+
+        // A worker's error comes as its result, and is kept as it came too.
+        model.syncAgent(of: lead, told("k1", kind: "worker", state: "failed", result: error))
+        #expect(model.agents(under: lead).first { $0.agentID == "k1" }?.agentResult == error)
+    }
+
+    @Test func aFinishedAgentsReplyIsReadOnceThoughEverySnapshotNamesIt() throws {
+        let (model, lead) = try model()
+        model.syncAgents(of: lead, workflow("running", agents: [agent("alpha", id: "a1", state: "done", result: "**Done**")]))
+        let alpha = try #require(model.agents(under: lead).first)
+        #expect(alpha.agentResult == "Done")
+        alpha.agentResult = "kept"
+        model.syncAgents(of: lead, workflow("running", agents: [agent("alpha", id: "a1", state: "done", result: "**Done**")]))
+        #expect(alpha.agentResult == "kept")
+    }
+
     @Test func aTranscriptPieceIsTakenOnlyWhereTheStoredCopyEnds() throws {
         let (model, lead) = try model()
         model.syncAgents(of: lead, workflow("running", agents: [agent("alpha", id: "a1", state: "running")]))

@@ -411,6 +411,6 @@ extension AppModel {
     static func turnLine(_ conversation: Conversation) -> String? {
         let items = conversation.items
         let start = items.lastIndex(where: \.startsTurn).map { $0 + 1 } ?? items.startIndex
-        return oneLine(items[start...].last { if case .text = $0 { true } else { false } }?.text)
+        return replyLine(items[start...].last { if case .text = $0 { true } else { false } }?.text)
     }
 }

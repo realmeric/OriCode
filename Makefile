@@ -28,8 +28,11 @@ gone = for i in $$(seq 50); do pgrep -x "$(1)" >/dev/null || break; sleep 0.1; d
 project:
 	xcodegen generate --quiet
 
+# A thread in Molten that ran it would quit the Molten it runs in and end its own turn, so from
+# there it builds and stops, saying so.
 run: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	@if scripts/under.sh "OriCode Molten"; then echo "Built, not opened: this runs inside OriCode Molten, which make run would quit, ending this thread. Check the change in the test host, as a card's live check does, or leave make run to the user." >&2; exit 2; fi
 	-pkill -x "OriCode Molten"; $(call gone,OriCode Molten)
 	open "$(DEBUG_APP)"
 
