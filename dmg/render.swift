@@ -21,6 +21,12 @@ enum Layout {
     static let cueStart: CGFloat = 240
     static let cueEnd: CGFloat = 398
     static let nameBaseline: CGFloat = 362
+    // Finder draws an icon's label in black over a picture background, in Dark Mode as well,
+    // and nothing in the .DS_Store changes that. So the art is pure black where its 13pt labels
+    // fall under a 128pt icon (measured from a capture), which hides them, and draws the names
+    // in white under that.
+    static let finderLabel = CGRect(x: -46, y: 258, width: 92, height: 20)  // about an icon's x
+    static let labelBaseline: CGFloat = 293
 }
 
 struct RGB { var r, g, b: CGFloat }
@@ -87,6 +93,8 @@ func render(scale s: CGFloat) -> CGImage {
     ctx.restoreGState()
 
     drawCue(ctx, space: space)
+    for x in [Layout.app.x, Layout.applications.x] { hideFinderLabel(ctx, at: x) }
+    drawLabels(ctx)
     drawName(ctx)
 
     let image = ctx.makeImage()!
@@ -124,6 +132,42 @@ func drawCue(_ ctx: CGContext, space: CGColorSpace) {
         ctx.drawLinearGradient(trail, start: CGPoint(x: x0, y: y), end: CGPoint(x: x1, y: y), options: [])
         ctx.restoreGState()
     }
+}
+
+// Pure black through Finder's whole label, eased out over a wide ellipse so it reads as the
+// dark the icon sits in rather than as a shape.
+func hideFinderLabel(_ ctx: CGContext, at x: CGFloat) {
+    let rect = Layout.finderLabel.offsetBy(dx: x, dy: 0)
+    let space = CGColorSpace(name: CGColorSpace.sRGB)!
+    let core: CGFloat = 0.42   // the share of the radius that stays pure black
+    var colors: [CGColor] = [], stops: [CGFloat] = []
+    for i in 0...16 {
+        let t = CGFloat(i) / 16
+        let u = max(0, (t - core) / (1 - core))
+        colors.append(CGColor(gray: 0, alpha: 1 - u * u * (3 - 2 * u)))
+        stops.append(t)
+    }
+    let g = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: stops)!
+    let radius = rect.width / 2 / core * 1.3
+    ctx.saveGState()
+    ctx.translateBy(x: rect.midX, y: rect.midY)
+    ctx.scaleBy(x: 1, y: 0.32)
+    ctx.drawRadialGradient(g, startCenter: .zero, startRadius: 0, endCenter: .zero, endRadius: radius, options: [])
+    ctx.restoreGState()
+}
+
+func drawLabels(_ ctx: CGContext) {
+    let ns = NSGraphicsContext(cgContext: ctx, flipped: true)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = ns
+    let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+    for (name, x) in [("OriCode", Layout.app.x), ("Applications", Layout.applications.x)] {
+        let label = NSAttributedString(string: name, attributes: [
+            .font: font, .foregroundColor: NSColor(white: 1, alpha: 0.88),
+        ])
+        label.draw(at: CGPoint(x: x - label.size().width / 2, y: Layout.labelBaseline - font.ascender))
+    }
+    NSGraphicsContext.restoreGraphicsState()
 }
 
 func drawName(_ ctx: CGContext) {

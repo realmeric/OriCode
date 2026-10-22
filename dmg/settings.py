@@ -24,6 +24,8 @@ show_toolbar = False
 show_pathbar = False
 show_sidebar = False
 
+# Finder draws these labels black over the art; render.swift keeps the art pure black where a
+# 13pt label falls under a 128pt icon, so they vanish, and draws the names white below.
 icon_size = 128
 text_size = 13
 icon_locations = {
