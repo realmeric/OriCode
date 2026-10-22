@@ -10,9 +10,6 @@ DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
 # OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
 PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
-# Signed with the OriCode certificate where this Mac has it, so every release keeps the same
-# designated requirement and macOS knows it for the same app; ad hoc where it doesn't.
-SIGN := $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"OriCode"' && echo OriCode || echo -)
 # Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
@@ -57,10 +54,12 @@ test: project engine
 	cd engine && node --test test/*.test.ts
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet test
 
+# Signed as make release signs it, so what Meriç grants this build holds for the release's, and
+# not notarized, since it installs on this Mac alone.
 app: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
 	scripts/prune.sh $(RELEASE_APP)
-	codesign --force --deep --sign $(SIGN) $(RELEASE_APP)
+	scripts/sign.sh $(RELEASE_APP)
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app

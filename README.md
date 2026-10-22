@@ -18,15 +18,7 @@ OriCode isn't made or endorsed by Anthropic or by any other agent's maker. Claud
 
 Download OriCode's zip from the [latest release](https://github.com/realmeric/OriCode/releases/latest), unzip it, and drag OriCode into Applications. From then on it updates itself.
 
-## Opening it the first time
-
-OriCode is signed but not notarized by Apple, so the first time you open a copy you downloaded, macOS stops it and says Apple couldn't check it for malicious software. Once it's in Applications, clear the flag the download put on it, in Terminal, and open it as usual:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/OriCode.app
-```
-
-Some versions of macOS also offer Open Anyway in System Settings › Privacy & Security after that first try. Updates come through OriCode itself and shouldn't ask again.
+OriCode is signed with Developer ID and notarized by Apple, so it opens without Gatekeeper's warning; since 0.5.0 changed its signature, macOS may ask once more for something it had allowed the old one, access to a folder say.
 
 ## Updates
 
