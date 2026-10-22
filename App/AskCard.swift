@@ -17,8 +17,8 @@ struct AskCard: View {
         if ask.state == .waiting {
             VStack(alignment: .leading, spacing: 10) {
                 // A thread above this one answers first; the user can answer here all the same.
-                if let line = model.heldLine(of: ask, in: thread.flatMap(model.chat(withID:)) ?? model.chat) {
-                    HeldLine(text: line)
+                if let line = model.heldLine(of: ask) {
+                    HeldLine(text: line.text, hover: line.hover)
                 }
                 AskForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
             }
@@ -30,21 +30,17 @@ struct AskCard: View {
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .help(ask.state == .cancelled ? "" : ask.answerReason ?? "")
                 .transition(.opacity.animation(Motion.fade.delay(0.08)))
         }
     }
 
     private var settledLine: String {
         let what = ask.kind == "question" ? "Question" : ask.app.map { "See and use \($0)" } ?? ask.loosening ?? ToolSummary.line(for: ask.call, cwd: cwd)
-        // Answered by the thread that set this one going, which the line names with its reason.
+        // Answered by the thread that set this one going, which the line names, its reason on hover.
         if let by = ask.answeredBy, ask.state != .cancelled {
             let done = ask.kind == "question" ? "\(by) answered" : ask.state == .allowed ? "\(by) allowed" : "\(by) denied"
-            return [done, what, ask.answerReason ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
-        }
-        // Sent up to the user by a thread above, which the line still names.
-        if let pass = ask.passes.last, pass.to == nil, ask.state == .allowed || ask.state == .denied {
-            let done = ask.kind == "question" ? "You answered" : ask.state == .allowed ? "You allowed" : "You denied"
-            return "\(done) · \(what) · passed to you by \(pass.by)"
+            return "\(done) · \(what)"
         }
         switch ask.state {
         case .allowed: return ask.kind == "question" ? "Answered" : "Allowed · \(what)"
@@ -57,6 +53,7 @@ struct AskCard: View {
 /// Who has an ask first, or who sent it up and why, over the ask in its card and in the queue.
 struct HeldLine: View {
     let text: String
+    var hover = ""
 
     var body: some View {
         Text(text)
@@ -64,6 +61,7 @@ struct HeldLine: View {
             .foregroundStyle(Ink.secondary)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
+            .help(hover)
     }
 }
 
@@ -84,7 +82,7 @@ struct AskForm: View {
                 HStack(spacing: 5) {
                     AgentMark(agent: worker.agent)
                         .frame(width: 10, height: 10)
-                    Text("\(model.providers.first { $0.id == worker.agent }?.name ?? worker.agent)'s worker · \(worker.label)")
+                    Text(worker.label)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -162,8 +160,8 @@ private struct PermissionForm: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let app = ask.app {
-            Text("It can take pictures of \(app)'s windows and click, type and scroll in them, until OriCode quits.")
+        if ask.app != nil {
+            Text("Until \(Build.name) quits.")
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)

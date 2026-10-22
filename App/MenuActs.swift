@@ -49,7 +49,7 @@ extension AppModel {
             let target = try other(args["thread"]?.string ?? "", from: asking, doing: "delete_thread").thread
             guard target.agentID == nil || !workflowRuns(in: target) else { throw Refused(why: "Stop \(target.agentStopFirst) before deleting it.") }
             askToDelete(target)
-            did("Asked you to delete \(target.title)", on: target, by: chat, reason: reason)
+            did("Asked to delete \(target.title)", on: target, by: chat, reason: reason)
             return ["thread": .string(target.title), "askedTheUser": true, "deleted": false]
         case "pin_thread":
             let target = try thread(args["thread"]?.string, from: chat)
@@ -133,28 +133,22 @@ extension AppModel {
                 throw Refused(why: "The user has \(self.chat?.title ?? "another thread") open, and the review shows its changes, not this thread's. Show the file instead.")
             }
             if let path { openReview(at: path, line: line ?? 1) } else { openReview() }
-            did(path.map { "Showed you the review on \(ToolSummary.relative($0, to: chat.cwd))" } ?? "Showed you the review", on: nil, by: chat, reason: reason)
         case "file":
             guard let path else { throw Refused(why: "Name the file in `path`.") }
             openFile(path, line: line, in: chat.cwd)
-            did("Showed you \(ToolSummary.relative(path, to: chat.cwd))", on: nil, by: chat, reason: reason)
         case "everything_running":
             if !overviewShown { toggleOverview() }
-            did("Showed you everything running", on: nil, by: chat, reason: reason)
         case "heads":
             guard let open = self.chat, showsHeads(open) else { throw Refused(why: "The thread the user has open has no heads to show.") }
             if !headsShown { toggleHeads() }
-            did("Showed you the heads", on: nil, by: chat, reason: reason)
         case "threads":
             showDrawer()
-            did("Showed you the threads", on: nil, by: chat, reason: reason)
         case "settings":
             let pane = args["pane"]?.string.flatMap(SettingsPane.init(rawValue:))
             openSettings(pane)
             did("Opened Settings\(pane.map { " › \($0.title)" } ?? "")", on: nil, by: chat, reason: reason)
         case "shortcuts":
             showingShortcuts = true
-            did("Showed you the keyboard shortcuts", on: nil, by: chat, reason: reason)
         case let what:
             throw Refused(why: "OriCode can't show \(what.isEmpty ? "nothing" : what). It shows review, file, everything_running, heads, threads, settings or shortcuts.")
         }

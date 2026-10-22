@@ -100,11 +100,11 @@ export function taskLead({ id, title, done, run }: { id: string; title: string; 
   return `[OriCode] This thread works ${id} of the project's plan, "${title}".${done ? ` Done means: ${done}` : ""} Keep it with update_task as you go: a short note at each step that matters, and the state done once it's done, or stuck, with why, when you can't go on. read_plan shows the plan.${run ? " The plan runs by itself: when your turn ends the task is done, and your last reply is its result, which the thread running the plan reads, so end with what you did and how it went." : ""}`;
 }
 
-/// How far a plan that runs is, in progress.ts's words for the line its owner shows: "2 of 5
-/// done · about 12 min left". The app keeps the plan and asks with `plan.progress`: `kinds` is each
+/// How far a plan that runs is, as progress.ts gives the line its owner shows: "2/5 · 12 min",
+/// null once every task is done. The app keeps the plan and asks with `plan.progress`: `kinds` is each
 /// task's agent, the done ones first in the order they ended, `ended` when each of those ended, in
 /// seconds. Tasks run side by side, so the time between two endings stands for a step, as a
 /// workflow's agents' does.
-export function planProgress(kinds: string[], began: number, ended: number[], now: number): string {
+export function planProgress(kinds: string[], began: number, ended: number[], now: number): string | null {
   return progressLine(kinds.map((kind) => ({ kind, guess: 1 })), began, ended, now);
 }

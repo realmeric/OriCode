@@ -162,7 +162,7 @@ struct ProjectPlanTests {
         _ = try ask(model, "plan.claim", ["task": "T1"], from: lead)
         model.stopTask(plan.tasks[0])
         #expect(states(project).first == "T1 stuck")
-        #expect(plan.tasks[0].note == "Stopped by you.")
+        #expect(plan.tasks[0].note == "Stopped by you")
         model.reopenTask(plan.tasks[0])
         #expect(states(project).first == "T1 ready")
         #expect(plan.tasks[0].thread == nil && plan.tasks[0].note.isEmpty)

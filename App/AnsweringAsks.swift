@@ -39,18 +39,13 @@ extension AppModel {
         askHolders[requestId].flatMap { conversations[$0]?.chat }
     }
 
-    /// The line over an ask still waiting, in its thread's card and in the queue: who has it first,
-    /// or who sent it up and why. A pass names the thread it went to only while that thread still
-    /// has it; since then it may have come to the user without one, a holder having gone.
-    func heldLine(of ask: PendingAsk, in thread: Chat?) -> String? {
+    /// The line over an ask still waiting, in its thread's card and in the queue, and its hover:
+    /// who has it first, or who sent it up, with why on hover.
+    func heldLine(of ask: PendingAsk) -> (text: String, hover: String)? {
         let pass = ask.passes.last
-        let reason = pass.flatMap { $0.reason.nonEmpty.map { " · \($0)" } } ?? ""
-        if let holder = holder(of: ask.requestId) {
-            if let pass, pass.to == holder.title { return "\(pass.by) passed this to \(holder.title)" + reason }
-            return holder.id == thread?.openedBy ? "With \(holder.title) first, which set this thread going" : "With \(holder.title) first"
-        }
+        if let holder = holder(of: ask.requestId), pass?.to != holder.title { return ("\(holder.title) first", "") }
         guard let pass else { return nil }
-        return (pass.to == nil ? "\(pass.by) passed this to you" : "\(pass.by) passed this up") + reason
+        return ("From \(pass.by)", pass.reason)
     }
 
     /// An ask just came: it goes to the thread above when there is one, and wakes its wait.

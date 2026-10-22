@@ -37,7 +37,7 @@ test("an agent's lines become a thread's events, its task without the harness's 
   assert.deepEqual(lineEvents(JSON.stringify(context)), []);
   assert.deepEqual(lineEvents("{not json"), []);
   const stopped = { type: "user", message: { content: [{ type: "text", text: "[Request interrupted by user]" }] } };
-  assert.deepEqual(lineEvents(JSON.stringify(stopped)), [{ event: "note", text: "Stopped with its workflow." }]);
+  assert.deepEqual(lineEvents(JSON.stringify(stopped)), [{ event: "note", text: "Stopped" }]);
   assert.equal(unframed("A task of the user's own"), "A task of the user's own");
 });
 
@@ -181,9 +181,9 @@ test("a Task subagent's transcript is beside its session's file, which a long pa
   assert.equal(subagentTranscript(projects, "/long/" + "x".repeat(300), "s2", "a2"), join(projects, "-long-cut-1a2b", "s2", "subagents", "agent-a2.jsonl"));
   assert.equal(subagentTranscript(projects, "/tmp/my app.v2", "gone", "a3"), null);
   assert.equal(subagentTranscript(join(projects, "none"), "/tmp", "s1", "a4"), null);
-  // A subagent stopped reads as stopped alone, not with a workflow.
+  // A subagent stopped reads as a workflow's agent does.
   const stopped = JSON.stringify({ type: "user", message: { content: [{ type: "text", text: "[Request interrupted by user]" }] } });
-  assert.deepEqual(lineEvents(stopped, "Stopped."), [{ event: "note", text: "Stopped." }]);
+  assert.deepEqual(lineEvents(stopped), [{ event: "note", text: "Stopped" }]);
 });
 
 test("a Task subagent of the thread's own loop is told as it starts, with its transcript, and as it ends, with what it returned", async () => {

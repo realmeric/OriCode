@@ -5,7 +5,7 @@
 // Each prints the time and the job's line. The file keeps when the job began, its plan and when
 // each step ended, so every call is a fresh process and the script keeps no state of its own.
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { progressLine, type Step } from "../engine/progress.ts";
+import { spokenLine, type Step } from "../engine/progress.ts";
 
 const [command, path, ...words] = process.argv.slice(2);
 const now = Date.now() / 1000;
@@ -17,7 +17,7 @@ if (command === "plan" && path) {
     return { kind: word.slice(0, at), guess: Number(word.slice(at + 1)) };
   });
   writeFileSync(path, `began ${now}\n` + plan.map((step) => `plan ${step.kind} ${step.guess}\n`).join(""));
-  console.log(`${clock} ${progressLine(plan, now, [], now)}`);
+  console.log(`${clock} ${spokenLine(plan, now, [], now)}`);
 } else if (command === "step" && path) {
   appendFileSync(path, `ended ${now}\n`);
   let began = now;
@@ -30,7 +30,7 @@ if (command === "plan" && path) {
     else if (word === "ended") ended.push(Number(rest[0]));
   }
   const label = words.join(" ");
-  console.log(`${clock} ${label ? `${label} · ` : ""}${progressLine(plan, began, ended, now)}`);
+  console.log(`${clock} ${label ? `${label} · ` : ""}${spokenLine(plan, began, ended, now)}`);
 } else {
   console.error("progress.mts plan <file> <kind>:<seconds> … | step <file> [label …]");
   process.exit(2);

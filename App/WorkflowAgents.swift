@@ -185,7 +185,7 @@ extension AppModel {
     /// transcript out again.
     func transcribed(_ body: JSON, into chat: Chat) {
         if body["gone"]?.bool == true, chat.agentRead == 0 {
-            say("Claude Code no longer keeps this agent's transcript")
+            say("Transcript gone")
             return
         }
         let held = heldPieces[chat.id]
@@ -239,7 +239,7 @@ extension Chat {
     var agentStop: String { agentID != nil && agentKind == nil ? "Stop workflow" : "Stop" }
     var agentStopFirst: String { agentKind == nil ? "its workflow" : "the agent" }
 
-    /// The row's second line for a workflow agent: its result once it has one, and how it ended.
+    /// The row's hover for a workflow agent: its result once it has one, and how it ended.
     var agentLine: String? {
         switch agentState {
         case "done": agentResult ?? "Done"
@@ -260,13 +260,14 @@ struct AgentBar: View {
     private var selected: Bool { chat.id == model.selectedChatID }
 
     var body: some View {
+        // No words: with no field it shows that nothing is written here. A failed one says so,
+        // with what it failed on as the hover.
         HStack(spacing: 12) {
-            Text(words)
+            Text(chat.agentState == "failed" ? "Failed" : "")
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .help(chat.agentLine ?? "")
             if chat.agentWorking {
                 Button(chat.agentStop) { model.stopAgent(chat) }
                     .buttonStyle(ActionButtonStyle(small: true))
@@ -288,22 +289,5 @@ struct AgentBar: View {
         .simultaneousGesture(TapGesture().onEnded {
             if !selected { model.select(chat) }
         })
-    }
-
-    private var words: String {
-        switch (chat.agentKind, chat.agentState) {
-        case ("subagent", "running"): "A subagent of the thread above. Only it writes here."
-        case ("subagent", "done"): "Done. A subagent of the thread above wrote here, and it takes no messages."
-        case ("subagent", "failed"): "Failed. A subagent of the thread above wrote here, and it takes no messages."
-        case ("subagent", _): "Stopped. It takes no messages."
-        case ("worker", "running"): "A worker of the thread above. Only it writes here, and its head messages it."
-        case ("worker", "done"): "Done. Its head can message it again from the thread above."
-        case ("worker", "failed"): "Failed. Its head can message it again from the thread above."
-        case ("worker", _): "Stopped. Its head can message it again from the thread above."
-        case (_, "running"): "Only its workflow writes here. Claude Code can't stop one agent alone, so Stop stops the workflow."
-        case (_, "done"): "Done. Only its workflow wrote here, and it takes no messages."
-        case (_, "failed"): "Failed. Only its workflow wrote here, and it takes no messages."
-        default: "Stopped with its workflow. It takes no messages."
-        }
     }
 }

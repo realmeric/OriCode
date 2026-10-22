@@ -54,14 +54,6 @@ struct HeadsSurface: View {
                         .foregroundStyle(Ink.primary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(tally(heads))
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.faint)
-                        .lineLimit(1)
-                        // The title gives way to it: a tally on two lines made the row taller.
-                        .fixedSize()
-                        .contentTransition(.numericText())
-                        .animation(Motion.fade, value: tally(heads))
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -81,11 +73,11 @@ struct HeadsSurface: View {
                             let choices = conversation.choices.suffix(Self.choicesShown)
                             let earlier = conversation.choices.count - choices.count
                             HStack(spacing: 6) {
-                                Text("What the head chose")
+                                Text("Choices")
                                     .foregroundStyle(Ink.secondary)
                                     .accessibilityAddTraits(.isHeader)
                                 if earlier > 0 {
-                                    Text("\(earlier) earlier not shown")
+                                    Text("+\(earlier)")
                                         .foregroundStyle(Ink.faint)
                                         .lineLimit(1)
                                 }
@@ -119,18 +111,6 @@ struct HeadsSurface: View {
         return heads.list.first { $0.id == hovered }.map { .rays(Set($0.rays)) }
     }
 
-    /// "2 agents, 1 command", or the main loop alone.
-    private func tally(_ heads: Heads) -> String {
-        let live = heads.list.filter { !$0.ending }
-        let agents = live.count { $0.kind == .agent }
-        let workflows = live.count { $0.kind == .workflow }
-        let commands = live.count { $0.kind == .command }
-        let others = live.count { $0.kind == .other }
-        let parts = [(agents, "agent", "agents"), (workflows, "workflow", "workflows"), (commands, "command", "commands"), (others, "task", "tasks")]
-            .filter { $0.0 > 0 }
-            .map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
-        return parts.isEmpty ? "Main loop only" : parts.joined(separator: ", ")
-    }
 }
 
 /// The main loop: the dot alone lit, and what it's on.
@@ -344,13 +324,12 @@ private struct ChoiceRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// "GPT-6 Luna at low" for a worker; "Moved itself to high effort", or to another model, for
-    /// the head's own move.
+    /// "GPT-6 Luna low" for a worker; "→ high", or "→ Opus high" to another model, for the
+    /// head's own move.
     private var title: String {
         let name = ModelMenu.shortName(choice.name ?? choice.model.flatMap { id in model.modelsByAgent[choice.agent]?.first { $0.id == id }?.name } ?? choice.model ?? "")
-        guard choice.task == nil else { return name.isEmpty ? "A worker \(choice.level)" : "\(name) \(choice.level)" }
-        if choice.modelChanged { return "Moved itself to \(name) \(choice.level)" }
-        return choice.effort.map { "Moved itself to \(ModelMenu.effortName($0).lowercased()) effort" } ?? "Moved itself to the model's own effort"
+        guard choice.task == nil else { return name.isEmpty ? choice.level : "\(name) \(choice.level)" }
+        return choice.modelChanged ? "→ \(name) \(choice.level)" : "→ \(choice.level)"
     }
 }
 

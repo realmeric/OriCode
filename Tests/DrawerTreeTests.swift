@@ -140,7 +140,7 @@ struct DrawerTreeTests {
         model.conversation(for: test).userSent("Run the test")
         model.archive(lead)
         #expect(!lead.archived && !test.archived)
-        #expect(model.note == "Stop the threads under it before archiving it")
+        #expect(model.note == "Stop the threads under it first")
 
         model.conversations[test.id] = nil
         model.archive(lead)

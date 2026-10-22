@@ -169,11 +169,7 @@ extension AppModel {
               // Never fewer bytes than scalars, so only a message with more bytes than the limit is counted.
               text.utf8.count > longest, text.unicodeScalars.count > longest
         else { return nil }
-        let count = text.unicodeScalars.count.formatted()
-        guard window != nil, longest == read else { return "\(agent.agent) takes messages of up to \(longest.formatted()) characters. This one has \(count)." }
-        // Short enough for a column of two side by side. Default's name is the menu's, not a model's.
-        let name = option.flatMap { $0.id == ModelOption.claudeDefault ? nil : $0.name } ?? agent.agent
-        return "\(name) reads about \(longest.formatted()) characters. This has \(count)."
+        return "Too long: \(text.unicodeScalars.count.formatted()) of \(longest.formatted()) characters"
     }
 
     /// Hands a message the transcript already shows, or one it needn't, to the thread's session
@@ -216,9 +212,7 @@ extension AppModel {
         conversation.water.forget()
         chat.handover = true
         let again = held ? Self.sentAgain(after: spent, in: conversation.items) : nil
-        let agent = agent(for: chat).agent
-        let why = spent == "long" ? "This session is more than \(agent) reads at once" : "\(agent) won't go on in this session"
-        conversation.note("\(why), so \(again == nil ? "the next message starts" : "the message goes again in") a new one, handed what the thread has said.")
+        conversation.note(spent == "long" ? "New session: this one was full" : "New session: \(agent(for: chat).agent) refused to go on")
         save()
         guard let again else { return nil }
         // Working until that turn starts, so Return meanwhile goes into it and not beside it.

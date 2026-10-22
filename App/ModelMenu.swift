@@ -169,8 +169,8 @@ struct ModelMenu: View {
 
     /// The help a head that chooses gives: where it is now, and what it picks.
     private var choosingLine: String {
-        let now = [name] + (level.map { [Self.effortName($0)] } ?? [])
-        return "The head chooses its workers' models and its own effort, now \(now.joined(separator: " at ")). Model and permission mode"
+        let now = [name] + (level.map { [Self.effortName($0).lowercased()] } ?? [])
+        return "Head chooses · " + now.joined(separator: " ")
     }
 
     private var raysLine: String {

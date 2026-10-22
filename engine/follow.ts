@@ -20,14 +20,11 @@ export class Follow {
   private reading = false;
   private again = false;
   private stopped = false;
-  /// What a stop reads as: a workflow's agent stops only with its workflow.
-  private note: string;
 
   constructor(threadId: string, path: string, from: number) {
     this.threadId = threadId;
     this.path = path;
     this.offset = from;
-    this.note = path.includes("/subagents/workflows/") ? "Stopped with its workflow." : "Stopped.";
   }
 
   start(): void {
@@ -94,7 +91,7 @@ export class Follow {
       let pending: Transcript = [];
       const whole = buffer.lastIndexOf(10) + 1;
       for (let end = buffer.indexOf(10); end !== -1; end = buffer.indexOf(10, start)) {
-        pending.push(...lineEvents(buffer.subarray(start, end).toString("utf8"), this.note));
+        pending.push(...lineEvents(buffer.subarray(start, end).toString("utf8")));
         start = end + 1;
         if (pending.length >= batch) {
           this.send(from, base + start, pending, start < whole);
@@ -123,7 +120,7 @@ export class Follow {
 /// A line of an agent's transcript as the events a thread stores. Of the rest, the context the
 /// CLI attached to the session and the requests it sent, nothing is kept: those lines hold the
 /// user's email and organisation among much else.
-export function lineEvents(line: string, stopped = "Stopped with its workflow."): Transcript {
+export function lineEvents(line: string): Transcript {
   let record: { type?: string; message?: { content?: unknown }; toolUseResult?: { structuredPatch?: unknown } };
   try {
     record = JSON.parse(line);
@@ -135,7 +132,7 @@ export function lineEvents(line: string, stopped = "Stopped with its workflow.")
   return messageEvents(record.type, record.message?.content).map((told) => {
     if (told.event === "tool.result" && patch) return { ...told, patch };
     if (told.event !== "user" || typeof told.text !== "string") return told;
-    if (told.text.startsWith("[Request interrupted")) return { event: "note", text: stopped };
+    if (told.text.startsWith("[Request interrupted")) return { event: "note", text: "Stopped" };
     return { ...told, text: unframed(told.text) };
   });
 }

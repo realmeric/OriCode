@@ -425,7 +425,7 @@ export class Rays {
         this.hands.turnEnded();
         this.menu.turnEnded();
         this.turns += 1;
-        void this.undoOpen("the turn ended");
+        void this.undoOpen();
       }
       if (name !== "heads") return false;
       this.own = (fields.heads as unknown[]) ?? [];
@@ -697,7 +697,7 @@ export class Rays {
     if (total < budget) return false;
     this.stopped = true;
     log(`budget thread=${this.threadId} spent=${total.toFixed(4)} of ${budget}`);
-    event("note", { threadId: this.threadId, text: `This thread has spent its ${usd(budget)} budget, so OriCode stopped it and its workers.` });
+    event("note", { threadId: this.threadId, text: `Stopped at its ${usd(budget)} limit` });
     // Not waited on: the session whose tool asked is waiting on this answer.
     Promise.all([this.stopAll(), this.seam.interrupt(this.threadId)]).catch((error) => log(`budget stop thread=${this.threadId}: ${describe(error)}`));
     return true;
@@ -1066,7 +1066,7 @@ export class Rays {
     if (this.closing || this.turns !== this.startedIn) {
       const why = this.closing ? "the thread closed" : "the turn ended";
       await undo(merge);
-      emit({ event: "note", threadId: this.threadId, text: `The merge of ${name} was undone: ${why} before it met its conflicts, and the files it wrote are as they were.` });
+      emit({ event: "note", threadId: this.threadId, text: `Merge of ${name} undone` });
       return { ...who, merged: false, undone: true, note: `The merge met a conflict after ${why}, so it was undone.` };
     }
     this.merging = { merge, name, who, done, kept: new Set() };
@@ -1129,16 +1129,16 @@ export class Rays {
   async settle(): Promise<void> {
     this.closing = true;
     await this.underway?.catch(() => {});
-    await this.undoOpen("the thread closed");
+    await this.undoOpen();
   }
 
   /// The turn ended, or the thread went, with a merge open: it's undone, and the thread says so.
-  private async undoOpen(why: string): Promise<void> {
+  private async undoOpen(): Promise<void> {
     const open = this.merging;
     if (!open) return;
     this.merging = undefined;
     await undo(open.merge).then(
-      () => emit({ event: "note", threadId: this.threadId, text: `The merge of ${open.name} was undone: ${why} with its conflicts unsettled, and the files it wrote are as they were.` }),
+      () => emit({ event: "note", threadId: this.threadId, text: `Merge of ${open.name} undone` }),
       (error) => emit({ event: "note", threadId: this.threadId, text: `The merge of ${open.name} couldn't be undone: ${describe(error)}` }),
     );
   }
@@ -1291,17 +1291,17 @@ export class Rays {
     if (!next) {
       if (offline && !worker.limit && worker.error && now - offline.since >= 3_600_000) {
         worker.error = `It couldn't reach ${worker.agent.name} for an hour, so it stopped: ${worker.error}`;
-        emit({ event: "note", threadId: this.threadId, text: `${worker.id} couldn't reach ${worker.agent.name} for an hour, so it stopped.` });
+        emit({ event: "note", threadId: this.threadId, text: `${worker.id} stopped: ${worker.agent.name} unreachable` });
       }
       return false;
     }
     const at = new Date(next.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
     const limit = limitName(worker.limit?.window ?? null);
-    const line = next.on === "limit" ? `Waits on the ${limit}, which resets at ${at}, and goes on by itself then` : `Lost its connection to ${worker.agent.name}, and goes on by itself once it's back`;
+    const line = next.on === "limit" ? `Limit · ${at}` : "Offline";
     worker.waits = { line, timer: setTimeout(() => this.goOnNow(worker, next.on, limit), next.at - now) };
-    worker.step = { tool: next.on === "limit" ? `Waits on the ${limit}` : "Waits on the connection", detail: next.on === "limit" ? `resets at ${at}` : null };
+    worker.step = { tool: next.on === "limit" ? "Limit" : "Offline", detail: next.on === "limit" ? at : null };
     // Told once as it starts waiting, not again at each try of a connection.
-    if (!offline) emit({ event: "note", threadId: this.threadId, text: `${worker.id}, ${worker.label}: ${line[0]!.toLowerCase()}${line.slice(1)}.` });
+    if (!offline) emit({ event: "note", threadId: this.threadId, text: `${worker.id} waits · ${next.on === "limit" ? at : "offline"}` });
     this.tell();
     for (const done of worker.waiters.splice(0)) done();
     return true;
@@ -1318,7 +1318,6 @@ export class Rays {
     }
     const pending = worker.pending.splice(0);
     const line = on === "limit" ? `The ${limit} has reset. Please continue from where you left off.` : "The connection is back. Please continue from where you left off.";
-    emit({ event: "note", threadId: this.threadId, text: `${worker.id} went on ${on === "limit" ? `after the ${limit} reset` : "with its connection back"}.` });
     void this.run(worker, [line, ...pending].join("\n\n"));
   }
 

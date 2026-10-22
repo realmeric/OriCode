@@ -80,7 +80,7 @@ struct TranscriptView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if shown.count < conversation.items.count {
-                    Button("Show \(conversation.items.count - shown.count) earlier", action: showEarlier)
+                    Button("\(conversation.items.count - shown.count) earlier", action: showEarlier)
                         .buttonStyle(.plain)
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
@@ -902,8 +902,13 @@ struct ItemView: View {
             OpenedLine(thread: opened, title: title, finished: finished, resetsAt: resetsAt, window: window, parent: thread)
         case .suggested(_, let title, let prompt):
             SuggestedThread(title: title, prompt: prompt, thread: thread)
-        case .act(_, let other, let text):
-            ThreadActLine(thread: other, text: text, parent: thread)
+        case .act(_, let other, let text, let hover):
+            ThreadActLine(thread: other, text: text, hover: hover, parent: thread)
+        case .changed(_, let text, let reason):
+            Text(text)
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+                .help(reason)
         }
     }
 }

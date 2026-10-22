@@ -254,16 +254,16 @@ struct RaysTests {
         receive("head.changed", ["agent": "claude", "model": "opus", "name": "Opus", "modelChanged": false, "effort": .null, "reason": "Back to its own", "live": true])
         #expect(chat.effort == nil)
         let lines = model.conversation(for: chat).items.compactMap { item -> String? in
-            if case .note(_, let text) = item { text } else { nil }
+            if case .changed(_, let text, let reason) = item { "\(text) · \(reason)" } else { nil }
         }
         #expect(lines == [
-            "Now at medium effort · Tests need care",
-            "Now on Opus at extra high · The schema change touches every query",
-            "Now at the model's own effort · Back to its own",
+            "Medium · Tests need care",
+            "Opus · extra high · The schema change touches every query",
+            "Default · Back to its own",
         ])
         // Stored, so a relaunch shows the same lines.
         let replayed = Conversation(chat: chat, context: container.mainContext).items.compactMap { item -> String? in
-            if case .note(_, let text) = item { text } else { nil }
+            if case .changed(_, let text, let reason) = item { "\(text) · \(reason)" } else { nil }
         }
         #expect(replayed == lines)
     }
@@ -274,7 +274,7 @@ struct RaysTests {
         receive("head.chose", ["worker": "worker-2", "agent": "claude", "model": "sonnet", "name": "Sonnet", "effort": .null, "label": "Parse dates", "reason": "Edge cases"])
         let choices = model.conversation(for: chat).choices
         #expect(choices.map(\.task) == ["Write primes.py", nil, "Parse dates"])
-        #expect(choices.map(\.level) == ["at low", "at high", "at its default level"])
+        #expect(choices.map(\.level) == ["low", "high", "default"])
         #expect(choices.map(\.reason) == ["Mechanical, so Luna at low", "The review needs judgment", "Edge cases"])
         // A choice of a worker is no line in the transcript; the head's own move is.
         #expect(model.conversation(for: chat).items.count == 1)

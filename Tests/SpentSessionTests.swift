@@ -40,7 +40,7 @@ struct SpentSessionTests {
         let conversation = model.conversation(for: chat)
         #expect(!model.send(String(repeating: "a", count: 2_000_001), in: chat))
         #expect(conversation.items.isEmpty)
-        #expect(model.note == "Haiku 5.5 reads about \(2_000_000.formatted()) characters. This has \(2_000_001.formatted()).")
+        #expect(model.note == "Too long: \(2_000_001.formatted()) of \(2_000_000.formatted()) characters")
         #expect(model.send(String(repeating: "a", count: 2_000_000), in: chat))
         #expect(conversation.items.count == 1)
         // No engine runs here, so the send fails; its note lands before the store goes.
@@ -54,7 +54,7 @@ struct SpentSessionTests {
         let chat = try thread(in: model)
         #expect(model.whyTooLong(String(repeating: "a", count: 500_000), for: chat) == nil)
         chat.contextWindow = 200_000
-        #expect(model.whyTooLong(String(repeating: "a", count: 400_001), for: chat)?.hasPrefix("Haiku 5.5 reads about \(400_000.formatted()) characters.") == true)
+        #expect(model.whyTooLong(String(repeating: "a", count: 400_001), for: chat) == "Too long: \(400_001.formatted()) of \(400_000.formatted()) characters")
         #expect(model.whyTooLong(String(repeating: "a", count: 400_000), for: chat) == nil)
     }
 
@@ -80,7 +80,7 @@ struct SpentSessionTests {
         #expect(chat.handover)
         #expect(conversation.queue.isEmpty)
         let notes = conversation.items.compactMap { if case .note(_, let text) = $0 { text } else { nil } }
-        #expect(notes.last == "Claude won't go on in this session, so the next message starts a new one, handed what the thread has said.")
+        #expect(notes.last == "New session: Claude refused to go on")
         conversation.userSent("Reply with only the word MANGO.", previews: [], id: UUID())
         #expect(model.handover(for: chat)?.contains("User: reply with only the word PINEAPPLE") == true)
         #expect(model.handover(for: chat)?.contains("MANGO") == false)
@@ -93,7 +93,7 @@ struct SpentSessionTests {
                                     ultra: false, ultraBlocked: nil, more: nil, needs: nil, window: 1_000_000)]
         let chat = try thread(in: model)
         chat.model = ModelOption.claudeDefault
-        #expect(model.whyTooLong(String(repeating: "a", count: 2_000_001), for: chat) == "Claude reads about \(2_000_000.formatted()) characters. This has \(2_000_001.formatted()).")
+        #expect(model.whyTooLong(String(repeating: "a", count: 2_000_001), for: chat) == "Too long: \(2_000_001.formatted()) of \(2_000_000.formatted()) characters")
     }
 
     private func ended(_ chat: Chat, in model: AppModel) {
@@ -120,7 +120,7 @@ struct SpentSessionTests {
         #expect(model.startOver(chat, spent: "long", held: true) == "Reply with only the word KIWI.")
         #expect(conversation.running)
         let notes = { conversation.items.compactMap { if case .note(_, let text) = $0 { text } else { nil } } }
-        #expect(notes().last == "This session is more than Claude reads at once, so the message goes again in a new one, handed what the thread has said.")
+        #expect(notes().last == "New session: this one was full")
         let sent = model.turnParams(in: chat, text: "Reply with only the word KIWI.")
         #expect(sent["sessionId"] == nil)
         #expect(sent["text"]?.string == "Reply with only the word KIWI.")
@@ -185,6 +185,6 @@ struct SpentSessionTests {
         #expect(!conversation.running)
         #expect(chat.sessionId == nil)
         let notes = conversation.items.compactMap { if case .note(_, let text) = $0 { text } else { nil } }
-        #expect(notes.last == "Claude won't go on in this session, so the next message starts a new one, handed what the thread has said.")
+        #expect(notes.last == "New session: Claude refused to go on")
     }
 }

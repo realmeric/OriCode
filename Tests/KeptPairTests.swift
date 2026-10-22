@@ -240,12 +240,12 @@ struct KeptPairTests {
         #expect(model.chats.isEmpty)
         #expect(try #require(model.paletteSearchable().first { $0.id == "thread.beside" }).unavailable == nil)
         #expect(try await rows(of: "thread.beside").count == 2)
-        // With no other thread to bring, it says so.
+        // With no other thread to bring, it isn't offered.
         model.drawerFilter = .all
         second.archived = true
         third.archived = true
         try container.mainContext.save()
-        #expect(try #require(model.paletteSearchable().first { $0.id == "thread.beside" }).unavailable == "No other thread")
+        #expect(!model.paletteSearchable().contains { $0.id == "thread.beside" })
     }
 
     @Test func closeOtherSideIsOfferedOnlyWithAPair() throws {

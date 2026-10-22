@@ -66,10 +66,10 @@ test("a run says how far it is by its agents, and the time left once one has end
   const ends: number[] = [];
   let shape = workflowShape([agent("Build", "progress"), agent("Build", "progress"), agent("Review", "start")]);
   stampEnds(shape, ends, 100);
-  assert.equal(workflowProgress(shape, 0, ends, 100), "0 of 3 done · time left: can't tell yet");
+  assert.equal(workflowProgress(shape, 0, ends, 100), "0/3");
   shape = workflowShape([agent("Build", "done"), agent("Build", "progress"), agent("Review", "start")]);
   stampEnds(shape, ends, 600);
-  assert.equal(workflowProgress(shape, 0, ends, 600), "1 of 3 done · about 20 min left");
+  assert.equal(workflowProgress(shape, 0, ends, 600), "1/3 · 20 min");
   assert.equal(workflowProgress(workflowShape([]), 0, [], 0), null);
 });
 
@@ -91,7 +91,7 @@ test("a turn nobody sent says what woke it", async () => {
     process.stdout.write = write;
   }
   const started = lines.map((line) => JSON.parse(line)).find((event) => event.event === "turn.started");
-  assert.equal(started?.woke, "The workflow review finished");
+  assert.equal(started?.woke, "review done");
 });
 
 test("a background command that wakes the thread names itself, though the CLI said it ended first", async () => {
@@ -113,5 +113,5 @@ test("a background command that wakes the thread names itself, though the CLI sa
     process.stdout.write = write;
   }
   const started = lines.map((line) => JSON.parse(line)).find((event) => event.event === "turn.started");
-  assert.equal(started?.woke, 'Background command "Sleep 90" completed (exit code 0)');
+  assert.equal(started?.woke, "Sleep 90 done");
 });

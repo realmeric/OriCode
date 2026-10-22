@@ -49,6 +49,11 @@ struct OverviewStatus: Equatable {
         }
     }
 
+    /// The word the row draws: working and waiting are its mark's to show, turning or pulsing.
+    var shown: String {
+        state == .working || state == .waiting ? "" : word
+    }
+
     /// At work or waiting on someone, which the row says in full ink.
     var live: Bool {
         state == .working || state == .waiting || state == .queued
@@ -72,33 +77,14 @@ struct Overview: View {
     var body: some View {
         let sections = model.overview
         let asks = model.waitingAsks
+        // No title and no tally: the user called it, and each row's mark says how it stands.
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Text("Everything running")
-                    .font(Type.body)
-                    .foregroundStyle(Ink.primary)
-                    .lineLimit(1)
-                    .fixedSize()
-                Spacer(minLength: 8)
-                // In a narrow window the tally gives way, its first count and then all of it,
-                // and never the name.
-                let parts = tally(sections)
-                ViewThatFits(in: .horizontal) {
-                    Text(parts.joined(separator: ", ")).fixedSize()
-                    Text(parts.first ?? "").fixedSize()
-                    Color.clear.frame(width: 0, height: 0)
-                }
-                .font(Type.secondary)
-                .foregroundStyle(Ink.faint)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
             if sections.isEmpty, asks.isEmpty {
-                Text("No thread has worked since \(Build.name) opened.")
+                Text("Nothing running")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.faint)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
             } else {
                 ScrollViewReader { scroller in
                     ScrollView {
@@ -127,12 +113,11 @@ struct Overview: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.bottom, 6)
+                        .padding(6)
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     // Never past the composer, which may stand in the middle of the window and grow up.
-                    .frame(maxHeight: max(0, tallest - 44))
+                    .frame(maxHeight: max(0, tallest))
                     .fixedSize(horizontal: false, vertical: true)
                     // A notification's ask, which may have come below the fold of a long queue.
                     // Once the rows are laid out: on the first pass the queue has no height yet.
@@ -149,15 +134,7 @@ struct Overview: View {
         }
     }
 
-    /// "2 working", "1 waiting" and "3 ended" across every project.
-    private func tally(_ sections: [OverviewSection]) -> [String] {
-        let states = sections.flatMap(\.rows).map { model.status(of: $0.chat).state }
-        let working = states.count { $0 == .working }
-        let waiting = states.count { $0 == .waiting || $0 == .queued }
-        let ended = states.count { $0 == .done || $0 == .stopped || $0 == .failed }
-        let parts = [(working, "working"), (waiting, "waiting"), (ended, "ended")].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
-        return parts
-    }
+
 }
 
 /// A thread's row: its mark, its title over what it's on, and where it stands at the end, which
@@ -181,7 +158,7 @@ private struct OverviewLine: View {
         HStack(spacing: 10) {
             mark(status)
                 .frame(width: 14, height: 14)
-                // The word at the row's end says it.
+                // The word at the row's end says it, to VoiceOver alone where the mark shows it.
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(chat.title)
@@ -200,7 +177,8 @@ private struct OverviewLine: View {
             }
             Spacer(minLength: 8)
             ZStack(alignment: .trailing) {
-                Text(status.word)
+                Text(status.shown)
+                    .accessibilityLabel(status.word)
                     .font(Type.secondary)
                     .foregroundStyle(status.live ? Ink.secondary : Ink.faint)
                     .fixedSize()
@@ -332,7 +310,7 @@ extension AppModel {
             switch chat.agentState {
             // Its ask waits in the thread whose agent runs it, which the answer goes to.
             case "running" where chat.openedBy.flatMap({ conversations[$0] })?.waitingAsks.contains(where: { askers[$0.requestId]?.id == chat.id }) == true:
-                return OverviewStatus(state: .waiting, step: "Waiting on you")
+                return OverviewStatus(state: .waiting, step: nil)
             case "running": return OverviewStatus(state: .working, step: agentStep(chat) ?? "Starting…")
             case "queued": return OverviewStatus(state: .queued, step: nil)
             case "done": return OverviewStatus(state: .done, step: chat.agentResult)
@@ -346,18 +324,20 @@ extension AppModel {
         // One a thread above answers first isn't waiting on you; the thread works on, asking it.
         if let conversation, conversation.waitingAfterQuit
             || conversation.waitingAsks.contains(where: { asker(of: $0) == nil && holder(of: $0.requestId) == nil }) {
-            return OverviewStatus(state: .waiting, step: "Waiting on you")
+            return OverviewStatus(state: .waiting, step: nil)
         }
         if let held = conversation?.waitingAsks.lazy.compactMap({ self.holder(of: $0.requestId) }).first {
             return OverviewStatus(state: .working, step: "Asking \(held.title)")
         }
         if let conversation, conversation.working {
+            // With its turn over, only how far what it left running is, where that can tell.
+            guard conversation.running else { return OverviewStatus(state: .working, step: goingOn(chat)) }
             let step = conversation.mainStep(cwd: chat.cwd)
             let line = [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
             return OverviewStatus(state: .working, step: [conversation.planStep, line].compactMap { $0 }.joined(separator: " · "))
         }
         if let resumeAt = chat.resumeAt {
-            return OverviewStatus(state: .waiting, step: "Goes on at \(Limit.time(resumeAt))")
+            return OverviewStatus(state: .waiting, step: Limit.time(resumeAt))
         }
         // A plan it runs goes on while a task's thread works, which its line says over the turn's.
         let going = goingOn(chat)

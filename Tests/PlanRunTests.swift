@@ -77,7 +77,7 @@ struct PlanRunTests {
     }
 
     private func acts(_ conversation: Conversation) -> [String] {
-        conversation.items.compactMap { if case .act(_, _, let text) = $0 { text } else { nil } }
+        conversation.items.compactMap { if case .act(_, _, let text, let hover) = $0 { hover.isEmpty ? text : "\(text) · \(hover)" } else { nil } }
     }
 
     @Test func aPlanThatRunsStartsItsFreeTasksAtOnceUnderTheCeiling() throws {
@@ -167,7 +167,7 @@ struct PlanRunTests {
         #expect(lead.turnFrom == words.id)
         #expect(try task("T2").heard)
         // Its line comes ahead of the message, as message_thread's does.
-        #expect(acts(conversation).last == "Message from Write words.sh · T2 done")
+        #expect(acts(conversation).last == "From Write words.sh · T2 done")
     }
 
     @Test func aTaskStoppedIsStuckStopsWhatWaitsOnItAndIsTakenUpAgainWhenItsThreadIsWrittenInto() async throws {
@@ -181,10 +181,10 @@ struct PlanRunTests {
         model.stop(in: words)
         for event in done(words, "interrupted", replying: "Counting") { model.route(event) }
         let stuck = try task("T2")
-        #expect(stuck.state == "stuck" && stuck.note == "Stopped by you.")
+        #expect(stuck.state == "stuck" && stuck.note == "Stopped by you")
         #expect(!model.startable(try task("T4")))
         conversation.receive(EngineEvent(name: "turn.done", threadId: lead.id.uuidString, body: ["stopReason": "end_turn"]))
-        #expect(acts(conversation).contains("Write words.sh is stuck on T2, so T4 won't start · Stopped by you."))
+        #expect(acts(conversation).contains("Write words.sh stuck · T2 · Stopped by you · T4 waits on it"))
         conversation.userSent("Go on")
 
         let heard = try await model.waitPlan(from: lead.id)
@@ -212,15 +212,15 @@ struct PlanRunTests {
                                 body: ["resetsAt": .number(resetsAt.timeIntervalSince1970 * 1000), "window": "five_hour"]))
         for event in done(words, "stop_sequence", replying: "Counting") { model.route(event) }
         let waiting = try task("T2")
-        #expect(waiting.state == "working" && waiting.note == "Waits on the session limit, which resets at \(Limit.time(resetsAt))")
+        #expect(waiting.state == "working" && waiting.note == "Limit · \(Limit.time(resetsAt))")
         _ = model.conversation(for: lead)
-        #expect(model.goingOn(lead)?.hasPrefix("Plan · 0 of 4 tasks done") == true)
+        #expect(model.goingOn(lead)?.hasPrefix("0/4") == true)
 
         // The reset comes, the thread goes on by itself, and its owner hears it did.
         words.resumeAt = Date.now.addingTimeInterval(-60)
         model.resumeDue()
         #expect(model.conversation(for: words).running && waiting.note.isEmpty)
-        #expect(acts(model.conversation(for: lead)).last == "Write words.sh went on after the limit reset")
+        #expect(acts(model.conversation(for: lead)).last == "Write words.sh went on")
         for event in done(words, replying: "12 words.") { model.route(event) }
         #expect(waiting.state == "done")
     }
@@ -270,7 +270,7 @@ struct PlanRunTests {
         let words = try opened("T2", in: model)
         _ = try model.stop(words.id.uuidString, reason: "Enough", from: lead.id)
         for event in done(words, "interrupted") { model.route(event) }
-        #expect(try task("T2").state == "stuck" && task("T2").note == "Its turn was stopped before it finished.")
+        #expect(try task("T2").state == "stuck" && task("T2").note == "Stopped")
         #expect(try !task("T2").heard)
         _ = try await model.wait(on: words.id.uuidString, from: lead.id)
         #expect(try task("T2").heard)
@@ -281,7 +281,7 @@ struct PlanRunTests {
         model.route(EngineEvent(name: "error", threadId: primes.id.uuidString, body: ["message": "Claude Code exited: API Error 529 overloaded\nretry later"]))
         model.route(EngineEvent(name: "turn.done", threadId: primes.id.uuidString, body: ["stopReason": "error_during_execution"]))
         #expect(try task("T1").state == "stuck")
-        #expect(try task("T1").note == "Its turn ended before it finished: Claude Code exited: API Error 529 overloaded")
+        #expect(try task("T1").note == "Stopped: Claude Code exited: API Error 529 overloaded")
         #expect(!model.startable(try task("T3")))
 
         // A send the engine turned down, taken up again by the user first.
@@ -290,7 +290,7 @@ struct PlanRunTests {
         #expect(try task("T1").state == "working")
         model.conversation(for: primes).sendFailed("The engine isn't running.")
         model.turnEnded(primes.id)
-        #expect(try task("T1").note == "Its turn ended before it finished: The engine isn't running.")
+        #expect(try task("T1").note == "Stopped: The engine isn't running.")
 
         // A done task merged by its owner has been heard.
         model.conversation(for: primes).userSent("Once more")
@@ -315,7 +315,7 @@ struct PlanRunTests {
         model.engineState = .stopped
         model.engineStopped()
         #expect(try task("T1").state == "stuck" && task("T2").state == "stuck")
-        #expect(try task("T1").note == "Its turn ended before it finished: The engine stopped in the middle of this turn.")
+        #expect(try task("T1").note == "Stopped: The engine stopped in the middle of this turn.")
         // The ceiling has room, but nothing starts and the lead isn't sent anything.
         #expect(model.startingTasks.isEmpty)
         #expect(!model.conversation(for: lead).running)
@@ -324,7 +324,7 @@ struct PlanRunTests {
         model.engineState = .ready
         model.movePlans()
         let sent = model.conversation(for: lead).items.compactMap { if case .user(_, let text, _, _) = $0 { text } else { nil } }.last ?? ""
-        #expect(sent.contains("T1 · A is stuck: Its turn ended before it finished"))
+        #expect(sent.contains("T1 · A is stuck: Stopped: "))
         #expect(try task("T1").heard && task("T2").heard)
         #expect(model.startingTasks == [try task("T3").id])
     }

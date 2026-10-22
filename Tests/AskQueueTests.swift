@@ -67,7 +67,7 @@ struct AskQueueTests {
         #expect(queue[2].holder.id == lead.id)
         #expect(model.asksByThread == [build.id: 1, docs.id: 1, check.id: 1])
         #expect(model.waitingCount == 3)
-        #expect(model.status(of: check) == OverviewStatus(state: .waiting, step: "Waiting on you"))
+        #expect(model.status(of: check) == OverviewStatus(state: .waiting, step: nil))
         // Lead works on while its worker asks.
         #expect(model.status(of: lead).state != .waiting)
         // Each waiting thread, and the head for its worker, is on the screen under the queue.

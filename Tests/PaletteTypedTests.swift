@@ -118,7 +118,7 @@ struct PaletteTypedTests {
                     return nil
                 }.first
         }
-        #expect(row("thread.stop")?.unavailable == "Nothing is running")
+        #expect(row("thread.stop") == nil)
         let conversation = model.conversation(for: chats[0])
         conversation.userSent("Read the review")
         await hop()
@@ -128,7 +128,7 @@ struct PaletteTypedTests {
         conversation.receive(EngineEvent(name: "turn.done", threadId: chats[0].id.uuidString, body: body))
         #expect(!conversation.running)
         await hop()
-        #expect(row("thread.stop")?.unavailable == "Nothing is running")
+        #expect(row("thread.stop") == nil)
 
         model.models = [ModelOption(id: "opus", name: "Opus", description: "", efforts: [], fast: true, defaultEffort: nil, ultra: false, ultraBlocked: nil, more: nil, needs: nil)]
         model.favoriteModels = []

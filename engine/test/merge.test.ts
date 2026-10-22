@@ -259,7 +259,7 @@ test("a merge still open when the opener's turn ends is undone, and the thread s
   const from = engine.lines.length;
   await turn();
   const note = await engine.until((line) => line.event === "note" && line.threadId === "lead", from);
-  assert.equal(note.text, "The merge of Rewrite sum.py was undone: the turn ended with its conflicts unsettled, and the files it wrote are as they were.");
+  assert.equal(note.text, "Merge of Rewrite sum.py undone");
   assert.deepEqual(await folderState(cwd), before);
 });
 
@@ -375,7 +375,7 @@ test("a merge that meets its conflict after the turn has ended is undone at once
   const answer = await calling;
   assert.equal(answer.undone, true);
   const note = await engine.until((line) => line.event === "note" && line.threadId === "lead" && /undone/.test(line.text), from);
-  assert.equal(note.text, "The merge of Rewrite sum.py was undone: the turn ended before it met its conflicts, and the files it wrote are as they were.");
+  assert.equal(note.text, "Merge of Rewrite sum.py undone");
   assert.deepEqual(await folderState(cwd), before);
   assert.deepEqual(await call(url, "finish_merge", {}), { error: "This thread has no merge open." });
 });

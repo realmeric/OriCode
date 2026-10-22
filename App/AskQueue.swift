@@ -20,11 +20,14 @@ struct AskQueue: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(asks.count == 1 ? "Waiting on you" : "\(asks.count) waiting on you")
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+            // The cards are the asks; over several, how many, with no noun.
+            if asks.count > 1 {
+                Text("\(asks.count)")
+                    .font(Type.secondary.monospacedDigit())
+                    .foregroundStyle(Ink.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+            }
             ForEach(asks) { waiting in
                 AskEntry(waiting: waiting, lit: model.overviewAsk == waiting.id)
                     .id(waiting.id)
@@ -61,8 +64,8 @@ private struct AskEntry: View {
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
             .help("Open \(waiting.thread.title)")
-            if let line = model.heldLine(of: waiting.ask, in: waiting.holder) {
-                HeldLine(text: line)
+            if let line = model.heldLine(of: waiting.ask) {
+                HeldLine(text: line.text, hover: line.hover)
             }
             AskForm(ask: waiting.ask, cwd: waiting.holder.cwd, thread: waiting.holder.id, listens: false, compact: true)
         }

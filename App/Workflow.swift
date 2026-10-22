@@ -28,7 +28,7 @@ struct WorkflowRun: Hashable {
     let name: String
     let phases: [String]
     let agents: [Agent]
-    /// How far it is and the time left, in the engine's words: "3 of 8 done · about 12 min left".
+    /// How far it is and the time left, in the engine's words: "3/8 · 12 min".
     let progress: String?
     let summary: String?
 

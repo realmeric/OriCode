@@ -24,19 +24,36 @@ export function secondsLeft(plan: Step[], took: number[]): number | undefined {
   return plan.slice(done).reduce((sum, step) => sum + (last.get(step.kind) ?? step.guess * pace), 0);
 }
 
-export function spoken(seconds: number): string {
-  if (seconds < 60) return "under a minute";
+/// Seconds as the app's running line says them: "9 min", "<1 min", "1 h 05".
+export function short(seconds: number): string {
+  if (seconds < 60) return "<1 min";
   const minutes = Math.round(seconds / 60);
-  return minutes < 60 ? `about ${minutes} min` : `about ${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")}`;
 }
 
-/// The job's line: "3 of 21 done · about 9 min left", "time left: can't tell yet" before the
-/// first step has ended. Times are in seconds; ended holds when each finished step ended.
-export function progressLine(plan: Step[], began: number, ended: number[], now: number): string {
+/// The job's line as the app shows it: "3/21 · 9 min", "3/21" before the first step has ended,
+/// and null once every step is, since the line goes then. Times are in seconds; ended holds when
+/// each finished step ended.
+export function progressLine(plan: Step[], began: number, ended: number[], now: number): string | null {
+  const total = plan.length;
+  const done = ended.length;
+  if (done >= total) return null;
+  const seconds = secondsLeft(plan, ended.map((end, i) => end - (i === 0 ? began : ended[i - 1]!)));
+  return seconds === undefined ? `${done}/${total}` : `${done}/${total} · ${short(seconds)}`;
+}
+
+/// The same in words, for a terminal: "3 of 21 done · about 9 min left", "time left: can't tell
+/// yet" before the first step has ended, and how long it took once it's over.
+export function spokenLine(plan: Step[], began: number, ended: number[], now: number): string {
   const total = plan.length;
   const done = ended.length;
   if (done >= total) return `${done} of ${total} done, took ${spoken(now - began).replace(/^about /, "")}`;
-  const took = ended.map((end, i) => end - (i === 0 ? began : ended[i - 1]!));
-  const seconds = secondsLeft(plan, took);
+  const seconds = secondsLeft(plan, ended.map((end, i) => end - (i === 0 ? began : ended[i - 1]!)));
   return `${done} of ${total} done · ${seconds === undefined ? "time left: can't tell yet" : `${spoken(seconds)} left`}`;
+}
+
+function spoken(seconds: number): string {
+  if (seconds < 60) return "under a minute";
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `about ${minutes} min` : `about ${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
 }

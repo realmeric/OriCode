@@ -30,13 +30,6 @@ enum MacAccess {
             }
         }
 
-        var detail: String {
-            switch self {
-            case .screen: "To see a window an agent asks for."
-            case .accessibility: "To click, type and scroll in an app you let it use."
-            }
-        }
-
         var icon: String {
             switch self {
             case .screen: "macwindow"
@@ -81,7 +74,7 @@ struct MacPermissionRows: View {
 
     var body: some View {
         ForEach(MacAccess.Permission.allCases) { permission in
-            SettingsRow(title: permission.title, detail: permission.detail) {
+            SettingsRow(title: permission.title) {
                 if granted.contains(permission) {
                     Label("Allowed", systemImage: "checkmark")
                         .font(Type.secondary)
@@ -112,18 +105,13 @@ struct MacAccessSheet: View {
             Text("Let agents see and use your Mac?")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Ink.primary)
-            Text("With Screen Recording and Accessibility, an agent in a thread can take a picture of an app's window and click, type and scroll in it, to check a change in the running app, say. It asks you in the thread before it uses each app, and OriCode reads nothing these permissions cover until then.")
+            Text("An agent asks you before it uses each app.")
                 .font(Type.body)
                 .foregroundStyle(Ink.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
             SettingsCard { MacPermissionRows() }
                 .padding(.top, 18)
-            Text("Not now leaves it off and asks nothing again. It's in Settings › Agents whenever you want it.")
-                .font(Type.secondary)
-                .foregroundStyle(Ink.faint)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 12)
             HStack(spacing: 8) {
                 Spacer()
                 Button("Not now") { answer(MacAccess.off) }
@@ -155,7 +143,7 @@ struct MacAccessCard: View {
         SettingsCard {
             SettingsRow(
                 title: "Agents may see and use the Mac",
-                detail: "An agent in a thread can take a picture of an app's window and click, type and scroll in it. It asks you in the thread before it uses each app, and can never see or use OriCode's own windows."
+                detail: "Each app is asked for first."
             ) {
                 Toggle("Agents may see and use the Mac", isOn: Binding(get: { access == MacAccess.on }, set: { on in
                     access = on ? MacAccess.on : MacAccess.off

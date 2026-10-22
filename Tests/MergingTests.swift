@@ -59,7 +59,7 @@ struct MergingTests {
 
     private func acts(_ conversation: Conversation) -> [String] {
         conversation.items.compactMap { item in
-            if case .act(_, _, let text) = item { text } else { nil }
+            if case .act(_, _, let text, let hover) = item { hover.isEmpty ? text : "\(text) · \(hover)" } else { nil }
         }
     }
 
@@ -133,7 +133,7 @@ struct MergingTests {
         #expect(answer == ["worktreeRemoved": false, "worktreeNote": "Its worktree stays, since it has work the merge didn't take."])
         #expect(acts(model.conversation(for: parent)) == ["Merged Name it plus · 2 files, +4 −2"])
         // The merged thread wasn't in memory: its line is stored after its last event.
-        #expect(acts(Conversation(chat: x, context: container.mainContext)) == ["Sums merged this thread's work"])
+        #expect(acts(Conversation(chat: x, context: container.mainContext)) == ["Merged into Sums"])
         #expect(x.worktreeBranch == "oricode/t-x")
         // A file git ignores that the merge couldn't take is named.
         let ignored = try await model.merged(["thread": .string(x.id.uuidString), "summary": "1 file, +1 −0", "unmerged": true, "ignored": [".env"]], from: parent.id)
@@ -175,10 +175,10 @@ struct MergingTests {
         // Each line waits for its thread's turn to end.
         #expect(acts(model.conversation(for: x)).isEmpty)
         for chat in [x, y, parent] { model.route(event("turn.done", chat, ["stopReason": "end_turn"])) }
-        #expect(acts(model.conversation(for: x)) == ["sum.py: Name it add is editing it too"])
-        #expect(acts(model.conversation(for: y)) == ["sum.py: Name it plus is editing it too"])
-        #expect(acts(model.conversation(for: parent)) == ["sum.py: Name it add and Name it plus are both editing it"])
-        #expect(acts(Conversation(chat: parent, context: container.mainContext)) == ["sum.py: Name it add and Name it plus are both editing it"])
+        #expect(acts(model.conversation(for: x)) == ["Name it add also edits sum.py · sum.py"])
+        #expect(acts(model.conversation(for: y)) == ["Name it plus also edits sum.py · sum.py"])
+        #expect(acts(model.conversation(for: parent)) == ["Name it add and Name it plus both edit sum.py · sum.py"])
+        #expect(acts(Conversation(chat: parent, context: container.mainContext)) == ["Name it add and Name it plus both edit sum.py · sum.py"])
         // The opener waiting on either hears it.
         let waited = try await model.wait(on: x.id.uuidString, from: parent.id)
         #expect(waited["sameFiles"] == [["path": "sum.py", "thread": "Name it add", "id": .string(y.id.uuidString)]])

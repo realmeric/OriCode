@@ -232,15 +232,17 @@ enum Item: Identifiable, Hashable {
     /// A thread the agent suggested for something outside the task: the button's words, and the
     /// message a thread made from it would start on.
     case suggested(id: UUID, title: String, prompt: String)
-    /// One thread opened, messaged or stopped another: the line both get, with the other thread
-    /// and the line's words, the agent's reason among them.
-    case act(id: UUID, thread: UUID, text: String)
+    /// One thread opened, messaged or stopped another: the line both get, with the other thread,
+    /// the line's words and what its hover says, the agent's reason among it.
+    case act(id: UUID, thread: UUID, text: String, hover: String)
+    /// The head moved itself to another model or level: where to, and the reason it gave.
+    case changed(id: UUID, text: String, reason: String)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _),
-             .opened(let id, _, _, _, _, _), .suggested(let id, _, _), .act(let id, _, _):
+             .opened(let id, _, _, _, _, _), .suggested(let id, _, _), .act(let id, _, _, _), .changed(let id, _, _):
             id
         }
     }
@@ -930,7 +932,7 @@ final class Conversation {
             }
             // A turn nobody sent says what it left running ended and woke it.
             if let woke = event.body["woke"]?.string {
-                record("note", ["event": "note", "text": .string("\(woke), so the thread goes on.")])
+                record("note", ["event": "note", "text": .string(woke)])
             }
         case "text", "thinking":
             let delta = event.body["delta"]?.string ?? ""
@@ -1028,15 +1030,13 @@ final class Conversation {
         }
     }
 
-    /// The line where the head moved itself: "Now on Opus at high · reason", or "Now at high
-    /// effort · reason" when only its level moved.
+    /// The line where the head moved itself: "Opus · high", or "High" when only its level moved,
+    /// "Default" for the model's own. Its reason is the line's hover.
     static func headChanged(_ body: JSON) -> String {
         let level = body["effort"]?.string.map { ModelMenu.effortName($0) }
-        let moved = body["modelChanged"]?.bool == true
-            ? "Now on " + ModelMenu.shortName(body["name"]?.string ?? body["model"]?.string ?? "") + (level.map { " at \($0.lowercased())" } ?? "")
-            : "Now at " + (level.map { "\($0.lowercased()) effort" } ?? "the model's own effort")
-        let reason = body["reason"]?.string ?? ""
-        return reason.isEmpty ? moved : "\(moved) · \(reason)"
+        guard body["modelChanged"]?.bool == true else { return level ?? "Default" }
+        let name = ModelMenu.shortName(body["name"]?.string ?? body["model"]?.string ?? "")
+        return level.map { "\(name) · \($0.lowercased())" } ?? name
     }
 
     /// A limit nearing its ceiling puts one line in the thread each time its window fills: once
@@ -1480,7 +1480,7 @@ final class Conversation {
         case "error", "note":
             items.append(.note(id: id, text: body["message"]?.string ?? body["text"]?.string ?? ""))
         case "head.changed":
-            items.append(.note(id: id, text: Self.headChanged(body)))
+            items.append(.changed(id: id, text: Self.headChanged(body), reason: body["reason"]?.string ?? ""))
             if let choice = HeadChoice(kind, body, id: id, at: date) { choices.append(choice) }
         case "head.chose":
             if let choice = HeadChoice(kind, body, id: id, at: date) { choices.append(choice) }
@@ -1501,10 +1501,10 @@ final class Conversation {
                                  resetsAt: resetsAt, window: body["window"]?.string))
         case "thread.act":
             guard let act = ThreadAct(body) else { break }
-            items.append(.act(id: id, thread: act.thread, text: act.words))
+            items.append(.act(id: id, thread: act.thread, text: act.words, hover: act.hover))
         case "thread.overlap":
             guard let same = SameFile(body) else { break }
-            items.append(.act(id: id, thread: same.with?.id ?? same.thread, text: same.words))
+            items.append(.act(id: id, thread: same.with?.id ?? same.thread, text: same.words, hover: same.path))
         case "thread.suggested":
             guard let prompt = body["text"]?.string?.nonEmpty else { break }
             items.append(.suggested(id: id, title: body["title"]?.string?.nonEmpty ?? Chat.title(from: prompt), prompt: prompt))

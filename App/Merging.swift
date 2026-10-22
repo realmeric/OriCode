@@ -160,8 +160,8 @@ struct SameFile {
     }
 
     var words: String {
-        // The file first: two long titles would cut it off a 440pt column's two lines.
-        if let with { return "\(path): \(with.title) and \(title) are both editing it" }
-        return "\(path): \(title) is editing it too"
+        // Two long titles can cut the path off a 440pt column's two lines, so the hover has it.
+        if let with { return "\(with.title) and \(title) both edit \(path)" }
+        return "\(title) also edits \(path)"
     }
 }

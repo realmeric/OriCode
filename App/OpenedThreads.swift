@@ -643,17 +643,13 @@ struct OpenedLine: View {
         .foregroundStyle(Ink.secondary)
         .onHover { hovering = $0 }
         .pointerStyle(.link)
-        .help("Open the thread")
+        .help(resetsAt.map { _ in Limit.name(of: window).prefix(1).uppercased() + Limit.name(of: window).dropFirst() } ?? "")
     }
 
+    /// "X replied" or "X stopped", and while a limit holds its first turn, "X waits · 14:00".
     static func words(title: String, finished: Bool, resetsAt: Date? = nil, window: String? = nil) -> String {
-        if let resetsAt {
-            let limit = Limit.name(of: window)
-            return resetsAt > .now
-                ? "\(title) is waiting on the \(limit), which resets at \(Limit.time(resetsAt))"
-                : "\(title) waited on the \(limit), which reset at \(Limit.time(resetsAt))"
-        }
-        return finished ? "\(title) finished its first turn" : "\(title) stopped before its first turn finished"
+        if let resetsAt, resetsAt > .now { return "\(title) waits · \(Limit.time(resetsAt))" }
+        return finished ? "\(title) replied" : "\(title) stopped"
     }
 }
 
@@ -713,34 +709,40 @@ struct ThreadAct: Equatable {
         return .object(json)
     }
 
+    /// A name and a verb: "Opened X", "Opened by X". What it was about is the hover's.
     var words: String {
-        let done = switch (act, by) {
+        switch (act, by) {
         case (.opened, true): "Opened \(title)"
-        case (.messaged, true): "Sent \(title) a message"
-        case (.stopped, true): "Stopped \(title)"
-        case (.opened, false): "\(title) opened this thread"
-        case (.messaged, false): "Message from \(title)"
-        case (.stopped, false): "\(title) stopped this thread"
-        case (.stoppedWith, true): "Stopped \(title) with this thread"
-        case (.stoppedWith, false): "Stopped with \(title), which opened it"
+        case (.messaged, true): "Messaged \(title)"
+        case (.stopped, true), (.stoppedWith, true): "Stopped \(title)"
+        case (.opened, false): "Opened by \(title)"
+        case (.messaged, false): "From \(title)"
+        case (.stopped, false): "Stopped by \(title)"
+        case (.stoppedWith, false): "Stopped with \(title)"
         case (.merged, true): "Merged \(title)"
-        case (.merged, false): "\(title) merged this thread's work"
-        case (.allowed, true): "Allowed for \(title): \(what)"
-        case (.allowed, false): "\(title) allowed: \(what)"
-        case (.denied, true): "Denied for \(title): \(what)"
-        case (.denied, false): "\(title) denied: \(what)"
-        case (.answered, true): "Answered \(title)'s question: \(what)"
-        case (.answered, false): "\(title) answered: \(what)"
-        case (.passed, true): "Passed \(title)'s ask to \(to ?? "you"): \(what)"
-        case (.passed, false): "\(title) passed this to \(to ?? "you"): \(what)"
-        case (.stuck, true): "Stuck on \(what)"
-        case (.stuck, false): "\(title) is stuck on \(what)"
-        case (.wentOn, true): "Went on after the limit reset"
-        case (.wentOn, false): "\(title) went on after the limit reset"
+        case (.merged, false): "Merged into \(title)"
+        case (.allowed, true): "Allowed \(title)"
+        case (.allowed, false): "Allowed by \(title)"
+        case (.denied, true): "Denied \(title)"
+        case (.denied, false): "Denied by \(title)"
+        case (.answered, true): "Answered \(title)"
+        case (.answered, false): "Answered by \(title)"
+        case (.passed, true): "Passed \(title)'s ask up"
+        case (.passed, false): "Passed up by \(title)"
+        case (.stuck, true): "\(what) stuck"
+        case (.stuck, false): "\(title) stuck"
+        case (.wentOn, true): "Went on"
+        case (.wentOn, false): "\(title) went on"
         case (.did, true): what
         case (.did, false): "\(title): \(what)"
         }
-        return reason.isEmpty ? done : "\(done) · \(reason)"
+    }
+
+    /// The line's hover: the call, the answer or the task, whom a passed ask went to, and the
+    /// agent's reason.
+    var hover: String {
+        let shown = act == .did || (act == .stuck && by)
+        return [act == .passed ? "To \(to ?? "you")" : nil, shown ? nil : what.nonEmpty, reason.nonEmpty].compactMap(\.self).joined(separator: " · ")
     }
 }
 
@@ -749,6 +751,7 @@ struct ThreadActLine: View {
     @Environment(AppModel.self) private var model
     let thread: UUID
     let text: String
+    var hover = ""
     /// The thread the line is in; nil stands for the open one.
     var parent: UUID?
     @State private var hovering = false
@@ -768,6 +771,6 @@ struct ThreadActLine: View {
         .foregroundStyle(Ink.secondary)
         .onHover { hovering = $0 }
         .pointerStyle(.link)
-        .help("Open the thread")
+        .help(hover)
     }
 }

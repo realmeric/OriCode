@@ -83,7 +83,7 @@ final class AnsweringAsksTests {
     }
 
     private func lines(_ chat: Chat, in model: AppModel) -> [String] {
-        model.conversation(for: chat).items.compactMap { if case .act(_, _, let text) = $0 { text } else { nil } }
+        model.conversation(for: chat).items.compactMap { if case .act(_, _, let text, let hover) = $0 { hover.isEmpty ? text : "\(text) · \(hover)" } else { nil } }
     }
 
     private func turnEnds(_ chat: Chat, in model: AppModel) {
@@ -110,7 +110,7 @@ final class AnsweringAsksTests {
         #expect(settled?.answerReason == "Its own worktree.")
         // The lead's line waits for its turn's end, as every line between threads does.
         turnEnds(lead, in: model)
-        #expect(lines(lead, in: model) == ["Allowed for Rename: Edit sum.py · Its own worktree."])
+        #expect(lines(lead, in: model) == ["Allowed Rename · Edit sum.py · Its own worktree."])
         #expect(throws: AppModel.Refused.self) { try model.answerAsk(["ask": "e1", "answer": "allow", "reason": "Again."], from: lead.id) }
     }
 
@@ -130,7 +130,7 @@ final class AnsweringAsksTests {
         #expect(queue.first?.ask.passes == [PendingAsk.Pass(by: "Lead", to: nil, reason: "Accept edits can't run a command.")])
         #expect(model.waitingCount == 1)
         turnEnds(lead, in: model)
-        #expect(lines(lead, in: model) == ["Passed Rename's ask to you: Bash: npm test · Accept edits can't run a command."])
+        #expect(lines(lead, in: model) == ["Passed Rename's ask up · To you · Bash: npm test · Accept edits can't run a command."])
     }
 
     @Test func aQuestionAboutTheTaskIsAnsweredByTheLead() throws {
@@ -145,7 +145,7 @@ final class AnsweringAsksTests {
         #expect(settled?.state == .allowed)
         #expect(settled?.answeredBy == "Lead")
         turnEnds(lead, in: model)
-        #expect(lines(lead, in: model) == ["Answered Rename's question: sum.py · The task names sum.py."])
+        #expect(lines(lead, in: model) == ["Answered Rename · sum.py · The task names sum.py."])
     }
 
     @Test func anAskStillWithTheLeadWhenItsTurnEndsGoesUpByItself() throws {
@@ -164,12 +164,12 @@ final class AnsweringAsksTests {
         ask("c3", in: check, tool: "Bash", input: ["command": "make"], model: model)
         #expect(model.askHolders["c3"] == child.id)
         let waiting = { model.conversation(for: check).waitingAsks.first { $0.requestId == "c3" } }
-        #expect(waiting().flatMap { model.heldLine(of: $0, in: check) } == "With Rename first, which set this thread going")
+        #expect(waiting().flatMap { model.heldLine(of: $0)?.text } == "Rename first")
         // Rename is on Ask, so it passes; Lead, on Don't ask, may allow it.
         _ = try model.answerAsk(["ask": "c3", "answer": "pass", "reason": "Ask can't run make."], from: child.id)
         #expect(model.askHolders["c3"] == lead.id)
         // Lead didn't set Check going: the card names the pass that brought the ask there.
-        #expect(waiting().flatMap { model.heldLine(of: $0, in: check) } == "Rename passed this to Lead · Ask can't run make.")
+        #expect(waiting().flatMap { model.heldLine(of: $0) }.map { "\($0.text) · \($0.hover)" } == "From Rename · Ask can't run make.")
         let told = try #require(model.asksHeld(by: lead.id).first.map { model.told($0, to: lead) })
         #expect(told["youMayAllow"]?.bool == true)
         #expect(told["passedUp"]?.array?.first?["by"]?.string == "Rename")
@@ -236,7 +236,7 @@ final class AnsweringAsksTests {
         // Deleted or let go while it held the ask: nobody is there to answer it.
         model.conversations[lead.id] = nil
         #expect(model.waitingAsks.map(\.id) == ["e7"])
-        #expect(model.status(of: child) == OverviewStatus(state: .waiting, step: "Waiting on you"))
+        #expect(model.status(of: child) == OverviewStatus(state: .waiting, step: nil))
     }
 
     @Test func aPassedAskWhoseHolderWentReadsAsPassedUpNotAsStillWithIt() throws {
@@ -248,7 +248,7 @@ final class AnsweringAsksTests {
         UserDefaults.standard.set(false, forKey: AppModel.openersAnswerKey)
         model.handAsksToUser()
         let entry = try #require(model.waitingAsks.first { $0.id == "c8" })
-        #expect(model.heldLine(of: entry.ask, in: check) == "Rename passed this up · Ask can't run make.")
+        #expect(model.heldLine(of: entry.ask).map { "\($0.text) · \($0.hover)" } == "From Rename · Ask can't run make.")
     }
 
     @Test func anAskTheLeadDoesntTakeUpGoesUpByItself() async throws {
@@ -271,7 +271,7 @@ final class AnsweringAsksTests {
         try await Task.sleep(for: .milliseconds(300))
         #expect(model.holdDeadlines.isEmpty)
         turnEnds(lead, in: model)
-        #expect(lines(lead, in: model).filter { $0.contains("sum.py") } == ["Allowed for Rename: Edit sum.py · Its worktree."])
+        #expect(lines(lead, in: model).filter { $0.contains("sum.py") } == ["Allowed Rename · Edit sum.py · Its worktree."])
     }
 
     @Test func aLeadWaitingOnAnAskOfItsOwnCantAnswerAnother() throws {

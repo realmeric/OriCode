@@ -118,16 +118,16 @@ extension AppModel {
     /// The threads it opened go with it, and come back with it; one archived before it stays.
     func archive(_ chat: Chat) {
         guard conversations[chat.id]?.running != true else {
-            say("Stop the thread before archiving it")
+            say("Stop it first")
             return
         }
         guard !workflowRuns(in: chat) else {
-            say("Stop \(chat.agentStopFirst) before archiving it")
+            say("Stop it first")
             return
         }
         let under = threads(under: chat).filter { !$0.archived }
         guard !under.contains(where: { conversations[$0.id]?.running == true || workflowRuns(in: $0) }) else {
-            say("Stop the threads under it before archiving it")
+            say("Stop the threads under it first")
             return
         }
         for child in under { put(away: child, with: chat) }
@@ -410,7 +410,7 @@ extension AppModel {
 
     func delete(_ chat: Chat) {
         guard chat.agentID == nil || !workflowRuns(in: chat) else {
-            say("Stop \(chat.agentStopFirst) before deleting it")
+            say("Stop it first")
             return
         }
         let deleted = chat.id

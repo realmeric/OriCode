@@ -99,7 +99,7 @@ struct CodexTests {
         let conversation = model.conversation(for: chat)
         #expect(!model.send(String(repeating: "a", count: (1 << 20) + 1), in: chat))
         #expect(conversation.items.isEmpty)
-        #expect(model.note == "Codex takes messages of up to \((1 << 20).formatted()) characters. This one has \(((1 << 20) + 1).formatted()).")
+        #expect(model.note == "Too long: \(((1 << 20) + 1).formatted()) of \((1 << 20).formatted()) characters")
         // Two bytes a letter: more bytes than the limit, and as many characters as it.
         #expect(model.send(String(repeating: "ğ", count: 1 << 20), in: chat))
         #expect(conversation.items.count == 1)

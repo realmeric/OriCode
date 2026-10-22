@@ -88,16 +88,14 @@ final class Head: Identifiable {
         }
     }
 
-    /// What it is, for the line a thread whose turn is over shows: a workflow with how far it is.
-    var said: String {
-        switch kind {
-        case .workflow:
-            let how = run?.progress ?? run.map { WorkflowCard.status($0, groups: WorkflowRun.groups($0.agents, planned: [], reported: $0.phases)) }
-            return [run?.name ?? label.nonEmpty ?? "A workflow", how].compactMap(\.self).joined(separator: " · ")
-        case .agent: return label.nonEmpty ?? "An agent"
-        case .command: return label.nonEmpty ?? "A command"
-        case .other: return label.nonEmpty ?? "A task"
-        }
+    /// How far it is, where the work can tell: a workflow's "3/21 · 9 min".
+    var progress: String? {
+        kind == .workflow ? run?.progress : nil
+    }
+
+    /// Its name, where it has one.
+    var name: String? {
+        run?.name.nonEmpty ?? label.nonEmpty
     }
 
     fileprivate func count(tokens: Int?, tools: Int?) {
@@ -136,9 +134,9 @@ struct HeadChoice: Identifiable, Equatable {
         modelChanged = body["modelChanged"]?.bool ?? false
     }
 
-    /// The level in words, as the model button names it: "at low", or the model's own.
+    /// The level in a word: "low", or "default" for the model's own.
     var level: String {
-        effort.map { "at \(ModelMenu.effortName($0).lowercased())" } ?? "at its default level"
+        effort.map { ModelMenu.effortName($0).lowercased() } ?? "default"
     }
 }
 
@@ -311,21 +309,18 @@ extension Conversation {
         running || !heads.isEmpty
     }
 
-    /// With its turn over, what the thread left running, in one quiet line: what runs, how far it
-    /// is where the work can tell, and that the thread goes on when it ends. Nil while a turn runs
-    /// or nothing does. It changes only as the engine's heads and workflow events come.
+    /// With its turn over, how far what the thread left running is, where the work can tell:
+    /// "Build 3/21 · 9 min", or "3/21 · 9 min" when other heads run beside it. Several with no
+    /// progress are a bare count, and one is nothing, since the rays show it runs and ⌘I names it.
+    /// Nil while a turn runs. It changes only as the engine's heads and workflow events come.
     var goingOn: String? {
         guard !running else { return nil }
         let live = heads.list.filter { !$0.ending }
-        guard let only = live.first else { return nil }
-        guard live.count > 1 else { return "\(only.said) · goes on when it ends" }
-        let kinds: [(Head.Kind, String, String)] = [(.workflow, "a workflow", "workflows"), (.agent, "an agent", "agents"), (.command, "a command", "commands"), (.other, "a task", "tasks")]
-        let parts = kinds.compactMap { kind, one, many -> String? in
-            let count = live.count { $0.kind == kind }
-            return count == 0 ? nil : count == 1 ? one : "\(count) \(many)"
+        guard let far = live.first(where: { $0.progress != nil }), let progress = far.progress else {
+            return live.count > 1 ? "\(live.count)" : nil
         }
-        let named = parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + " and " + parts.last!
-        return named.prefix(1).uppercased() + named.dropFirst() + " · goes on when they end"
+        guard live.count == 1, let name = far.name else { return progress }
+        return "\(name) \(progress)"
     }
 
     /// The plan's item in progress while a turn runs, as Claude words it then: "Running the tests".
@@ -337,7 +332,8 @@ extension Conversation {
     /// out and what on, waiting on you, or, with its turn over, waiting on its agents.
     /// `asking` is the thread an ask is with first, when one is (K-296).
     func mainStep(cwd: String, asking: String? = nil) -> Head.Step {
-        if waitingAsk != nil { return Head.Step(tool: asking.map { "Asking \($0)" } ?? "Waiting on you", detail: nil) }
+        // Waiting on you is the pulsing dot's to say; with another thread first, who has it.
+        if waitingAsk != nil { return Head.Step(tool: asking.map { "Asking \($0)" } ?? "", detail: nil) }
         guard running else { return Head.Step(tool: goingOn ?? "Idle", detail: nil) }
         switch items.last {
         case .text:

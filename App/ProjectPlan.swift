@@ -96,7 +96,7 @@ extension AppModel {
     /// The done tasks read_plan gives of the asking thread's plan, the latest done first.
     static let doneRead = 10
     /// A stuck task's note when the user stopped its thread, which agents leave to the user.
-    static let stoppedByYou = "Stopped by you."
+    static let stoppedByYou = "Stopped by you"
 
     func answerPlan(_ event: EngineEvent, from thread: UUID) throws -> JSON {
         guard let asking = chat(withID: thread), let project = planProject(of: asking) else { throw Refused(why: "The thread that asked is gone.") }
@@ -424,7 +424,7 @@ extension AppModel {
     /// ⌘K's way to what a task's row on ⌘⇧I offers: Stop while it works, Reopen once it's done or
     /// stuck, and Delete, for each task of the plan in order.
     func planList(of project: Project?) -> PaletteList {
-        PaletteList(title: "Stop, reopen or delete a task", placeholder: "Search the plan's tasks") { [weak self] in
+        PaletteList(title: "Tasks", placeholder: "Search") { [weak self] in
             guard let self, let project else { return [] }
             let plan = ProjectPlan(project)
             return plan.tasks.flatMap { task in
@@ -470,7 +470,7 @@ struct PlanLines: View {
     var body: some View {
         let shown = Self.drawn(plan)
         VStack(alignment: .leading, spacing: 2) {
-            Text("Plan · \(plan.doneCount) of \(plan.tasks.count) done" + (shown.doneLeftOut > 0 ? " · \(shown.doneLeftOut) not shown" : ""))
+            Text("\(plan.doneCount)/\(plan.tasks.count)" + (shown.doneLeftOut > 0 ? " · +\(shown.doneLeftOut)" : ""))
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
                 .lineLimit(1)
@@ -514,7 +514,9 @@ private struct PlanLine: View {
             }
             Spacer(minLength: 8)
             ZStack(alignment: .trailing) {
-                Text(state.word)
+                // Working is its mark's to show.
+                Text(state == .working ? "" : state.word)
+                    .accessibilityLabel(state.word)
                     .font(Type.secondary)
                     .foregroundStyle(lit ? Ink.secondary : Ink.faint)
                     .fixedSize()
@@ -541,7 +543,7 @@ private struct PlanLine: View {
             withAnimation(Motion.fade) { hovered = inside ? task.id : (hovered == task.id ? nil : hovered) }
         }
         .contextMenu { actions(state) }
-        .help("\(task.name) is done when \(task.doneWhen)")
+        .help(task.doneWhen)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(thread == nil ? [] : .isButton)
         .accessibilityAction {
@@ -564,21 +566,20 @@ private struct PlanLine: View {
         }
     }
 
-    /// Its id, then what it waits on, or its thread and note, or what done means while nobody works it.
+    /// Its id, then what it waits on, or its thread and note. What done means is the row's hover.
     private func detail(_ state: TaskState, thread: Chat?) -> String {
         var parts = [task.name]
         switch state {
         case .waiting:
-            parts.append("Waits on " + plan.waitingOn(task).map { $0.state == "stuck" ? "\($0.name) (stuck)" : $0.name }.joined(separator: ", "))
+            parts.append("after " + plan.waitingOn(task).map(\.name).joined(separator: ", "))
         case .ready where task.owner != nil && thread == nil:
             // Its plan starts it once what it waited on is merged too.
             let unmerged = task.waitsOn.compactMap { number in plan.tasks.first { $0.number == number && $0.unmerged }?.name }
-            parts.append(unmerged.isEmpty ? task.doneWhen : "Starts once \(unmerged.joined(separator: " and ")) \(unmerged.count == 1 ? "is" : "are") merged")
+            if !unmerged.isEmpty { parts.append("after \(unmerged.joined(separator: " and ")) \(unmerged.count == 1 ? "merges" : "merge")") }
         default:
             // A thread named as its task, as an opener names one, isn't said twice.
             if let thread, thread.title.caseInsensitiveCompare(task.title) != .orderedSame { parts.append(thread.title) }
-            if thread == nil, task.thread != nil { parts.append("Thread deleted") }
-            if !task.note.isEmpty { parts.append(task.note) } else if thread == nil { parts.append(task.doneWhen) }
+            if !task.note.isEmpty { parts.append(task.note) }
         }
         return parts.joined(separator: " · ")
     }

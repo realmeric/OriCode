@@ -188,7 +188,7 @@ struct Drawer: View {
     /// top rows drag: a thread under another stays where it was opened.
     private func branch(_ node: DrawerNode, index: Int?, end: UUID?, asks: [UUID: Int]) -> AnyView {
         guard let children = node.children else {
-            return AnyView(row(node.chat, index: index, end: end, asking: asks[node.chat.id] ?? 0, asks: asks[node.chat.id] != nil))
+            return AnyView(row(node.chat, index: index, end: end, asks: asks[node.chat.id] != nil))
         }
         let id = node.chat.id
         let unfolded = Binding(
@@ -204,7 +204,8 @@ struct Drawer: View {
                     .moveDisabled(true)
             }
         } label: {
-            row(node.chat, index: index, end: end, working: working(under: children), asking: asking(at: node, asks), asks: asks[node.chat.id] != nil)
+            row(node.chat, index: index, end: end, folded: !model.unfolded.contains(id), working: working(under: children),
+                asking: children.reduce(0) { $0 + asking(at: $1, asks) }, asks: asks[node.chat.id] != nil)
         })
     }
 
@@ -230,13 +231,18 @@ struct Drawer: View {
     }
 
     /// A top row has its place in the list and its ⌘digit; one under another has neither.
-    /// `asking` counts the asks at the row and under it; `asks` is whether the thread itself asks,
-    /// which pulses its mark.
-    private func row(_ chat: Chat, index: Int?, end: UUID?, working under: Int = 0, asking: Int = 0, asks: Bool = false) -> some View {
+    /// `asking` counts the asks in the threads under it and `under` those that work, shown as a
+    /// bare number only while it's folded; `asks` is whether the thread itself asks, which pulses
+    /// its mark.
+    private func row(_ chat: Chat, index: Int?, end: UUID?, folded: Bool = false, working under: Int = 0, asking: Int = 0, asks: Bool = false) -> some View {
         let child = index == nil
         let selected = chat.id == model.chat?.id
         let beside = chat.id == model.besideChatID
         let peeked = chat.id == model.peekedChatID
+        let missing = !FileManager.default.fileExists(atPath: chat.cwd)
+        // What the row doesn't draw: a gone folder, what an agent returned or how it ended, and
+        // what the thread has spent.
+        let help = [missing ? "Folder missing" : nil, chat.agentLine, chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : nil]
         // A row of the list's own rather than a button, which would keep the mouse and leave the
         // list no drag to reorder with.
         return HStack(spacing: 10) {
@@ -257,39 +263,30 @@ struct Drawer: View {
                         renameFocused = true
                     }
             } else {
-                let missing = !FileManager.default.fileExists(atPath: chat.cwd)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text(chat.title)
-                            .font(Type.body)
-                            .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
-                            // A shade quieter under the thread that opened it, selected or not.
-                            .opacity(child ? 0.8 : 1)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        if chat.worktreeBranch != nil {
-                            Image(systemName: "arrow.triangle.branch")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Ink.faint)
-                                .help(chat.worktreeBranch ?? "")
-                        }
-                    }
-                    // Under the title, which keeps its width: a row with threads under it at
-                    // work would otherwise leave it a word.
-                    // A workflow's agent says what it returned, or how it ended.
-                    // What waits on you first, since it holds the rest up.
-                    // With its turn over, what it left running and that it goes on after.
-                    let below = [missing ? "folder missing" : nil, asking > 0 ? (asking == 1 ? "1 ask waiting" : "\(asking) asks waiting") : nil,
-                                 under > 0 ? "\(under) working" : nil, chat.agentLine, model.conversations[chat.id]?.goingOn].compactMap(\.self)
-                    if !below.isEmpty {
-                        Text(below.joined(separator: " · "))
-                            .font(.system(size: 11))
-                            .foregroundStyle(missing ? Ink.faint : Ink.secondary)
-                            .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(chat.title)
+                        .font(Type.body)
+                        .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
+                        // A shade quieter under the thread that opened it, selected or not.
+                        .opacity(child ? 0.8 : 1)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if chat.worktreeBranch != nil {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Ink.faint)
+                            .help(chat.worktreeBranch ?? "")
                     }
                 }
             }
             Spacer(minLength: 4)
+            // A fold shut over threads that ask or work: how many, with no noun. An ask holds the
+            // rest up, so it's the one counted when there are both, and brighter.
+            if folded, asking > 0 || under > 0 {
+                Text("\(asking > 0 ? asking : under)")
+                    .font(Type.secondary.monospacedDigit())
+                    .foregroundStyle(asking > 0 ? Ink.primary : Ink.faint)
+            }
             // Only while the thread works or waits, so an idle row gives its title the room.
             if let conversation = model.conversations[chat.id], conversation.working {
                 // Still while the drawer is away: hidden, it stays in the tree, and a turning
@@ -301,6 +298,12 @@ struct Drawer: View {
                 RaysMark(waiting: asks && model.drawerShown, restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
                     .frame(width: 14, height: 14)
                     .accessibilityLabel("Working")
+            } else if chat.agentState == "failed" {
+                Circle()
+                    .fill(Ink.deleted.opacity(0.7))
+                    .frame(width: 5, height: 5)
+                    .frame(width: 14, height: 14)
+                    .accessibilityLabel("Failed")
             }
             if chat.pinned {
                 Image(systemName: "pin.fill")
@@ -336,7 +339,7 @@ struct Drawer: View {
         .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { model.select(chat) }
-        .help(chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : "")
+        .help(help.compactMap(\.self).joined(separator: "\n"))
         .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
         .contextMenu {
             if chat.archived {

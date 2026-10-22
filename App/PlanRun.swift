@@ -22,8 +22,7 @@ extension AppModel {
         if let line = conversation.goingOn { return line }
         let tasks = runTasks(of: chat.id)
         guard tasks.contains(where: { $0.state == "working" }) else { return nil }
-        let far = planLines[chat.id] ?? "\(tasks.count { $0.state == "done" }) of \(tasks.count) tasks done"
-        return "Plan · \(far) · goes on as each ends"
+        return planLines[chat.id] ?? "\(tasks.count { $0.state == "done" })/\(tasks.count)"
     }
 
     /// Asks the engine how far each plan that runs is, as its tasks start and end, so its line
@@ -93,7 +92,7 @@ extension AppModel {
         let after = task.waitsOn.compactMap { number in plan.tasks.first { $0.number == number }?.name }
         var request = ThreadRequest(parent: owner, text: task.brief)
         request.title = task.title
-        request.reason = after.isEmpty ? "\(task.name) of the plan, which waits on nothing" : "\(task.name) of the plan, now that \(after.joined(separator: " and ")) \(after.count == 1 ? "is" : "are") done"
+        request.reason = after.isEmpty ? task.name : "\(task.name), after \(after.joined(separator: " and "))"
         request.agent = task.agent
         request.model = task.model
         request.effort = task.effort
@@ -111,7 +110,7 @@ extension AppModel {
                 // Full just now: it starts once a thread ends.
                 guard (error as? Refused)?.full != true, task.state == "open" else { return }
                 task.state = "stuck"
-                task.note = "Its thread couldn't open: \(error.localizedDescription)"
+                task.note = error.localizedDescription
                 task.updatedAt = .now
                 task.heard = false
                 save()
@@ -130,18 +129,18 @@ extension AppModel {
             for task in projects.flatMap(\.tasks) where task.thread == id && task.owner != nil && task.state == "working" {
                 if conversation.endedByItself, !stopped {
                     task.state = "done"
-                    if task.note.isEmpty { task.note = Self.firstLine(of: Self.lastText(in: conversation) ?? "Its turn ended with no reply.") }
+                    if task.note.isEmpty { task.note = Self.lastText(in: conversation).map(Self.firstLine(of:)) ?? "" }
                 } else if !stopped, !byUser, let resumeAt = conversation.chat.resumeAt {
                     // A limit stopped it and it goes on by itself at the reset, so it still works,
                     // and its owner hears once it has gone on (resumeDue).
-                    task.note = "Waits on the \(Limit.name(of: conversation.lastLimitWindow)), which resets at \(Limit.time(resumeAt))"
+                    task.note = "Limit · \(Limit.time(resumeAt))"
                     task.updatedAt = .now
                     save()
                     continue
                 } else {
                     task.state = "stuck"
                     task.note = byUser && !stopped ? Self.stoppedByYou
-                        : conversation.turnLimit.map { "A \(Limit.name(of: $0.window)) stopped its turn, and it won't go on by itself." } ?? Self.whyStopped(conversation)
+                        : conversation.turnLimit.map { _ in "Limit" } ?? Self.whyStopped(conversation)
                 }
                 task.updatedAt = .now
                 // Its owner hears of it once its worktree is known to hold work or is gone.
@@ -245,8 +244,9 @@ extension AppModel {
         guard task.state == "stuck", let owner = task.owner.flatMap(chat(withID:)) else { return }
         let waiting = dependents(of: task).map(\.name)
         let thread = task.thread.flatMap(chat(withID:))
-        let act = ThreadAct(act: .stuck, by: false, thread: thread?.id ?? owner.id, title: thread?.title ?? task.title, reason: task.note,
-                            what: waiting.isEmpty ? task.name : "\(task.name), so \(waiting.joined(separator: " and ")) won't start")
+        let waits = waiting.isEmpty ? nil : "\(waiting.joined(separator: " and ")) \(waiting.count == 1 ? "waits" : "wait") on it"
+        let act = ThreadAct(act: .stuck, by: false, thread: thread?.id ?? owner.id, title: thread?.title ?? task.title,
+                            reason: [task.note.nonEmpty, waits].compactMap(\.self).joined(separator: " · "), what: task.name)
         line("thread.act", act.json, in: owner) { $0.threadAct(act) }
     }
 
@@ -442,8 +442,8 @@ extension AppModel {
     private static func whyStopped(_ conversation: Conversation) -> String {
         for item in conversation.items.reversed() {
             if item.startsTurn { break }
-            if case .note(_, let text) = item, !text.isEmpty { return "Its turn ended before it finished: \(firstLine(of: text))" }
+            if case .note(_, let text) = item, !text.isEmpty { return "Stopped: \(firstLine(of: text))" }
         }
-        return "Its turn was stopped before it finished."
+        return "Stopped"
     }
 }

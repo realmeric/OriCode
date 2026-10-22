@@ -611,10 +611,12 @@ final class OverlapStage {
             let text = texts.compactMap { $0 as? String ?? ($0 as? NSAttributedString)?.string }.first { !$0.isEmpty }
             var over = over, clip = clip, scrolled = scrolled
             let toolbar = toolbar || role == "AXToolbar"
-            if role == "AXGroup", ask(object, "accessibilityIdentifier", .identifier) as? String == Island.over {
+            // A surface that holds nothing but its scroll, as ⌘⇧I does, is that scroll to AppKit.
+            if role == "AXGroup" || role == "AXScrollArea", ask(object, "accessibilityIdentifier", .identifier) as? String == Island.over {
                 surfaces.append(Surface(name: text ?? "a surface", frame: frame))
                 over = surfaces.count - 1
-                scrolled = false
+                scrolled = role == "AXScrollArea"
+                if scrolled { clip = clip.map { $0.intersection(frame) } ?? frame }
             } else if role == "AXScrollArea" {
                 clip = clip.map { $0.intersection(frame) } ?? frame
                 scrolled = true

@@ -602,14 +602,15 @@ export class Thread implements Session {
     return this.heads.track(message);
   }
 
-  /// Something the thread left running that has ended, in words: "The workflow review finished".
+  /// Something the thread left running that has ended, as a name and a verb: "review done",
+  /// "Sleep 90 failed · 1".
   private endedWhat(taskId: string, status: string, summary: string): string | undefined {
-    const how = status === "completed" ? "finished" : status === "failed" ? "failed" : "was stopped";
+    const how = status === "completed" ? "done" : status === "failed" ? "failed" : "stopped";
     const workflow = this.workflows.get(taskId);
-    if (workflow) return `The workflow ${workflow.name} ${how}`;
+    if (workflow) return `${workflow.name} ${how}`;
     const subagent = this.subagents.get(taskId);
     if (subagent) return `${subagent.label} ${how}`;
-    if (this.commandCalls.has(taskId)) return summary || `A background command ${how}`;
+    if (this.commandCalls.has(taskId)) return commandEnded(summary, how);
     return undefined;
   }
 
@@ -1155,4 +1156,14 @@ export function errorText(error: string, maker?: string): string {
 
 export function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/// Claude Code's line for a background command that ended, 'Background command "Sleep 90" completed
+/// (exit code 0)', as its name and how it ended, with the exit code only when it isn't 0.
+export function commandEnded(summary: string, how: string): string {
+  const named = /^Background command "(.+)"/.exec(summary)?.[1];
+  const code = /\(exit code (-?\d+)\)/.exec(summary)?.[1];
+  const ended = code !== undefined && code !== "0" ? "failed" : how;
+  if (!named) return summary || `Command ${ended}`;
+  return code !== undefined && code !== "0" ? `${named} ${ended} · ${code}` : `${named} ${ended}`;
 }

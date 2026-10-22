@@ -40,16 +40,14 @@ struct AgentsPane: View {
             }
             SettingsRow(
                 title: "Heads choose",
-                detail: choose
-                    ? "The head picks which models its workers run on, at which effort, and moves itself up or down as the work asks, from the models the model menu shows. It says why each time."
-                    : "A head sends workers out only on the rays picked for it, and stays on its own model and effort."
+                detail: choose ? "Picks models and effort for itself and its workers." : nil
             ) {
                 Toggle("Heads choose", isOn: $choose).labelsHidden().toggleStyle(.switch)
             }
             .disabled(!workers)
             SettingsRow(
                 title: "Spend per thread",
-                detail: "What a head and its workers may spend in one thread from its first message under the limit, as the agents report it. At the limit everything in the thread stops, and it takes no more messages until you raise the limit. With one set, no worker starts on an agent that doesn't say what it spends, such as Codex."
+                detail: "Everything in the thread stops at the limit."
             ) {
                 Picker("Spend per thread", selection: $budget) {
                     ForEach(Rays.budgets, id: \.self) { amount in
@@ -57,9 +55,10 @@ struct AgentsPane: View {
                     }
                 }
                 .menuRow()
+                .help("With a limit set, no worker starts on an agent that doesn't say what it spends, such as Codex.")
             }
             .disabled(!workers || !choose)
-            SettingsRow(title: "Models heads keep off", detail: "A head never picks these, for its workers or for itself.") {
+            SettingsRow(title: "Models heads keep off") {
                 KeepOffMenu()
             }
             .disabled(!workers || !choose)
@@ -68,7 +67,7 @@ struct AgentsPane: View {
         SettingsCard {
             SettingsRow(
                 title: "Threads working at once",
-                detail: "An agent opens, messages and stops threads as you would, and keeps to what the project's CLAUDE.md or AGENTS.md says. With this many working, it can't set another going and is told why. What you send yourself always goes."
+                detail: "What you send yourself always goes."
             ) {
                 Stepper(value: $ceiling, in: 1...20) {
                     Text("\(ceiling)").monospacedDigit().foregroundStyle(Ink.primary)
@@ -76,9 +75,7 @@ struct AgentsPane: View {
             }
             SettingsRow(
                 title: "Threads answer first",
-                detail: openersAnswer
-                    ? "What a thread asks goes first to the thread that set it going, while that one works. It allows only what its own permission mode would, answers questions about the task, and passes the rest up with its reason, to you from the top. Each answer is a line in both threads."
-                    : "Every ask comes straight to you."
+                detail: openersAnswer ? "Asks go to the thread that opened it first." : nil
             ) {
                 Toggle("Threads answer first", isOn: $openersAnswer).labelsHidden().toggleStyle(.switch)
                     .onChange(of: openersAnswer) { _, on in

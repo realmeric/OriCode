@@ -328,8 +328,12 @@ extension AppModel {
         }
         items.append(command("thread.noFolder", "New thread without a folder", icon: "laptopcomputer",
                              keywords: ["no folder", "no project", "laptop", "scratch", "anywhere"]) { [weak self] in self?.openThreadWithoutFolder() })
-        items.append(command("thread.stop", chat?.agentStop ?? "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"],
-                             unavailable: canStop ? nil : "Nothing is running") { [weak self] in self?.stop() })
+        // A command that can't run isn't listed, rather than listed with why.
+        if canStop {
+            items.append(command("thread.stop", chat?.agentStop ?? "Stop", icon: "stop.circle", shortcut: shortcuts.label(.stop), keywords: ["interrupt", "cancel"]) { [weak self] in
+                self?.stop()
+            })
+        }
         if agent.capabilities.compact {
             items.append(command("thread.compact", "Compact", icon: "arrow.down.right.and.arrow.up.left", keywords: ["context", "summarize"],
                                  unavailable: chat?.sessionId == nil ? "Nothing to compact yet" : busy) { [weak self] in self?.send("/compact") })
@@ -382,20 +386,23 @@ extension AppModel {
         items.append(command("thread.close", "Close thread", icon: "xmark", shortcut: shortcuts.label(.close), unavailable: noThread) { [weak self] in
             self?.close()
         })
-        let others: String? = drawerRows.count > 1 ? nil : "No other thread"
         // Its list is every project's threads whatever the drawer is filtered to, so it's counted, not the drawer's rows.
-        items.append(PaletteItem(id: "thread.beside", kind: .command, title: "Open beside…", keywords: ["side by side", "split", "two", "pair", "second"],
-                                 icon: "rectangle.split.2x1", unavailable: unsent ?? (besideable.isEmpty ? "No other thread" : nil), action: .list(besideList)))
+        if !besideable.isEmpty {
+            items.append(PaletteItem(id: "thread.beside", kind: .command, title: "Open beside…", keywords: ["side by side", "split", "two", "pair", "second"],
+                                     icon: "rectangle.split.2x1", unavailable: unsent, action: .list(besideList)))
+        }
         if besideChatID != nil {
             items.append(command("thread.closeOtherSide", "Close other side", icon: "xmark.rectangle", shortcut: shortcuts.label(.closeOtherSide),
                                  keywords: ["beside", "side by side", "split", "pair"]) { [weak self] in self?.closeOtherSide() })
         }
-        items.append(command("thread.next", "Next thread", icon: "chevron.down", shortcut: shortcuts.label(.nextThread), unavailable: others) { [weak self] in
-            self?.stepThread(1)
-        })
-        items.append(command("thread.previous", "Previous thread", icon: "chevron.up", shortcut: shortcuts.label(.previousThread), unavailable: others) { [weak self] in
-            self?.stepThread(-1)
-        })
+        if drawerRows.count > 1 {
+            items.append(command("thread.next", "Next thread", icon: "chevron.down", shortcut: shortcuts.label(.nextThread)) { [weak self] in
+                self?.stepThread(1)
+            })
+            items.append(command("thread.previous", "Previous thread", icon: "chevron.up", shortcut: shortcuts.label(.previousThread)) { [weak self] in
+                self?.stepThread(-1)
+            })
+        }
         items.append(command("threads.toggle", threadsOut ? "Hide threads" : "Show threads", icon: "sidebar.left", shortcut: shortcuts.label(.toggleThreads),
                              keywords: ["drawer", "sidebar"]) { [weak self] in self?.toggleDrawerPin() })
 
@@ -466,8 +473,10 @@ extension AppModel {
                              keywords: ["threads", "agents", "workflows", "running", "overview", "status"]) { [weak self] in self?.toggleOverview() })
         // What ⌘⇧I's plan rows offer the pointer and VoiceOver, for the keyboard.
         let planned = chat.flatMap(planProject(of:)) ?? project
-        items.append(PaletteItem(id: "plan.tasks", kind: .command, title: "Stop, reopen or delete a task…", keywords: ["plan", "tasks"], icon: "checklist",
-                                 unavailable: planned?.tasks.isEmpty == false ? nil : "The plan has no tasks", action: .list(planList(of: planned))))
+        if planned?.tasks.isEmpty == false {
+            items.append(PaletteItem(id: "plan.tasks", kind: .command, title: "Stop, reopen or delete a task…", keywords: ["plan", "tasks"], icon: "checklist",
+                                     action: .list(planList(of: planned))))
+        }
         items.append(command("files.find", "Find a file", icon: "doc.text.magnifyingglass", shortcut: shortcuts.label(.findFile), unavailable: noThread) { [weak self] in
             self?.toggleFileFinder()
         })
