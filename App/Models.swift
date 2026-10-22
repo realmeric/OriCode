@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import SwiftData
 
 @Model
@@ -236,12 +236,26 @@ enum Store {
     static func container() -> ModelContainer {
         let folder = Build.support
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil { claim(folder) }
         let configuration = ModelConfiguration(url: folder.appending(path: "OriCode.store"))
         do {
             return try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: configuration)
         } catch {
             fatalError("The store at \(folder.path) can't be opened: \(error)")
         }
+    }
+
+    /// One process to a store. A second copy of the same build, which LaunchServices can start
+    /// from an old DerivedData to deliver a notification's click, would fault on rows the first
+    /// one deletes and bring it down, so it brings the first to the front and goes. The lock is
+    /// held for the life of the process and let go with it, however it ends.
+    private static func claim(_ folder: URL) {
+        let lock = open(folder.appending(path: "OriCode.store.lock").path, O_CREAT | O_RDWR, 0o644)
+        guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) != 0 else { return }
+        let me = ProcessInfo.processInfo.processIdentifier
+        NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .first { $0.processIdentifier != me }?.activate()
+        exit(0)
     }
 }
 
