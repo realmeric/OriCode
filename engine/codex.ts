@@ -449,6 +449,9 @@ export class CodexSession implements Session {
       context: this.context,
       waiting: waiting.length,
     });
+    // Codex keeps a command's process past turn/interrupt, and only its app-server going ends it,
+    // so a stopped turn's server goes, and the next send resumes the thread on a new one.
+    if (this.interrupted) this.stop();
     // The first starts a turn, and the rest steer into it.
     for (const params of waiting) {
       if (this.running) this.steer(params);

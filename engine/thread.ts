@@ -272,9 +272,10 @@ export class Thread implements Session {
     });
   }
 
-  /// Stop means stop everything: the turn, and whatever was sent to it and still waits, which
-  /// would otherwise start a turn of its own right after. Messages can wait with no turn running,
-  /// between the end of one that couldn't take them and the start of their own.
+  /// Stop means stop everything: the turn, what it left running in the background, and whatever
+  /// was sent to it and still waits, which would otherwise start a turn of its own right after.
+  /// Messages can wait with no turn running, between the end of one that couldn't take them and
+  /// the start of their own.
   async interrupt(): Promise<void> {
     const running = this.query;
     if (!running || (!this.running && this.waiting.size === 0)) return;
@@ -298,6 +299,9 @@ export class Thread implements Session {
       for (const id of [...this.waiting]) {
         if (await cancel.cancelAsyncMessage(id).catch(() => false)) this.cancelled(id);
       }
+      // What the turn sent to the background goes with it: the interrupt leaves it running, and
+      // its ending would wake the thread for a turn nobody asked for.
+      for (const taskId of this.heads.background()) await running.stopTask(taskId).catch(() => {});
       await running.interrupt();
     } finally {
       this.stopping = false;

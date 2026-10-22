@@ -63,6 +63,11 @@ export class Heads {
     return this.live.has(taskId);
   }
 
+  /// The tasks running in the background, which outlive an interrupted turn.
+  background(): string[] {
+    return [...this.live.values()].filter((head) => head.background).map((head) => head.id);
+  }
+
   /// Keeps the heads in step with the CLI's task messages; false for any other message.
   track(message: SDKMessage & { type: "system" }): boolean {
     switch (message.subtype) {
