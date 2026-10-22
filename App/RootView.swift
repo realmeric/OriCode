@@ -109,13 +109,8 @@ struct RootView: View {
                     .animation(Motion.glide, value: beside?.id)
                     // Above the transcript, so the slash menu can rise over it.
                     .zIndex(1)
-                    if !started {
-                        // Equal room under the composer and over the mark, and the mark's own
-                        // height again, so it's the composer that sits in the middle.
-                        Spacer(minLength: 0)
-                        Color.clear.frame(height: EmptyStateView.height + 28)
-                    }
-                    // The capsule sits 28pt above the window's bottom edge; notes live in that gap.
+                    // The capsule sits 28pt above the window's bottom edge; notes live in that gap,
+                    // and over a thread not begun they go with the composer to the middle.
                     // A ZStack, because EngineNote is an EmptyView when there's nothing to say,
                     // and a frame on an EmptyView takes no space at all.
                     ZStack {
@@ -126,6 +121,12 @@ struct RootView: View {
                     // Under the half with the keyboard at once: nothing crosses with it.
                     .padding(right ? .leading : .trailing, beside == nil ? 0 : half)
                     .animation(Motion.glide, value: beside == nil)
+                    if !started {
+                        // Equal room under the composer and its notes and over the mark, and the
+                        // mark's own height again, so it's the composer that sits in the middle.
+                        Spacer(minLength: 0)
+                        Color.clear.frame(height: EmptyStateView.height + 28)
+                    }
                 }
                 // Whatever empties the window (a new thread, ⌘W, another project) sends the
                 // composer back up to the middle the way the first message sends it down, once
