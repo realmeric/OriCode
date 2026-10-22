@@ -1,7 +1,8 @@
 #!/bin/zsh
 # make release: the Release build, signed with Developer ID and notarized, published as a GitHub
-# release and offered to every installed OriCode through appcast.xml on main. The version is
-# project.yml's MARKETING_VERSION and the notes are its CHANGELOG.md entry, both committed first.
+# release, OriCode.dmg for a download and a zip for Sparkle, and offered to every installed
+# OriCode through appcast.xml on main. The version is project.yml's MARKETING_VERSION and the
+# notes are its CHANGELOG.md entry, both committed first.
 set -euo pipefail
 cd "${0:A:h}/.."
 
@@ -15,6 +16,7 @@ app="$derived/Build/Products/Release/OriCode.app"
 sparkle="$derived/SourcePackages/artifacts/sparkle/Sparkle/bin"
 out="$HOME/Library/Developer/OriCode.noindex/release"
 zip="$out/OriCode-$version.zip"
+dmg="$out/OriCode.dmg"
 url="https://github.com/realmeric/OriCode/releases/download/$tag/OriCode-$version.zip"
 
 fail() { print -u2 "$1"; exit 1 }
@@ -40,6 +42,9 @@ scripts/sign.sh "$app"
 scripts/notarize.sh "$app"
 rm -rf "$out" && mkdir -p "$out"
 ditto -c -k --keepParent "$app" "$zip"
+# What a download opens; the zip stays what Sparkle updates from.
+scripts/dmg.sh "$app" "$dmg"
+scripts/notarize.sh "$dmg"
 # sparkle:edSignature="…" length="…", from the EdDSA key in the login keychain.
 signature=$("$sparkle/sign_update" "$zip")
 
@@ -47,7 +52,7 @@ git tag -a "$tag" -m "$heading"
 git push -q origin "$tag"
 prerelease=()
 [[ "$version" == *-* ]] && prerelease=(--prerelease)
-gh release create "$tag" "$zip" --verify-tag --title "OriCode $heading" --notes "$notes" "${prerelease[@]}"
+gh release create "$tag" "$dmg" "$zip" --verify-tag --title "OriCode $heading" --notes "$notes" "${prerelease[@]}"
 
 # Only the newest release is offered; its notes go as plain text, which the update circle shows.
 plain=$(print -r -- "$notes" | sed -E 's/^- /• /')

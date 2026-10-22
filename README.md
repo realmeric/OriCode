@@ -16,7 +16,7 @@ OriCode isn't made or endorsed by Anthropic or by any other agent's maker. Claud
 
 ## Installing
 
-Download OriCode's zip from the [latest release](https://github.com/realmeric/OriCode/releases/latest), unzip it, and drag OriCode into Applications. From then on it updates itself.
+Download OriCode.dmg from the [latest release](https://github.com/realmeric/OriCode/releases/latest), open it, and drag OriCode onto Applications. From then on it updates itself.
 
 OriCode is signed with Developer ID and notarized by Apple, so it opens without Gatekeeper's warning; since 0.5.0 changed its signature, macOS may ask once more for something it had allowed the old one, access to a folder say.
 
@@ -116,6 +116,8 @@ make run    # builds OriCode Molten, the Debug app, and opens it beside OriCode
 make app    # builds Release and copies it to /Applications
 make test   # the engine's protocol tests and the Swift unit tests
 ```
+
+`make release` also builds OriCode.dmg, with [dmgbuild](https://github.com/dmgbuild/dmgbuild), which it installs the first time into a Python venv in `~/Library/Developer/OriCode.noindex/dmgbuild`. The window's background is drawn by `dmg/render.swift`; run `swift dmg/render.swift` after changing it.
 
 ## How it reaches the agents
 
