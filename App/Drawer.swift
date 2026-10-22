@@ -40,9 +40,8 @@ struct Drawer: View {
                 let asks = model.asksByThread
                 ForEach(Array(tree.enumerated()), id: \.element.id) { index, node in
                     branch(node, index: index, end: end, asks: asks)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 6))
                         .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
                 }
                 .onMove { model.moveThreads(from: $0, to: $1) }
                 .moveDisabled(model.drawerFilter != .all)
@@ -60,6 +59,7 @@ struct Drawer: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .padding(.leading, 6)
             .environment(\.defaultMinListRowHeight, 34)
             .background(KeyLoopGate(open: model.drawerShown))
             HStack(spacing: 4) {
@@ -199,9 +199,8 @@ struct Drawer: View {
         return AnyView(DisclosureGroup(isExpanded: unfolded) {
             ForEach(children) { child in
                 branch(child, index: nil, end: end, asks: asks)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 6))
                     .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
                     .moveDisabled(true)
             }
         } label: {
@@ -316,16 +315,22 @@ struct Drawer: View {
                     .foregroundStyle(Ink.faint)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.trailing, 10)
         .frame(height: 34)
-        .background(
-            selected || peeked ? (child ? Surface.quietSelected : Surface.selected)
-                : beside || hovered == chat.id ? (child ? Surface.quietHover : Surface.hover) : .clear,
-            in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .offset(x: peeked ? 6 : 0)
         .animation(Motion.move, value: peeked)
         .padding(.bottom, chat.id == end ? 10 : 0)
+        // The row's own background, which runs under the outline's chevron as well, so a row
+        // with threads under it is lit from its fold to its end.
+        .listRowBackground(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(selected || peeked ? (child ? Surface.quietSelected : Surface.selected)
+                    : beside || hovered == chat.id ? (child ? Surface.quietHover : Surface.hover) : .clear)
+                .padding(.trailing, 6)
+                .padding(.bottom, chat.id == end ? 10 : 0)
+                .offset(x: peeked ? 6 : 0)
+                .animation(Motion.move, value: peeked))
         .onTapGesture { model.pickByClick(chat, beside: NSEvent.modifierFlags.contains(.option)) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
         .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)

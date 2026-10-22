@@ -85,7 +85,19 @@ extension AppModel {
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
         switch drawerFilter {
         case .all: return all
-        case .project(let id): return all.filter { $0.project?.id == id }
+        // With the threads under them, in whatever folder they were opened: the tree is who
+        // opened whom, and a fold that counts a thread must show it.
+        case .project(let id):
+            var listed = all.filter { $0.project?.id == id }
+            var ids = Set(listed.map(\.id))
+            var openers = ids
+            while !openers.isEmpty {
+                let under = all.filter { $0.openedBy.map(openers.contains) == true && !ids.contains($0.id) }
+                listed += under
+                openers = Set(under.map(\.id))
+                ids.formUnion(openers)
+            }
+            return listed
         case .working: return all.filter { conversations[$0.id]?.working == true || $0.agentWorking }
         // The thread that asks, as the queue names it: a worker asking is listed and its head,
         // working on, isn't, the way Working lists a worker without its head.

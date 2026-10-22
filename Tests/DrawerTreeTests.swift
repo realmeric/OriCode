@@ -185,6 +185,35 @@ struct DrawerTreeTests {
         #expect(top != nil && top?.children == nil)
     }
 
+    @Test func aThreadOpenedInAnotherFolderSitsUnderItsOpener() throws {
+        let (model, lead, _, _, _, _) = try model()
+        let context = model.context
+        let beta = Project(name: "beta", path: "/tmp/beta")
+        context.insert(beta)
+        let build = Chat(project: beta, title: "Build")
+        build.started = true
+        build.createdAt = Date(timeIntervalSince1970: 1_005)
+        build.openedBy = lead.id
+        context.insert(build)
+        let alpha = try #require(lead.project)
+        let check = Chat(project: alpha, title: "Check")
+        check.started = true
+        check.openedBy = build.id
+        context.insert(check)
+        model.save()
+
+        #expect(model.drawerTree[0].children?.map(\.chat.title) == ["Primes", "Words", "Build"])
+        // Its opener's project lists it under the opener, and what it opened under it.
+        model.drawerFilter = .project(alpha.id)
+        #expect(model.chats.map(\.title) == ["Lead", "Other"])
+        #expect(model.drawerTree[0].children?.map(\.chat.title) == ["Primes", "Words", "Build"])
+        #expect(model.drawerTree[0].children?[2].children?.map(\.chat.title) == ["Check"])
+        // Its own project, without its opener, has it at the top, with what it opened.
+        model.drawerFilter = .project(beta.id)
+        #expect(model.drawerTree.map(\.chat.title) == ["Build"])
+        #expect(model.drawerTree[0].children?.map(\.chat.title) == ["Check"])
+    }
+
     @Test func theArchivedFilterIsFlat() throws {
         let (model, _, primes, _, _, _) = try model()
 

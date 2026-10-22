@@ -317,6 +317,14 @@ struct RootView: View {
                 .padding(.trailing, Island.trail(button: model.reviewButtonWidth, update: updates.phase != .idle))
                 .ignoresSafeArea()
         }
+        .overlay(alignment: .leading) {
+            // As wide as the room the transcript column always leaves at the left, and under the
+            // drawer once it's out, where it would take the clicks meant for the drawer's folds.
+            Color.clear
+                .frame(width: 20)
+                .contentShape(.rect)
+                .onHover { model.hotZone($0) }
+        }
         .overlay(alignment: .topLeading) {
             // Full height and under the title bar, so the traffic lights sit inside its first row.
             Drawer()
@@ -340,13 +348,6 @@ struct RootView: View {
             .sharedBackgroundVisibility(.hidden)
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .overlay(alignment: .leading) {
-            // As wide as the room the transcript column always leaves at the left.
-            Color.clear
-                .frame(width: 20)
-                .contentShape(.rect)
-                .onHover { model.hotZone($0) }
-        }
     }
 
     /// The gap under the composer, where the notes are.
