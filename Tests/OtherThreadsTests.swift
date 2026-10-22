@@ -157,6 +157,11 @@ struct OtherThreadsTests {
         #expect(listed["threads"]?.array?.count == OtherThreads.mostThreads)
         #expect(listed["threads"]?.array?.first?["title"] == "t44")
         #expect(listed["more"] == 5)
+        let next = OtherThreads.listing(threads, project: "alpha", folder: "/tmp/alpha", asked: nil, skip: 40, in: context)
+        #expect(next["threads"]?.array?.map { $0["title"]?.string } == ["t4", "t3", "t2", "t1", "t0"])
+        #expect(next["more"] == nil)
+        let named = OtherThreads.listing(threads, project: "alpha", folder: "/tmp/alpha", asked: nil, named: "T44", in: context)
+        #expect(named["threads"]?.array?.map { $0["title"]?.string } == ["t44"])
     }
 
     @Test func askedAboutAFileTheThreadsPastFortyAreCountedOnlyWhenTheyEditedIt() throws {

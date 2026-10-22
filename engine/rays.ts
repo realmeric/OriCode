@@ -528,7 +528,7 @@ export class Rays {
       case "suggest_thread":
         return this.suggest(args);
       case "list_threads":
-        return this.read("threads.list", pick(args, ["edited"]));
+        return this.read("threads.list", { ...pick(args, ["edited", "named"]), ...(Number.isSafeInteger(args.skip) && args.skip > 0 ? { skip: args.skip } : {}) });
       case "read_thread":
         if (!String(args.thread ?? "").trim()) return Promise.reject(new Error("read_thread needs a thread's id, which list_threads gives."));
         return this.read("thread.read", { thread: String(args.thread).trim(), ...(Number.isSafeInteger(args.before) && args.before >= 0 ? { before: args.before } : {}) });

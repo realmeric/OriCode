@@ -135,7 +135,7 @@ extension AppModel {
         case "thread.merged":
             return try await merged(event.body, from: thread)
         case "threads.list":
-            return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty)
+            return try await listThreads(for: thread, edited: event.body["edited"]?.string?.nonEmpty, named: event.body["named"]?.string?.nonEmpty, skip: event.body["skip"]?.int ?? 0)
         case "thread.read":
             return try await readThread(event.body["thread"]?.string ?? "", before: event.body["before"]?.int, for: thread)
         case "oricode.act":

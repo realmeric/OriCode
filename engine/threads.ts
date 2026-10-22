@@ -158,11 +158,15 @@ export const listThreads = {
   description:
     "List the user's threads in this project as OriCode has them stored: each one's id, name, agent, whether it is working, waiting on the user or idle, when it was last active, and the files it edited most recently, latest first. " +
     'To find which thread changed a file, pass `edited`: only the threads whose own edits touched that file come back, from their whole history. An edit is a file the thread\'s agent or one of its workers wrote with an edit tool; what a shell command changed isn\'t known. ' +
+    "One call lists forty; when there are more, the answer says how many in `more`, and `skip` gives the next forty. To find a thread by its name, pass `named`. " +
+    "A row with `kind` is an agent under the thread that opened it, a workflow's agent, a subagent or a worker, not a thread of the user's. " +
     "It reads and starts nothing. Use it to find a thread to read, message, wait on or stop, or when the user asks about their other threads.",
   inputSchema: {
     type: "object",
     properties: {
       edited: { type: "string", description: "A file's name or path, Drawer.swift or App/Drawer.swift. Only threads that edited it are listed, each with the matching files." },
+      named: { type: "string", description: "Words of a thread's name, in any case. Only threads whose name holds them are listed." },
+      skip: { type: "number", description: "How many of the threads, latest first, to pass over: 40 for the second forty." },
     },
   },
 };

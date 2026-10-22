@@ -33,6 +33,8 @@ enum OtherThreads {
         /// The thread that asked, and one it opened itself.
         var asking = false
         var openedByAsker = false
+        /// What an agent under its opener is, in words: a workflow's agent, a subagent or a worker.
+        var kind: String?
     }
 
     struct Edit: Hashable, Sendable {
@@ -121,12 +123,21 @@ enum OtherThreads {
         return edits
     }
 
-    /// The listing list_threads answers with. With `asked`, only the threads that edited it.
-    static func listing(_ threads: [Listed], project: String, folder: String, asked: String?, in context: ModelContext) -> JSON {
+    /// The listing list_threads answers with. With `asked`, only the threads that edited it; with
+    /// `named`, only those whose name holds those words; `skip` passes over that many of the rest.
+    static func listing(_ threads: [Listed], project: String, folder: String, asked: String?, named: String? = nil, skip: Int = 0, in context: ModelContext) -> JSON {
         let stamp = ISO8601DateFormatter()
         var rows: [JSON] = []
         var left = 0
+        var skipped = 0
+        let words = named?.split(separator: " ").map(String.init) ?? []
         for thread in threads.sorted(by: { $0.active > $1.active }) {
+            if !words.allSatisfy({ thread.title.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }) { continue }
+            // One passed over isn't read, unless it's asked about a file, which counts only those that edited it.
+            if asked == nil, skipped < skip {
+                skipped += 1
+                continue
+            }
             // Past the fortieth a thread is only counted, and one not asked about a file isn't read.
             let listed = rows.count < mostThreads
             if !listed, asked == nil {
@@ -135,6 +146,10 @@ enum OtherThreads {
             }
             let edits = edits(of: thread.id, cwd: thread.cwd, asked: asked, in: context)
             if asked != nil, edits.isEmpty { continue }
+            if skipped < skip {
+                skipped += 1
+                continue
+            }
             guard listed else {
                 left += 1
                 continue
@@ -147,12 +162,17 @@ enum OtherThreads {
             if thread.asking { row["this"] = true }
             if thread.openedByAsker { row["openedByYou"] = true }
             if thread.archived { row["archived"] = true }
+            if let kind = thread.kind { row["kind"] = .string(kind) }
             if thread.cwd != folder { row["folder"] = .string(thread.cwd) }
             if let branch = thread.branch { row["branch"] = .string(branch) }
             rows.append(.object(row))
         }
         var listing: [String: JSON] = ["project": .string(project), "threads": .array(rows)]
-        if left > 0 { listing["more"] = .number(Double(left)) }
+        if left > 0 {
+            listing["more"] = .number(Double(left))
+            listing["next"] = .string("Pass skip: \(skip + rows.count) for the next \(min(left, mostThreads)).")
+        }
+        if let named, rows.isEmpty, skip == 0 { listing["note"] = .string("No thread's name holds \(named).") }
         if let asked, rows.isEmpty { listing["note"] = .string("No thread's own edits touched \(asked). A shell command, the user or something outside OriCode may have changed it.") }
         return .object(listing)
     }
@@ -259,16 +279,17 @@ extension AppModel {
         return (project.chats + opened).filter(\.started)
     }
 
-    func listThreads(for asking: UUID, edited: String?) async throws -> JSON {
+    func listThreads(for asking: UUID, edited: String?, named: String? = nil, skip: Int = 0) async throws -> JSON {
         guard let chat = chat(withID: asking), let project = chat.project else { throw Refused(why: "The thread that asked is gone.") }
         let threads = threads(around: chat).map { thread in
             OtherThreads.Listed(
                 id: thread.id, title: thread.title, agent: thread.providerID, state: state(of: thread), active: thread.updatedAt, cwd: thread.cwd,
-                branch: thread.worktreeBranch, archived: thread.archived, asking: thread.id == chat.id, openedByAsker: thread.openedBy == chat.id)
+                branch: thread.worktreeBranch, archived: thread.archived, asking: thread.id == chat.id, openedByAsker: thread.openedBy == chat.id,
+                kind: thread.agentID == nil ? nil : thread.agentKind == "subagent" ? "subagent" : thread.agentKind == "worker" ? "worker" : "workflow agent")
         }
         let (name, folder, container) = (project.name, project.path, context.container)
         return await Task.detached(priority: .userInitiated) {
-            OtherThreads.listing(threads, project: name, folder: folder, asked: edited, in: ModelContext(container))
+            OtherThreads.listing(threads, project: name, folder: folder, asked: edited, named: named, skip: skip, in: ModelContext(container))
         }.value
     }
 
