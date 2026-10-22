@@ -93,3 +93,25 @@ test("a turn nobody sent says what woke it", async () => {
   const started = lines.map((line) => JSON.parse(line)).find((event) => event.event === "turn.started");
   assert.equal(started?.woke, "The workflow review finished");
 });
+
+test("a background command that wakes the thread names itself, though the CLI said it ended first", async () => {
+  const thread = new Thread("t", "/nowhere/claude") as any;
+  thread.sessionId = "s";
+  async function* cli() {
+    yield { type: "system", subtype: "task_started", task_id: "b", tool_use_id: "call", description: "Sleep", task_type: "local_bash", is_backgrounded: true, session_id: "s", uuid: "u" };
+    yield { type: "system", subtype: "task_updated", task_id: "b", patch: { status: "completed" }, session_id: "s", uuid: "u" };
+    yield { type: "system", subtype: "task_notification", task_id: "b", tool_use_id: "call", status: "completed", output_file: "", summary: 'Background command "Sleep 90" completed (exit code 0)', session_id: "s", uuid: "u" };
+    yield { type: "assistant", parent_tool_use_id: null, message: { id: "m", content: [] }, session_id: "s", uuid: "u" };
+  }
+  thread.query = cli();
+  const lines: string[] = [];
+  const write = process.stdout.write;
+  process.stdout.write = ((chunk: string) => (lines.push(chunk), true)) as typeof process.stdout.write;
+  try {
+    await thread.pump(thread.query);
+  } finally {
+    process.stdout.write = write;
+  }
+  const started = lines.map((line) => JSON.parse(line)).find((event) => event.event === "turn.started");
+  assert.equal(started?.woke, 'Background command "Sleep 90" completed (exit code 0)');
+});

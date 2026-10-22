@@ -527,10 +527,11 @@ export class Thread implements Session {
   }
 
   /// A background command's own ending, which its call's result couldn't say. A command that
-  /// stayed in the foreground said it on its result, and is only forgotten here.
-  private commandEnded(taskId: string, toolUseId: string | undefined, status: string): void {
+  /// stayed in the foreground said it on its result, and is only forgotten here, at its
+  /// notification: one that wakes the thread is named by it in the turn it wakes.
+  private commandEnded(taskId: string, toolUseId: string | undefined, status: string, notified: boolean): void {
     const call = this.commandCalls.get(taskId) ?? toolUseId;
-    this.commandCalls.delete(taskId);
+    if (notified) this.commandCalls.delete(taskId);
     if (call && this.backgroundCalls.delete(call)) event("tool.ended", { threadId: this.id, toolUseId: call, status });
   }
 
@@ -571,7 +572,7 @@ export class Thread implements Session {
       case "task_notification":
         if (!this.running) this.ended = this.endedWhat(message.task_id, message.status, message.summary) ?? this.ended;
         if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
-        this.commandEnded(message.task_id, message.tool_use_id, message.status);
+        this.commandEnded(message.task_id, message.tool_use_id, message.status, true);
         if (this.workflows.has(message.task_id)) void this.endWorkflow(message.task_id, message.status, message.summary, message.output_file || null);
         if (this.subagents.has(message.task_id)) {
           this.tellSubagent(message.task_id, subagentState(message.status), message.summary);
@@ -594,7 +595,7 @@ export class Thread implements Session {
             subagent.ended = true;
             this.tellSubagent(message.task_id, subagentState(status));
           }
-          this.commandEnded(message.task_id, undefined, status);
+          this.commandEnded(message.task_id, undefined, status, false);
         }
         break;
     }
