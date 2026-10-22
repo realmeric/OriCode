@@ -153,7 +153,7 @@ extension AppModel {
         for chat in project.chats {
             let id = chat.id.uuidString
             conversations[chat.id]?.forget()
-            conversations[chat.id] = nil
+            dropConversation(chat.id)
             forgetComposer(of: chat.id)
             SentPictures.standard.forget(thread: chat.id)
             Task { _ = try? await engine.request("close", ["threadId": .string(id)]) }

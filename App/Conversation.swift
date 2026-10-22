@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -263,9 +264,9 @@ struct StoredEvent: Sendable {
 
     /// A thread's events in order, from any context: opening a thread reads them on a context of
     /// its own, off the main thread.
-    nonisolated static func read(_ chatID: UUID, from context: ModelContext) -> [StoredEvent] {
+    nonisolated static func read(_ chatID: UUID, from context: ModelContext) throws -> [StoredEvent] {
         let descriptor = FetchDescriptor<Event>(predicate: #Predicate { $0.chat?.id == chatID }, sortBy: [SortDescriptor(\.seq)])
-        return ((try? context.fetch(descriptor)) ?? []).map { event in
+        return try context.fetch(descriptor).map { event in
             StoredEvent(
                 id: event.id, kind: event.kind, turn: event.turn, seq: event.seq,
                 body: try? JSONDecoder().decode(JSON.self, from: event.payload), createdAt: event.createdAt,
@@ -553,7 +554,16 @@ final class Conversation {
     private var planCard: UUID?
 
     convenience init(chat: Chat, context: ModelContext, said: MessageIndex? = nil, pictures: SentPictures? = nil) {
-        self.init(chat: chat, context: context, stored: StoredEvent.read(chat.id, from: context), said: said, pictures: pictures)
+        let stored: [StoredEvent]
+        do {
+            stored = try StoredEvent.read(chat.id, from: context)
+        } catch {
+            // Made for an event or a send, which can't wait for a read that failed: the log keeps it.
+            Logger(subsystem: "com.realmeric.oricode", category: "transcript")
+                .error("Couldn't read transcript \(chat.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            stored = []
+        }
+        self.init(chat: chat, context: context, stored: stored, said: said, pictures: pictures)
     }
 
     init(chat: Chat, context: ModelContext, stored: [StoredEvent], said: MessageIndex? = nil, pictures: SentPictures? = nil) {

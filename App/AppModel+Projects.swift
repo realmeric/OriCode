@@ -140,7 +140,7 @@ extension AppModel {
         if archived == besideChatID { besideChatID = nil }
         endShells(of: chat)
         Task { _ = try? await engine.request("close", ["threadId": .string(archived.uuidString)]) }
-        conversations[archived] = nil
+        dropConversation(archived)
         forgetComposer(of: archived)
         chat.archived = true
         chat.archivedWith = opener?.id
@@ -319,7 +319,7 @@ extension AppModel {
               !conversation.working, conversation.waitingAsk == nil, !conversation.holdsMessages
         else { return }
         conversation.flush()
-        conversations[chat.id] = nil
+        dropConversation(chat.id)
         let id = chat.id.uuidString
         Task { _ = try? await engine.request("close", ["threadId": .string(id)]) }
     }
@@ -376,7 +376,7 @@ extension AppModel {
         let project = project ?? noFolderProject()
         if selectedProjectID != project.id { selectedProjectID = project.id }
         for draft in project.chats where !draft.started {
-            conversations[draft.id] = nil
+            dropConversation(draft.id)
             if typed == nil { typed = composers[draft.id] }
             composers[draft.id] = nil
             context.delete(draft)
@@ -422,7 +422,7 @@ extension AppModel {
         askers = askers.filter { !gone.contains($0.value.id) }
         for agent in agents {
             conversations[agent.id]?.forget()
-            conversations[agent.id] = nil
+            dropConversation(agent.id)
             context.delete(agent)
         }
         endShells(of: chat)
@@ -433,7 +433,7 @@ extension AppModel {
         Task { _ = try? await engine.request("close", ["threadId": .string(deleted.uuidString)]) }
         // Its events can't find it through the conversation any more.
         conversations[deleted]?.forget()
-        conversations[deleted] = nil
+        dropConversation(deleted)
         forgetComposer(of: deleted)
         SentPictures.standard.forget(thread: deleted)
         context.delete(chat)

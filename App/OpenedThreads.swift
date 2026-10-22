@@ -340,7 +340,7 @@ extension AppModel {
                 task.thread = thread
                 task.state = state
             }
-            conversations[chat.id] = nil
+            dropConversation(chat.id)
             context.delete(chat)
             save()
             throw Refused(why: "OriCode couldn't start a turn in it just now.")

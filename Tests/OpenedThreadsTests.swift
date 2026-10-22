@@ -593,7 +593,7 @@ struct OpenedThreadsTests {
         }
         // What the thread writes next follows the line.
         read.userSent("Thanks")
-        let events = StoredEvent.read(parent.id, from: container.mainContext)
+        let events = try StoredEvent.read(parent.id, from: container.mainContext)
         #expect(events.map(\.seq) == Array(0..<events.count))
         #expect(events.suffix(2).map(\.kind) == ["thread.done", "user"])
     }

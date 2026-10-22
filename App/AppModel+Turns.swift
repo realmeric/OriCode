@@ -10,6 +10,20 @@ extension AppModel {
         selectedChatID.flatMap { conversations[$0] }
     }
 
+    /// Stops an unread transcript from leaving a line behind after its thread leaves the glass.
+    func stopConversationRead(_ id: UUID) {
+        conversationReadTokens[id] = nil
+        transcriptStatusWaits[id]?.cancel()
+        transcriptStatusWaits[id] = nil
+        transcriptStatus[id] = nil
+    }
+
+    /// Stops an unread transcript from leaving a line behind after its thread leaves memory.
+    func dropConversation(_ id: UUID) {
+        stopConversationRead(id)
+        conversations[id] = nil
+    }
+
     /// A conversation not in view, not running, not waiting on you and holding no messages is
     /// dropped from memory; reopening it reads it back off the main thread.
     func letGo(_ id: UUID) {
@@ -17,7 +31,7 @@ extension AppModel {
               !conversation.waitingAfterQuit, !conversation.holdsMessages
         else { return }
         conversation.flush()
-        conversations[id] = nil
+        dropConversation(id)
     }
 
     /// Lets the thread just left go once it has been away `awayLimit`, so memory stays flat however
@@ -36,6 +50,7 @@ extension AppModel {
 
     func conversation(for chat: Chat) -> Conversation {
         if let existing = conversations[chat.id] { return existing }
+        stopConversationRead(chat.id)
         let created = Conversation(chat: chat, context: context, said: said, pictures: SentPictures.standard)
         pace(created)
         conversations[chat.id] = created

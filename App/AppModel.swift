@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import OSLog
 import SwiftData
 import SwiftUI
 
@@ -205,6 +206,12 @@ final class AppModel {
     @ObservationIgnored var fetched: (revision: Int, projects: [Project])?
     @ObservationIgnored var selected: (revision: Int, project: UUID?, id: UUID, chat: Chat?)?
     var conversations: [UUID: Conversation] = [:]
+    /// What an opened thread says before its stored events have made a conversation.
+    var transcriptStatus: [UUID: String] = [:]
+    @ObservationIgnored var conversationReadTokens: [UUID: UUID] = [:]
+    @ObservationIgnored var transcriptStatusWaits: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private let readEvents: @Sendable (UUID, ModelContext) throws -> [StoredEvent]
+    private static let transcriptLogger = Logger(subsystem: "com.realmeric.oricode", category: "transcript")
     /// Claude Code's water on this Mac today, this week and this month, for the usage card.
     let waterTotals = WaterTotals()
     /// What was said in every thread, for ⌘K, and the rows it gave the last query.
@@ -392,7 +399,10 @@ final class AppModel {
             // With no thread open there's no pair: an empty project picked shows its empty state.
             if selectedChatID == nil, besideChatID != nil { besideChatID = nil }
             if let oldValue, oldValue != selectedChatID { keepDraft(of: oldValue) }
-            if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
+            if let oldValue, !inView(oldValue) {
+                if conversations[oldValue] == nil { stopConversationRead(oldValue) }
+                letGoSoon(oldValue)
+            }
             if let selectedChatID { leaving[selectedChatID]?.cancel() }
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
             // A ⌘digit peek ends when another thread is opened, however it's opened.
@@ -415,7 +425,10 @@ final class AppModel {
         didSet {
             guard besideChatID != oldValue else { return }
             if let besideChatID, besideChatID == selectedChatID { self.besideChatID = nil }
-            if let oldValue, !inView(oldValue) { letGoSoon(oldValue) }
+            if let oldValue, !inView(oldValue) {
+                if conversations[oldValue] == nil { stopConversationRead(oldValue) }
+                letGoSoon(oldValue)
+            }
             UserDefaults.standard.set(besideChatID?.uuidString, forKey: "besideChat")
             followAgents()
             guard let besideChatID else {
@@ -581,10 +594,12 @@ final class AppModel {
         return (list.first { $0.id == id } ?? list.first).map(agent(for: chat).narrowing)
     }
 
-    init(container: ModelContainer, drafts: UserDefaults = .standard) {
+    init(container: ModelContainer, drafts: UserDefaults = .standard,
+         readEvents: @escaping @Sendable (UUID, ModelContext) throws -> [StoredEvent] = StoredEvent.read) {
         store = container
         context = container.mainContext
         draftsKept = drafts
+        self.readEvents = readEvents
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
@@ -641,20 +656,57 @@ final class AppModel {
     /// at once through `conversation(for:)`, and then this one is dropped.
     @discardableResult
     private func loadConversation(_ id: UUID) -> Task<Void, Never>? {
-        guard conversations[id] == nil else { return nil }
+        guard conversations[id] == nil else {
+            transcriptStatus[id] = nil
+            return nil
+        }
+        // A read still under way goes on; the thread opened again once it has failed reads afresh.
+        guard conversationReadTokens[id] == nil else { return nil }
+        stopConversationRead(id)
+        let token = UUID()
+        conversationReadTokens[id] = token
+        // Ended with the read, so an open that reads in the usual few milliseconds wakes nothing later.
+        transcriptStatusWaits[id] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let self, conversationReadTokens[id] == token,
+                  conversations[id] == nil, inView(id)
+            else { return }
+            transcriptStatus[id] = "Still reading this conversation."
+            Self.transcriptLogger.notice("Still reading transcript \(id.uuidString, privacy: .public)")
+        }
         let container = context.container
         let first = openRead
-        return Task {
-            let stored = await Task.detached(priority: .userInitiated) { StoredEvent.read(id, from: ModelContext(container)) }.value
+        let reader = readEvents
+        return Task { [weak self] in
+            defer {
+                if self?.conversationReadTokens[id] == token {
+                    self?.conversationReadTokens[id] = nil
+                    self?.transcriptStatusWaits[id]?.cancel()
+                    self?.transcriptStatusWaits[id] = nil
+                }
+            }
+            let stored: [StoredEvent]
+            do {
+                stored = try await Task.detached(priority: .userInitiated) { try reader(id, ModelContext(container)) }.value
+            } catch {
+                guard !Task.isCancelled, let self, conversationReadTokens[id] == token,
+                      conversations[id] == nil, inView(id)
+                else { return }
+                let line = error.localizedDescription
+                transcriptStatus[id] = line
+                Self.transcriptLogger.error("Couldn't read transcript \(id.uuidString, privacy: .public): \(line, privacy: .public)")
+                return
+            }
             // A thread restored beside the open one is read alongside it and replayed after it,
             // so the pair's launch shows the open thread as soon as one thread's does.
             await first?.value
-            guard inView(id), conversations[id] == nil,
+            guard !Task.isCancelled, let self, conversationReadTokens[id] == token, inView(id), conversations[id] == nil,
                   let chat = try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.id == id })).first
             else { return }
             let read = Conversation(chat: chat, context: context, stored: stored, said: said, pictures: SentPictures.standard)
             pace(read)
             conversations[id] = read
+            transcriptStatus[id] = nil
         }
     }
 

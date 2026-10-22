@@ -47,6 +47,11 @@ struct RootView: View {
                                 ZStack {
                                     if let conversation = model.conversations[thread.id] {
                                         TranscriptView(conversation: conversation, cwd: thread.cwd, active: open)
+                                    } else if let line = model.transcriptStatus[thread.id] {
+                                        Text(line)
+                                            .font(Type.secondary)
+                                            .foregroundStyle(Ink.secondary)
+                                            .multilineTextAlignment(.center)
                                     }
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -628,4 +633,3 @@ struct EmptyStateView: View {
         }
     }
 }
-
