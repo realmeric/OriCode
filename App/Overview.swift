@@ -249,29 +249,32 @@ extension AppModel {
         overviewAsk = nil
     }
 
-    /// A row's click: that thread opens, or with ⌥ comes beside the open one, unfolded in the
-    /// drawer, and the screen goes.
+    /// A row's click: that thread opens, or with ⌥ comes beside the open one, and the screen goes.
     func openFromOverview(_ chat: Chat, beside: Bool) {
         if beside {
             openBeside(chat)
         } else {
             select(chat)
         }
-        unfold(toShow: chat.id)
         closeOverview()
     }
 
     /// Each project's plan while a task of it isn't done or has changed since OriCode opened, and
     /// the threads the screen lists, each project's under its name in the projects' order: every
     /// thread that works, waits or has had a turn since OriCode opened, every workflow agent this
-    /// launch has heard of, and the threads above each of them up to its top thread in the drawer.
-    /// The tree is the drawer's: top threads in the drawer's order, each with the threads it
-    /// opened under it in the order they were opened. A thread nothing above it has touched isn't
-    /// listed; the drawer lists those.
+    /// launch has heard of, and the threads above each of them up to its top thread in the drawer;
+    /// and the open thread's whole tree when it has one, since the drawer lists top threads alone.
+    /// Top threads come in the drawer's order, each with the threads it opened under it in the
+    /// order they were opened.
     var overview: [OverviewSection] {
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
         let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var kept: Set<UUID> = []
+        let topOf = topThreads
+        if let selectedChatID, let top = topOf[selectedChatID] {
+            let tree = all.filter { topOf[$0.id] == top }
+            if tree.count > 1 { kept.formUnion(tree.map(\.id)) }
+        }
         for chat in all where onOverview(chat) {
             var at: UUID? = chat.id
             while let id = at, byID[id] != nil, kept.insert(id).inserted {

@@ -259,15 +259,6 @@ enum Store {
     }
 }
 
-/// A row of the drawer's tree: a thread and the threads it opened, nil when it opened none, so
-/// the list draws no fold for it.
-struct DrawerNode: Identifiable {
-    let chat: Chat
-    let children: [DrawerNode]?
-
-    var id: UUID { chat.id }
-}
-
 extension Chat {
     /// The drawer's order: pinned threads first, as they were put, then the rest, a thread never
     /// placed on top and newest first, the others as they were dragged.

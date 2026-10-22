@@ -35,17 +35,20 @@ struct Drawer: View {
             .padding(.trailing, 8)
             .padding(.top, 2)
             List {
-                let tree = model.drawerTree
-                let end = pinnedEnd(tree)
-                let asks = model.asksByThread
-                ForEach(Array(tree.enumerated()), id: \.element.id) { index, node in
-                    branch(node, index: index, end: end, asks: asks)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 6))
+                let chats = model.chats
+                let pinned = chats.filter(\.pinned).count
+                let under = workUnder()
+                ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
+                    row(chat, index: index, working: under.working.contains(chat.id), asks: under.asking.contains(chat.id))
+                        // Space, not a line, parts the pinned threads from the rest.
+                        .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
                 .onMove { model.moveThreads(from: $0, to: $1) }
                 .moveDisabled(model.drawerFilter != .all)
-                if tree.isEmpty, model.drawerFilter != .all {
+                if chats.isEmpty, model.drawerFilter != .all {
                     Button("No threads here. Show all") { model.drawerFilter = .all }
                         .buttonStyle(.plain)
                         .font(Type.secondary)
@@ -59,7 +62,6 @@ struct Drawer: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .padding(.leading, 6)
             .environment(\.defaultMinListRowHeight, 34)
             .background(KeyLoopGate(open: model.drawerShown))
             HStack(spacing: 4) {
@@ -184,58 +186,17 @@ struct Drawer: View {
         .fixedSize()
     }
 
-    /// A thread and, when it opened any, the threads under it in the list's own fold. Only the
-    /// top rows drag: a thread under another stays where it was opened.
-    private func branch(_ node: DrawerNode, index: Int?, end: UUID?, asks: [UUID: Int]) -> AnyView {
-        guard let children = node.children else {
-            return AnyView(row(node.chat, index: index, end: end, asks: asks[node.chat.id] != nil))
-        }
-        let id = node.chat.id
-        let unfolded = Binding(
-            get: { model.unfolded.contains(id) },
-            set: { open in
-                if open { model.unfolded.insert(id) } else { model.unfolded.remove(id) }
-            })
-        return AnyView(DisclosureGroup(isExpanded: unfolded) {
-            ForEach(children) { child in
-                branch(child, index: nil, end: end, asks: asks)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 6))
-                    .listRowSeparator(.hidden)
-                    .moveDisabled(true)
-            }
-        } label: {
-            row(node.chat, index: index, end: end, folded: !model.unfolded.contains(id), working: working(under: children),
-                asking: children.reduce(0) { $0 + asking(at: $1, asks) }, asks: asks[node.chat.id] != nil)
-        })
+    /// The top threads with a thread at work in or under them, and those with an ask waiting in
+    /// or under them, which the threads under have no row to show.
+    private func workUnder() -> (working: Set<UUID>, asking: Set<UUID>) {
+        let tops = model.topThreads
+        let working = model.projects.flatMap(\.chats).filter { model.conversations[$0.id]?.working == true || $0.agentWorking }
+        return (Set(working.compactMap { tops[$0.id] }), Set(model.asksByThread.keys.compactMap { tops[$0] }))
     }
 
-    /// The row the pinned threads end on, which space, not a line, parts from the rest: the last
-    /// pinned thread's, or the last row unfolded under it.
-    private func pinnedEnd(_ tree: [DrawerNode]) -> UUID? {
-        let pinned = tree.prefix { $0.chat.pinned }
-        guard var node = pinned.last, pinned.count < tree.count else { return nil }
-        while model.unfolded.contains(node.id), let last = node.children?.last { node = last }
-        return node.id
-    }
-
-    /// How many threads under it, at any depth, work or wait.
-    private func working(under children: [DrawerNode]) -> Int {
-        children.reduce(0) { count, node in
-            count + (model.conversations[node.chat.id]?.working == true || node.chat.agentWorking ? 1 : 0) + working(under: node.children ?? [])
-        }
-    }
-
-    /// How many asks wait at a thread and under it, at any depth.
-    private func asking(at node: DrawerNode, _ asks: [UUID: Int]) -> Int {
-        (node.children ?? []).reduce(asks[node.chat.id] ?? 0) { $0 + asking(at: $1, asks) }
-    }
-
-    /// A top row has its place in the list and its ⌘digit; one under another has neither.
-    /// `asking` counts the asks in the threads under it and `under` those that work, shown as a
-    /// bare number only while it's folded; `asks` is whether the thread itself asks, which pulses
-    /// its mark.
-    private func row(_ chat: Chat, index: Int?, end: UUID?, folded: Bool = false, working under: Int = 0, asking: Int = 0, asks: Bool = false) -> some View {
-        let child = index == nil
+    /// `working` and `asks` say whether the thread or one under it works, and whether an ask waits
+    /// in it or under it, which pulses its mark.
+    private func row(_ chat: Chat, index: Int, working: Bool, asks: Bool) -> some View {
         let selected = chat.id == model.chat?.id
         let beside = chat.id == model.besideChatID
         let peeked = chat.id == model.peekedChatID
@@ -248,7 +209,6 @@ struct Drawer: View {
         return HStack(spacing: 10) {
             if let project = chat.project {
                 ProjectBadge(project: project)
-                    .opacity(child ? 0.7 : 1)
             }
             if model.renamingChatID == chat.id {
                 TextField("Title", text: $draft)
@@ -267,8 +227,6 @@ struct Drawer: View {
                     Text(chat.title)
                         .font(Type.body)
                         .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)
-                        // A shade quieter under the thread that opened it, selected or not.
-                        .opacity(child ? 0.8 : 1)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if chat.worktreeBranch != nil {
@@ -280,30 +238,18 @@ struct Drawer: View {
                 }
             }
             Spacer(minLength: 4)
-            // A fold shut over threads that ask or work: how many, with no noun. An ask holds the
-            // rest up, so it's the one counted when there are both, and brighter.
-            if folded, asking > 0 || under > 0 {
-                Text("\(asking > 0 ? asking : under)")
-                    .font(Type.secondary.monospacedDigit())
-                    .foregroundStyle(asking > 0 ? Ink.primary : Ink.faint)
-            }
-            // Only while the thread works or waits, so an idle row gives its title the room.
+            // Only while the thread or one under it works or waits, so an idle row gives its
+            // title the room.
             if let conversation = model.conversations[chat.id], conversation.working {
                 // Still while the drawer is away: hidden, it stays in the tree, and a turning
                 // mark would redraw for nobody.
                 ThreadMark(conversation: conversation, moving: model.drawerShown, waiting: asks)
                     .frame(width: 14, height: 14)
-            } else if chat.agentWorking {
-                // An agent of a workflow is a main loop of its own, with no rays.
-                RaysMark(waiting: asks && model.drawerShown, restingOpacity: 0.28, dotColor: MarkPalette.color(for: chat.providerID))
+            } else if working || asks {
+                // Work under it, which has no rays here: the dot lit.
+                RaysMark(waiting: asks && model.drawerShown, restingOpacity: 0.28)
                     .frame(width: 14, height: 14)
                     .accessibilityLabel("Working")
-            } else if chat.agentState == "failed" {
-                Circle()
-                    .fill(Ink.deleted.opacity(0.7))
-                    .frame(width: 5, height: 5)
-                    .frame(width: 14, height: 14)
-                    .accessibilityLabel("Failed")
             }
             if chat.pinned {
                 Image(systemName: "pin.fill")
@@ -312,28 +258,20 @@ struct Drawer: View {
                     .foregroundStyle(Ink.faint)
                     .help("Pinned")
             }
-            if let index, index < 9 {
+            if index < 9 {
                 Text("⌘\(index + 1)")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.faint)
             }
         }
-        .padding(.trailing, 10)
+        .padding(.horizontal, 10)
         .frame(height: 34)
+        .background(
+            selected || peeked ? Surface.selected : beside || hovered == chat.id ? Surface.hover : .clear,
+            in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .offset(x: peeked ? 6 : 0)
         .animation(Motion.move, value: peeked)
-        .padding(.bottom, chat.id == end ? 10 : 0)
-        // The row's own background, which runs under the outline's chevron as well, so a row
-        // with threads under it is lit from its fold to its end.
-        .listRowBackground(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(selected || peeked ? (child ? Surface.quietSelected : Surface.selected)
-                    : beside || hovered == chat.id ? (child ? Surface.quietHover : Surface.hover) : .clear)
-                .padding(.trailing, 6)
-                .padding(.bottom, chat.id == end ? 10 : 0)
-                .offset(x: peeked ? 6 : 0)
-                .animation(Motion.move, value: peeked))
         .onTapGesture { model.pickByClick(chat, beside: NSEvent.modifierFlags.contains(.option)) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.startRename(chat) })
         .accessibilityElement(children: model.renamingChatID == chat.id ? .contain : .combine)
@@ -351,9 +289,7 @@ struct Drawer: View {
                     Button("Open Beside") { model.openBeside(chat) }
                         .disabled(selected)
                 }
-                if !child {
-                    Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
-                }
+                Button(chat.pinned ? "Unpin" : "Pin") { withAnimation(Motion.move) { model.togglePin(chat) } }
                 Button("Rename") { model.startRename(chat) }
                 Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }
             }

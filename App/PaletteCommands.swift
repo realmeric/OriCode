@@ -262,7 +262,10 @@ extension AppModel {
         guard !words.isEmpty else { return [] }
         said.read(from: context.container)
         if let found = paletteFound, (found.query, found.revision, found.ready) == (query, revision, said.ready) { return found.items }
-        let threads = Dictionary(uniqueKeysWithValues: listedChats.map { ($0.id, $0) })
+        // The drawer's threads and every thread under them, which have no row of their own.
+        let listed = Set(listedChats.map(\.id)), tops = topThreads
+        let threads = Dictionary(uniqueKeysWithValues: projects.flatMap(\.chats)
+            .filter { listed.contains(tops[$0.id] ?? $0.id) }.map { ($0.id, $0) })
         let items = said.search(words, in: Set(threads.keys)).compactMap { message -> PaletteItem? in
             guard let chat = threads[message.chat], let project = chat.project,
                   let snippet = MessageSearch.snippet(words, in: message.text, folded: message.folded)
@@ -395,7 +398,7 @@ extension AppModel {
             items.append(command("thread.closeOtherSide", "Close other side", icon: "xmark.rectangle", shortcut: shortcuts.label(.closeOtherSide),
                                  keywords: ["beside", "side by side", "split", "pair"]) { [weak self] in self?.closeOtherSide() })
         }
-        if drawerRows.count > 1 {
+        if chats.count > 1 {
             items.append(command("thread.next", "Next thread", icon: "chevron.down", shortcut: shortcuts.label(.nextThread)) { [weak self] in
                 self?.stepThread(1)
             })

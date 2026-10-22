@@ -41,7 +41,7 @@ struct WorkflowAgentsTests {
             agent("alpha", id: "a1", state: "running"),
             agent("beta", id: nil, state: "queued"),
         ]))
-        #expect(model.drawerTree.first?.children?.map(\.chat.title) == ["alpha"])
+        #expect(model.agents(under: lead).map(\.title) == ["alpha"])
         let alpha = try #require(model.agents(under: lead).first)
         #expect(alpha.agentID == "a1" && alpha.agentTask == "w1" && alpha.agentWorking)
         #expect(alpha.agentTranscript == nil && alpha.model == "claude-haiku-5-5" && alpha.cwd == lead.cwd)
@@ -51,7 +51,7 @@ struct WorkflowAgentsTests {
             agent("alpha", id: "a1", state: "running"),
             agent("beta", id: "b2", state: "running"),
         ]))
-        #expect(model.drawerTree.first?.children?.map(\.chat.title) == ["alpha", "beta"])
+        #expect(Set(model.agents(under: lead).map(\.title)) == ["alpha", "beta"])
         #expect(alpha.agentTranscript == "/c/s/subagents/workflows/wf_1/agent-a1.jsonl")
 
         // Its end: each with what it returned, one line of it, and one left at work stopped.
@@ -219,7 +219,7 @@ struct WorkflowAgentsTests {
         let (model, lead) = try model()
         model.syncAgent(of: lead, told("a7", kind: "subagent", state: "running"))
         let agent = try #require(model.agents(under: lead).first)
-        #expect(model.drawerTree.first?.children?.map(\.chat.title) == ["look around"])
+        #expect(model.agents(under: lead).map(\.title) == ["look around"])
         #expect(agent.agentKind == "subagent" && agent.agentTask == "a7" && agent.agentWorking)
         #expect(agent.agentTranscript == "/c/s/subagents/agent-a7.jsonl" && agent.provider == lead.provider)
         #expect(agent.agentStop == "Stop" && agent.agentStopFirst == "the agent")

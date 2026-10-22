@@ -53,6 +53,17 @@ struct OverviewTests {
         #expect(model.status(of: primes).state == .idle && model.status(of: primes).word.isEmpty)
     }
 
+    @Test func theOpenThreadsTreeIsOnTheScreenWhenItHasOne() throws {
+        let (model, _, _, _, primes, _, quiet, _) = try model()
+
+        // A thread on its own, with nothing run, leaves the screen empty.
+        model.select(quiet)
+        #expect(model.overview.isEmpty)
+        // One under another brings the whole tree it's in, since the drawer shows only its top.
+        model.select(primes)
+        #expect(titles(model) == [["alpha", "Lead", "  Primes", "    Test", "  Sums"]])
+    }
+
     @Test func eachTurnSaysHowItEnded() throws {
         let (model, _, _, lead, _, _, quiet, docs) = try model()
         let id = { (chat: Chat) in chat.id.uuidString }
@@ -135,8 +146,8 @@ struct OverviewTests {
         #expect(model.status(of: two).step == "Read · two.txt")
     }
 
-    @Test func aRowsClickOpensItsThreadUnfoldedAndTheScreenGoes() throws {
-        let (model, _, _, lead, primes, test, _, _) = try model()
+    @Test func aRowsClickOpensItsThreadAndTheScreenGoes() throws {
+        let (model, _, _, _, _, test, _, _) = try model()
         model.route(EngineEvent(name: "turn.started", threadId: test.id.uuidString, body: ["event": "turn.started"]))
         model.toggleOverview()
         #expect(model.overviewShown)
@@ -148,7 +159,6 @@ struct OverviewTests {
 
         model.openFromOverview(test, beside: false)
         #expect(model.selectedChatID == test.id && !model.overviewShown)
-        #expect(model.unfolded.isSuperset(of: [lead.id, primes.id]))
 
         model.toggleOverview()
         #expect(model.escape())

@@ -115,13 +115,12 @@ struct AskQueueTests {
         #expect(model.selectedChatID == docs.id)
     }
 
-    @Test func waitingOnYouListsTheWorkerThatAsksAndNotItsHead() throws {
+    @Test func waitingOnYouListsTheTopThreadAWorkerAsksUnder() throws {
         let (model, _, _, lead, check, _) = try model()
         workerQuestion("a", in: lead, model: model)
         model.drawerFilter = .waiting
-        #expect(model.listedChats.map(\.id) == [check.id])
-        // On its own, the worker is a top row, with its ask counted at it.
-        #expect(model.drawerTree.map(\.chat.id) == [check.id])
+        // The worker has no row, so its head's does for it, its ask still counted at the worker.
+        #expect(model.listedChats.map(\.id) == [lead.id])
         #expect(model.asksByThread[check.id] == 1)
     }
 

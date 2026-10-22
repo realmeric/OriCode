@@ -134,30 +134,18 @@ extension AppModel {
         }
     }
 
-    /// ⌃Tab and ⌃⇧Tab: the row after or before the open thread among the drawer's rows in sight,
-    /// round the end, peeking the drawer like ⌘1–9. An open thread folded out of sight steps from
-    /// the row of the thread above it that shows, as if it sat just under that row.
+    /// ⌃Tab and ⌃⇧Tab: the row after or before the open thread in the drawer, round the end,
+    /// peeking the drawer like ⌘1–9. A thread with no row of its own steps from the row of the top
+    /// thread it sits under, as if it sat just below it.
     func stepThread(_ by: Int) {
-        let visible = drawerRows
+        let visible = chats
         guard !visible.isEmpty else { return }
         var at = visible.firstIndex { $0.id == chat?.id }
-        if at == nil, var opener = chat?.openedBy {
-            var seen: Set<UUID> = []
-            while seen.insert(opener).inserted {
-                if let row = visible.firstIndex(where: { $0.id == opener }) {
-                    at = by > 0 ? row : row + 1
-                    break
-                }
-                guard let up = chat(withID: opener)?.openedBy else { break }
-                opener = up
-            }
+        if at == nil, let id = chat?.id, let top = topThreads[id], let row = visible.firstIndex(where: { $0.id == top }) {
+            at = by > 0 ? row : row + 1
         }
         let from = at ?? (by > 0 ? -1 : 0)
-        let next = visible[((from + by) % visible.count + visible.count) % visible.count]
-        select(next)
-        nudge(next)
-        showDrawer()
-        scheduleHide(after: DrawerTiming.peek)
+        pick(threadAt: ((from + by) % visible.count + visible.count) % visible.count)
     }
 
     func showDrawer() {

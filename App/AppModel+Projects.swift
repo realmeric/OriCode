@@ -19,38 +19,13 @@ extension AppModel {
         return projects.first { $0.id == selectedProjectID }
     }
 
-    /// Every project's threads in one list, in the drawer's order: the drawer's top rows, ⌘1–9
+    /// Every project's top threads in one list, in the drawer's order: the drawer, ⌘1–9, ⌃Tab
     /// and the Thread menu. A draft isn't one of them until its first message, and a thread
-    /// another opened sits under its opener instead, while the opener is listed too.
-    /// Under the drawer's filter, when it has one.
+    /// another opened, a workflow's agent, a subagent or a worker isn't one at all: ⌘⇧I, ⌘K and
+    /// the lines in transcripts reach those. Under the drawer's filter, when it has one.
     var chats: [Chat] {
-        // The archived ones, when they're what's asked for, the latest worked on first, and flat.
-        guard drawerFilter != .archived else { return archivedChats }
-        let listed = listedChats
-        let ids = Set(listed.map(\.id))
-        return listed.filter { $0.openedBy.map { !ids.contains($0) } ?? true }.sorted(by: Chat.drawerOrder)
-    }
-
-    /// The drawer as a tree: each top row with the threads it opened under it, and theirs under
-    /// those, in the order they were opened.
-    var drawerTree: [DrawerNode] {
-        let roots = chats
-        guard drawerFilter != .archived else { return roots.map { DrawerNode(chat: $0, children: nil) } }
-        let opened = Dictionary(grouping: listedChats.filter { $0.openedBy != nil }) { $0.openedBy! }
-        func node(_ chat: Chat) -> DrawerNode {
-            let under = opened[chat.id]?.sorted { $0.createdAt < $1.createdAt }.map(node)
-            return DrawerNode(chat: chat, children: under)
-        }
-        return roots.map(node)
-    }
-
-    /// The rows the drawer shows, top to bottom: the top rows and what's unfolded under them,
-    /// which ⌃Tab steps through.
-    var drawerRows: [Chat] {
-        func rows(_ node: DrawerNode) -> [Chat] {
-            [node.chat] + (unfolded.contains(node.chat.id) ? (node.children ?? []).flatMap(rows) : [])
-        }
-        return drawerTree.flatMap(rows)
+        // The archived ones, when they're what's asked for, the latest worked on first.
+        drawerFilter == .archived ? listedChats : listedChats.sorted(by: Chat.drawerOrder)
     }
 
     /// Every thread under this one, at any depth, whatever the drawer's filter.
@@ -66,45 +41,39 @@ extension AppModel {
         }
     }
 
-    /// The threads above this one in the drawer, its opener first, unfolded when it's opened so
-    /// its row is in sight: picked in ⌘K, from a line in another thread or anywhere else. Each
-    /// of them, since one the user folded can sit above one still unfolded.
-    func unfold(toShow id: UUID) {
-        let all = projects.flatMap(\.chats)
-        var opener = all.first { $0.id == id }?.openedBy
-        var seen: Set<UUID> = [id]
-        while let id = opener, seen.insert(id).inserted {
-            unfolded.insert(id)
-            opener = all.first { $0.id == id }?.openedBy
+    /// Each started thread not archived, by the top thread it sits under: itself when no such
+    /// thread opened it, else its opener's top.
+    var topThreads: [UUID: UUID] {
+        let openers = Dictionary(projects.flatMap(\.chats).filter { $0.started && !$0.archived }.map { ($0.id, $0.openedBy) },
+                                 uniquingKeysWith: { first, _ in first })
+        var tops: [UUID: UUID] = [:]
+        for id in openers.keys {
+            var top = id
+            var seen: Set<UUID> = [id]
+            while let up = openers[top] ?? nil, openers[up] != nil, seen.insert(up).inserted { top = up }
+            tops[id] = top
         }
+        return tops
     }
 
     /// The same threads in no order, for whoever asks only which they are or how many: the
-    /// drawer's order reads three stored values of two threads at every comparison.
+    /// drawer's order reads three stored values of two threads at every comparison. Working and
+    /// Waiting on you list a top thread for what works or asks under it as well.
     var listedChats: [Chat] {
+        // A thread archived with the one that opened it comes back with it, so it has no row.
+        guard drawerFilter != .archived else { return archivedChats.filter { $0.archivedWith == nil } }
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
+        let tops = topThreads
+        let top = all.filter { tops[$0.id] == $0.id }
         switch drawerFilter {
-        case .all: return all
-        // With the threads under them, in whatever folder they were opened: the tree is who
-        // opened whom, and a fold that counts a thread must show it.
-        case .project(let id):
-            var listed = all.filter { $0.project?.id == id }
-            var ids = Set(listed.map(\.id))
-            var openers = ids
-            while !openers.isEmpty {
-                let under = all.filter { $0.openedBy.map(openers.contains) == true && !ids.contains($0.id) }
-                listed += under
-                openers = Set(under.map(\.id))
-                ids.formUnion(openers)
-            }
-            return listed
-        case .working: return all.filter { conversations[$0.id]?.working == true || $0.agentWorking }
-        // The thread that asks, as the queue names it: a worker asking is listed and its head,
-        // working on, isn't, the way Working lists a worker without its head.
+        case .project(let id): return top.filter { $0.project?.id == id }
+        case .working:
+            let working = Set(all.filter { conversations[$0.id]?.working == true || $0.agentWorking }.compactMap { tops[$0.id] })
+            return top.filter { working.contains($0.id) }
         case .waiting:
-            let asking = Set(waitingAsks.map(\.thread.id))
-            return all.filter { asking.contains($0.id) }
-        case .archived: return archivedChats
+            let asking = Set(waitingAsks.compactMap { tops[$0.thread.id] })
+            return top.filter { asking.contains($0.id) }
+        case .all, .archived: return top
         }
     }
 
