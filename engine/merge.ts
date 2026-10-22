@@ -73,6 +73,15 @@ export async function folderCommit(folder: string, repository: string): Promise<
   return (await gitRun(root, ["-c", "commit.gpgsign=false", "commit-tree", tree, "-p", head, "-m", "The opener's folder as the thread opened"])).trim();
 }
 
+/// Whether a thread's worktree holds nothing to bring in: its files as they are, untracked ones
+/// included, are those it started with, and no commit of its own is left on its branch.
+export async function unchanged(path: string, branch: string): Promise<boolean> {
+  const root = await top(path);
+  const started = (await gitRun(root, ["rev-parse", "--verify", "-q", `${baseRef(branch)}^{tree}`]).catch(() => "")).trim();
+  if (!started && Number((await gitRun(root, ["rev-list", "--count", "HEAD", "--not", `--exclude=${branch}`, "--branches", "--remotes"])).trim()) > 0) return false;
+  return (await snapshot(root)) === (started || (await gitRun(root, ["rev-parse", "HEAD^{tree}"])).trim());
+}
+
 /// Merges `branch` into the folder `folder` is in. Throws, having written nothing, when git
 /// can't merge at all.
 export async function begin(folder: string, branch: string, label: string): Promise<Merge> {

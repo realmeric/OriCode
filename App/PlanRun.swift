@@ -125,6 +125,7 @@ extension AppModel {
     /// `stopped` is a turn the engine took with it, which no turn.done ended.
     func planTurnEnded(_ id: UUID, stopped: Bool = false) {
         let byUser = conversations[id]?.running != true && stoppedByUser.remove(id) != nil
+        var worktrees: [PlanTask] = []
         if let conversation = conversations[id] {
             for task in projects.flatMap(\.tasks) where task.thread == id && task.owner != nil && task.state == "working" {
                 if conversation.endedByItself, !stopped {
@@ -142,14 +143,49 @@ extension AppModel {
                     task.note = byUser && !stopped ? Self.stoppedByYou
                         : conversation.turnLimit.map { "A \(Limit.name(of: $0.window)) stopped its turn, and it won't go on by itself." } ?? Self.whyStopped(conversation)
                 }
-                task.heard = false
                 task.updatedAt = .now
+                // Its owner hears of it once its worktree is known to hold work or is gone.
+                if task.state == "done", task.unmerged, task.thread.flatMap(chat(withID:))?.worktreeBranch != nil {
+                    task.heard = true
+                    worktrees.append(task)
+                } else {
+                    task.heard = false
+                }
                 save()
                 stuckLine(task)
             }
         }
-        tellOwners()
-        runPlans()
+        guard !worktrees.isEmpty else {
+            tellOwners()
+            runPlans()
+            return
+        }
+        Task {
+            await dropUnchanged(worktrees)
+            tellOwners()
+            runPlans()
+        }
+    }
+
+    /// A done task's thread that changed nothing in its worktree has nothing to merge: the
+    /// worktree and its branch go, the thread works in its owner's folder from then on, and the
+    /// owner isn't asked to merge it, which it may well not do, leaving both behind.
+    private func dropUnchanged(_ tasks: [PlanTask]) async {
+        for task in tasks {
+            defer { task.heard = false }
+            guard let thread = task.thread.flatMap(chat(withID:)), let branch = thread.worktreeBranch,
+                  let owner = task.owner.flatMap(chat(withID:)), let root = thread.project?.path, let followers = followers(of: thread),
+                  (try? await engine.request("worktree.unchanged", ["path": .string(thread.cwd), "branch": .string(branch)]))?["unchanged"]?.bool == true
+            else { continue }
+            endShells(of: thread)
+            guard (try? await engine.request("worktree.remove", ["cwd": .string(root), "path": .string(thread.cwd), "branch": .string(branch)])) != nil else { continue }
+            thread.worktreeBranch = nil
+            for follower in followers { follower.cwd = owner.cwd }
+            thread.cwd = owner.cwd
+            task.unmerged = false
+            refreshBranch(for: thread)
+        }
+        save()
     }
 
     /// What ended unheard is told and what can start starts: once the engine is ready, at launch

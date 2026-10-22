@@ -25,7 +25,7 @@ import { describe } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
-import { folderCommit } from "./merge.ts";
+import { folderCommit, unchanged } from "./merge.ts";
 import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
 import { Follow } from "./follow.ts";
 import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
@@ -581,6 +581,10 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "worktree.loss"({ path, branch: branchName }: { path: string; branch: string }) {
     return worktreeLoss(path, branchName);
+  },
+
+  async "worktree.unchanged"({ path, branch: branchName }: { path: string; branch: string }) {
+    return { unchanged: await unchanged(path, branchName) };
   },
 
   async "worktree.remove"({ cwd, path, branch: branchName }: { cwd: string; path: string; branch: string }) {

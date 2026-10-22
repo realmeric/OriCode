@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addWorktree, branch, branches, create, friendly, git, notARepository, previous, pull, remote, switchTo, webURL } from "../git.ts";
 import { top } from "../review.ts";
+import { folderCommit, unchanged } from "../merge.ts";
 
 before(() => {
   // The user's own git settings (signing, hooks, a default branch name) stay out of it.
@@ -140,4 +141,17 @@ test("a worktree's branch takes the prefix it's given, and a prefix git wouldn't
   assert.equal((await addWorktree(dir, "b", "")).branch, "b");
   await assert.rejects(addWorktree(dir, "c", "no good/"), /isn't a name git takes for a branch\. Change the prefix in Settings › Source control\./);
   assert.equal(existsSync(join(dir, ".worktrees", "c")), false);
+});
+
+test("a worktree is unchanged until a file in it is, from a clean folder or a dirty one", async () => {
+  const dir = await repo();
+  const clean = await addWorktree(dir, "clean");
+  assert.equal(await unchanged(clean.path, clean.branch), true);
+  await writeFile(join(clean.path, "new"), "x\n");
+  assert.equal(await unchanged(clean.path, clean.branch), false);
+  await writeFile(join(dir, "f"), "edited\n");
+  const dirty = await addWorktree(dir, "dirty", "oricode/", await folderCommit(dir, dir));
+  assert.equal(await unchanged(dirty.path, dirty.branch), true);
+  await writeFile(join(dirty.path, "f"), "edited again\n");
+  assert.equal(await unchanged(dirty.path, dirty.branch), false);
 });
