@@ -13,6 +13,8 @@ struct Composer: View {
     let windowHeight: CGFloat
     /// One of two on the glass. Alone, a composer has the window's width and its button says all.
     var paired = false
+    /// A drawer passing over lies across its start, where a cut-off placeholder would read.
+    var underDrawer = false
     /// Counts the turns to the prompt and back made while one thread is showing, which the
     /// morph plays for. A thread at the prompt taking the place of one that isn't shows as it is.
     @State private var morph = 0
@@ -466,7 +468,8 @@ struct Composer: View {
                         if draft.empty {
                             Text(placeholder)
                                 .font(state.shellPrompt ? Type.mono : Type.body)
-                                .foregroundStyle(Self.placeholderInk.opacity(shown))
+                                .foregroundStyle(Self.placeholderInk.opacity(underDrawer ? 0 : shown))
+                                .animation(Motion.fade, value: underDrawer)
                                 .lineLimit(1)
                                 .allowsHitTesting(false)
                                 .accessibilityHidden(true)

@@ -201,10 +201,16 @@ extension AppModel {
             if level.query.trimmingCharacters(in: .whitespaces).isEmpty {
                 return paletteSections(of: reach()).flatMap { section in [.heading(section.title)] + numbered(section.items) }
             }
-            let messages = paletteMessages(for: level.query)
+            var messages = paletteMessages(for: level.query)
             // Fewer ranked rows over messages, so the Messages heading is still in view.
-            let ranked = numbered(Array(Palette.rank(reach().all, by: level.query, recents: paletteRecents)
-                .prefix(messages.isEmpty ? 40 : 6)))
+            let top = Array(Palette.rank(reach().all, by: level.query, recents: paletteRecents).prefix(messages.isEmpty ? 40 : 6))
+            // A message in a thread that's a row above says only what was said, the row's width.
+            let rows = Set(top.filter { $0.kind == .thread }.map(\.id))
+            for at in messages.indices where messages[at].thread.map({ rows.contains("thread." + $0.uuidString) }) == true {
+                messages[at].subtitle = nil
+                messages[at].project = nil
+            }
+            let ranked = numbered(top)
             return messages.isEmpty ? ranked : ranked + [.heading("Messages")] + numbered(messages)
         case .list(let list):
             var items = Palette.rank(level.items, by: level.query, recents: paletteRecents)
@@ -268,11 +274,11 @@ extension AppModel {
             .filter { listed.contains(tops[$0.id] ?? $0.id) }.map { ($0.id, $0) })
         let items = said.search(words, in: Set(threads.keys)).compactMap { message -> PaletteItem? in
             guard let chat = threads[message.chat], let project = chat.project,
-                  let snippet = MessageSearch.snippet(words, in: message.text, folded: message.folded)
+                  let snippet = MessageSearch.snippet(words, in: message.text, folded: message.folded, length: 72)
             else { return nil }
             let chatID = chat.id, eventID = message.id
             return PaletteItem(id: "message." + eventID.uuidString, kind: .message, title: snippet, subtitle: chat.title,
-                               icon: message.user ? "person" : "text.bubble", project: project,
+                               icon: message.user ? "person" : "text.bubble", project: project, thread: chatID,
                                action: .run { [weak self] in
                                    self?.open(chatID: chatID)
                                    self?.reveal = eventID

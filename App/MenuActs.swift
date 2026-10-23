@@ -114,11 +114,10 @@ extension AppModel {
         return found
     }
 
-    /// The quiet line in the asking thread for what it did, which a click opens the thread of; and
-    /// one in the thread it did it to, when that's another the user may be reading.
+    /// A quiet line in the thread it did it to, when that's another the user may be reading. The
+    /// asking thread has none: its call says what it did, in words, inside its turn.
     private func did(_ what: String, on target: Chat?, by chat: Chat, reason: String, there: String? = nil) {
         let target = target ?? chat
-        conversation(for: chat).threadAct(ThreadAct(act: .did, by: true, thread: target.id, title: target.title, reason: reason, what: what))
         if let there, target.id != chat.id, !target.archived {
             conversation(for: target).threadAct(ThreadAct(act: .did, by: false, thread: chat.id, title: chat.title, reason: reason, what: there))
         }

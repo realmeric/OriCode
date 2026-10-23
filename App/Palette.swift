@@ -24,6 +24,8 @@ struct PaletteItem: Identifiable {
     var agent: String?
     /// Threads and projects show the project's badge, and a message shows it by its thread's name.
     var project: Project?
+    /// The thread a message was said in.
+    var thread: UUID?
     /// The current model, level or mode in a list.
     var checked = false
     /// Why it can't run now: drawn faint, with this as its line.
@@ -183,7 +185,7 @@ enum MessageSearch {
     /// with … where it's cut; nil when a word isn't there. `piece` says the text is a piece of a
     /// longer one, cut at that end, and then it's nil too when the line would reach the cut.
     static func snippet(_ words: [String], in text: String, length: Int = 40, piece: (left: Bool, right: Bool) = (false, false)) -> String? {
-        let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let line = plain(text)
         guard !words.isEmpty, let found = match(words, in: line) else { return nil }
         let characters = Array(line)
         let from = line.distance(from: line.startIndex, to: found.lowerBound)
@@ -196,6 +198,22 @@ enum MessageSearch {
         if lower > 0, characters[lower - 1] != " ", let space = characters[lower..<from].firstIndex(of: " ") { lower = space + 1 }
         if upper < characters.count, characters[upper] != " ", let space = characters[to..<upper].lastIndex(of: " ") { upper = space }
         return (lower > 0 ? "…" : "") + String(characters[lower..<upper]) + (upper < characters.count ? "…" : "")
+    }
+
+    /// Text on one line as it reads, without Markdown's marks: no **, backticks or #, no list's
+    /// dash, and a link by its words.
+    /// Worked out for every message a letter finds, so by hand and not by regular expression.
+    static func plain(_ text: String) -> String {
+        let linked = text.contains("](") ? text.replacingOccurrences(of: #"\[([^\]\n]+)\]\([^)\s]*\)"#, with: "$1", options: .regularExpression) : text
+        return linked.split(whereSeparator: \.isWhitespace).compactMap { token -> Substring? in
+            if token.allSatisfy({ $0 == "#" }) || token == "-" || token == "*" || token == "+" || token == ">" || token == "|" { return nil }
+            if let mark = token.last, mark == "." || mark == ")", token.count > 1, token.dropLast().allSatisfy(\.isNumber) { return nil }
+            guard token.contains(where: { $0 == "*" || $0 == "_" || $0 == "`" }) else { return token }
+            var word = String(token).replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "__", with: "").replacingOccurrences(of: "`", with: "")
+            while let first = word.first, first == "*" || first == "_" { word.removeFirst() }
+            while let last = word.last, last == "*" || last == "_" { word.removeLast() }
+            return word.isEmpty ? nil : Substring(word)
+        }.joined(separator: " ")
     }
 
     /// The same line for a message of the index, read from the text near the match alone: a long

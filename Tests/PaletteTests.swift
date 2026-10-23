@@ -52,6 +52,11 @@ struct PaletteTests {
         #expect(MessageSearch.match(["istanbul"], in: "İstanbul'da") != nil)
     }
 
+    @Test func aSnippetReadsWithoutMarkdown() {
+        #expect(MessageSearch.plain("- **Rounded** style: `26°` in the [ring](https://x.y)\n## Next") == "Rounded style: 26° in the ring Next")
+        #expect(MessageSearch.plain("snake_case stays, _italic_ goes") == "snake_case stays, italic goes")
+    }
+
     @Test func aSnippetIsOneLineAroundTheFirstWordFound() {
         let text = "The capsule sits in the toolbar's row,\nlevel with the traffic lights, and each surface drops from the top edge today."
         #expect(MessageSearch.snippet(["lights", "traffic"], in: text) == "…with the traffic lights, and each…")

@@ -42,7 +42,7 @@ struct Drawer: View {
                 // made again when another thread is picked, peeked or hovered (K-318).
                 let open = model.chat?.id, beside = model.besideChatID, peeked = model.peekedChatID
                 // The header names the project new threads start in, so its rows don't repeat it.
-                let named = model.selectedProjectID
+                let named = model.drawerProject?.id
                 ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
                     DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
                               working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
@@ -50,7 +50,7 @@ struct Drawer: View {
                               digit: command && index < 9, badged: chat.project?.id != named)
                         // Space, not a line, parts the pinned threads from the rest.
                         .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
@@ -63,12 +63,16 @@ struct Drawer: View {
                         .foregroundStyle(Ink.faint)
                         .padding(.horizontal, 10)
                         .frame(height: 34)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
             }
-            .listStyle(.plain)
+            // Inset, so the outline AppKit draws around a row while its menu is up is rounded and
+            // inside the drawer, where plain's ran square past its edge; it has no switch to go.
+            .listStyle(.inset(alternatesRowBackgrounds: false))
+            // The inset style's own room over the first row, less the stack's spacing it adds to.
+            .padding(.top, -6)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 34)
             .background(KeyLoop())
@@ -93,7 +97,7 @@ struct Drawer: View {
             }
             HStack(spacing: 4) {
                 Button {
-                    model.openNewThread()
+                    model.openNewThreadInDrawer()
                 } label: {
                     Label("New thread", systemImage: "square.and.pencil")
                         .font(Type.secondary)
@@ -105,7 +109,7 @@ struct Drawer: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .disabled(model.project == nil)
+                .disabled(model.drawerProject == nil)
                 .onHover { footHover = $0 ? .newThread : (footHover == .newThread ? nil : footHover) }
                 Button {
                     openSettings()
@@ -186,12 +190,12 @@ struct Drawer: View {
             // Every row has its symbol, a folder for a project and No folder's laptop, so the names stay in one column.
             Group {
                 ForEach(model.projects.filter { !$0.isNoFolder }) { project in
-                    Toggle(isOn: Binding(get: { project.id == model.project?.id }, set: { _ in model.select(project) })) {
+                    Toggle(isOn: Binding(get: { project.id == model.drawerProject?.id }, set: { _ in model.select(project) })) {
                         Label(project.name, systemImage: "folder")
                     }
                 }
                 // There before anything was sent in it, when it isn't a project yet: a draft there, as ⌘K's.
-                Toggle(isOn: Binding(get: { model.project?.isNoFolder == true }, set: { _ in model.openThreadWithoutFolder() })) {
+                Toggle(isOn: Binding(get: { model.drawerProject?.isNoFolder == true }, set: { _ in model.openThreadWithoutFolder() })) {
                     Label(Project.noFolderName, systemImage: "laptopcomputer")
                 }
                 Divider()
@@ -200,10 +204,10 @@ struct Drawer: View {
             .labelStyle(.titleAndIcon)
         } label: {
             HStack(spacing: 8) {
-                if let project = model.project {
+                if let project = model.drawerProject {
                     ProjectBadge(project: project)
                 }
-                Text(model.project.map { $0.isNoFolder ? Project.noFolderName : $0.name } ?? Project.noFolderName)
+                Text(model.drawerProject.map { $0.isNoFolder ? Project.noFolderName : $0.name } ?? Project.noFolderName)
                     .font(Type.body.weight(.medium))
                     .foregroundStyle(Ink.primary)
             }

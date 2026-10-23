@@ -183,6 +183,8 @@ private struct AgentCard: View {
             Spacer(minLength: 12)
             control()
         }
+        // As tall as a row with a switch, which Claude Code's hasn't, so the list keeps one rhythm.
+        .frame(minHeight: 24)
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
     }

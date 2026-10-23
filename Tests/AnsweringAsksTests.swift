@@ -130,7 +130,7 @@ final class AnsweringAsksTests {
         #expect(queue.first?.ask.passes == [PendingAsk.Pass(by: "Lead", to: nil, reason: "Accept edits can't run a command.")])
         #expect(model.waitingCount == 1)
         turnEnds(lead, in: model)
-        #expect(lines(lead, in: model) == ["Passed Rename's ask up · To you · Bash: npm test · Accept edits can't run a command."])
+        #expect(lines(lead, in: model) == ["Passed Rename's ask up · To you · Run npm test · Accept edits can't run a command."])
     }
 
     @Test func aQuestionAboutTheTaskIsAnsweredByTheLead() throws {

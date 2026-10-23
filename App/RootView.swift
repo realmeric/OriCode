@@ -38,8 +38,11 @@ struct RootView: View {
                 // with the picker and Send, doesn't move, and nor does a composer in the right half.
                 let covered = model.reviewShown || model.openFile != nil || model.openShell != nil
                     || model.commandCenterShown || model.overviewShown || model.headsShown || model.fileFinderShown
-                let clear = model.drawerShown && !model.drawerDocked
-                    ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
+                let passing = model.drawerShown && !model.drawerDocked
+                let clear = passing ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
+                // What the drawer still lies over at the left: the left composer's start, and the
+                // left column's title, whose cut-off ends would read beside its edge.
+                let underDrawer = passing && Self.covers(width: beside == nil ? window.size.width : half)
                 VStack(spacing: 0) {
                     if let chat = model.chat, started {
                         // Keyed by thread, so a second one arriving, or the two trading the
@@ -63,13 +66,15 @@ struct RootView: View {
                                 .simultaneousGesture(TapGesture().onEnded {
                                     if !open { model.select(thread) }
                                 })
-                                // Gone at once from the column the keyboard comes to, where the
-                                // crossing's drop takes its place, and in at once over the one it
-                                // left, its words showing when the drop there has spread: a fade
-                                // here would draw its tint and the drop's over each other.
+                                // Gone at once from the column the keyboard comes to, whose top
+                                // fade comes up as it goes, so it's never a ghost over the lines
+                                // under it, and in with a fade over the one it left.
                                 .overlay(alignment: .top) {
                                     if !open {
                                         BesideTitle(chat: thread, conversation: model.conversations[thread.id])
+                                            .opacity(passing && thread.id == threads.first??.id ? 0 : 1)
+                                            .animation(Motion.fade, value: passing)
+                                            .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12).delay(0.04)), removal: .identity))
                                     }
                                 }
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
@@ -111,7 +116,7 @@ struct RootView: View {
                                 } else {
                                     Composer(chat: thread, conversation: conversation, state: model.composer(for: thread),
                                              running: conversation?.running ?? false, windowHeight: window.size.height,
-                                             paired: beside != nil)
+                                             paired: beside != nil, underDrawer: underDrawer && side == halves[0])
                                 }
                             }
                             // Moves as one piece: otherwise a label that changes with the thread,
@@ -316,14 +321,6 @@ struct RootView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .overlay {
-            // Under the island, so the window capsule's title rides over it.
-            if let crossing = model.crossing {
-                CrossingGoo(crossing: crossing)
-                    .id(crossing.id)
-                    .ignoresSafeArea()
-            }
-        }
         .overlay(alignment: .top) {
             // In the toolbar's row, level with the traffic lights AppKit centres in it, and over an
             // open block or file, which ⌘K and ⌘P open over.
@@ -379,6 +376,13 @@ struct RootView: View {
     /// is narrower than the narrowest window's, and there the composer draws back only as far as
     /// it does in that window: the drawer lies over the rest of it, where giving it all up would
     /// leave the field no width between the composer's own buttons.
+    /// Whether a drawer passing over a column of that width still lies over its composer's start
+    /// once the composer has drawn back as far as it goes.
+    static func covers(width: CGFloat) -> Bool {
+        let column = min(Column.width, width - Column.margin * 2)
+        return Drawer.width + Drawer.inset * 2 + Column.margin - (width - column) / 2 > column - drawnBack
+    }
+
     static func clearing(width: CGFloat) -> CGFloat {
         let column = min(Column.width, width - Column.margin * 2)
         let covered = Drawer.width + Drawer.inset * 2 + Column.margin - (width - column) / 2
@@ -389,10 +393,11 @@ struct RootView: View {
     /// instead of under it.
     private static let rise = AnyTransition.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22))
     /// A transcript taking another's place in its half, or coming beside one with its composer,
-    /// fades in as the one there fades out, so the window never has a frame with neither.
-    private static let swap = AnyTransition.opacity.animation(.easeOut(duration: 0.14))
+    /// fades in once the one there has gone, so two threads' lines are never drawn over each
+    /// other; the two take 0.14 s between them.
+    private static let swap = AnyTransition.opacity.animation(.easeOut(duration: 0.08).delay(0.06))
     /// A transcript leaving fades before anything moves in: the composer waits for it.
-    private static let leave = AnyTransition.opacity.animation(.easeOut(duration: 0.1))
+    private static let leave = AnyTransition.opacity.animation(.easeOut(duration: 0.06))
     /// The mark lifts away as the first message sends the composer down, and settles back from
     /// the same place as an empty thread brings the composer up.
     private static let lift = AnyTransition.opacity.combined(with: .offset(y: -36)).combined(with: .scale(scale: 0.92))
@@ -456,7 +461,7 @@ extension String {
 /// as that thread's title and not as a line of its transcript: the mark at its left end while the
 /// thread works, drawn as the window's capsule draws it, and at its right end, away from the mark,
 /// a cross while the pointer is on it, the way a tab closes. A click brings the keyboard over, and
-/// the capsule with it, as a drop that runs up into the window's (CrossingGoo).
+/// the title with it into the window's capsule.
 struct BesideTitle: View {
     @Environment(AppModel.self) private var model
     let chat: Chat
@@ -468,15 +473,13 @@ struct BesideTitle: View {
 
     var body: some View {
         let working = conversation?.working == true
-        // Its words stand aside while the crossing's drops are out, and come back where one lands.
-        let crossing = model.crossing != nil
         Button {
             model.select(chat)
         } label: {
             Text(chat.title)
                 .foregroundStyle(Ink.secondary)
                 .truncationMode(.tail)
-                .opacity(crossing ? 0 : 1)
+                .modifier(Swap(key: "\(chat.id) \(chat.title)"))
                 .font(Type.secondary)
                 .lineLimit(1)
                 // Room for the cross whether it shows or not, so the capsule keeps its width
@@ -485,15 +488,12 @@ struct BesideTitle: View {
                 .padding(.leading, working ? 12 + TitleCapsule.mark + 6 : Self.cross + 8)
                 .padding(.trailing, Self.cross + 8)
                 .frame(height: Self.height)
-                // While the keyboard crosses, its tint is the crossing's goo.
-                .background(crossing ? .clear : hovering ? Surface.selected : Surface.drawer, in: .capsule)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.besideCapsuleFrame = $0 }
+                .background(hovering ? Surface.selected : Surface.drawer, in: .capsule)
                 .overlay(alignment: .leading) {
                     if working, let conversation {
                         ThreadMark(conversation: conversation)
                             .frame(width: TitleCapsule.mark, height: TitleCapsule.mark)
                             .padding(.leading, 10)
-                            .opacity(crossing ? 0 : 1)
                             .transition(.opacity)
                     }
                 }
@@ -513,12 +513,11 @@ struct BesideTitle: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 6)
-            .opacity(hovering && !crossing ? 1 : 0)
+            .opacity(hovering ? 1 : 0)
             .help("Close this side (\(model.shortcuts.label(.closeOtherSide)))")
             .accessibilityLabel("Close \(chat.title)")
         }
         .animation(Motion.fade, value: hovering)
-        .animation(Motion.fade, value: crossing)
         .animation(Motion.move, value: working)
         .onHover { hovering = $0 }
         .column()

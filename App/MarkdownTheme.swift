@@ -116,10 +116,21 @@ private struct CodeBlock: View {
                     FontSize(12.5)
                     ForegroundColor(Ink.primary)
                 }
-                // A line scrolled to its end stops clear of Copy.
-                .padding(EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: CodeCopy.side + CodeCopy.inset))
+                // A line scrolled to its end, or one that fits, stops short of the fade.
+                .padding(EdgeInsets(top: 14, leading: 0, bottom: 14, trailing: 16))
         }
         .scrollIndicators(.never)
+        // The card keeps its padding while a long line scrolls, and on the right that's as far
+        // as Copy, so no line runs under it; the line fades out over its last 16pt there, which
+        // reads as more and not as cut off.
+        .mask {
+            HStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 16)
+            }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, CodeCopy.side + CodeCopy.inset)
         .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
         .overlay {
             GeometryReader { block in

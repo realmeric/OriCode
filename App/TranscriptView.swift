@@ -199,6 +199,12 @@ struct TranscriptView: View {
         .onChange(of: model.threadEnd) {
             if active { toEnd(animated: true) }
         }
+        // The keyboard coming or going moves the column's top, and so its height: one following
+        // its end keeps it, so a send that comes next lands under what's there.
+        .onChange(of: active) {
+            guard end.pinned, !end.heading else { return }
+            DispatchQueue.main.async { position.scrollTo(edge: .bottom) }
+        }
         // On appear too: ⌘K sets the reveal as it switches to the thread that builds this view.
         .onAppear {
             content.gone = false
@@ -319,6 +325,12 @@ struct TranscriptView: View {
             }
             if !position.isPositionedByUser { try? await Task.sleep(for: .milliseconds(80)) }
             guard !Task.isCancelled else { return }
+            // Still at the foot by its numbers with nothing laid out there, which two looks a
+            // screen up didn't leave: the end is found from further up, as one lost is. Seen
+            // sending in a column the keyboard had just come to, with the other one streaming.
+            if !content.endLaidOut, content.reached == .end, !position.isPositionedByUser, !content.gone {
+                return regain(settling: false)
+            }
             // Scrolled away by hand in the meantime, the pill comes back.
             end.landed()
         }

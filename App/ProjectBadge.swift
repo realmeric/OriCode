@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 
 /// A project's two letters on its colour, at the start of each of its threads, so threads from
 /// different projects can share one list. No folder has no colour and no letters: a laptop, in
 /// the ink the rest of the row is in.
 struct ProjectBadge: View {
+    @Environment(AppModel.self) private var model
     let project: Project
 
     var body: some View {
@@ -12,7 +14,7 @@ struct ProjectBadge: View {
             if project.isNoFolder {
                 Image(systemName: "laptopcomputer")
             } else {
-                Text(project.initials)
+                Text(model.initials[project.id] ?? project.initials)
             }
         }
         .font(.system(size: 9.5, weight: .bold, design: .rounded))
@@ -26,10 +28,37 @@ struct ProjectBadge: View {
 extension Project {
     /// The first and last letters of the name: OriCode is OE.
     var initials: String {
-        let letters = name.filter { $0.isLetter || $0.isNumber }
-        guard let first = letters.first else { return "?" }
-        guard letters.count > 1, let last = letters.last else { return String(first).uppercased() }
-        return (String(first) + String(last)).uppercased()
+        Self.choices(for: name).first ?? "?"
+    }
+
+    /// Every project's letters, the first added keeping its own and each after it taking the
+    /// next of its choices no project before it has: oricode-deneme beside OriCode is OD.
+    static func initials(of projects: [Project]) -> [UUID: String] {
+        var taken: Set<String> = []
+        var letters: [UUID: String] = [:]
+        for project in projects.sorted(by: { $0.createdAt < $1.createdAt }) where !project.isNoFolder {
+            let choices = choices(for: project.name)
+            let pick = choices.first { !taken.contains($0) } ?? choices.first ?? "?"
+            taken.insert(pick)
+            letters[project.id] = pick
+        }
+        return letters
+    }
+
+    /// The letters a name can go by, best first: its first and last, its first and the start of
+    /// each later word, then its first and each later letter.
+    static func choices(for name: String) -> [String] {
+        let characters = Array(name)
+        let letters = characters.filter { $0.isLetter || $0.isNumber }
+        guard let first = letters.first.map({ String($0).uppercased() }) else { return ["?"] }
+        guard letters.count > 1, let last = letters.last else { return [first] }
+        var words: [Character] = []
+        for (index, character) in characters.enumerated() where index > 0 && (character.isLetter || character.isNumber) {
+            let before = characters[index - 1]
+            if !(before.isLetter || before.isNumber) || (character.isUppercase && before.isLowercase) { words.append(character) }
+        }
+        var seen: Set<String> = []
+        return ([last] + words + letters.dropFirst()).map { first + String($0).uppercased() }.filter { seen.insert($0).inserted }
     }
 }
 
@@ -51,11 +80,23 @@ enum ProjectColor {
         palette[(project.colorIndex ?? 0) % palette.count]
     }
 
-    /// A colour at random from those the fewest projects have, so no two share one until all
-    /// eight are taken.
+    /// A colour from those the fewest projects have, so no two share one until all eight are
+    /// taken, and of those the hue furthest from every one taken, so two violets don't sit side
+    /// by side; at random among those as far.
     static func pick(taken: [Int]) -> Int {
         let uses = palette.indices.map { index in taken.filter { $0 == index }.count }
         let fewest = uses.min() ?? 0
-        return palette.indices.filter { uses[$0] == fewest }.randomElement() ?? 0
+        let free = palette.indices.filter { uses[$0] == fewest }
+        let hues = Set(taken).map(hue)
+        func apart(_ index: Int) -> Double {
+            hues.map { abs(hue(index) - $0) }.map { min($0, 1 - $0) }.min() ?? 1
+        }
+        let furthest = free.map(apart).max() ?? 0
+        return free.filter { apart($0) >= furthest - 0.0001 }.randomElement() ?? 0
+    }
+
+    /// Where a palette colour sits around the wheel, 0 to 1.
+    private static func hue(_ index: Int) -> Double {
+        Double(NSColor(palette[index % palette.count]).usingColorSpace(.sRGB)?.hueComponent ?? 0)
     }
 }

@@ -502,8 +502,7 @@ export class Thread implements Session {
   /// Looked for at a turn's end and once more a little later, since the CLI may write them after
   /// the result, and never again once found.
   private async tellTitle(sessionId: string, cwd: string, again = true): Promise<void> {
-    const info = await getSessionInfo(sessionId, { dir: cwd }).catch(() => undefined);
-    const title = info?.customTitle?.trim() || (info && info.summary !== info.firstPrompt ? info.summary.trim() : "");
+    const title = await sessionTitle(sessionId, cwd);
     if (this.titled) return;
     if (!title) {
       if (again) setTimeout(() => void this.tellTitle(sessionId, cwd, false), 5_000).unref();
@@ -1173,6 +1172,14 @@ export function errorText(error: string, maker?: string): string {
     default:
       return `${agent} returned an error (${error}).`;
   }
+}
+
+/// The few words Claude Code titled a session with, or "" while it has none: a title given by
+/// hand first, then the summary it writes beside the transcript, which until then is the first
+/// prompt and says nothing new.
+export async function sessionTitle(sessionId: string, cwd: string): Promise<string> {
+  const info = await getSessionInfo(sessionId, { dir: cwd }).catch(() => undefined);
+  return info?.customTitle?.trim() || (info && info.summary !== info.firstPrompt ? info.summary.trim() : "");
 }
 
 export function describe(error: unknown): string {

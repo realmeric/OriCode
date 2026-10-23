@@ -95,6 +95,15 @@ struct ToolKindTests {
         let refused = ToolCall(toolUseId: "r", name: "mcp__oricode__open_thread", input: ["title": "Count C"], result: "Too many", isError: true)
         #expect(ToolSummary.run([refused, opened]) == "Opened 1 thread")
         #expect(ToolSummary.run([refused]) == "Used 1 tool")
+        // The harness loading tools isn't counted, and OriCode's other tools are said in words.
+        let search = ToolCall(toolUseId: "s", name: "ToolSearch", input: ["query": "select:mcp__oricode__open_thread"], result: "{}")
+        #expect(ToolSummary.run([search, opened]) == "Opened 1 thread")
+        let mode = tool("change_thread", ["permission_mode": "plan"])
+        let ceiling = tool("change_setting", ["setting": "threads_working_at_once", "value": 4])
+        #expect(words(mode) == "Set this thread to Plan")
+        #expect(words(ceiling) == "Set threads working at once to 4")
+        #expect(ToolSummary.run([search, mode, ceiling, tool("change_setting", ["setting": "threads_working_at_once", "value": 8])]) == "Changed this thread, changed a setting")
+        #expect(ToolSummary.run([tool("list_threads", [:]), tool("read_plan", [:])]) == "Listed threads, read the plan")
         let items = ([opened] + waits + [message]).map { Item.tool(id: UUID(), call: $0) }
         #expect(ToolRunRow.collapsed(items).map(\.id) == [items[0].id, items[3].id, items[4].id])
     }
@@ -208,7 +217,7 @@ struct ToolKindTests {
         let calls = Self.calls(conversation)
         #expect(calls.map(\.declared) == [.run, .notebook, .workflow, .mcp, .edit])
         #expect(calls.map(\.isEdit) == [false, false, false, false, true])
-        #expect(ToolSummary.line(for: calls[0], cwd: Self.root) == "Bash: make test")
+        #expect(ToolSummary.line(for: calls[0], cwd: Self.root) == "Run make test")
         #expect(ToolSummary.line(for: calls[1], cwd: Self.root) == "Edit n.ipynb")
         #expect(ToolSummary.path(for: calls[1]) == "/tmp/alpha/n.ipynb")
         #expect(ToolSummary.run([calls[1]]) == "Edited 1 file")

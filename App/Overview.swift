@@ -263,18 +263,13 @@ extension AppModel {
     /// Each project's plan while a task of it isn't done or has changed since OriCode opened, and
     /// the threads the screen lists, each project's under its name in the projects' order: every
     /// thread that works, waits or has had a turn since OriCode opened, every workflow agent this
-    /// launch has heard of, and the threads above each of them up to its top thread in the drawer;
-    /// and the open thread's whole tree when it has one, since the drawer lists top threads alone.
-    /// Top threads come in the drawer's order, each with the threads it opened under it.
+    /// launch has heard of, and the threads above each of them up to its top thread in the drawer.
+    /// The same rows whichever thread is open. Top threads come in the drawer's order, each with
+    /// the threads it opened under it.
     var overview: [OverviewSection] {
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
         let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var kept: Set<UUID> = []
-        let topOf = topThreads
-        if let selectedChatID, let top = topOf[selectedChatID] {
-            let tree = all.filter { topOf[$0.id] == top }
-            if tree.count > 1 { kept.formUnion(tree.map(\.id)) }
-        }
         for chat in all where onOverview(chat) {
             var at: UUID? = chat.id
             while let id = at, byID[id] != nil, kept.insert(id).inserted {
@@ -284,9 +279,16 @@ extension AppModel {
         let listed = all.filter { kept.contains($0.id) }
         let opened = Dictionary(grouping: listed.filter { $0.openedBy.map { byID[$0] != nil } == true }) { $0.openedBy! }
         // Under each thread, the ones at work or waiting first, so finished ones from earlier
-        // turns don't push them down; each kind in the order they were opened.
+        // turns don't push them down; each kind in the order they were opened. Sorted as the
+        // screen opens and held while it's up, so a row that finishes settles where it is.
+        func live(_ chat: Chat) -> Bool {
+            if let held = overviewHeld[chat.id] { return held }
+            let live = status(of: chat).live
+            if overviewShown { overviewHeld[chat.id] = live }
+            return live
+        }
         func rows(_ chat: Chat, depth: Int) -> [OverviewRow] {
-            let under = (opened[chat.id] ?? []).map { (chat: $0, live: status(of: $0).live) }
+            let under = (opened[chat.id] ?? []).map { (chat: $0, live: live($0)) }
                 .sorted { $0.live != $1.live ? $0.live : $0.chat.createdAt < $1.chat.createdAt }
                 .map(\.chat)
             return [OverviewRow(chat: chat, depth: depth)] + under.flatMap { rows($0, depth: depth + 1) }
@@ -320,7 +322,7 @@ extension AppModel {
                 return OverviewStatus(state: .waiting, step: nil)
             case "running": return OverviewStatus(state: .working, step: agentStep(chat) ?? "Starting…")
             case "queued": return OverviewStatus(state: .queued, step: nil)
-            case "done": return OverviewStatus(state: .done, step: chat.agentResult)
+            case "done": return OverviewStatus(state: .done, step: nil)
             case "failed": return OverviewStatus(state: .failed, step: chat.agentResult)
             case "stopped": return OverviewStatus(state: .stopped, step: nil)
             default: return OverviewStatus(state: .idle, step: nil)
@@ -340,7 +342,7 @@ extension AppModel {
             // With its turn over, only how far what it left running is, where that can tell.
             guard conversation.running else { return OverviewStatus(state: .working, step: goingOn(chat)) }
             let step = conversation.mainStep(cwd: chat.cwd) { self.chat(withID: $0)?.title }
-            let line = [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
+            let line = Self.stepLine(step.tool, step.detail)
             return OverviewStatus(state: .working, step: [conversation.planStep, line.nonEmpty].compactMap { $0 }.joined(separator: " · ").nonEmpty)
         }
         if let resumeAt = chat.resumeAt {
@@ -349,7 +351,8 @@ extension AppModel {
         // A plan it runs goes on while a task's thread works, which its line says over the turn's.
         let going = goingOn(chat)
         switch outcomes[chat.id]?.state {
-        case .done: return OverviewStatus(state: .done, step: going ?? outcomes[chat.id]?.line)
+        // Finished is the mark at rest and the title; its reply is the thread's to read.
+        case .done: return OverviewStatus(state: .done, step: going)
         case .stopped: return OverviewStatus(state: .stopped, step: going ?? outcomes[chat.id]?.line)
         case .failed: return OverviewStatus(state: .failed, step: going ?? outcomes[chat.id]?.line)
         case nil: return OverviewStatus(state: .idle, step: going)
@@ -363,19 +366,25 @@ extension AppModel {
         if chat.agentKind != nil {
             if let conversation = conversations[chat.id], conversation.running {
                 let step = conversation.mainStep(cwd: chat.cwd) { self.chat(withID: $0)?.title }
-                return [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
+                return Self.stepLine(step.tool, step.detail)
             }
             guard let parent = chat.openedBy, let task = chat.agentTask,
                   let step = conversations[parent]?.heads.list.first(where: { $0.id == task })?.step
             else { return nil }
-            return [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
+            return Self.stepLine(step.tool, step.detail)
         }
         guard let parent = chat.openedBy, let task = chat.agentTask, let id = chat.agentID,
               let run = conversations[parent]?.heads.list.first(where: { $0.id == task })?.run,
               let agent = run.agents.first(where: { $0.id == id }),
               let tool = agent.lastTool
         else { return nil }
-        return [ToolSummary.name(tool), agent.lastDetail].compactMap { $0 }.joined(separator: " · ")
+        return Self.stepLine(tool, agent.lastDetail)
+    }
+
+    /// A step as a row says it: the tool and what it's on, "Read · two.txt", and a command alone.
+    static func stepLine(_ tool: String, _ detail: String?) -> String {
+        if tool == "Bash", let detail = detail?.nonEmpty { return detail }
+        return [ToolSummary.name(tool), detail].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// A turn starting or ending, which puts its thread on the screen of everything running and

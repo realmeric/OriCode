@@ -53,15 +53,15 @@ struct OverviewTests {
         #expect(model.status(of: primes).state == .idle && model.status(of: primes).word.isEmpty)
     }
 
-    @Test func theOpenThreadsTreeIsOnTheScreenWhenItHasOne() throws {
+    @Test func theRowsAreTheSameWhicheverThreadIsOpen() throws {
         let (model, _, _, _, primes, _, quiet, _) = try model()
 
-        // A thread on its own, with nothing run, leaves the screen empty.
+        // Nothing run leaves the screen empty, whichever thread is open, one with threads under
+        // it or one on its own.
         model.select(quiet)
         #expect(model.overview.isEmpty)
-        // One under another brings the whole tree it's in, since the drawer shows only its top.
         model.select(primes)
-        #expect(titles(model) == [["alpha", "Lead", "  Primes", "    Test", "  Sums"]])
+        #expect(model.overview.isEmpty)
     }
 
     @Test func eachTurnSaysHowItEnded() throws {
@@ -76,7 +76,7 @@ struct OverviewTests {
         model.route(EngineEvent(name: "turn.started", threadId: id(docs), body: ["event": "turn.started"]))
         model.route(EngineEvent(name: "turn.done", threadId: id(docs), body: ["event": "turn.done", "stopReason": "error_during_execution"]))
 
-        #expect(model.status(of: lead) == OverviewStatus(state: .done, step: "All three passed."))
+        #expect(model.status(of: lead) == OverviewStatus(state: .done, step: nil))
         #expect(model.status(of: quiet).state == .stopped)
         #expect(model.status(of: docs).state == .failed)
         #expect(titles(model) == [["alpha", "Lead", "Quiet"], ["beta", "Docs"]])
@@ -119,8 +119,8 @@ struct OverviewTests {
         let agents = model.agents(under: lead)
         let first = try #require(agents.first { $0.agentID == "a1" })
         let second = try #require(agents.first { $0.agentID == "b2" })
-        #expect(model.status(of: first) == OverviewStatus(state: .working, step: "Bash · echo alpha-3"))
-        #expect(model.status(of: second) == OverviewStatus(state: .done, step: "beta-10"))
+        #expect(model.status(of: first) == OverviewStatus(state: .working, step: "echo alpha-3"))
+        #expect(model.status(of: second) == OverviewStatus(state: .done, step: nil))
 
         // A relaunch stops the agent the last launch left running, and lists it stopped; the one
         // that had ended, under a thread nothing touched since, isn't listed.
@@ -142,7 +142,7 @@ struct OverviewTests {
         let agents = model.agents(under: lead)
         let one = try #require(agents.first { $0.agentID == "a1" })
         let two = try #require(agents.first { $0.agentID == "a2" })
-        #expect(model.status(of: one).step == "Bash · echo one")
+        #expect(model.status(of: one).step == "echo one")
         #expect(model.status(of: two).step == "Read · two.txt")
     }
 

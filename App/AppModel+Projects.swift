@@ -11,6 +11,7 @@ extension AppModel {
         // No folder comes after the folders, wherever projects are listed.
         let projects = all.filter { !$0.isNoFolder } + all.filter(\.isNoFolder)
         fetched = (revision, projects)
+        initials = Project.initials(of: projects)
         return projects
     }
 
@@ -230,15 +231,28 @@ extension AppModel {
         return project
     }
 
+    /// The project the drawer's header names, or with none picked yet the open thread's.
+    var drawerProject: Project? {
+        drawerProjectID.flatMap { id in projects.first { $0.id == id } } ?? project
+    }
+
+    /// The drawer's New thread: in the project its header names.
+    func openNewThreadInDrawer() {
+        if let home = drawerProject, home.id != selectedProjectID { selectedProjectID = home.id }
+        openNewThread()
+    }
+
     /// New thread without a folder: No folder's draft, or a new thread there.
     func openThreadWithoutFolder() {
         selectedProjectID = noFolderProject().id
+        drawerProjectID = selectedProjectID
         openLocalThread()
     }
 
     func select(_ project: Project) {
         let left = self.project
         selectedProjectID = project.id
+        drawerProjectID = project.id
         selectedChatID = project.chats.max { $0.updatedAt < $1.updatedAt }?.id
         leave(left)
     }

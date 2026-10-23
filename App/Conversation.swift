@@ -1553,10 +1553,11 @@ final class Conversation {
             items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true,
                                  resetsAt: resetsAt, window: body["window"]?.string))
         case "thread.act":
-            // Opening, messaging and stopping another thread are this thread's own calls, which
-            // its run of calls names; one stored before then isn't drawn twice. Who opened this
+            // Opening, messaging and stopping another thread, and what it did from OriCode's menus,
+            // are this thread's own calls, which its run of calls names; one stored before then
+            // isn't drawn twice. Who opened this
             // one is ⌘⇧I's to show, and the opener's call line's.
-            guard let act = ThreadAct(body), !(act.by && [.opened, .messaged, .stopped].contains(act.act)), !(act.act == .opened && !act.by) else { break }
+            guard let act = ThreadAct(body), !(act.by && [.opened, .messaged, .stopped, .did].contains(act.act)), !(act.act == .opened && !act.by) else { break }
             items.append(.act(id: id, thread: act.thread, text: act.words, hover: act.hover))
         case "thread.overlap":
             guard let same = SameFile(body) else { break }

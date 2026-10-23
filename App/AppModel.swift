@@ -207,6 +207,8 @@ final class AppModel {
     private(set) var revision = 0
     /// The projects as of a revision, and the open thread as of a revision and a selection.
     @ObservationIgnored var fetched: (revision: Int, projects: [Project])?
+    /// Each project's two letters on its badge, told apart from every other project's.
+    @ObservationIgnored var initials: [UUID: String] = [:]
     @ObservationIgnored var selected: (revision: Int, project: UUID?, id: UUID, chat: Chat?)?
     var conversations: [UUID: Conversation] = [:]
     /// What an opened thread says before its stored events have made a conversation.
@@ -241,7 +243,11 @@ final class AppModel {
     var headsWatched: UUID?
     /// ⌘⇧I's screen of everything running, and how each thread's latest turn in this launch went,
     /// which only that screen reads.
-    var overviewShown = false
+    var overviewShown = false {
+        didSet { if overviewShown != oldValue { overviewHeld = [:] } }
+    }
+    /// Whether each row on ⌘⇧I was at work as it opened, which holds its place while it's up.
+    @ObservationIgnored var overviewHeld: [UUID: Bool] = [:]
     var outcomes: [UUID: Outcome] = [:]
     /// The ask a notification's click opened the screen on, lit at the top of its queue until the
     /// screen goes.
@@ -370,6 +376,8 @@ final class AppModel {
     /// The wait for the soonest session limit to reset, when a thread it stopped goes on.
     var resumeTask: Task<Void, Never>?
     private var booted = false
+    /// The old threads' titles have been asked for, which happens once a launch.
+    @ObservationIgnored private var titlesAsked = false
     /// The open thread's read at launch.
     @ObservationIgnored private var openRead: Task<Void, Never>?
     /// A `provider` event that came before hello's list did, applied once it has.
@@ -380,6 +388,13 @@ final class AppModel {
         didSet { UserDefaults.standard.set(selectedProjectID?.uuidString, forKey: "selectedProject") }
     }
 
+    /// The project the drawer's header names: picked there, in ⌘K or by adding one, and not
+    /// moved by opening another project's thread, so the drawer keeps its shape. Its New thread
+    /// starts there, and its rows leave their badge out.
+    var drawerProjectID: UUID? = UserDefaults.standard.string(forKey: "drawerProject").flatMap(UUID.init) {
+        didSet { UserDefaults.standard.set(drawerProjectID?.uuidString, forKey: "drawerProject") }
+    }
+
     /// The thread the keyboard is in, and with it the capsule, the review, the menus and Esc.
     var selectedChatID: UUID? {
         didSet {
@@ -388,12 +403,7 @@ final class AppModel {
             // or a thread that's gone has no half to keep, and the picked one is alone again.
             if let selectedChatID, selectedChatID == besideChatID {
                 let other = oldValue.flatMap { staysInView($0) ? $0 : nil }
-                if other != nil {
-                    if roomForTwo, capsuleFrame.width > 0, besideCapsuleFrame.width > 0 {
-                        crossing = Crossing(capsule: capsuleFrame, beside: besideCapsuleFrame)
-                    }
-                    composerHalf = composerHalf == .left ? .right : .left
-                }
+                if other != nil { composerHalf = composerHalf == .left ? .right : .left }
                 besideChatID = other
             }
             // With no thread open there's no pair: an empty project picked shows its empty state.
@@ -457,19 +467,8 @@ final class AppModel {
         besideShown == nil ? nil : composerHalf
     }
 
-    /// Where the window's capsule and the other column's are drawn, in the window: what the
-    /// crossing's goo runs between.
+    /// Where the window's capsule is drawn, in the window, which a drawer passing over may cut.
     var capsuleFrame = CGRect.zero
-    var besideCapsuleFrame = CGRect.zero
-    /// The keyboard crossing to the thread beside while its goo is out, with the two capsules
-    /// where they were as it began; where they're going is wherever they're drawn next.
-    var crossing: Crossing?
-
-    struct Crossing: Equatable {
-        let id = UUID()
-        let capsule: CGRect
-        let beside: CGRect
-    }
 
     /// At launch: the thread that was beside the open one is beside it again, each in the half it
     /// was in. One deleted or archived meanwhile isn't, and the open thread has the window; the
@@ -600,6 +599,8 @@ final class AppModel {
         draftsKept = drafts
         self.readEvents = readEvents
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
+        // The drawer's header starts on the project that was open, and stays on it from then on.
+        if drawerProjectID.map({ id in projects.contains { $0.id == id } }) != true { drawerProjectID = selectedProjectID }
         selectedChatID = UserDefaults.standard.string(forKey: "selectedChat").flatMap(UUID.init)
         drawerShown = drawerPinned
         clearDrafts()
@@ -762,6 +763,28 @@ final class AppModel {
         await startEngine()
     }
 
+    /// Claude Code's titles for the threads that still go by their first message, asked for once
+    /// a few seconds after launch, off the way of anything the user is doing: a thread otherwise
+    /// takes its title only at its next turn (K-320), and an old one may never have another.
+    private func titleOldThreads() {
+        guard !titlesAsked else { return }
+        titlesAsked = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, engineState == .ready else { return }
+            let untitled = projects.flatMap(\.chats).filter { $0.started && !$0.titleIsCustom && $0.sessionId != nil && $0.providerID == ProviderInfo.claudeID }
+            guard !untitled.isEmpty else { return }
+            let sessions = untitled.map { JSON.object(["threadId": .string($0.id.uuidString), "sessionId": .string($0.sessionId ?? ""), "cwd": .string($0.cwd)]) }
+            guard let reply = try? await engine.request("sessions.titles", ["sessions": .array(sessions)]), let titles = reply["titles"]?.object else { return }
+            for chat in untitled where !chat.titleIsCustom {
+                guard let title = titles[chat.id.uuidString]?.string?.nonEmpty else { continue }
+                chat.title = Chat.title(from: title)
+                chat.titleIsCustom = true
+            }
+            save()
+        }
+    }
+
     func startEngine() async {
         engineState = .starting
         do {
@@ -785,6 +808,7 @@ final class AppModel {
             scheduleResumes()
             watchHeads()
             followAgents()
+            titleOldThreads()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

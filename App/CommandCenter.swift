@@ -15,6 +15,9 @@ struct CommandCenter: View {
     /// commands and the model's own state, and the body ran them all again for any change once it
     /// had gone, on the frame that closes it.
     @State private var made: [PaletteLine] = []
+    /// How deep the level was that `made` is the rows of: going a level down or back up, the
+    /// rows of the level left stand until the new level's are made, and aren't drawn meanwhile.
+    @State private var madeAt = 0
     private static let last = 6
     /// How many lines each stage shows.
     private static let lines = [0, 0, 4, 8, 12, 16]
@@ -31,6 +34,7 @@ struct CommandCenter: View {
         let palette = model.palette
         let level = palette.level
         let all = stage >= 2 ? made : []
+        let fresh = madeAt == palette.stack.count
         let lines = stage >= Self.last ? all : Array(all.prefix(Self.lines[stage]))
         let items = all.compactMap { line -> PaletteItem? in
             if case .item(let item, _) = line { return item }
@@ -42,26 +46,32 @@ struct CommandCenter: View {
             } else {
                 field(level, palette: palette, items: items)
             }
-            if let status = status(of: level) {
-                HStack(spacing: 6) {
-                    if palette.busy != nil { ProgressView().controlSize(.mini) }
-                    Text(status)
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.secondary)
-                        .lineLimit(2)
+            // Its line fades on its own: an animation on the whole would blend a level's field and
+            // rows into the next one's as Loading… comes with it.
+            VStack(spacing: 0) {
+                if let status = status(of: level) {
+                    HStack(spacing: 6) {
+                        if palette.busy != nil { ProgressView().controlSize(.mini) }
+                        Text(status)
+                            .font(Type.secondary)
+                            .foregroundStyle(Ink.secondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                .transition(.opacity)
             }
+            .animation(Motion.fade, value: status(of: level))
             if stage < 2 {
                 Color.clear.frame(height: Self.tallest)
             } else if !lines.isEmpty {
                 list(lines, height: height(of: all), selected: level.selected)
+                    .opacity(fresh ? 1 : 0)
+                    .animation(fresh ? .easeOut(duration: 0.1) : nil, value: fresh)
             }
         }
         .padding(.bottom, lines.isEmpty && stage >= 2 ? 0 : 6)
-        .animation(Motion.fade, value: status(of: level))
         // The field isn't in the window until the slide-in starts, so focus it a beat later.
         .task {
             for next in 1..<Self.last {
@@ -80,6 +90,7 @@ struct CommandCenter: View {
     /// it's up.
     private func remake() {
         let model = model
+        madeAt = model.palette.stack.count
         made = withObservationTracking {
             model.paletteLines(for: model.palette.level, of: model.paletteReachKept())
         } onChange: {
@@ -165,9 +176,19 @@ struct CommandCenter: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 3)
-                .padding(.bottom, 5)
+                // Scrolled to its end, the last row stands clear of the fade.
+                .padding(.bottom, height > Self.tallest ? 24 : 5)
             }
             .frame(height: min(height, Self.tallest))
+            // A row the glass's foot cuts sinks into it, as the transcript's last line does.
+            .mask {
+                VStack(spacing: 0) {
+                    Color.black
+                    if height > Self.tallest {
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
+                    }
+                }
+            }
             .onChange(of: selected) { _, index in
                 let at = lines.firstIndex { line in
                     if case .item(_, index) = line { return true }
@@ -198,7 +219,9 @@ struct CommandCenter: View {
                     .foregroundStyle(item.unavailable == nil ? Ink.primary : Ink.faint)
                     .lineLimit(1)
                 if item.kind == .message || item.unavailable != nil {
-                    title.layoutPriority(1)
+                    // A message beside its thread's name leaves the name room; alone, it has the row.
+                    title.frame(maxWidth: item.kind == .message && item.subtitle != nil ? 300 : nil, alignment: .leading)
+                        .layoutPriority(1)
                     if item.kind == .message, let project = item.project {
                         ProjectBadge(project: project)
                     }

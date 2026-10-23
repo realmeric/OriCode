@@ -21,7 +21,7 @@ import { seeing } from "./mac.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
 import { answer, brevity, scratch, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
-import { describe } from "./thread.ts";
+import { describe, sessionTitle } from "./thread.ts";
 import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
@@ -515,6 +515,18 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "sessions.read"({ source, id }: { source: string; id: string }) {
     return { events: await sessionEvents(sources, source, id) };
+  },
+
+  /// The titles Claude Code has given the sessions of threads still going by their first
+  /// message, which the app asks for once after launch: a thread takes its title at its next
+  /// turn's end, and one with no turn since would never have it.
+  async "sessions.titles"({ sessions }: { sessions: { threadId: string; sessionId: string; cwd: string }[] }) {
+    const titles: Record<string, string> = {};
+    for (const { threadId, sessionId, cwd } of sessions) {
+      const title = await sessionTitle(sessionId, cwd);
+      if (title) titles[threadId] = title;
+    }
+    return { titles };
   },
 
   /// The MCP servers Claude Code loads for a folder, for Settings › MCP: listed, switched on or

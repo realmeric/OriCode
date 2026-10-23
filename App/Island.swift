@@ -189,11 +189,10 @@ struct Island: View {
     private static let folded = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12).delay(0.12)), removal: .identity)
 
     /// The capsule's tint, and a surface's material under it; a capsule 24pt tall draws the
-    /// surface's corners as its round ends. While the keyboard crosses, the capsule's tint is the
-    /// crossing's goo.
+    /// surface's corners as its round ends.
     private func glass(open: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-        let tint = open ? Surface.drawer : model.crossing != nil ? .clear : capsuleHovered ? Surface.selected : Surface.drawer
+        let tint = open ? Surface.drawer : capsuleHovered ? Surface.selected : Surface.drawer
         return shape
             .fill(.ultraThinMaterial)
             .opacity(open ? 1 : 0)

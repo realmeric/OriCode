@@ -471,6 +471,9 @@ struct WitnessHeader: View {
             }
             if !files.isEmpty {
                 let place = Self.place(of: review.selectedUnit, in: files)
+            // How many files there are is the page's to show; the menu is there once the
+            // keyboard is in one, to say which and go to the others.
+            if place.name != nil {
                 Menu {
                     ForEach(files, id: \.first) { entry in
                         Button(entry.file.path) {
@@ -495,6 +498,7 @@ struct WitnessHeader: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
                 .help("The file the keyboard is in, and the others (Tab, ⇧Tab)")
+            }
                 Menu {
                     WitnessActions(unit: review.selectedUnit)
                     Divider()
@@ -525,10 +529,7 @@ struct WitnessHeader: View {
                 .help("What can be done with the change under the keyboard, and with all of them")
                 .accessibilityLabel("More")
             }
-            Button("Close") { model.closeReview() }
-                .buttonStyle(.action(small: true))
-                .fixedSize()
-                .help("Close the review (⌘⇧D)")
+            ReviewClose()
         }
         .padding(.horizontal, 16)
         .frame(height: 40)

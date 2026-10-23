@@ -157,13 +157,34 @@ struct ReviewHeader: View {
                     .buttonStyle(.action(small: true))
                     .fixedSize()
             }
-            Button("Close") { model.closeReview() }
-                .buttonStyle(.action(small: true))
-                .fixedSize()
-                .help("Close the review (⌘⇧D)")
+            ReviewClose()
         }
         .padding(.horizontal, 16)
         .frame(height: 40)
+    }
+}
+
+/// A quiet cross at the end of either review's top row, where Esc and the review's button
+/// already close it and a word would say it a third time.
+struct ReviewClose: View {
+    @Environment(AppModel.self) private var model
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            model.closeReview()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(hovering ? Ink.primary : Ink.secondary)
+                .frame(width: 24, height: 22)
+                .background(hovering ? Surface.hover : .clear, in: .rect(cornerRadius: 6, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Close the review (⌘⇧D)")
+        .accessibilityLabel("Close the review")
     }
 }
 
@@ -777,6 +798,18 @@ struct ReviewButton: View {
     var body: some View {
         let review = model.review
         let counts = review.folder != nil && review.folder == model.workingFolder ? review.counts : nil
+        // Nothing to review, nothing in the corner: it comes back with its counts, and ⌘⇧D
+        // opens the review meanwhile.
+        ZStack {
+            if counts != nil || model.reviewShown {
+                button(counts)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Motion.fade, value: counts == nil && !model.reviewShown)
+    }
+
+    private func button(_ counts: (added: Int, deleted: Int)?) -> some View {
         Button {
             model.toggleReview()
         } label: {

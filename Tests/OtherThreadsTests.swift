@@ -216,7 +216,7 @@ struct OtherThreadsTests {
         User: Make the drawer 300pt wide.
         Assistant: I'll change the width.
         Tool: Edit App/Drawer.swift
-        Tool: Bash: make test (failed)
+        Tool: Run make test (failed)
         User ran: git status
         Assistant: \(String(repeating: "x", count: OtherThreads.part))…
         """)

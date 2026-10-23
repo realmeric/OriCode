@@ -141,4 +141,38 @@ struct DrawerListTests {
         model.drawerFilter = .project(beta.id)
         #expect(model.chats.map(\.title) == ["Solo"])
     }
+
+    /// The header names the project picked there, not the open thread's, so the drawer keeps its
+    /// shape when another project's thread opens.
+    @Test func theHeaderKeepsItsProjectWhenAnotherProjectsThreadOpens() throws {
+        let container = try TestStore.memory()
+        let context = container.mainContext
+        let alpha = Project(name: "alpha", path: "/tmp/alpha"), beta = Project(name: "beta", path: "/tmp/beta")
+        context.insert(alpha)
+        context.insert(beta)
+        let there = Chat(project: beta, title: "There")
+        there.started = true
+        context.insert(there)
+        try context.save()
+        let model = AppModel(container: container)
+        model.select(alpha)
+        model.select(there)
+        #expect(model.project?.id == beta.id)
+        #expect(model.drawerProject?.id == alpha.id)
+    }
+
+    /// The first project added keeps its letters; one after it that would share them takes its next.
+    @Test func twoProjectsNeverShareTheirLetters() throws {
+        let container = try TestStore.memory()
+        let context = container.mainContext
+        let names = ["OriCode", "oricode-deneme", "oricode-deneme-2"]
+        let projects = names.enumerated().map { index, name in
+            let project = Project(name: name, path: "/tmp/\(index)")
+            project.createdAt = Date(timeIntervalSince1970: Double(index))
+            context.insert(project)
+            return project
+        }
+        let letters = Project.initials(of: projects.reversed())
+        #expect(projects.map { letters[$0.id] } == ["OE", "OD", "O2"])
+    }
 }

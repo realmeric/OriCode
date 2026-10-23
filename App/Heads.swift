@@ -340,7 +340,14 @@ extension Conversation {
         case .text:
             return Head.Step(tool: "Writing", detail: nil)
         case .tool(_, let call) where call.result == nil && call.oricodeTool == "wait_thread":
-            // Waiting on a thread it set going, by that thread's name, or nothing.
+            // Waiting on a thread it set going, by that thread's name, or on how many when it
+            // waits on more than one at once.
+            var waits: Set<UUID> = []
+            for item in items.reversed() {
+                if item.startsTurn { break }
+                if case .tool(_, let other) = item, other.result == nil, !other.isError, other.oricodeTool == "wait_thread", let id = other.otherThread.id { waits.insert(id) }
+            }
+            if waits.count > 1 { return Head.Step(tool: "Waiting on \(waits.count) threads", detail: nil) }
             return Head.Step(tool: call.otherThread.id.flatMap(titles).map { "Waiting on \($0)" } ?? "", detail: nil)
         case .tool(_, let call) where call.result == nil && call.oricodeTool != nil:
             return Head.Step(tool: ToolSummary.line(for: call, cwd: cwd, titles: titles), detail: nil)
@@ -348,6 +355,8 @@ extension Conversation {
             // An agent's name for a call is a title that often says its target already, so its
             // step is the call's line.
             if !call.namedByClaude { return Head.Step(tool: ToolSummary.line(for: call, cwd: cwd), detail: nil) }
+            // A command is its own line; "Bash" over it says nothing more.
+            if call.kind == .run, let command = ToolSummary.target(for: call, cwd: cwd) { return Head.Step(tool: command, detail: nil) }
             return Head.Step(tool: call.name, detail: ToolSummary.target(for: call, cwd: cwd))
         default:
             return Head.Step(tool: "Thinking", detail: nil)

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The quiet one-line description of a tool call: "Read App/Engine.swift", "Bash: swift build".
+/// The quiet one-line description of a tool call: "Read App/Engine.swift", "Ran swift build".
 enum ToolSummary {
     /// `titles` names a thread by its id, for an OriCode tool still out on one, whose answer
     /// would have named it.
@@ -26,7 +26,8 @@ enum ToolSummary {
             // Claude's tool by its name, "Bash: make test". An agent's title is a word or a
             // sentence depending on the agent, so its command goes under the kind's own word.
             let command = firstLine(call.shown("command") ?? "")
-            if call.namedByClaude { return "\(call.name): \(command)" }
+            // As Claude Code says it once it's back, "Ran make test"; before, as its ask asks it.
+            if call.namedByClaude { return "\(call.result == nil && !call.isError ? "Run" : "Ran") \(command)" }
             return command.isEmpty ? call.name : "Run: \(command)"
         case .search:
             if call.namedByClaude { return "\(call.name) \(input["pattern"]?.string ?? "")" }
@@ -69,8 +70,8 @@ enum ToolSummary {
         case "pin_thread": "Pinned \(title)"
         case "open_beside": "Opened \(title) beside"
         case "close_other_side": "Closed the other side"
-        case "change_thread": "Changed \(title)"
-        case "change_setting": "Changed a setting"
+        case "change_thread": changed(call.input, call.input["thread"]?.string == nil ? "this thread" : title)
+        case "change_setting": set(call.input)
         case "show": "Showed \(call.input["what"]?.string ?? "something")"
         case "add_project": "Added a project"
         // Also what its ask says, so in the words an agent's command has.
@@ -99,6 +100,30 @@ enum ToolSummary {
         }
     }
 
+    /// What change_thread set, as the Thread menu names it: "Set this thread to Accept edits".
+    private static func changed(_ input: JSON, _ thread: String) -> String {
+        var said: [String] = []
+        if let mode = input["permission_mode"]?.string { said.append(PermissionModeOption(rawValue: mode)?.title ?? mode) }
+        if let effort = input["effort"]?.string { said.append("effort \(effort == NewThreads.claudeDefault ? "Default" : ModelMenu.effortName(effort))") }
+        if let fast = input["fast_mode"]?.bool { said.append(fast ? "fast mode on" : "fast mode off") }
+        if let workflows = input["workflows"]?.bool { said.append(workflows ? "Workflows on" : "Workflows off") }
+        if said.isEmpty { return input["model"] == nil ? "Changed \(thread)" : "Changed the model of \(thread)" }
+        return "Set \(thread) to \(said.joined(separator: ", "))"
+    }
+
+    /// What change_setting set: "Set threads working at once to 4".
+    private static func set(_ input: JSON) -> String {
+        guard let name = input["setting"]?.string?.nonEmpty else { return "Changed a setting" }
+        let value: String? = switch input["value"] {
+        case .bool(let on): on ? "on" : "off"
+        case .number(let number): number == number.rounded() ? String(Int(number)) : String(number)
+        case .string(let word): word
+        default: nil
+        }
+        let setting = name.replacingOccurrences(of: "_", with: " ")
+        return value.map { "Set \(setting) to \($0)" } ?? "Changed \(setting)"
+    }
+
     /// A tool's name as the thread shows it: an MCP server's tool as "server › tool".
     static func name(_ tool: String) -> String {
         tool.hasPrefix("mcp__") ? tool.split(separator: "__").dropFirst().joined(separator: " › ") : tool
@@ -115,27 +140,46 @@ enum ToolSummary {
     /// What a run of calls did, in Claude Code's words, each kind where it first came: "Read 2
     /// files, ran 3 commands, searched for 1 pattern". A file counts once however often it's
     /// read or edited, and a thread once, only when the call reached it; waiting on threads is
-    /// said only when the run did nothing else.
+    /// said only when the run did nothing else. OriCode's own tools are said in words, "changed
+    /// a setting", and the harness's, a ToolSearch loading tools, aren't counted at all.
     static func run(_ calls: [ToolCall]) -> String {
         var kinds: [RunKind] = []
         var seen: [RunKind: Set<String>] = [:]
-        for call in calls {
+        for call in calls where !harness.contains(call.name) {
             let kind = RunKind(call)
             if kind.onThreads, call.isError { continue }
             if seen[kind] == nil { kinds.append(kind) }
-            seen[kind, default: []].insert(path(for: call) ?? call.otherThread.id?.uuidString ?? call.toolUseId)
+            seen[kind, default: []].insert(key(for: call, kind))
         }
         if kinds.count > 1 { kinds.removeAll { $0 == .waited } }
-        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count).capitalizedFirst }
+        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count, []).capitalizedFirst }
         if kinds == [.waited], calls.contains(where: { RunKind($0) == .waited && $0.result == nil && !$0.isError }) {
             let count = seen[.waited]?.count ?? 0
             return "Waiting on \(count) \(count == 1 ? "thread" : "threads")"
         }
-        return kinds.map { $0.phrase(seen[$0]?.count ?? 0) }.joined(separator: ", ").capitalizedFirst
+        return kinds.map { $0.phrase(seen[$0]?.count ?? 0, seen[$0] ?? []) }.joined(separator: ", ").capitalizedFirst
     }
 
-    private enum RunKind {
+    /// Tools the agent's harness calls for itself, which do nothing the user would count.
+    static let harness: Set<String> = ["ToolSearch"]
+
+    /// What a call is counted by within its kind: the file, the thread, the setting.
+    private static func key(for call: ToolCall, _ kind: RunKind) -> String {
+        switch kind {
+        case .changedThread: call.input["thread"]?.string ?? RunKind.this
+        case .changedSetting: call.input["setting"]?.string ?? call.toolUseId
+        default: path(for: call) ?? call.otherThread.id?.uuidString ?? call.toolUseId
+        }
+    }
+
+    private enum RunKind: Hashable {
         case read, edit, command, search, list, fetch, web, agent, plan, skill, question, planning, opened, messaged, waited, stopped, other
+        case changedThread, changedSetting
+        /// Another of OriCode's tools, by its words: "listed threads", "read the plan".
+        case oricode(String)
+
+        /// The thread change_thread changed when it named none: its own.
+        static let this = "this"
 
         var onThreads: Bool { [.opened, .messaged, .waited, .stopped].contains(self) }
 
@@ -145,7 +189,10 @@ enum ToolSummary {
             case "message_thread": self = .messaged
             case "wait_thread", "read_thread": self = .waited
             case "stop_thread": self = .stopped
-            default: self.init(call.kind)
+            case "change_thread": self = .changedThread
+            case "change_setting": self = .changedSetting
+            case .some: self = .oricode(ToolSummary.oricode(call).map { $0.prefix(1).lowercased() + $0.dropFirst() } ?? "used OriCode")
+            case nil: self.init(call.kind)
             }
         }
 
@@ -167,7 +214,7 @@ enum ToolSummary {
             }
         }
 
-        func phrase(_ count: Int) -> String {
+        func phrase(_ count: Int, _ keys: Set<String>) -> String {
             let one = count == 1
             return switch self {
             case .read: "read \(count) \(one ? "file" : "files")"
@@ -187,6 +234,9 @@ enum ToolSummary {
             case .waited: "waited on \(count) \(one ? "thread" : "threads")"
             case .stopped: "stopped \(count) \(one ? "thread" : "threads")"
             case .other: "used \(count) \(one ? "tool" : "tools")"
+            case .changedThread: keys == [Self.this] ? "changed this thread" : one ? "changed a thread" : "changed \(count) threads"
+            case .changedSetting: one ? "changed a setting" : "changed \(count) settings"
+            case .oricode(let words): words
             }
         }
     }
