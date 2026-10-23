@@ -2,7 +2,10 @@ import Foundation
 
 /// The quiet one-line description of a tool call: "Read App/Engine.swift", "Bash: swift build".
 enum ToolSummary {
-    static func line(for call: ToolCall, cwd: String) -> String {
+    /// `titles` names a thread by its id, for an OriCode tool still out on one, whose answer
+    /// would have named it.
+    static func line(for call: ToolCall, cwd: String, titles: (UUID) -> String? = { _ in nil }) -> String {
+        if let words = oricode(call, titles: titles) { return words }
         let input = call.input
         func path(_ key: String = "file_path") -> String {
             relative(call.view["path"]?.string ?? input[key]?.string ?? input["path"]?.string ?? "", to: cwd)
@@ -40,6 +43,60 @@ enum ToolSummary {
         }
     }
 
+    /// OriCode's own tools in words, as Claude Code's are: "Opened Count A", "Waited on Count A".
+    /// Nil for any other tool.
+    static func oricode(_ call: ToolCall, titles: (UUID) -> String? = { _ in nil }) -> String? {
+        guard let tool = call.oricodeTool else { return nil }
+        let other = call.otherThread
+        let title = other.title ?? other.id.flatMap(titles) ?? "a thread"
+        return switch tool {
+        case "open_thread": "Opened \(title)"
+        case "message_thread": "Messaged \(title)"
+        case "wait_thread": "Waited on \(title)"
+        case "read_thread": "Read \(title)"
+        case "stop_thread": "Stopped \(title)"
+        case "merge_thread": "Merged \(title)"
+        case "finish_merge": "Finished the merge"
+        case "answer_ask": "Answered an ask"
+        case "suggest_thread": "Suggested a thread"
+        case "list_threads": "Listed threads"
+        case "rename_thread": "Renamed \(title)"
+        case "archive_thread": "Archived \(title)"
+        case "restore_thread": "Restored \(title)"
+        case "delete_thread": "Asked to delete \(title)"
+        case "pin_thread": "Pinned \(title)"
+        case "open_beside": "Opened \(title) beside"
+        case "close_other_side": "Closed the other side"
+        case "change_thread": "Changed \(title)"
+        case "change_setting": "Changed a setting"
+        case "show": "Showed \(call.input["what"]?.string ?? "something")"
+        case "add_project": "Added a project"
+        // Also what its ask says, so in the words an agent's command has.
+        case "run_command": "Run: \(firstLine(call.input["command"]?.string ?? ""))"
+        case "read_oricode": "Read OriCode's settings"
+        case "read_plan": "Read the plan"
+        case "add_tasks": "Planned"
+        case "wait_plan": "Waited on the plan"
+        case "claim_task": "Took a task"
+        case "update_task": "Updated a task"
+        case "list_agents": "Listed agents"
+        case "change_my_model": "Changed its model"
+        case "start_worker": "Started a worker"
+        case "message_worker": "Messaged a worker"
+        case "worker_status": "Checked on its workers"
+        case "worker_result": "Read a worker's result"
+        case "stop_worker": "Stopped a worker"
+        case "merge_worker": "Merged a worker"
+        case "list_apps": "Listed apps"
+        case "screenshot": "Looked at \(call.input["app"]?.string ?? "an app")"
+        case "click": "Clicked in \(call.input["app"]?.string ?? "an app")"
+        case "type_text": "Typed in \(call.input["app"]?.string ?? "an app")"
+        case "press_key": "Pressed \(call.input["keys"]?.string ?? "a key")"
+        case "scroll": "Scrolled in \(call.input["app"]?.string ?? "an app")"
+        default: tool.replacingOccurrences(of: "_", with: " ").capitalizedFirst
+        }
+    }
+
     /// A tool's name as the thread shows it: an MCP server's tool as "server › tool".
     static func name(_ tool: String) -> String {
         tool.hasPrefix("mcp__") ? tool.split(separator: "__").dropFirst().joined(separator: " › ") : tool
@@ -55,21 +112,36 @@ enum ToolSummary {
 
     /// What a run of calls did, in Claude Code's words, each kind where it first came: "Read 2
     /// files, ran 3 commands, searched for 1 pattern". A file counts once however often it's
-    /// read or edited.
+    /// read or edited, and a thread once, only when the call reached it; waiting on threads is
+    /// said only when the run did nothing else.
     static func run(_ calls: [ToolCall]) -> String {
         var kinds: [RunKind] = []
         var seen: [RunKind: Set<String>] = [:]
         for call in calls {
-            let kind = RunKind(call.kind)
+            let kind = RunKind(call)
+            if kind.onThreads, call.isError { continue }
             if seen[kind] == nil { kinds.append(kind) }
-            seen[kind, default: []].insert(path(for: call) ?? call.toolUseId)
+            seen[kind, default: []].insert(path(for: call) ?? call.otherThread.id?.uuidString ?? call.toolUseId)
         }
-        let line = kinds.map { $0.phrase(seen[$0]?.count ?? 0) }.joined(separator: ", ")
-        return line.prefix(1).uppercased() + line.dropFirst()
+        if kinds.count > 1 { kinds.removeAll { $0 == .waited } }
+        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count).capitalizedFirst }
+        return kinds.map { $0.phrase(seen[$0]?.count ?? 0) }.joined(separator: ", ").capitalizedFirst
     }
 
     private enum RunKind {
-        case read, edit, command, search, list, fetch, web, agent, plan, skill, question, planning, other
+        case read, edit, command, search, list, fetch, web, agent, plan, skill, question, planning, opened, messaged, waited, stopped, other
+
+        var onThreads: Bool { [.opened, .messaged, .waited, .stopped].contains(self) }
+
+        init(_ call: ToolCall) {
+            switch call.oricodeTool {
+            case "open_thread": self = .opened
+            case "message_thread": self = .messaged
+            case "wait_thread", "read_thread": self = .waited
+            case "stop_thread": self = .stopped
+            default: self.init(call.kind)
+            }
+        }
 
         init(_ kind: ToolKind) {
             switch kind {
@@ -104,6 +176,10 @@ enum ToolSummary {
             case .skill: "used \(count) \(one ? "skill" : "skills")"
             case .question: "asked you"
             case .planning: "finished planning"
+            case .opened: "opened \(count) \(one ? "thread" : "threads")"
+            case .messaged: "messaged \(count) \(one ? "thread" : "threads")"
+            case .waited: "waited on \(count) \(one ? "thread" : "threads")"
+            case .stopped: "stopped \(count) \(one ? "thread" : "threads")"
             case .other: "used \(count) \(one ? "tool" : "tools")"
             }
         }
@@ -137,5 +213,20 @@ enum ToolSummary {
     static func firstLine(_ text: String) -> String {
         let line = text.drop { $0 == "\n" }.prefix(121).prefix { $0 != "\n" }
         return line.count > 120 ? String(line.prefix(120)) + "…" : String(line)
+    }
+}
+
+extension ToolCall {
+    /// One of OriCode's own tools, by its name without the server: "wait_thread".
+    var oricodeTool: String? {
+        name.hasPrefix("mcp__oricode__") ? String(name.dropFirst("mcp__oricode__".count)) : nil
+    }
+
+    /// The thread an OriCode tool was about, by the id it was asked about. open_thread is asked by
+    /// a title, and its answer, a few lines, names the thread it made.
+    var otherThread: (id: UUID?, title: String?) {
+        guard oricodeTool == "open_thread" else { return (input["thread"]?.string.flatMap(UUID.init(uuidString:)), nil) }
+        let made = isError ? nil : result.flatMap { try? JSONDecoder().decode(JSON.self, from: Data($0.utf8)) }
+        return (made?["id"]?.string.flatMap(UUID.init(uuidString:)), made?["thread"]?.string ?? input["title"]?.string)
     }
 }

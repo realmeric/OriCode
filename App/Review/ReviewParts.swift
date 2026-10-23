@@ -132,7 +132,7 @@ struct ReviewHeader: View {
         let some = review.diff.map { !$0.files.isEmpty } ?? false
         HStack(spacing: 8) {
             // The buttons keep their words. The branch gives way in its middle, then the files
-            // and what's left to review go, then the branch, and the counts last.
+            // and what's left to review go, then the branch.
             ViewThatFits(in: .horizontal) {
                 ReviewWords(branch: .infinity, left: true)
                 ReviewWords(branch: 320, left: true)
@@ -140,7 +140,6 @@ struct ReviewHeader: View {
                 ReviewWords(branch: 200)
                 ReviewWords(branch: 110)
                 ReviewWords(branch: nil)
-                ReviewWords(branch: nil, counts: false)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if review.loading || review.asking {
@@ -169,12 +168,12 @@ struct ReviewHeader: View {
 }
 
 /// The words in either review's top row, on one line: Review, the branch in as much width as
-/// it's given, the counts, and in Legacy how many files and how many are left to review.
+/// it's given, and in Legacy how many files and how many are left to review. The counts are the
+/// review's button's, beside it, and each file's.
 struct ReviewWords: View {
     @Environment(AppModel.self) private var model
     /// The branch's room: all it wants, so much, or none, which leaves it out.
     let branch: CGFloat?
-    var counts = true
     var left = false
 
     var body: some View {
@@ -196,9 +195,6 @@ struct ReviewWords: View {
                     Text("\(files) \(files == 1 ? "file" : "files")")
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
-                }
-                if counts {
-                    Counts(added: book.added, deleted: book.deleted, quiet: true).opacity(0.8)
                 }
                 if left {
                     let left = book.toReview

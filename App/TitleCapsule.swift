@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The window's title made visible: project · branch · thread, level with the traffic lights.
-/// Clicking it opens the command center, as ⌘K does. While there's an update, its circle hangs
+/// The window's title made visible, level with the traffic lights: the thread's title, or with
+/// no thread begun the project's name, and the project and branch on its hover. Clicking it opens
+/// the command center, as ⌘K does. While there's an update, its circle hangs
 /// off the pill's right end, however wide the pill is, without moving the pill. Its glass is the
 /// island's, which the surfaces grow out of.
 struct TitleCapsule: View {
@@ -13,6 +14,9 @@ struct TitleCapsule: View {
     let glass: Bool
 
     static let height: CGFloat = 24
+    /// Words that change in the capsule: the old gone at once, and the new in once the capsule
+    /// has taken its new width, so neither is drawn over the other or past the capsule's ends.
+    static let swap = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.14).delay(0.12)), removal: .identity)
     /// The thread's mark, the size the drawer's rows draw it.
     static let mark: CGFloat = 14
 
@@ -22,29 +26,14 @@ struct TitleCapsule: View {
             Button {
                 model.toggleCommandCenter()
             } label: {
-                HStack(spacing: 6) {
-                    Text(project.name)
-                        .foregroundStyle(Ink.secondary)
-                    if let info = model.currentBranch {
-                        Text("·").foregroundStyle(Ink.faint)
-                        Text(info.branch)
-                            .font(Type.mono)
-                            .foregroundStyle(Ink.secondary)
-                        if info.ahead > 0 {
-                            Text("↑\(info.ahead)")
-                                .font(Type.mono)
-                                .foregroundStyle(Ink.faint)
-                        }
-                    }
-                    if let chat = model.chat {
-                        Text("·").foregroundStyle(Ink.faint)
-                        Text(chat.title)
-                            .foregroundStyle(Ink.primary)
-                            .truncationMode(.tail)
-                            .layoutPriority(-1)
-                            .id(chat.id)
-                            .transition(CrossingGoo.arrival(crossing: model.crossing != nil))
-                    }
+                // A draft's "New thread" says nothing the project's name doesn't.
+                let titled = model.chat.flatMap { $0.started || $0.title != Chat.untitled ? $0 : nil }
+                ZStack {
+                    Text(titled?.title ?? project.name)
+                        .foregroundStyle(titled == nil ? Ink.secondary : Ink.primary)
+                        .truncationMode(.tail)
+                        .id(titled.map { "\($0.id) \($0.title)" } ?? project.name)
+                        .transition(model.crossing != nil ? CrossingGoo.arrival(crossing: true) : Self.swap)
                 }
                 .font(Type.secondary)
                 .lineLimit(1)
@@ -58,7 +47,8 @@ struct TitleCapsule: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help("Command center (\(model.shortcuts.label(.commandCenter)))")
+            .help(([project.name, model.currentBranch.map { $0.ahead > 0 ? "\($0.branch) ↑\($0.ahead)" : $0.branch }].compactMap(\.self).joined(separator: " · "))
+                + "\nCommand center (\(model.shortcuts.label(.commandCenter)))")
             // While the thread works, its mark at the capsule's left end, which opens its heads.
             .overlay(alignment: .leading) {
                 ZStack {
@@ -101,7 +91,9 @@ struct TitleCapsule: View {
         // An agent that reports no heads still shows it's working, with nothing to open.
         .allowsHitTesting(model.showsHeads(model.chat))
         .id(conversation.chat.id)
-        .transition(CrossingGoo.arrival(crossing: model.crossing != nil))
+        // In once the capsule has made room for it, never over the title's first letters.
+        .transition(model.crossing != nil ? CrossingGoo.arrival(crossing: true)
+            : .asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.22)), removal: .opacity.animation(.easeOut(duration: 0.1))))
     }
 }
 

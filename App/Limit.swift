@@ -144,6 +144,6 @@ struct NearLimitLine: View {
     }
 }
 
-private extension String {
+extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

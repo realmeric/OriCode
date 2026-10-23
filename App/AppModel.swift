@@ -494,7 +494,7 @@ final class AppModel {
     /// The thread beside, while it's drawn: there's room for two and the open thread has begun,
     /// a draft having the window to itself until its first message.
     var besideShown: Chat? {
-        guard roomForTwo, let besideChatID, currentConversation?.started ?? chat?.started ?? false else { return nil }
+        guard roomForTwo, let besideChatID, currentConversation?.started == true || chat?.started == true else { return nil }
         return chat(withID: besideChatID)
     }
 

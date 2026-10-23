@@ -223,4 +223,17 @@ struct StreamClockTests {
         #expect(StreamClock.besideShows(since: nil, busy: false))
         #expect(!StreamClock.besideShows(since: nil, busy: true))
     }
+
+    @Test func aBurstIsShownOverTheNextFramesWordByWord() {
+        beside.everyOtherFrame = { false }
+        delta("Start.", in: open)
+        let burst = String(repeating: " word", count: 120)
+        delta(burst, in: open)
+        clock.tick()
+        let first = text(of: open) ?? ""
+        #expect(first.count > 6 && first.count < 6 + burst.count)
+        #expect(first.hasSuffix(" ") || first.hasSuffix("word"))
+        for _ in 0..<40 { clock.tick() }
+        #expect(text(of: open) == "Start." + burst)
+    }
 }

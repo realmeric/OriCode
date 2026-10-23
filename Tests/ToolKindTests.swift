@@ -70,6 +70,31 @@ struct ToolKindTests {
         #expect(found.checks[1] == [Provenance.Check(command: "make test", failed: false)])
     }
 
+    @Test func oriCodesOwnToolsReadInWordsAndRepeatedWaitsFoldToOne() {
+        let a = UUID(), b = UUID()
+        let titles = [a: "Count A", b: "Count B"]
+        func tool(_ name: String, _ input: JSON, result: String? = "{}") -> ToolCall {
+            ToolCall(toolUseId: UUID().uuidString, name: "mcp__oricode__" + name, input: input, result: result)
+        }
+        let opened = tool("open_thread", ["title": "Count A", "message": "Say A"], result: #"{"thread": "Count A", "id": "\#(a.uuidString)"}"#)
+        let waits = (0..<3).map { _ in tool("wait_thread", ["thread": .string(a.uuidString)]) }
+        let message = tool("message_thread", ["thread": .string(b.uuidString), "text": "Go on"], result: nil)
+        let words = { (call: ToolCall) in ToolSummary.line(for: call, cwd: Self.root) { titles[$0] } }
+        #expect(words(opened) == "Opened Count A")
+        #expect(opened.otherThread.id == a)
+        #expect(words(waits[0]) == "Waited on Count A")
+        #expect(words(message) == "Messaged Count B")
+        #expect(ToolSummary.line(for: message, cwd: Self.root) == "Messaged a thread")
+        #expect(words(tool("list_threads", [:])) == "Listed threads")
+        #expect(ToolSummary.run([opened] + waits + [message]) == "Opened 1 thread, messaged 1 thread")
+        #expect(ToolSummary.run(waits) == "Waited on 1 thread")
+        let refused = ToolCall(toolUseId: "r", name: "mcp__oricode__open_thread", input: ["title": "Count C"], result: "Too many", isError: true)
+        #expect(ToolSummary.run([refused, opened]) == "Opened 1 thread")
+        #expect(ToolSummary.run([refused]) == "Used 1 tool")
+        let items = ([opened] + waits + [message]).map { Item.tool(id: UUID(), call: $0) }
+        #expect(ToolRunRow.collapsed(items).map(\.id) == [items[0].id, items[3].id, items[4].id])
+    }
+
     @Test func anEditAndAWriteGiveTheirDiffsFooterAndProvenance() {
         let conversation = Conversation(chat: chat, context: context)
         conversation.userSent("Change a.txt")

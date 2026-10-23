@@ -84,7 +84,7 @@ struct AntigravityTests {
         #expect(row.key && row.binary)
         #expect(row.keyName == "Gemini API key")
         #expect(row.forbidden.map(\.id) == ["google"])
-        #expect(row.status(model.providerInfo("antigravity"), on: true, checking: false) == "Signed in.")
+        #expect(row.status(model.providerInfo("antigravity"), on: true, checking: false) == "")
         let google = "Antigravity signs in with a Google account, which Google keeps to its own apps. Set \"modelProvider\": \"gemini\" in ~/.gemini/antigravity-cli/settings.json and add a Gemini API key here, or turn on “Antigravity with a Google account”."
         let refused = try Self.entry("signedOut", hint: .string(google)).decode(ProviderInfo.self)
         #expect(row.status(refused, on: true, checking: false) == google)

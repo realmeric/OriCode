@@ -64,7 +64,7 @@ private struct WitnessScroll: View {
         let review = model.review
         let page = review.page
         let units = Dictionary(review.book.units.map { ($0.id, $0) }) { first, _ in first }
-        var rows: [Row] = [.sentence(page.sentence)]
+        var rows: [Row] = page.sentence.isEmpty ? [] : [.sentence(page.sentence)]
         func add(_ lines: [WitnessPage.FileLine]) {
             for line in lines {
                 let shown = line.units.compactMap { units[$0] }
@@ -455,7 +455,7 @@ struct WitnessHeader: View {
         let files = review.page.files
         HStack(spacing: 8) {
             // The buttons keep their words. What's left of the row goes to the branch, which
-            // gives way in its middle, then goes, and the counts go after it. With only Review
+            // gives way in its middle, then goes. With only Review
             // left, a long file's name gives way in its middle, and its place among the files
             // stays.
             ViewThatFits(in: .horizontal) {
@@ -464,7 +464,6 @@ struct WitnessHeader: View {
                 ReviewWords(branch: 200)
                 ReviewWords(branch: 110)
                 ReviewWords(branch: nil)
-                ReviewWords(branch: nil, counts: false)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if review.loading || review.asking {

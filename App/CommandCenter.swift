@@ -193,20 +193,38 @@ struct CommandCenter: View {
                         .foregroundStyle(Ink.faint)
                         .frame(width: 22)
                 }
-                Text(item.title)
+                let title = Text(item.title)
                     .font(Type.body)
                     .foregroundStyle(item.unavailable == nil ? Ink.primary : Ink.faint)
                     .lineLimit(1)
-                    .layoutPriority(1)
-                if item.kind == .message, let project = item.project {
-                    ProjectBadge(project: project)
+                if item.kind == .message || item.unavailable != nil {
+                    title.layoutPriority(1)
+                    if item.kind == .message, let project = item.project {
+                        ProjectBadge(project: project)
+                    }
                 }
-                if let line = item.unavailable ?? item.subtitle {
+                if let line = item.unavailable ?? (item.kind == .message ? item.subtitle : nil) {
                     Text(line)
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                } else if item.kind != .message {
+                    // A thread's project, or what a row is, whole or not at all: the title gives
+                    // way first.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) {
+                            title
+                            if let line = item.subtitle {
+                                Text(line)
+                                    .font(Type.secondary)
+                                    .foregroundStyle(Ink.faint)
+                                    .lineLimit(1)
+                            }
+                        }
+                        title
+                    }
+                    .layoutPriority(1)
                 }
                 Spacer(minLength: 8)
                 if item.checked {
@@ -218,6 +236,7 @@ struct CommandCenter: View {
                     Text(shortcut)
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
+                        .fixedSize()
                 }
                 if item.opensLevel {
                     Image(systemName: "chevron.right")

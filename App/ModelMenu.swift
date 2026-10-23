@@ -104,17 +104,12 @@ struct ModelMenu: View {
                         .help(PickerState(model: model, chat: chat).workflowsMissing ?? "Workflows")
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
-                // The level in effect: faint when it's Default's, brighter when picked, and at
-                // full strength while workflows are on, so a thread can't stay on them unnoticed.
-                // A head that chooses picks its level and its workers' models itself, which the
-                // button says in place of the level.
-                if says == .all, chooses {
-                    Text("Choosing")
-                        .foregroundStyle(Ink.secondary)
-                        .transition(.blurReplace)
-                } else if says == .all, let level {
+                // The level, only when it was picked, and at full strength while workflows are
+                // on, so a thread can't stay on them unnoticed. A head that chooses picks its level
+                // itself, which the help says.
+                if says == .all, !chooses, let level, shownEffort != nil || workflows {
                     Text(Self.effortName(level))
-                        .foregroundStyle(workflows ? Ink.primary : shownEffort == nil ? Ink.faint : Ink.secondary)
+                        .foregroundStyle(workflows ? Ink.primary : Ink.secondary)
                         .id(level)
                         .transition(.blurReplace)
                 }
@@ -148,7 +143,7 @@ struct ModelMenu: View {
         .task(id: "\(model.providerID(for: chat)) \(model.engineState == .ready)") { model.readModels(for: chat) }
     }
 
-    private var name: String { selectedModel.map { Self.shortName($0.name) } ?? "Model" }
+    private var name: String { selectedModel?.shortName ?? "Model" }
 
     /// The level in effect, the thread's or Default's.
     private var level: String? { shownEffort ?? model.defaultLevel(for: chat) }
@@ -220,6 +215,15 @@ struct ModelMenu: View {
 
     static func shortName(_ name: String) -> String {
         String(name.split(separator: " (").first ?? Substring(name))
+    }
+}
+
+extension ModelOption {
+    /// The model by its own name: Claude Code's "Default (recommended)" is the model its
+    /// description starts with, "Opus 5.5 · Best for everyday…".
+    var shortName: String {
+        if name.hasPrefix("Default"), let model = description.components(separatedBy: " · ").first, model != description, !model.isEmpty { return model }
+        return ModelMenu.shortName(name)
     }
 }
 

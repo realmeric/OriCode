@@ -109,7 +109,7 @@ struct Island: View {
         switch piece {
         case .capsule:
             TitleCapsule(island: island, hovering: $capsuleHovered, glass: reduceMotion)
-                .transition(arrival)
+                .transition(reduceMotion ? arrival : Self.folded)
         case .command:
             CommandCenter()
                 .frame(width: min(CommandCenter.width, room.width))
@@ -168,12 +168,16 @@ struct Island: View {
         return max(0, bottom - Self.top)
     }
 
-    /// What a piece shows comes in once the glass is on its way, and goes before the glass does.
+    /// What a piece shows comes in with the glass as it grows, and goes before the glass does.
     private var arrival: AnyTransition {
         reduceMotion
             ? .opacity.animation(Motion.fade)
-            : .asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.08)), removal: .opacity.animation(.easeOut(duration: 0.1)))
+            : .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)), removal: .opacity.animation(.easeOut(duration: 0.06)))
     }
+
+    /// The capsule's words go at once as a surface grows out of it, and come back once what
+    /// folded into it has gone, so they're never drawn over a surface's own.
+    private static let folded = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.14).delay(0.1)), removal: .identity)
 
     /// The capsule's tint, and a surface's material under it; a capsule 24pt tall draws the
     /// surface's corners as its round ends. While the keyboard crosses, the capsule's tint is the

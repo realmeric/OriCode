@@ -122,11 +122,12 @@ struct OpenedThreadsTests {
         }
     }
 
-    @Test func anOpenPutsALineWithItsReasonInBothThreads() throws {
+    @Test func anOpenPutsALineWithItsReasonInTheOpenedThread() throws {
         let (model, parent) = try model()
         let asked = request(parent) { $0.reason = "The rename can go on alone." }
         let chat = try model.open(model.opening(for: asked), asked)
-        #expect(acts(model.conversation(for: parent)) == ["Opened Rename sum.txt · The rename can go on alone."])
+        // The opener's line is its open_thread call, named in its run of calls.
+        #expect(acts(model.conversation(for: parent)).isEmpty)
         let child = model.conversation(for: chat)
         #expect(acts(child) == ["Opened by Sums · The rename can go on alone."])
         // Ahead of its first message, and both stored.
@@ -135,7 +136,7 @@ struct OpenedThreadsTests {
             return
         }
         #expect(opener == parent.id)
-        #expect(acts(Conversation(chat: parent, context: container.mainContext)).count == 1)
+        #expect(acts(Conversation(chat: parent, context: container.mainContext)).isEmpty)
         #expect(acts(Conversation(chat: chat, context: container.mainContext)).count == 1)
     }
 
@@ -216,7 +217,7 @@ struct OpenedThreadsTests {
             Issue.record("the message isn't sent")
             return
         }
-        #expect(acts(model.conversation(for: parent)) == ["Messaged Docs · Its part changed"])
+        #expect(acts(model.conversation(for: parent)).isEmpty)
         // Not to itself, nor to a thread it can't list.
         #expect(throws: AppModel.Refused.self) { try model.message(parent.id.uuidString, text: "x", reason: "r", from: parent.id) }
         #expect(throws: AppModel.Refused.self) { try model.message(UUID().uuidString, text: "x", reason: "r", from: parent.id) }
@@ -236,9 +237,9 @@ struct OpenedThreadsTests {
         // Each line waits for its own thread's turn to end, so no reply is cut in two.
         model.route(done(chat, "interrupted"))
         #expect(acts(model.conversation(for: chat)).last == "Stopped by Sums · The rename isn't wanted after all")
-        #expect(!acts(own).contains("Stopped Rename sum.txt · The rename isn't wanted after all"))
         own.receive(done(parent))
-        #expect(acts(own).last == "Stopped Rename sum.txt · The rename isn't wanted after all")
+        // The stopper's line is its stop_thread call.
+        #expect(acts(own).isEmpty)
     }
 
     @Test func stopOnAThreadStopsTheThreadsItOpenedThatWorkAndTheirsAndEachSaysSo() async throws {

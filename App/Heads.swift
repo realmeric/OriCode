@@ -331,13 +331,19 @@ extension Conversation {
     /// What the main loop is on, read off the end of the transcript: thinking, writing, a call still
     /// out and what on, waiting on you, or, with its turn over, waiting on its agents.
     /// `asking` is the thread an ask is with first, when one is (K-296).
-    func mainStep(cwd: String, asking: String? = nil) -> Head.Step {
+    /// `titles` names a thread by its id, for a wait on one.
+    func mainStep(cwd: String, asking: String? = nil, titles: (UUID) -> String? = { _ in nil }) -> Head.Step {
         // Waiting on you is the pulsing dot's to say; with another thread first, who has it.
         if waitingAsk != nil { return Head.Step(tool: asking.map { "Asking \($0)" } ?? "", detail: nil) }
         guard running else { return Head.Step(tool: goingOn ?? "Idle", detail: nil) }
         switch items.last {
         case .text:
             return Head.Step(tool: "Writing", detail: nil)
+        case .tool(_, let call) where call.result == nil && call.oricodeTool == "wait_thread":
+            // Waiting on a thread it set going: that thread's name, or nothing.
+            return Head.Step(tool: call.otherThread.id.flatMap(titles) ?? "", detail: nil)
+        case .tool(_, let call) where call.result == nil && call.oricodeTool != nil:
+            return Head.Step(tool: ToolSummary.line(for: call, cwd: cwd, titles: titles), detail: nil)
         case .tool(_, let call) where call.result == nil:
             // An agent's name for a call is a title that often says its target already, so its
             // step is the call's line.

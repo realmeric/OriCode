@@ -291,8 +291,8 @@ struct PairTests {
         model.write(in: .right)
         try await settle()
         let crossed = columns(in: window).map { $0.documentView?.frame.height ?? 0 }
-        #expect(crossed[0] - heights[0] == TranscriptView.besideTop - TitleBar.height)
-        #expect(heights[1] - crossed[1] == TranscriptView.besideTop - TitleBar.height)
+        #expect(crossed[0] - heights[0] == TranscriptView.top(active: false) - TranscriptView.top(active: true))
+        #expect(heights[1] - crossed[1] == TranscriptView.top(active: false) - TranscriptView.top(active: true))
     }
 
     @Test func aDrawerOverTheLeftHalfLeavesTheComposerItsWidth() {

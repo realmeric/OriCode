@@ -49,6 +49,8 @@ struct ToolCall: Hashable {
     var ended: String?
     /// On a call that starts a subagent: whether what the subagent calls is kept under it.
     var keepsCalls = false
+    /// The call Stop cut off, the turn's last, which didn't fail of itself.
+    var stopped = false
 
     var kind: ToolKind { declared ?? ToolKind(claude: name) }
 
@@ -1207,6 +1209,9 @@ final class Conversation {
     }
 
     static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
+    /// Characters a frame shows of a reply at the least, about 3,800 a second: well past what an
+    /// agent streams, so only a burst is spread out.
+    static let steady = 64
 
     /// The held deltas onto the open item, for the view. Its event and ⌘K's fold of it wait for
     /// `writeHeld`: the whole reply encoded and folded at every frame cost more with each one.
@@ -1224,7 +1229,20 @@ final class Conversation {
         guard let open, !held.isEmpty else { return false }
         let current = stored[open.item]
         let before = current.text ?? ""
-        var text = before + held
+        // A burst, many lines come at once from the agent, is shown over the next frames at a
+        // steady rate rather than in one jump: a sixth of what waits a frame, word by word.
+        var shown = held
+        var later = ""
+        if allowed != nil, open.kind == "text", drawn(), held.utf8.count > Self.steady {
+            let cap = max(Self.steady, held.count / 6)
+            if cap < held.count {
+                var cut = held.index(held.startIndex, offsetBy: cap)
+                if let space = held[..<cut].lastIndex(where: \.isWhitespace) { cut = held.index(after: space) }
+                later = String(held[cut...])
+                shown = String(held[..<cut])
+            }
+        }
+        var text = before + shown
         var rest = ""
         var starts = false
         if open.kind == "text", drawn() {
@@ -1243,7 +1261,7 @@ final class Conversation {
                 }
             }
         }
-        held = rest
+        held = rest + later
         shownAt = .now
         stored[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
         live.text = text
@@ -1476,6 +1494,11 @@ final class Conversation {
                 costUSD: body["costUSD"]?.double ?? 0,
                 stopReason: body["stopReason"]?.string ?? "")
             var paths = Set<String>()
+            if footer.stopReason == "interrupted", let last = items.lastIndex(where: { if case .tool = $0 { true } else { $0.startsTurn } }),
+               case .tool(let id, var call) = items[last], call.isError {
+                call.stopped = true
+                items[last] = .tool(id: id, call: call)
+            }
             for item in items.reversed() {
                 if item.startsTurn { break }
                 guard case .tool(_, let call) = item, call.isEdit, call.result != nil, !call.isError,
@@ -1510,7 +1533,9 @@ final class Conversation {
             items.append(.opened(id: id, thread: thread, title: body["title"]?.string ?? Chat.untitled, finished: body["finished"]?.bool ?? true,
                                  resetsAt: resetsAt, window: body["window"]?.string))
         case "thread.act":
-            guard let act = ThreadAct(body) else { break }
+            // Opening, messaging and stopping another thread are this thread's own calls, which
+            // its run of calls names; one stored before then isn't drawn twice.
+            guard let act = ThreadAct(body), !(act.by && [.opened, .messaged, .stopped].contains(act.act)) else { break }
             items.append(.act(id: id, thread: act.thread, text: act.words, hover: act.hover))
         case "thread.overlap":
             guard let same = SameFile(body) else { break }

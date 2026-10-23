@@ -13,11 +13,6 @@ struct AgentsPane: View {
 
     var body: some View {
         PaneTitle(text: "Agents")
-        Text("Each runs through its own CLI and the login you made in Terminal. Only the ones turned on are looked for.")
-            .font(Type.secondary)
-            .foregroundStyle(Ink.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 6)
         if model.agents.isEmpty {
             Text("The agents are listed once the engine is running.")
                 .font(Type.secondary)
@@ -154,7 +149,8 @@ private struct AgentCard: View {
         .animation(Motion.fade, value: on)
     }
 
-    /// A settings row whose line may carry a Terminal command in backticks; a path is read verbatim.
+    /// A settings row whose line, when it has one, may carry a Terminal command in backticks; a path
+    /// is read verbatim.
     /// The agent's own row has its mark before its name.
     private func row<Control: View>(_ title: String, mark: String? = nil, detail: String, verbatim: Bool = false,
                                     @ViewBuilder control: () -> Control) -> some View {
@@ -166,13 +162,15 @@ private struct AgentCard: View {
                     }
                     Text(title).font(.system(size: 14)).foregroundStyle(Ink.primary)
                 }
-                Group {
-                    if verbatim { Text(verbatim: detail) } else { Text(LocalizedStringKey(detail)) }
+                if !detail.isEmpty {
+                    Group {
+                        if verbatim { Text(verbatim: detail) } else { Text(LocalizedStringKey(detail)) }
+                    }
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             control()
@@ -184,8 +182,10 @@ private struct AgentCard: View {
     private var cliRow: some View {
         let chosen = model.agentSettings.path(agent.id)
         let path = chosen ?? entry?.cli
-        let version = entry?.version.map { " · \($0)" } ?? ""
-        return row("CLI", detail: path.map { $0 + version } ?? "Not found on its own. Choose it if it's installed.", verbatim: path != nil) {
+        let found = path.map { $0 + (entry?.version.map { " · \($0)" } ?? "") }
+        // Found on its own, where it is and its version are the row's help; a CLI chosen here
+        // says which.
+        return row("CLI", detail: chosen != nil ? found ?? "" : path == nil ? "Not found on its own. Choose it if it's installed." : "", verbatim: path != nil) {
             HStack(spacing: 8) {
                 if chosen != nil {
                     Button("Automatic") { model.chooseAgentPath(nil, for: agent.id) }
@@ -194,6 +194,7 @@ private struct AgentCard: View {
             }
             .buttonStyle(.action)
         }
+        .help(found ?? "")
     }
 
     @ViewBuilder

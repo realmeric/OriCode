@@ -28,14 +28,14 @@ struct AgentInfo: Codable, Hashable, Sendable, Identifiable {
 
     /// What its row in Settings › Agents says of it: off, being asked, or its state as the engine
     /// found it, with the one line that fixes it when there is one.
+    /// Nothing when there's nothing to do: an agent off, signed in or with its key kept.
     func status(_ entry: ProviderInfo?, on: Bool, checking: Bool) -> String {
-        guard on else { return "Off, and never looked for." }
+        guard on else { return "" }
         if checking { return "Looking…" }
         guard let entry else { return "Looked for once the engine is running." }
-        let found = binary ? "Signed in." : "Its key is kept."
         switch entry.state {
-        case .ready: return found
-        case .soon: return found + " Threads on it come with a later update."
+        case .ready: return ""
+        case .soon: return "Threads on it come with a later update."
         case .unknown: return entry.version == nil ? "Found." : "Found. Whether it's signed in shows once a thread runs on it."
         // Its hint points here, where the field is right under it.
         case .signedOut where key && !binary: return "No key kept yet."

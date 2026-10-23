@@ -285,8 +285,8 @@ struct WitnessTests {
         let items = [user(), ran("make test", at: 10), edit("a.swift", at: 30)]
         let page = page([file("a.swift", changed: 30)], items, committed: 20)
         #expect(page.runs.isEmpty && page.readFirst.isEmpty)
-        #expect(page.sentence == "No build or test OriCode recognises has run in this thread since the last commit.")
-        #expect(self.page([file("a.swift", changed: 30)], [user(), edit("a.swift", at: 30)]).sentence == "No build or test OriCode recognises ran in this thread.")
+        #expect(page.sentence == "")
+        #expect(self.page([file("a.swift", changed: 30)], [user(), edit("a.swift", at: 30)]).sentence == "")
     }
 
     @Test func proseIsNeverFirstForHavingChangedAfterARun() {
@@ -558,7 +558,7 @@ struct WitnessTests {
         review.look(at: Self.root, for: chat.id)
         try await model.take(reply([("a.swift", ["-let a = 0", "+let a = 1"], 1)], mark: "one"), in: Self.root)
         #expect(review.page.runs.isEmpty)
-        #expect(review.page.sentence == "No build or test OriCode recognises ran in this thread.")
+        #expect(review.page.sentence == "")
 
         // You run the tests at the prompt: git has nothing new to say, and the page has.
         var run = ShellRun(command: "make test", folder: Self.root, startedAt: at(50))

@@ -345,7 +345,6 @@ extension AppModel {
             save()
             throw Refused(why: "OriCode couldn't start a turn in it just now.")
         }
-        conversation(for: parent).threadAct(ThreadAct(act: .opened, by: true, thread: chat.id, title: chat.title, reason: reason))
         save()
         return chat
     }
@@ -409,7 +408,6 @@ extension AppModel {
         } else if !send(text, images: [], in: thread, from: chat) {
             throw Refused(why: "OriCode couldn't start a turn in \(thread.title) just now.")
         }
-        self.conversation(for: chat).threadAct(ThreadAct(act: .messaged, by: true, thread: thread.id, title: thread.title, reason: reason))
         return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "sent": true, "intoTurn": .bool(busy)]
     }
 
@@ -431,7 +429,6 @@ extension AppModel {
             guard thread.agentKind != nil else { throw Refused(why: Self.agentRefusal(thread, doing: "can't be stopped alone")) }
             guard thread.agentWorking else { throw Refused(why: "\(thread.title) isn't working, so there's nothing to stop.") }
             stopAgent(thread)
-            conversation(for: chat).threadAct(ThreadAct(act: .stopped, by: true, thread: thread.id, title: thread.title, reason: reason.trimmingCharacters(in: .whitespacesAndNewlines)))
             return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "stopped": true]
         }
         // With its turn over, what it left working is what there is to stop.
@@ -443,7 +440,6 @@ extension AppModel {
         // A thread that stops its opener, or one above it, goes on itself.
         stop(in: thread, sparing: chat.id)
         turnEnded(thread.id)
-        self.conversation(for: chat).threadAct(ThreadAct(act: .stopped, by: true, thread: thread.id, title: thread.title, reason: reason))
         return ["thread": .string(thread.title), "id": .string(thread.id.uuidString), "stopped": true]
     }
 

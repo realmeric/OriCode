@@ -89,6 +89,6 @@ struct PiTests {
         ]]
         model.agents = [try registry.decode(AgentInfo.self)]
         #expect(model.forbiddenHelp(forbidden, on: "pi") == "Turn on “Pi signed into claude.ai” in Settings › Agents to use Claude Opus")
-        #expect(model.agents[0].status(model.providerInfo("pi"), on: true, checking: false) == "Signed in.")
+        #expect(model.agents[0].status(model.providerInfo("pi"), on: true, checking: false) == "")
     }
 }

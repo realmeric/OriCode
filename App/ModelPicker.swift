@@ -111,7 +111,7 @@ struct ModelLine: View {
             HStack(spacing: 5) {
                 AgentMark(agent: agent)
                     .frame(width: 12, height: 12)
-                Text(shown?.name ?? "Model")
+                Text(shown?.shortName ?? "Model")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.secondary)
                     .opacity(preview == nil || preview?.id == option?.id ? 1 : 0.6)
@@ -489,17 +489,11 @@ struct ModelRow: View {
                     AgentMark(agent: agent)
                         .frame(width: 14, height: 14)
                         .opacity(chosen ? 1 : 0.45)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(option.name)
-                            .font(Type.body)
-                            .foregroundStyle(chosen ? Ink.primary : Ink.primary.opacity(0.8))
-                        if !option.description.isEmpty {
-                            Text(option.description)
-                                .font(Type.secondary)
-                                .foregroundStyle(Ink.secondary)
-                                .lineLimit(1)
-                        }
-                    }
+                    // The name alone; what the model is for is its help.
+                    Text(option.name)
+                        .font(Type.body)
+                        .foregroundStyle(chosen ? Ink.primary : Ink.primary.opacity(0.8))
+                        .lineLimit(1)
                     Spacer(minLength: 4)
                     if option.fast {
                         Image(systemName: "bolt.fill")
@@ -515,7 +509,7 @@ struct ModelRow: View {
                 }
                 .padding(.leading, 10)
                 .padding(.trailing, 6)
-                .frame(height: 40)
+                .frame(height: 32)
                 .opacity(unavailable ? 0.45 : 1)
                 .contentShape(.rect)
             }
@@ -531,7 +525,7 @@ struct ModelRow: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(favorite ? Ink.secondary : Ink.faint)
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 18, height: 40)
+                    .frame(width: 18, height: 32)
                     .padding(.trailing, 10)
                     .contentShape(.rect)
             }

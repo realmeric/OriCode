@@ -90,14 +90,16 @@ struct MarkPicker: View {
     static let markTop: CGFloat = 12 + 30 + 96 + 12
 }
 
-/// A page turning sideways: in from its side over the move's spring, out to it over a fade.
+/// A page turning sideways: the old one fades out in 0.08s, then the new one comes in from its
+/// side over the move's spring, so the two pages never show over each other.
 private struct SideTurn: ViewModifier {
     let shown: Bool
     let side: CGFloat
 
     func body(content: Content) -> some View {
         content
-            .animation(shown ? Motion.move : Motion.fade) { $0.opacity(shown ? 1 : 0).offset(x: shown ? 0 : side) }
+            .animation(shown ? Motion.move.delay(0.08) : .linear(duration: 0.01).delay(0.08)) { $0.offset(x: shown ? 0 : side) }
+            .animation(shown ? Motion.move.delay(0.08) : .easeOut(duration: 0.08)) { $0.opacity(shown ? 1 : 0) }
             .allowsHitTesting(shown)
             .accessibilityHidden(!shown)
     }

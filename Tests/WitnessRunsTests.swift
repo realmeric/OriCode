@@ -146,7 +146,7 @@ struct WitnessRunsTests {
             #expect(found.runs.isEmpty)
             #expect(found.lastTurn(editing: "b.swift") == nil)
             #expect(found.unseenAgents.isEmpty)
-            #expect(page([file("a.swift", changed: 2)], found).sentence == "No build or test OriCode recognises ran in this thread.")
+            #expect(page([file("a.swift", changed: 2)], found).sentence == "")
         }
     }
 
@@ -184,13 +184,13 @@ struct WitnessRunsTests {
             == "make test exited 0 and nothing here has changed since. A subagent worked in this thread and what it ran was not recorded, so a check of its own is not on this page.")
         let alone = provenance([user(), item(agent("agent-1", at: 5, keepsCalls: false))])
         #expect(page([file("a.swift", changed: 2)], alone).sentence
-            == "No build or test OriCode recognises ran in this thread. " + WitnessPage.unseenSubagent)
+            == WitnessPage.unseenSubagent)
         // One from before the last commit says nothing of what's here.
         #expect(page([file("a.swift", changed: 20)], old, committed: 15).sentence
-            == "No build or test OriCode recognises has run in this thread since the last commit.")
+            == "")
         // One whose calls are kept and that called nothing is not unseen.
         let kept = provenance([user(), item(agent("agent-1", at: 5))])
-        #expect(page([file("a.swift", changed: 2)], kept).sentence == "No build or test OriCode recognises ran in this thread.")
+        #expect(page([file("a.swift", changed: 2)], kept).sentence == "")
     }
 
     // MARK: A project's own check
@@ -242,7 +242,7 @@ struct WitnessRunsTests {
     @Test func aThreadThatRanTheProjectsCheckNoLongerSaysNoBuildOrTestRan() {
         let items = [user(), item(edit("a.swift", at: 1)), item(run("./ci.sh", at: 5))]
         let files = [file("a.swift", changed: 2)]
-        #expect(page(files, provenance(items)).sentence == "No build or test OriCode recognises ran in this thread.")
+        #expect(page(files, provenance(items)).sentence == "")
         let named = page(files, provenance(items, own: "./ci.sh"))
         #expect(named.sentence == "./ci.sh exited 0 and nothing here has changed since.")
         #expect(named.runs.map { "Ran \($0.command) · \(WitnessPage.result($0))" } == ["Ran ./ci.sh · exited 0"])
@@ -354,7 +354,7 @@ struct WitnessRunsTests {
         review.design = .witness
         review.look(at: Self.root, for: chat.id)
         try await model.take(reply("a.swift", changed: -50), in: Self.root)
-        #expect(review.page.sentence == "No build or test OriCode recognises ran in this thread.")
+        #expect(review.page.sentence == "")
 
         // The check is named in Settings: git has nothing new to say, and the page has.
         let same: JSON = ["root": .string(Self.root), "same": true]

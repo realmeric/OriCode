@@ -127,7 +127,8 @@ struct ComposerField: NSViewRepresentable {
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
+        // Only once the text is taller than the field (measure).
+        scroll.hasVerticalScroller = false
         scroll.autohidesScrollers = true
         scroll.verticalScrollElasticity = .none
         let field = ComposerTextView.make()
@@ -374,8 +375,10 @@ final class ComposerTextView: NSTextView {
         let used = manager.usedRect(for: container).height
         let line = Self.lineHeight(font ?? Self.body)
         let height = min(max(used.rounded(.up), line), max(maxHeight, line))
-        // A field that fits its text has nothing to bounce.
-        enclosingScrollView?.verticalScrollElasticity = used > height ? .automatic : .none
+        // A field that fits its text has nothing to bounce, and no scroller over its words.
+        let scrolls = used > height
+        enclosingScrollView?.verticalScrollElasticity = scrolls ? .automatic : .none
+        if enclosingScrollView?.hasVerticalScroller != scrolls { enclosingScrollView?.hasVerticalScroller = scrolls }
         if draft.height != height { draft.height = height }
     }
 

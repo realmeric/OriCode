@@ -20,6 +20,9 @@ struct TranscriptView: View {
     @State private var lit: UUID?
     /// What the scroll view last said of itself, kept where reading it draws nothing.
     @State private var content = Measured()
+    /// The pill, up once the end has been out of view a moment: a reply growing by a few lines
+    /// in one frame puts the end out of view for that frame while the scroll catches up.
+    @State private var pill = false
     @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
     @AppStorage(TranscriptSettings.showWater) private var showWater = false
 
@@ -56,13 +59,16 @@ struct TranscriptView: View {
     /// The latest items, until an earlier one is asked for. The stack is lazy, laying out what's
     /// on screen and a little around it, and anchored at the bottom it lays out the newest first.
     private static let recent = 200
-    /// How far down the top edge's fade runs: nothing above it is read at full strength.
-    private static let fade = TitleBar.height + 20
-    /// Where the title line of a column beside the open one ends.
-    private static let titled = TitleBar.height + BesideTitle.height
-    /// Where that column's first row starts: as far into its fade, half strength, as the open
-    /// thread's first row is into its own under the toolbar's row.
-    static let besideTop = titled + 10
+    /// Where the top edge is clear down to: a little past the capsule's foot, so nothing is read
+    /// behind it, and past the title line of a column beside the open one.
+    private static func clear(active: Bool) -> CGFloat {
+        (active ? Island.top + TitleCapsule.height : TitleBar.height + BesideTitle.height) + 6
+    }
+    /// How far the fade under that runs before the transcript is at full strength.
+    private static let fadeLength: CGFloat = 28
+    private static func fade(active: Bool) -> CGFloat { clear(active: active) + fadeLength }
+    /// Where a column's first row starts: half way into its fade.
+    static func top(active: Bool) -> CGFloat { clear(active: active) + fadeLength / 2 }
 
     private var shown: ArraySlice<Item> {
         showAll ? conversation.items[...] : conversation.items.suffix(Self.recent)
@@ -145,12 +151,12 @@ struct TranscriptView: View {
             }
             .column()
             // Under the toolbar's row, and under the title a column beside the open thread has.
-            .padding(.top, active ? TitleBar.height : Self.besideTop)
+            .padding(.top, Self.top(active: active))
             .coordinateSpace(.named(Self.thread))
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.links(in: conversation.chat.id))
-        .environment(\.codeCopyLine, Self.fade + (active ? 0 : BesideTitle.height) - CodeCopy.inset)
+        .environment(\.codeCopyLine, Self.fade(active: active) - CodeCopy.inset)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
@@ -158,10 +164,19 @@ struct TranscriptView: View {
         // Following the bottom while it grows, a reply streaming or an item arriving, is the
         // scroll view's own; scrolled up, what's read stays where it is.
         .defaultScrollAnchor(end.pinned ? .bottom : .top, for: .sizeChanges)
-        .onScrollGeometryChange(for: TranscriptEnd.Place.self) { geometry in
-            TranscriptEnd.place(offset: geometry.contentOffset.y, visible: geometry.containerSize.height, content: geometry.contentSize.height)
-        } action: { _, reached in
-            place(reached: reached)
+        .onScrollGeometryChange(for: TranscriptEnd.Room.self) { geometry in
+            TranscriptEnd.Room(place: TranscriptEnd.place(offset: geometry.contentOffset.y, visible: geometry.containerSize.height, content: geometry.contentSize.height),
+                               visible: geometry.containerSize.height)
+        } action: { old, new in
+            content.visible = new.visible
+            // The composer growing with what's typed, or shrinking once it's sent, changes the
+            // room the transcript has: one following its end keeps it in view, and doesn't take
+            // the moment the end went under the composer for leaving it.
+            if old.visible != new.visible, old.place == .end, new.place != .end, end.pinned, !end.heading {
+                position.scrollTo(edge: .bottom)
+                return
+            }
+            place(reached: new.place)
         }
         .onScrollGeometryChange(for: CGFloat.self, of: \.contentSize.height) { content.height = $1 }
         .onScrollPhaseChange {
@@ -169,7 +184,6 @@ struct TranscriptView: View {
             // A hand on the scroll has it from there.
             if $1 == .tracking || $1 == .interacting { kept = nil }
         }
-        .onScrollGeometryChange(for: CGFloat.self, of: \.containerSize.height) { content.visible = $1 }
         // Only what's laid out is growth to tell of: thinking left out, or a call folded into
         // the run above it, adds no row.
         .onChange(of: TranscriptEnd.Tail(count: conversation.items.count + conversation.waiting.count, last: entries.last?.id)) { old, tail in
@@ -222,10 +236,9 @@ struct TranscriptView: View {
                 // traffic lights and the capsule in the toolbar's row. Beside the open thread, a
                 // column has its own title under that row: clear through it too, and the fade
                 // starts that much lower.
-                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .clear, location: active ? 0.45 : Self.titled / (Self.fade + BesideTitle.height)),
-                                       .init(color: .black, location: 1)],
-                               startPoint: .top, endPoint: .bottom)
-                    .frame(height: Self.fade + (active ? 0 : BesideTitle.height))
+                Color.clear.frame(height: Self.clear(active: active))
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: Self.fadeLength)
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
             }
@@ -234,7 +247,7 @@ struct TranscriptView: View {
         .overlay(alignment: .bottom) {
             let offered = TranscriptEnd.offered(pinned: end.pinned, covered: active && (model.openShell != nil || model.openFile != nil))
             ZStack {
-                if offered {
+                if offered && pill {
                     // A reply streams into a row that's already there, which no count tells of.
                     EndPill(news: end.news, stream: streaming) {
                         end.grew(laidOut: true)
@@ -245,8 +258,13 @@ struct TranscriptView: View {
                 }
             }
             .padding(.bottom, 10)
-            .animation(Motion.fade, value: offered)
+            .animation(Motion.fade, value: offered && pill)
             .animation(Motion.fade, value: end.news)
+            .task(id: offered) {
+                guard offered else { return pill = false }
+                try? await Task.sleep(for: .milliseconds(200))
+                if !Task.isCancelled { pill = true }
+            }
         }
     }
 
@@ -455,7 +473,7 @@ struct TranscriptView: View {
                 waiting: conversation.waiting.contains { $0.id == item.id },
                 stream: item.id == streaming ? conversation.live : nil, water: water)
         case .run(let items):
-            ToolRunRow(items: items, cwd: cwd, live: conversation.running && items.last?.id == conversation.items.last?.id,
+            ToolRunRow(items: items, cwd: cwd, thread: conversation.chat.id, live: conversation.running && items.last?.id == conversation.items.last?.id,
                        stream: items.contains { $0.id == streaming } ? conversation.live : nil,
                        lit: lit.flatMap { id in items.contains { $0.id == id } ? id : nil })
         }
@@ -487,6 +505,12 @@ struct TranscriptView: View {
 enum TranscriptEnd {
     /// How close to the end counts as being at it.
     static let reach: CGFloat = 48
+
+    /// Where what's showing is against the end, and how tall the view is.
+    struct Room: Equatable {
+        var place: Place
+        var visible: CGFloat
+    }
 
     /// Where what's showing is against the end, which is all the transcript asks of a scroll.
     enum Place {
@@ -771,6 +795,10 @@ enum TranscriptEntry: Identifiable {
                 entries.append(.item(item))
             case .tool(_, let call) where call.kind == .plan:
                 continue
+            // A thread it opened ending its turn: that thread's mark on ⌘⇧I says so. A limit
+            // getting close, which stops nothing: the usage glass's colour says so.
+            case .opened, .nearLimit:
+                continue
             // Settings › Conversation leaves thinking out.
             case .thinking where !thinking:
                 continue
@@ -876,6 +904,8 @@ struct ItemView: View {
                 WorkflowCard(call: call)
             } else if let plan = call.plan {
                 PlanCard(plan: plan)
+            } else if call.oricodeTool != nil {
+                ThreadToolLine(call: call, parent: thread)
             } else {
                 ToolLine(call: call, cwd: cwd)
             }
@@ -979,6 +1009,10 @@ struct ToolLine: View {
     let cwd: String
     @State private var open = false
 
+    /// What opens under a line fades in where it lands; the rows around it move at once, since
+    /// moved in a glide they were drawn over it while the scroll held the transcript's foot.
+    static let opening = AnyTransition.opacity.animation(Motion.fade)
+
     var body: some View {
         let line = ToolSummary.line(for: call, cwd: cwd)
         let path = ToolSummary.path(for: call)
@@ -986,7 +1020,7 @@ struct ToolLine: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
                 Button {
-                    withAnimation(Motion.fade) { open.toggle() }
+                    open.toggle()
                 } label: {
                     Text(shown.map { line.hasSuffix($0) ? String(line.dropLast($0.count)) : line } ?? line)
                         .lineLimit(1)
@@ -999,7 +1033,7 @@ struct ToolLine: View {
                     FileLink(path: path, label: shown, cwd: cwd)
                 }
                 if call.isError {
-                    Text("failed").foregroundStyle(Ink.faint)
+                    Text(call.stopped ? "stopped" : "failed").foregroundStyle(Ink.faint)
                 } else if call.result == nil {
                     ProgressView().controlSize(.mini).tint(Ink.secondary)
                 }
@@ -1018,7 +1052,7 @@ struct ToolLine: View {
                 .frame(maxHeight: 280)
                 .fixedSize(horizontal: false, vertical: true)
                 .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
-                .transition(.opacity)
+                .transition(ToolLine.opening)
             }
         }
     }
@@ -1029,6 +1063,8 @@ struct ToolLine: View {
 struct ToolRunRow: View {
     let items: [Item]
     let cwd: String
+    /// The thread it's in, whose calls about other threads open them beside it.
+    var thread: UUID?
     /// The turn is still in this run.
     let live: Bool
     /// The text streaming into one of its items, thinking between the calls.
@@ -1041,15 +1077,37 @@ struct ToolRunRow: View {
     /// when it is the run's first.
     static func name(of item: UUID) -> String { "call:" + item.uuidString }
 
+    /// The run's items with a wait or a read on a thread that the call after it repeats left out,
+    /// so a lead waiting six times on the same thread shows one line, the latest.
+    static func collapsed(_ items: [Item]) -> [Item] {
+        func repeated(_ call: ToolCall) -> String? {
+            guard let tool = call.oricodeTool, tool == "wait_thread" || tool == "read_thread", !call.isError else { return nil }
+            return tool + (call.otherThread.id?.uuidString ?? "")
+        }
+        var kept: [Item] = []
+        var next: String?
+        for item in items.reversed() {
+            guard case .tool(_, let call) = item else {
+                kept.append(item)
+                next = nil
+                continue
+            }
+            let key = repeated(call)
+            if key == nil || key != next { kept.append(item) }
+            next = key
+        }
+        return kept.reversed()
+    }
+
     var body: some View {
         let calls = items.compactMap { item -> ToolCall? in
             if case .tool(_, let call) = item { call } else { nil }
         }
-        let failed = calls.count { $0.isError }
+        let failed = calls.count { $0.isError && !$0.stopped }
         let diffs = calls.compactMap { $0.isEdit && !$0.isError && $0.result != nil ? Diff.of($0, cwd: cwd) : nil }
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(Motion.fade) { open.toggle() }
+                open.toggle()
             } label: {
                 HStack(spacing: 5) {
                     Text(ToolSummary.run(calls))
@@ -1064,6 +1122,7 @@ struct ToolRunRow: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(open ? 90 : 0))
+                        .animation(Motion.fade, value: open)
                     if live {
                         ProgressView().controlSize(.mini).tint(Ink.secondary)
                     }
@@ -1074,9 +1133,10 @@ struct ToolRunRow: View {
             }
             .buttonStyle(.plain)
             if open {
+                let shown = Self.collapsed(items)
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        ItemView(item: item, cwd: cwd, listening: nil, live: live && index == items.count - 1,
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                        ItemView(item: item, cwd: cwd, thread: thread, listening: nil, live: live && item.id == items.last?.id,
                                  stream: item.id == stream?.id ? stream : nil)
                             .id(Self.name(of: item.id))
                             .background {
@@ -1087,12 +1147,12 @@ struct ToolRunRow: View {
                                         .transition(.opacity)
                                 }
                             }
-                            .padding(.top, index == 0 ? 0 : TranscriptView.spacing(before: item, after: items[index - 1]))
+                            .padding(.top, index == 0 ? 0 : TranscriptView.spacing(before: item, after: shown[index - 1]))
                     }
                 }
                 .padding(.leading, 10)
                 .padding(.top, 8)
-                .transition(.opacity)
+                .transition(ToolLine.opening)
             }
         }
         // A row the lazy stack makes while its call is lit has no change to hear of, and one
@@ -1100,6 +1160,41 @@ struct ToolRunRow: View {
         .onChange(of: lit, initial: true) { was, lit in
             if was != nil || lit != nil { open = true }
         }
+    }
+}
+
+/// One of OriCode's own calls, in words. One about another thread opens it beside this one, as
+/// a click on that thread's row on ⌘⇧I would.
+struct ThreadToolLine: View {
+    @Environment(AppModel.self) private var model
+    let call: ToolCall
+    /// The thread the call is in; nil stands for the open one.
+    var parent: UUID?
+    @State private var hovering = false
+
+    var body: some View {
+        let other = call.otherThread.id
+        HStack(spacing: 4) {
+            Button {
+                if let other { model.openOpened(other, from: parent) }
+            } label: {
+                Text(ToolSummary.line(for: call, cwd: "", titles: { model.chat(withID: $0)?.title }))
+                    .underline(hovering && other != nil)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .disabled(other == nil)
+            .onHover { hovering = $0 }
+            .pointerStyle(other == nil ? nil : .link)
+            if call.isError {
+                Text(call.stopped ? "stopped" : "failed").foregroundStyle(Ink.faint)
+            } else if call.result == nil {
+                ProgressView().controlSize(.mini).tint(Ink.secondary)
+            }
+        }
+        .font(Type.secondary)
+        .foregroundStyle(Ink.secondary)
+        .help(call.isError ? call.result ?? "" : "")
     }
 }
 
@@ -1127,22 +1222,32 @@ struct FileLink: View {
     }
 }
 
-/// Thinking, folded to one line; the summary Claude streamed is underneath.
+/// Thinking, folded to one line once it's done; the summary Claude streamed is underneath. While
+/// it streams the thread's working mark says so, and the line waits.
 struct ThinkingLine: View {
     let text: String
     let live: Bool
     @State private var open = false
 
     var body: some View {
+        if live {
+            Color.clear.frame(height: 0)
+        } else {
+            line
+        }
+    }
+
+    private var line: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(Motion.fade) { open.toggle() }
+                open.toggle()
             } label: {
                 HStack(spacing: 6) {
-                    Text(live ? "Thinking…" : "Thought")
+                    Text("Thought")
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(open ? 90 : 0))
+                        .animation(Motion.fade, value: open)
                 }
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
@@ -1155,7 +1260,7 @@ struct ThinkingLine: View {
                     .foregroundStyle(Ink.secondary)
                     .textSelection(.enabled)
                     .padding(.leading, 10)
-                    .transition(.opacity)
+                    .transition(ToolLine.opening)
             }
         }
     }

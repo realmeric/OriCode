@@ -78,7 +78,7 @@ struct DevinTests {
     @Test func itsSettingsRowSaysSignedInOrTheLoginLine() throws {
         let registry: JSON = ["id": "devin", "name": "Devin", "agent": "Devin", "route": "ACP", "binary": true, "key": false, "forbidden": []]
         let row = try registry.decode(AgentInfo.self)
-        #expect(row.status(model.providerInfo("devin"), on: true, checking: false) == "Signed in.")
+        #expect(row.status(model.providerInfo("devin"), on: true, checking: false) == "")
         let signedOut = try Self.entry("signedOut", hint: "Run `devin auth login` in Terminal.").decode(ProviderInfo.self)
         #expect(row.status(signedOut, on: true, checking: false) == "Run `devin auth login` in Terminal.")
     }

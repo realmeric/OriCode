@@ -12,8 +12,9 @@ struct RootView: View {
                     .ignoresSafeArea()
                 let conversation = model.currentConversation
                 // A thread whose events are still being read lays out as it will once they're in,
-                // so the composer doesn't move for the moment it takes.
-                let started = conversation?.started ?? model.chat?.started ?? false
+                // so the composer doesn't move for the moment it takes, and a thread with messages
+                // never shows the empty state.
+                let started = conversation?.started == true || model.chat?.started == true
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
                 let pinned = model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0
                 // Two threads take equal halves when each gets a column's least width. Under that
@@ -35,6 +36,7 @@ struct RootView: View {
                 // A drawer that isn't in its place passes over the conversation for a moment, and the left
                 // composer's left end draws back out from under it while it's out. Its right end,
                 // with the picker and Send, doesn't move, and nor does a composer in the right half.
+                let covered = model.reviewShown || model.openFile != nil || model.openShell != nil
                 let clear = model.drawerShown && !model.drawerDocked
                     ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
                 VStack(spacing: 0) {
@@ -71,6 +73,16 @@ struct RootView: View {
                                 }
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                             }
+                        }
+                        // The review, a file or a full terminal over the conversation has the glass
+                        // to itself, with no line cut short at either side of it.
+                        // Out before what covers it has grown, and back once it has folded away.
+                        .opacity(covered ? 0 : 1)
+                        .animation(covered ? .easeOut(duration: 0.1) : Motion.fade.delay(0.16), value: covered)
+                        // Faded out it takes no clicks, and a click there still puts what's
+                        // over it away.
+                        .background {
+                            if covered { Color.clear.contentShape(.rect) }
                         }
                         .transition(.asymmetric(insertion: Self.rise, removal: Self.leave))
                     } else {
@@ -287,7 +299,7 @@ struct RootView: View {
                 // block stop; over a thread not begun, whose composer waits in the middle, down
                 // to where a one-line composer would be.
                 GeometryReader { area in
-                    let low = model.currentConversation?.started ?? model.chat?.started ?? false
+                    let low = model.currentConversation?.started == true || model.chat?.started == true
                     // Under the other column's capsule with two threads up, as a block is.
                     let inset: CGFloat = model.besideShown == nil ? 20 : 12 + BesideTitle.height
                     let top = area.frame(in: .global).minY + inset

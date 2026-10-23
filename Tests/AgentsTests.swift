@@ -61,18 +61,18 @@ struct AgentsTests {
 
     @Test func eachRowSaysWhereItsAgentStands() {
         let codex = Self.codex
-        #expect(codex.status(nil, on: false, checking: false) == "Off, and never looked for.")
+        #expect(codex.status(nil, on: false, checking: false) == "")
         #expect(codex.status(nil, on: true, checking: false) == "Looked for once the engine is running.")
         #expect(codex.status(Self.entry("codex", .unknown), on: true, checking: true) == "Looking…")
         #expect(codex.status(Self.entry("codex", .unknown), on: true, checking: false) == "Found.")
         #expect(codex.status(Self.entry("codex", .unknown, version: "1.0"), on: true, checking: false) == "Found. Whether it's signed in shows once a thread runs on it.")
-        #expect(codex.status(Self.entry("codex", .soon, version: "1.0"), on: true, checking: false) == "Signed in. Threads on it come with a later update.")
-        #expect(codex.status(Self.entry("codex", .ready), on: true, checking: false) == "Signed in.")
+        #expect(codex.status(Self.entry("codex", .soon, version: "1.0"), on: true, checking: false) == "Threads on it come with a later update.")
+        #expect(codex.status(Self.entry("codex", .ready), on: true, checking: false) == "")
         let login = "Run `codex login` in Terminal and log in."
         #expect(codex.status(Self.entry("codex", .signedOut, hint: login), on: true, checking: false) == login)
         let install = "Codex isn't installed. Install it with `npm install -g @openai/codex`, then run `codex login`."
         #expect(codex.status(Self.entry("codex", .missing, hint: install), on: true, checking: false) == install)
-        #expect(Self.zai.status(Self.entry("zai", .soon), on: true, checking: false) == "Its key is kept. Threads on it come with a later update.")
+        #expect(Self.zai.status(Self.entry("zai", .soon), on: true, checking: false) == "Threads on it come with a later update.")
         let add = "Add your Z.ai key in Settings › Agents."
         #expect(Self.zai.status(Self.entry("zai", .signedOut, hint: add), on: true, checking: false) == "No key kept yet.")    }
 

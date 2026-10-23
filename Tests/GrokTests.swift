@@ -84,7 +84,7 @@ struct GrokTests {
     @Test func itsSettingsRowSaysSignedInOrTheLoginLine() throws {
         let registry: JSON = ["id": "grok", "name": "Grok Build", "agent": "Grok", "route": "ACP", "binary": true, "key": false, "forbidden": []]
         let row = try registry.decode(AgentInfo.self)
-        #expect(row.status(model.providerInfo("grok"), on: true, checking: false) == "Signed in.")
+        #expect(row.status(model.providerInfo("grok"), on: true, checking: false) == "")
         let signedOut = try Self.entry("signedOut", hint: "Run `grok login` in Terminal.").decode(ProviderInfo.self)
         #expect(row.status(signedOut, on: true, checking: false) == "Run `grok login` in Terminal.")
     }

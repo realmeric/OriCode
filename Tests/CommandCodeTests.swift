@@ -85,7 +85,7 @@ struct CommandCodeTests {
         let registry: JSON = ["id": "commandcode", "name": "Command Code", "agent": "Command Code", "route": "its headless JSON",
                               "binary": true, "key": true, "forbidden": []]
         let row = try registry.decode(AgentInfo.self)
-        #expect(row.status(model.providerInfo("commandcode"), on: true, checking: false) == "Signed in.")
+        #expect(row.status(model.providerInfo("commandcode"), on: true, checking: false) == "")
         let hint = "Command Code has no working API key. Add yours in Settings › Agents."
         let signedOut = try Self.entry("signedOut", hint: .string(hint)).decode(ProviderInfo.self)
         #expect(row.status(signedOut, on: true, checking: false) == hint)

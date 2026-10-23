@@ -172,7 +172,7 @@ private struct OverviewLine: View {
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                 }
             }
             Spacer(minLength: 8)
@@ -335,9 +335,9 @@ extension AppModel {
         if let conversation, conversation.working {
             // With its turn over, only how far what it left running is, where that can tell.
             guard conversation.running else { return OverviewStatus(state: .working, step: goingOn(chat)) }
-            let step = conversation.mainStep(cwd: chat.cwd)
+            let step = conversation.mainStep(cwd: chat.cwd) { self.chat(withID: $0)?.title }
             let line = [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
-            return OverviewStatus(state: .working, step: [conversation.planStep, line].compactMap { $0 }.joined(separator: " · "))
+            return OverviewStatus(state: .working, step: [conversation.planStep, line.nonEmpty].compactMap { $0 }.joined(separator: " · ").nonEmpty)
         }
         if let resumeAt = chat.resumeAt {
             return OverviewStatus(state: .waiting, step: Limit.time(resumeAt))
@@ -358,7 +358,7 @@ extension AppModel {
     private func agentStep(_ chat: Chat) -> String? {
         if chat.agentKind != nil {
             if let conversation = conversations[chat.id], conversation.running {
-                let step = conversation.mainStep(cwd: chat.cwd)
+                let step = conversation.mainStep(cwd: chat.cwd) { self.chat(withID: $0)?.title }
                 return [ToolSummary.name(step.tool), step.detail].compactMap { $0 }.joined(separator: " · ")
             }
             guard let parent = chat.openedBy, let task = chat.agentTask,

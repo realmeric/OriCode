@@ -257,13 +257,13 @@ struct WitnessPage: Sendable {
             let it = runs.count == 1 ? "it" : "them"
             below = proseSince ? "everything below but prose last changed before \(it)" : "everything below last changed before \(it)"
         }
-        sentence = Self.sentence(runs: runs, any: !provenance.runs.isEmpty, read: read, proseSince: proseSince)
+        sentence = Self.sentence(runs: runs, read: read, proseSince: proseSince)
         // A subagent whose calls the thread doesn't hold may have run a check nobody saw.
         let unseen = provenance.unseenAgents.contains { started in
             guard let committed, let started else { return true }
             return started >= committed
         }
-        if unseen { sentence += " " + Self.unseenSubagent }
+        if unseen { sentence = [sentence.nonEmpty, Self.unseenSubagent].compactMap(\.self).joined(separator: " ") }
     }
 
     /// A message as a menu or the caption names it: its first line's first words.
@@ -404,12 +404,9 @@ struct WitnessPage: Sendable {
     /// The sentence the page stands under: a check against what has changed since it last ran,
     /// and how that run ended when its ending was its own. It is about the check that failed,
     /// when one did, and else about the one that ran longest ago; the others are named after.
-    private static func sentence(runs: [Provenance.Run], any: Bool, read: [(path: String, later: [Provenance.Run])], proseSince: Bool) -> String {
-        guard let at = runs.firstIndex(where: { $0.outcome == .failed }) ?? runs.indices.first else {
-            return any
-                ? "No build or test OriCode recognises has run in this thread since the last commit."
-                : "No build or test OriCode recognises ran in this thread."
-        }
+    /// With no check run there is nothing to say, and the page starts with its files.
+    private static func sentence(runs: [Provenance.Run], read: [(path: String, later: [Provenance.Run])], proseSince: Bool) -> String {
+        guard let at = runs.firstIndex(where: { $0.outcome == .failed }) ?? runs.indices.first else { return "" }
         let run = runs[at]
         let changed = read.filter { $0.later.contains(run) }
         let before = runs[..<at].map(\.check), after = runs[(at + 1)...].map(\.check)
