@@ -758,9 +758,8 @@ struct ThreadActLine: View {
         } label: {
             Text(text)
                 .underline(hovering)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .buttonStyle(.plain)
         .font(Type.secondary)

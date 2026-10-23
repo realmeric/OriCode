@@ -49,9 +49,10 @@ struct OverviewStatus: Equatable {
         }
     }
 
-    /// The word the row draws: working and waiting are its mark's to show, turning or pulsing.
+    /// The word the row draws: working and waiting are its mark's to show, turning or pulsing,
+    /// and done is a mark at rest. Queued, stopped and failed are what a mark can't say.
     var shown: String {
-        state == .working || state == .waiting ? "" : word
+        state == .working || state == .waiting || state == .done ? "" : word
     }
 
     /// At work or waiting on someone, which the row says in full ink.
@@ -264,8 +265,7 @@ extension AppModel {
     /// thread that works, waits or has had a turn since OriCode opened, every workflow agent this
     /// launch has heard of, and the threads above each of them up to its top thread in the drawer;
     /// and the open thread's whole tree when it has one, since the drawer lists top threads alone.
-    /// Top threads come in the drawer's order, each with the threads it opened under it in the
-    /// order they were opened.
+    /// Top threads come in the drawer's order, each with the threads it opened under it.
     var overview: [OverviewSection] {
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
         let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -283,8 +283,12 @@ extension AppModel {
         }
         let listed = all.filter { kept.contains($0.id) }
         let opened = Dictionary(grouping: listed.filter { $0.openedBy.map { byID[$0] != nil } == true }) { $0.openedBy! }
+        // Under each thread, the ones at work or waiting first, so finished ones from earlier
+        // turns don't push them down; each kind in the order they were opened.
         func rows(_ chat: Chat, depth: Int) -> [OverviewRow] {
-            let under = (opened[chat.id] ?? []).sorted { $0.createdAt < $1.createdAt }
+            let under = (opened[chat.id] ?? []).map { (chat: $0, live: status(of: $0).live) }
+                .sorted { $0.live != $1.live ? $0.live : $0.chat.createdAt < $1.chat.createdAt }
+                .map(\.chat)
             return [OverviewRow(chat: chat, depth: depth)] + under.flatMap { rows($0, depth: depth + 1) }
         }
         let tops = Chat.inDrawerOrder(listed.filter { $0.openedBy.map { byID[$0] == nil } ?? true })

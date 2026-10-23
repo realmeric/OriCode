@@ -124,6 +124,9 @@ final class AppModel {
     /// count it, one per thread left.
     @ObservationIgnored var awayLimit: Duration = .seconds(180)
     @ObservationIgnored var leaving: [UUID: Task<Void, Never>] = [:]
+    /// A thread's events from its turn's end on, held while its reply is still showing a burst
+    /// the agent sent all at once, so the footer comes under the last words and not over them.
+    @ObservationIgnored var behindBurst: [UUID: [EngineEvent]] = [:]
     /// The effortLevel in the user's Claude Code settings, which is where Default lands when set.
     var settingsEffort: String?
     /// Bumped whenever the app's defaults change, so what reads them there (a new thread's

@@ -122,22 +122,22 @@ struct OpenedThreadsTests {
         }
     }
 
-    @Test func anOpenPutsALineWithItsReasonInTheOpenedThread() throws {
+    @Test func anOpenLeavesNoLineInEitherThread() throws {
         let (model, parent) = try model()
         let asked = request(parent) { $0.reason = "The rename can go on alone." }
         let chat = try model.open(model.opening(for: asked), asked)
-        // The opener's line is its open_thread call, named in its run of calls.
+        // The opener's line is its open_thread call, named in its run of calls, and who opened
+        // the thread is ⌘⇧I's to show: the opened thread starts with its first message.
         #expect(acts(model.conversation(for: parent)).isEmpty)
         let child = model.conversation(for: chat)
-        #expect(acts(child) == ["Opened by Sums · The rename can go on alone."])
-        // Ahead of its first message, and both stored.
-        guard case .act(_, let opener, _, _) = child.items.first, case .user = child.items.dropFirst().first else {
-            Issue.record("the line isn't ahead of the message")
+        #expect(acts(child).isEmpty)
+        guard case .user = child.items.first else {
+            Issue.record("the first message isn't first")
             return
         }
-        #expect(opener == parent.id)
+        #expect(chat.openedBy == parent.id)
         #expect(acts(Conversation(chat: parent, context: container.mainContext)).isEmpty)
-        #expect(acts(Conversation(chat: chat, context: container.mainContext)).count == 1)
+        #expect(acts(Conversation(chat: chat, context: container.mainContext)).isEmpty)
     }
 
     /// A second thread of the project, started and idle.

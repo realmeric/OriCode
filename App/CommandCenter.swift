@@ -209,9 +209,11 @@ struct CommandCenter: View {
                         .foregroundStyle(Ink.faint)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                } else if item.kind == .thread {
+                    // Its badge names its project, which the hover spells out.
+                    title.layoutPriority(1)
                 } else if item.kind != .message {
-                    // A thread's project, or what a row is, whole or not at all: the title gives
-                    // way first.
+                    // What a row is, whole or not at all: the title gives way first.
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 10) {
                             title
@@ -250,6 +252,7 @@ struct CommandCenter: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .help(item.kind == .thread ? item.subtitle ?? "" : "")
     }
 
     // MARK: - What each level shows
@@ -274,7 +277,7 @@ struct CommandCenter: View {
 
     private func placeholder(of level: PaletteState.Level) -> String {
         switch level.kind {
-        case .root: "Search commands, threads, projects and messages"
+        case .root: "Search"
         case .list(let list): list.placeholder
         case .input(let input): input.placeholder
         }

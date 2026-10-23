@@ -305,6 +305,8 @@ extension AppModel {
         let rays = rays(for: chat)
         if !rays.isEmpty { params["rays"] = .array(rays.map { .string("\($0.provider)/\($0.id)") }) }
         if let choice = choice(for: chat) { params["choose"] = choice }
+        // A title of its own, so the engine doesn't look for the session's.
+        if chat.titleIsCustom { params["titled"] = true }
         if let sessionId = chat.sessionId { params["sessionId"] = .string(sessionId) }
         if let model = modelSent(in: chat) { params["model"] = .string(model) }
         // Only a level the model has now, the way the picker shows it.
@@ -478,6 +480,18 @@ extension AppModel {
             if let delta = event.body["delta"]?.string { sideStreamed(delta, thread: id) }
             return
         }
+        if behindBurst[id] != nil {
+            behindBurst[id]?.append(event)
+            return
+        }
+        if event.name == "turn.done", let conversation = conversations[id], conversation.catchingUp {
+            behindBurst[id] = [event]
+            conversation.whenCaughtUp { [weak self] in
+                guard let self, let held = behindBurst.removeValue(forKey: id) else { return }
+                for event in held { route(event) }
+            }
+            return
+        }
         // The engine let an idle thread's CLI go; its transcript can go too unless it's open.
         if event.name == "released" {
             letGo(id)
@@ -489,6 +503,15 @@ extension AppModel {
             return
         }
         guard let chat = chat(withID: id) else { return }
+        // The few words the agent titled its session with take the first message's place, unless
+        // the thread was named by hand or by the thread that opened it.
+        if event.name == "title" {
+            guard !chat.titleIsCustom, let title = event.body["title"]?.string?.nonEmpty else { return }
+            chat.title = Chat.title(from: title)
+            chat.titleIsCustom = true
+            save()
+            return
+        }
         if event.name == "agent.lines" {
             transcribed(event.body, into: chat)
             return

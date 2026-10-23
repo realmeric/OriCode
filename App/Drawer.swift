@@ -13,6 +13,9 @@ struct Drawer: View {
     @Environment(AppModel.self) private var model
     @State private var footHover: Foot?
     @State private var addHovered = false
+    /// ⌘ held, which shows the first nine rows' shortcuts, and the watch on it.
+    @State private var command = false
+    @State private var commandWatch: Any?
     @Environment(\.openSettings) private var openSettings
 
     private enum Foot {
@@ -38,10 +41,13 @@ struct Drawer: View {
                 // What each row is told, read once here, so a row whose own values hold isn't
                 // made again when another thread is picked, peeked or hovered (K-318).
                 let open = model.chat?.id, beside = model.besideChatID, peeked = model.peekedChatID
+                // The header names the project new threads start in, so its rows don't repeat it.
+                let named = model.selectedProjectID
                 ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
                     DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
                               working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
-                              selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked)
+                              selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked,
+                              digit: command && index < 9, badged: chat.project?.id != named)
                         // Space, not a line, parts the pinned threads from the rest.
                         .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
                         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
@@ -66,6 +72,25 @@ struct Drawer: View {
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 34)
             .background(KeyLoop())
+            // The ⌘digits matter only while ⌘ is down, as Safari's tabs show theirs. A modifier
+            // changing is all this hears, so it costs nothing while nobody types.
+            .onAppear {
+                commandWatch = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+                    let down = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+                    MainActor.assumeIsolated {
+                        if down != command { command = down }
+                    }
+                    return event
+                }
+            }
+            .onDisappear {
+                if let commandWatch { NSEvent.removeMonitor(commandWatch) }
+                commandWatch = nil
+            }
+            // ⌘Tab lets ⌘ go in another app, which this never hears.
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                command = false
+            }
             HStack(spacing: 4) {
                 Button {
                     model.openNewThread()
@@ -211,6 +236,10 @@ private struct DrawerRow: View {
     let selected: Bool
     let beside: Bool
     let peeked: Bool
+    /// Its ⌘digit, shown while ⌘ is held.
+    let digit: Bool
+    /// Its project's badge, which a row of the header's project leaves out.
+    let badged: Bool
     @State private var hovered = false
     @State private var draft = ""
     @FocusState private var renameFocused: Bool
@@ -224,7 +253,9 @@ private struct DrawerRow: View {
         // list no drag to reorder with.
         HStack(spacing: 10) {
             if let project = chat.project {
+                // Its place kept, so every title starts at the same x.
                 ProjectBadge(project: project)
+                    .opacity(badged ? 1 : 0)
             }
             if model.renamingChatID == chat.id {
                 TextField("Title", text: $draft)
@@ -274,7 +305,7 @@ private struct DrawerRow: View {
                     .foregroundStyle(Ink.faint)
                     .help("Pinned")
             }
-            if index < 9 {
+            if digit {
                 Text("⌘\(index + 1)")
                     .font(Type.secondary)
                     .foregroundStyle(Ink.faint)

@@ -240,8 +240,12 @@ struct TranscriptView: View {
                 LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
                     .frame(height: Self.fadeLength)
                 Color.black
-                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 24)
+                // Taller while the way to the end is up, so no line reads behind it: the pill
+                // sits in the fade's clear foot.
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: pill ? 34 : 24)
+                Color.clear.frame(height: pill ? EndPill.height + 4 : 0)
             }
+            .animation(Motion.fade, value: pill)
         }
         // Over the transcript's foot and outside its fade, so the composer under it never moves.
         .overlay(alignment: .bottom) {
@@ -1032,10 +1036,9 @@ struct ToolLine: View {
                 if let path, let shown {
                     FileLink(path: path, label: shown, cwd: cwd)
                 }
+                // A call still out shows nothing more: the thread's mark says it works.
                 if call.isError {
                     Text(call.stopped ? "stopped" : "failed").foregroundStyle(Ink.faint)
-                } else if call.result == nil {
-                    ProgressView().controlSize(.mini).tint(Ink.secondary)
                 }
             }
             .font(Type.secondary)
@@ -1123,9 +1126,6 @@ struct ToolRunRow: View {
                         .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(open ? 90 : 0))
                         .animation(Motion.fade, value: open)
-                    if live {
-                        ProgressView().controlSize(.mini).tint(Ink.secondary)
-                    }
                 }
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
@@ -1188,8 +1188,6 @@ struct ThreadToolLine: View {
             .pointerStyle(other == nil ? nil : .link)
             if call.isError {
                 Text(call.stopped ? "stopped" : "failed").foregroundStyle(Ink.faint)
-            } else if call.result == nil {
-                ProgressView().controlSize(.mini).tint(Ink.secondary)
             }
         }
         .font(Type.secondary)

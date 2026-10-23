@@ -49,10 +49,12 @@ enum ToolSummary {
         guard let tool = call.oricodeTool else { return nil }
         let other = call.otherThread
         let title = other.title ?? other.id.flatMap(titles) ?? "a thread"
+        // A wait still open is said as it is, beside the line's result coming back.
+        let waits = call.result == nil && !call.isError ? "Waiting on" : "Waited on"
         return switch tool {
         case "open_thread": "Opened \(title)"
         case "message_thread": "Messaged \(title)"
-        case "wait_thread": "Waited on \(title)"
+        case "wait_thread": "\(waits) \(title)"
         case "read_thread": "Read \(title)"
         case "stop_thread": "Stopped \(title)"
         case "merge_thread": "Merged \(title)"
@@ -76,7 +78,7 @@ enum ToolSummary {
         case "read_oricode": "Read OriCode's settings"
         case "read_plan": "Read the plan"
         case "add_tasks": "Planned"
-        case "wait_plan": "Waited on the plan"
+        case "wait_plan": "\(waits) the plan"
         case "claim_task": "Took a task"
         case "update_task": "Updated a task"
         case "list_agents": "Listed agents"
@@ -125,6 +127,10 @@ enum ToolSummary {
         }
         if kinds.count > 1 { kinds.removeAll { $0 == .waited } }
         guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count).capitalizedFirst }
+        if kinds == [.waited], calls.contains(where: { RunKind($0) == .waited && $0.result == nil && !$0.isError }) {
+            let count = seen[.waited]?.count ?? 0
+            return "Waiting on \(count) \(count == 1 ? "thread" : "threads")"
+        }
         return kinds.map { $0.phrase(seen[$0]?.count ?? 0) }.joined(separator: ", ").capitalizedFirst
     }
 

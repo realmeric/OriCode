@@ -140,7 +140,15 @@ private struct AgentCard: View {
                         .toggleStyle(.switch)
                 }
             }
-            if on, agent.binary { cliRow }
+            // A CLI found on its own has nothing to say: where it is and its version are the
+            // agent's help, and Choose… its menu. One chosen here, or not found, keeps its row.
+            .help(on && agent.binary && !cliShown ? cliFound ?? "" : "")
+            .contextMenu {
+                if on, agent.binary, !cliShown {
+                    Button("Choose CLI…") { choose(from: entry?.cli) }
+                }
+            }
+            if on, agent.binary, cliShown { cliRow }
             if on, agent.key { keyRow }
             if on {
                 ForEach(agent.forbidden) { login in forbiddenRow(login) }
@@ -177,6 +185,14 @@ private struct AgentCard: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
+    }
+
+    private var cliShown: Bool {
+        model.agentSettings.path(agent.id) != nil || entry?.cli == nil
+    }
+
+    private var cliFound: String? {
+        entry?.cli.map { $0 + (entry?.version.map { " · \($0)" } ?? "") }
     }
 
     private var cliRow: some View {

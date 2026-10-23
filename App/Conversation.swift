@@ -404,6 +404,7 @@ final class StreamClock: NSObject {
             makers.removeFirst().resume.resume()
             fullAt = count + 1
         }
+        for conversation in waiting where !conversation.holds { conversation.caughtUp() }
         waiting.removeAll { !$0.holds }
         shown = shown.filter { count - $1 < 3 }
         guard waiting.isEmpty, makers.isEmpty else { return }
@@ -1191,6 +1192,25 @@ final class Conversation {
         opening = nil
         held = ""
         clock.forget(self)
+        caughtUp()
+    }
+
+    /// Whether the reply is still showing a burst at the steady rate, which the turn's end waits
+    /// for: shown with it, the rest of the burst would land in the footer's frame as one slab.
+    var catchingUp: Bool {
+        open?.kind == "text" && held.utf8.count > Self.steady && drawn()
+    }
+
+    @ObservationIgnored private var afterCatchingUp: (() -> Void)?
+
+    func whenCaughtUp(_ next: @escaping () -> Void) {
+        afterCatchingUp = next
+    }
+
+    fileprivate func caughtUp() {
+        guard let next = afterCatchingUp else { return }
+        afterCatchingUp = nil
+        next()
     }
 
     /// The reply's row, made with the deltas that waited for it: with its first block alone
@@ -1230,11 +1250,11 @@ final class Conversation {
         let current = stored[open.item]
         let before = current.text ?? ""
         // A burst, many lines come at once from the agent, is shown over the next frames at a
-        // steady rate rather than in one jump: a sixth of what waits a frame, word by word.
+        // steady rate rather than in one jump: a twelfth of what waits a frame, word by word.
         var shown = held
         var later = ""
         if allowed != nil, open.kind == "text", drawn(), held.utf8.count > Self.steady {
-            let cap = max(Self.steady, held.count / 6)
+            let cap = max(Self.steady, held.count / 12)
             if cap < held.count {
                 var cut = held.index(held.startIndex, offsetBy: cap)
                 if let space = held[..<cut].lastIndex(where: \.isWhitespace) { cut = held.index(after: space) }
@@ -1534,8 +1554,9 @@ final class Conversation {
                                  resetsAt: resetsAt, window: body["window"]?.string))
         case "thread.act":
             // Opening, messaging and stopping another thread are this thread's own calls, which
-            // its run of calls names; one stored before then isn't drawn twice.
-            guard let act = ThreadAct(body), !(act.by && [.opened, .messaged, .stopped].contains(act.act)) else { break }
+            // its run of calls names; one stored before then isn't drawn twice. Who opened this
+            // one is ⌘⇧I's to show, and the opener's call line's.
+            guard let act = ThreadAct(body), !(act.by && [.opened, .messaged, .stopped].contains(act.act)), !(act.act == .opened && !act.by) else { break }
             items.append(.act(id: id, thread: act.thread, text: act.words, hover: act.hover))
         case "thread.overlap":
             guard let same = SameFile(body) else { break }

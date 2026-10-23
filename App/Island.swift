@@ -84,6 +84,10 @@ struct Island: View {
             }
             .padding(.top, Self.top)
             .frame(width: area.size.width)
+            // A drawer called over a narrow window would cut the capsule in half, so the capsule
+            // steps out of its way while it's out.
+            .opacity(shown == .capsule && underDrawer ? 0 : 1)
+            .animation(Motion.fade, value: shown == .capsule && underDrawer)
         }
         // A surface folding back leaves the keyboard with nobody; the composer, or an open
         // block, takes it back once the surface has gone.
@@ -91,6 +95,10 @@ struct Island: View {
             guard folded else { return }
             model.returnKeyboardSoon()
         }
+    }
+
+    private var underDrawer: Bool {
+        model.drawerShown && !model.drawerDocked && model.capsuleFrame.minX < Drawer.width + Drawer.inset * 2 + 8
     }
 
     private var shown: Piece {
@@ -168,16 +176,17 @@ struct Island: View {
         return max(0, bottom - Self.top)
     }
 
-    /// What a piece shows comes in with the glass as it grows, and goes before the glass does.
+    /// What a piece shows comes in with the glass as it grows, and fades as the glass folds,
+    /// so the glass never has a frame of its own with nothing in it.
     private var arrival: AnyTransition {
         reduceMotion
             ? .opacity.animation(Motion.fade)
-            : .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)), removal: .opacity.animation(.easeOut(duration: 0.06)))
+            : .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)), removal: .opacity.animation(.easeOut(duration: 0.18)))
     }
 
     /// The capsule's words go at once as a surface grows out of it, and come back once what
     /// folded into it has gone, so they're never drawn over a surface's own.
-    private static let folded = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.14).delay(0.1)), removal: .identity)
+    private static let folded = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12).delay(0.12)), removal: .identity)
 
     /// The capsule's tint, and a surface's material under it; a capsule 24pt tall draws the
     /// surface's corners as its round ends. While the keyboard crosses, the capsule's tint is the

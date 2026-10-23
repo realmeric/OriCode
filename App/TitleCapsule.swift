@@ -14,9 +14,9 @@ struct TitleCapsule: View {
     let glass: Bool
 
     static let height: CGFloat = 24
-    /// Words that change in the capsule: the old gone at once, and the new in once the capsule
-    /// has taken its new width, so neither is drawn over the other or past the capsule's ends.
-    static let swap = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.14).delay(0.12)), removal: .identity)
+    /// Words that change in the capsule: the old fade quickly and the new come in just behind
+    /// them, so the capsule is never an empty pill and the two are never both at full ink.
+    static let swap = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12).delay(0.04)), removal: .opacity.animation(.easeOut(duration: 0.08)))
     /// The thread's mark, the size the drawer's rows draw it.
     static let mark: CGFloat = 14
 

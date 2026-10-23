@@ -88,6 +88,10 @@ struct ToolKindTests {
         #expect(words(tool("list_threads", [:])) == "Listed threads")
         #expect(ToolSummary.run([opened] + waits + [message]) == "Opened 1 thread, messaged 1 thread")
         #expect(ToolSummary.run(waits) == "Waited on 1 thread")
+        // A wait still open says so.
+        let waiting = tool("wait_thread", ["thread": .string(a.uuidString)], result: nil)
+        #expect(words(waiting) == "Waiting on Count A")
+        #expect(ToolSummary.run([waits[0], waiting]) == "Waiting on 1 thread")
         let refused = ToolCall(toolUseId: "r", name: "mcp__oricode__open_thread", input: ["title": "Count C"], result: "Too many", isError: true)
         #expect(ToolSummary.run([refused, opened]) == "Opened 1 thread")
         #expect(ToolSummary.run([refused]) == "Used 1 tool")

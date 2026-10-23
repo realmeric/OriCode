@@ -31,6 +31,8 @@ export type SendParams = {
   /// The app's id for the message. The CLI reports on a message by it: when a message sent
   /// during a turn is taken up, or cancelled before it was.
   id?: string;
+  /// The thread has a title of its own, so the session's isn't looked for.
+  titled?: boolean;
   /// The URL of OriCode's own tools for the thread, its MCP server: a head's worker tools when
   /// it has rays, and the tools for the user's threads that every thread on such an agent has.
   tools?: string;

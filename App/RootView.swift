@@ -37,6 +37,7 @@ struct RootView: View {
                 // composer's left end draws back out from under it while it's out. Its right end,
                 // with the picker and Send, doesn't move, and nor does a composer in the right half.
                 let covered = model.reviewShown || model.openFile != nil || model.openShell != nil
+                    || model.commandCenterShown || model.overviewShown || model.headsShown || model.fileFinderShown
                 let clear = model.drawerShown && !model.drawerDocked
                     ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
                 VStack(spacing: 0) {
@@ -74,8 +75,8 @@ struct RootView: View {
                                 .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                             }
                         }
-                        // The review, a file or a full terminal over the conversation has the glass
-                        // to itself, with no line cut short at either side of it.
+                        // The review, a file, a full terminal, ⌘K, ⌘I, ⌘⇧I or ⌘P over the
+                        // conversation has the glass to itself, with no line cut short beside it.
                         // Out before what covers it has grown, and back once it has folded away.
                         .opacity(covered ? 0 : 1)
                         .animation(covered ? .easeOut(duration: 0.1) : Motion.fade.delay(0.16), value: covered)
@@ -388,8 +389,8 @@ struct RootView: View {
     /// instead of under it.
     private static let rise = AnyTransition.opacity.combined(with: .offset(y: 24)).animation(Motion.glide.delay(0.22))
     /// A transcript taking another's place in its half, or coming beside one with its composer,
-    /// fades in once whatever was there has gone.
-    private static let swap = AnyTransition.opacity.animation(Motion.fade.delay(0.1))
+    /// fades in as the one there fades out, so the window never has a frame with neither.
+    private static let swap = AnyTransition.opacity.animation(.easeOut(duration: 0.14))
     /// A transcript leaving fades before anything moves in: the composer waits for it.
     private static let leave = AnyTransition.opacity.animation(.easeOut(duration: 0.1))
     /// The mark lifts away as the first message sends the composer down, and settles back from

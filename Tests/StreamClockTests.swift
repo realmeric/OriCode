@@ -236,4 +236,59 @@ struct StreamClockTests {
         for _ in 0..<40 { clock.tick() }
         #expect(text(of: open) == "Start." + burst)
     }
+
+    /// Claude Code's stream as it comes: a delta every 20 ms, the result straight after the last.
+    /// Each frame shows what has come, and the turn's end has nothing left to add.
+    @Test func deltasTwentyMillisecondsApartShowAsTheyCome() {
+        beside.everyOtherFrame = { false }
+        let words = (0..<60).map { " word\($0)" }
+        var events: [(at: Double, delta: String?)] = words.enumerated().map { (Double($0.offset) * 20, $0.element) }
+        events += (1...80).map { (Double($0) * 1000 / 60, nil) }
+        var sent = ""
+        for event in events.sorted(by: { $0.at < $1.at }) where event.at <= 1180 {
+            if let text = event.delta {
+                delta(text, in: open)
+                sent += text
+            } else {
+                clock.tick()
+                #expect(text(of: open) == sent)
+            }
+        }
+        #expect(sent == words.joined())
+        let before = text(of: open) ?? ""
+        open.receive(EngineEvent(name: "turn.done", threadId: open.chat.id.uuidString, body: ["event": "turn.done", "stopReason": "end_turn"]))
+        #expect(open.items.compactMap(\.text).last == sent)
+        // At most the last delta joined the reply in the footer's frame.
+        #expect(sent.count - before.count <= words.last!.count)
+    }
+
+    /// A burst the agent held and sent at once, with its turn's end right behind it: the footer
+    /// waits until the burst has been shown at the steady rate.
+    @Test func aTurnsEndWaitsForTheBurstBeforeIt() throws {
+        let container = try TestStore.memory()
+        let project = Project(name: "alpha", path: NSTemporaryDirectory())
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        let chat = Chat(project: project)
+        container.mainContext.insert(chat)
+        try container.mainContext.save()
+        model.selectedProjectID = project.id
+        model.selectedChatID = chat.id
+        let conversation = model.conversation(for: chat)
+        conversation.clock = clock
+        conversation.userSent("Go")
+        let id = chat.id.uuidString
+        model.route(EngineEvent(name: "turn.started", threadId: id, body: ["event": "turn.started", "sessionId": "s"]))
+        model.route(EngineEvent(name: "text", threadId: id, body: ["event": "text", "delta": "Start."]))
+        let burst = String(repeating: " word", count: 200)
+        model.route(EngineEvent(name: "text", threadId: id, body: ["event": "text", "delta": .string(burst)]))
+        model.route(EngineEvent(name: "turn.done", threadId: id, body: ["event": "turn.done", "sessionId": "s", "stopReason": "end_turn"]))
+        clock.tick()
+        #expect(conversation.running)
+        #expect((conversation.items.last?.text?.count ?? 0) < 6 + burst.count)
+        for _ in 0..<60 { clock.tick() }
+        #expect(!conversation.running)
+        #expect(conversation.items.compactMap(\.text).last == "Start." + burst)
+        #expect(model.behindBurst.isEmpty)
+    }
 }

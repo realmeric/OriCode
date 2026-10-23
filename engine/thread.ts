@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import {
+  getSessionInfo,
   query,
   type EffortLevel,
   type FastModeDisabledReason,
@@ -97,6 +98,8 @@ export class Thread implements Session {
   /// Whether the session had no turn before the one running, so nothing older in it can be what
   /// broke it. Said as `held` on a spent turn; what the app sends again it judges by the thread.
   private fresh = true;
+  /// Whether the thread has a title of its own, the app's or one told from the session already.
+  private titled = false;
   /// The send in flight while the CLI resumes a session, so it can go again fresh if that session is gone.
   private resuming: SendParams | undefined;
   private streamed = new Set<string>();
@@ -199,6 +202,7 @@ export class Thread implements Session {
   /// it as a turn of its own right after when the turn has no step left. The model, level, mode
   /// and speed sent with it hold from the next send, as they would between turns.
   async send(params: SendParams): Promise<boolean> {
+    if (params.titled) this.titled = true;
     if (this.starting) await this.starting;
     if ((this.running || this.waiting.size > 0) && this.query) {
       if (!params.id) throw new Error("A turn is already running in this thread.");
@@ -491,6 +495,22 @@ export class Thread implements Session {
     });
     this.pump(this.query);
     void this.tellEffort(this.query);
+  }
+
+  /// The few words Claude Code titles a session with, which it writes beside the transcript
+  /// once the first turn has been read: the thread takes them in place of its first message.
+  /// Looked for at a turn's end and once more a little later, since the CLI may write them after
+  /// the result, and never again once found.
+  private async tellTitle(sessionId: string, cwd: string, again = true): Promise<void> {
+    const info = await getSessionInfo(sessionId, { dir: cwd }).catch(() => undefined);
+    const title = info?.customTitle?.trim() || (info && info.summary !== info.firstPrompt ? info.summary.trim() : "");
+    if (this.titled) return;
+    if (!title) {
+      if (again) setTimeout(() => void this.tellTitle(sessionId, cwd, false), 5_000).unref();
+      return;
+    }
+    this.titled = true;
+    event("title", { threadId: this.id, title });
   }
 
   /// Whether fast mode is on for the thread, or why it can't be, when that changes.
@@ -978,6 +998,7 @@ export class Thread implements Session {
         // Said for this turn. A Stop from here on is for the turn a waiting message starts, and
         // so is one still on its way, which the CLI may get once it has started that turn.
         this.interrupted = this.stopping;
+        if (!this.titled && message.subtype === "success") void this.tellTitle(message.session_id, this.heads.cwd);
         if (spent) {
           // The CLI goes with the session, so nothing more is sent there, and the next send starts
           // a new session, as one that's gone does.

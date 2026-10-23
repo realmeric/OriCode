@@ -340,8 +340,8 @@ extension Conversation {
         case .text:
             return Head.Step(tool: "Writing", detail: nil)
         case .tool(_, let call) where call.result == nil && call.oricodeTool == "wait_thread":
-            // Waiting on a thread it set going: that thread's name, or nothing.
-            return Head.Step(tool: call.otherThread.id.flatMap(titles) ?? "", detail: nil)
+            // Waiting on a thread it set going, by that thread's name, or nothing.
+            return Head.Step(tool: call.otherThread.id.flatMap(titles).map { "Waiting on \($0)" } ?? "", detail: nil)
         case .tool(_, let call) where call.result == nil && call.oricodeTool != nil:
             return Head.Step(tool: ToolSummary.line(for: call, cwd: cwd, titles: titles), detail: nil)
         case .tool(_, let call) where call.result == nil:

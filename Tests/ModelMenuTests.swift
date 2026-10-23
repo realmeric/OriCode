@@ -54,9 +54,9 @@ struct ModelMenuTests {
         #expect(ModelMenu.says(in: ModelMenu.levelFrom - 1) == .name)
         #expect(ModelMenu.says(in: ModelMenu.nameFrom) == .name)
         #expect(ModelMenu.says(in: ModelMenu.nameFrom - 1) == .mark)
-        // Under a drawer, and in the narrowest half of a pair.
-        #expect(ModelMenu.says(in: RootView.drawnBack) == .mark)
-        #expect(ModelMenu.says(in: Column.least - Column.margin * 2) == .mark)
+        // Under a drawer, and in the narrowest half of a pair, the name stays.
+        #expect(ModelMenu.says(in: RootView.drawnBack) == .name)
+        #expect(ModelMenu.says(in: Column.least - Column.margin * 2) == .name)
         // Each half at 1180pt keeps all of it. One thread is never asked: its composer says all
         // at any width, a pinned drawer's included.
         #expect(ModelMenu.says(in: 1180 / 2 - Column.margin * 2) == .all)

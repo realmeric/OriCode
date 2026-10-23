@@ -196,11 +196,11 @@ struct ModelMenu: View {
         case all
     }
 
-    /// A paired composer's widths under which the level's word goes, and the name with it. Measured
-    /// with the widest button Claude Code's list makes, three rays, the bolt, the workflows glyph
-    /// and Extra high beside its longest names: the field is 150pt or wider while a word shows.
+    /// A paired composer's widths under which the level's word goes, and the name with it. Since
+    /// the button lost its rays and the workflows glyph (K-319), the name and the bolt fit down to
+    /// the 388pt a composer drawn back under the drawer is, so only a narrower one is a mark alone.
     nonisolated static let levelFrom: CGFloat = 540
-    nonisolated static let nameFrom: CGFloat = 470
+    nonisolated static let nameFrom: CGFloat = 388
 
     nonisolated static func says(in composer: CGFloat) -> Says {
         composer < nameFrom ? .mark : composer < levelFrom ? .name : .all
