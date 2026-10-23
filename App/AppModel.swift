@@ -390,7 +390,7 @@ final class AppModel {
 
     /// The project the drawer's header names: picked there, in ⌘K or by adding one, and not
     /// moved by opening another project's thread, so the drawer keeps its shape. Its New thread
-    /// starts there, and its rows leave their badge out.
+    /// starts there.
     var drawerProjectID: UUID? = UserDefaults.standard.string(forKey: "drawerProject").flatMap(UUID.init) {
         didSet { UserDefaults.standard.set(drawerProjectID?.uuidString, forKey: "drawerProject") }
     }

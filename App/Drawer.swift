@@ -41,13 +41,11 @@ struct Drawer: View {
                 // What each row is told, read once here, so a row whose own values hold isn't
                 // made again when another thread is picked, peeked or hovered (K-318).
                 let open = model.chat?.id, beside = model.besideChatID, peeked = model.peekedChatID
-                // The header names the project new threads start in, so its rows don't repeat it.
-                let named = model.drawerProject?.id
                 ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
                     DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
                               working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
                               selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked,
-                              digit: command && index < 9, badged: chat.project?.id != named)
+                              digit: command && index < 9)
                         // Space, not a line, parts the pinned threads from the rest.
                         .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -242,8 +240,6 @@ private struct DrawerRow: View {
     let peeked: Bool
     /// Its ⌘digit, shown while ⌘ is held.
     let digit: Bool
-    /// Its project's badge, which a row of the header's project leaves out.
-    let badged: Bool
     @State private var hovered = false
     @State private var draft = ""
     @FocusState private var renameFocused: Bool
@@ -256,10 +252,9 @@ private struct DrawerRow: View {
         // A row of the list's own rather than a button, which would keep the mouse and leave the
         // list no drag to reorder with.
         HStack(spacing: 10) {
+            // On every row, the header's project's too, so every title starts at the same x.
             if let project = chat.project {
-                // Its place kept, so every title starts at the same x.
                 ProjectBadge(project: project)
-                    .opacity(badged ? 1 : 0)
             }
             if model.renamingChatID == chat.id {
                 TextField("Title", text: $draft)
