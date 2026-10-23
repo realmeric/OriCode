@@ -20,6 +20,13 @@ enum PerfBench {
 
     static func startIfAsked() {
         if env["PERF_LAUNCH"] != nil { watchLaunch() }
+        if env["PERF_HAND"] != nil {
+            Self.label = env["PERF_HAND"] ?? "hand"
+            Task { @MainActor in
+                do { try await hand() } catch { log("hand failed: \(error)") }
+                exit(0)
+            }
+        }
         if let after = env["PERF_HIDE"].flatMap(Double.init) {
             DispatchQueue.main.asyncAfter(deadline: .now() + after) { NSApp.hide(nil) }
         }
@@ -1212,6 +1219,20 @@ enum PerfBench {
             if n == 0 { long = chat }
             if n == 1 { second = chat }
         }
+        // PERF_THREADS: more threads, short ones forty to a project, one in four opened by the one
+        // before it, as a lead opens its threads.
+        let more = (Int(env["PERF_THREADS"] ?? "") ?? 12) - 12
+        var opener: Chat?
+        var home = project
+        for n in 0..<max(0, more) {
+            if n % 40 == 0 {
+                home = Project(name: "project \(n / 40)", path: folder)
+                context.insert(home)
+            }
+            let chat = try seed(context, home, title: "Thread \(n + 12) about the review's git read", turns: 3, ask: false)
+            if n % 4 == 1, let opener { chat.openedBy = opener.id }
+            opener = chat
+        }
         try context.save()
         model.touch()
         model.selectedProjectID = project.id
@@ -1219,7 +1240,141 @@ enum PerfBench {
         if pair, let second { beside(model, second.id) }
         try await settle(2500)
         model.save()
-        log("seed: 12 threads, the long one open, pair \(pair): \(kept())")
+        log("seed: \(max(12, more + 12)) threads, the long one open, pair \(pair): \(kept())")
+    }
+
+    // MARK: By hand
+
+    /// K-318: what the stages don't drive, in the app's own window, on its own store, with its
+    /// engine up and its menus listening: the drawer in and out, ⌘1–4, a click in the drawer,
+    /// ⌘K and ⌘⇧I, the long thread scrolled and a reply streamed into it. Keys go to the app as
+    /// typing sends them, so the main menu finds them. Each step logs what the main thread spent
+    /// inside the act and over the frames after it.
+    static func hand() async throws {
+        try await settle(1500)
+        guard let model = appModel, let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true && $0.isVisible }),
+              let content = window.contentView
+        else { return log("hand: no main window") }
+        await front(window)
+        try await settle(Int(env["PERF_WARM"] ?? "") ?? 5000)
+        log("hand: \(model.chats.count) threads listed, \(model.projects.flatMap(\.chats).count) in the store, engine \(model.engineState)")
+        func key(_ characters: String, _ flags: NSEvent.ModifierFlags = .command, code: UInt16 = 0) {
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                   windowNumber: window.windowNumber, context: nil, characters: characters,
+                                                   charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code) else { continue }
+                NSApp.sendEvent(event)
+            }
+        }
+        var rows: [String: [Summary]] = [:]
+        var insides: [String: [Double]] = [:]
+        func step(_ what: String, _ ms: Int = 700, _ act: () -> Void) async throws {
+            let frames = Frames(content)
+            let before = cpu()
+            act()
+            let inside = cpu() - before
+            try await settle(ms)
+            let summary = frames.stop()
+            rows[what, default: []].append(summary)
+            insides[what, default: []].append(inside)
+            log(String(format: "HAND %@: %.1f ms inside, %.1f ms main in %d ms; %@; long frames %@", what, inside, cpu() - before, ms, summary.text, summary.long))
+        }
+        if model.threadsOut { key("b"); try await settle(800) }
+        for _ in 0..<4 {
+            try await step("drawer in") { key("b") }
+            try await step("drawer out") { key("b") }
+        }
+        for _ in 0..<3 {
+            for n in 1...4 { try await step("command-\(n)", 1100) { key("\(n)", code: [18, 19, 20, 21][n - 1]) } }
+        }
+        key("b")
+        try await settle(800)
+        for _ in 0..<3 {
+            for chat in model.chats.prefix(4) { try await step("drawer click", 900) { model.pickByClick(chat) } }
+        }
+        key("b")
+        try await settle(800)
+        for _ in 0..<4 {
+            try await step("command-k open") { key("k", code: 40) }
+            try await step("command-k close") { key("\u{1b}", [], code: 53) }
+        }
+        // A posted ⌘⇧I doesn't reach its menu item, so the item's action is called as the key's would be.
+        for _ in 0..<4 {
+            try await step("command-shift-i open") { model.toggleOverview() }
+            try await step("command-shift-i close") { model.toggleOverview() }
+        }
+        if let long = model.projects.flatMap(\.chats).first(where: { $0.title == "Long" }) { model.select(long) }
+        try await settle(2500)
+        if let view = scrolls(in: content).filter({ $0.frame.height > 300 }).first {
+            for round in 1...2 {
+                try await wheel(content, view, 20, ticks: 180, "HAND scroll, round \(round), wheel 20pt a frame up for 3 s")
+                try await wheel(content, view, 90, ticks: 120, "HAND scroll, round \(round), wheel 90pt a frame up for 2 s")
+                try await wheel(content, view, -700, ticks: 90, decay: 0.95, "HAND scroll, round \(round), flick down")
+                try await wheel(content, view, 700, ticks: 90, decay: 0.95, "HAND scroll, round \(round), flick up")
+                try await wheel(content, view, -2000, ticks: 40, "HAND scroll, round \(round), back to the end")
+            }
+        } else {
+            log("hand: no transcript to scroll")
+        }
+        if let chat = model.chat {
+            let id = chat.id.uuidString
+            func send(_ name: String, _ body: [String: JSON]) {
+                var body = body
+                body["event"] = .string(name)
+                model.route(EngineEvent(name: name, threadId: id, body: .object(body)))
+            }
+            for round in 1...2 {
+                send("turn.started", [:])
+                try await settle(200)
+                let frames = Frames(content)
+                let start = cpu()
+                let chars = Array(message(6000))
+                let first = ContinuousClock.now
+                var beat = 0, i = 0
+                while i < chars.count {
+                    send("text", ["delta": .string(String(chars[i..<min(i + 40, chars.count)]))])
+                    beat += 1
+                    try await Task.sleep(until: first + .milliseconds(10 * beat), tolerance: .zero)
+                    i += 40
+                }
+                let streamed = frames.stop()
+                log(String(format: "HAND stream, round %d, 6000 chars in %d beats every 10ms: %.2f ms a beat; %@; long frames %@", round, beat, (cpu() - start) / Double(beat), streamed.text, streamed.long))
+                try await step("stream end", 1000) { send("turn.done", ["durationMs": 1000, "costUSD": 0, "stopReason": "end_turn"]) }
+            }
+        }
+        for (what, summaries) in rows.sorted(by: { $0.key < $1.key }) {
+            let worst = summaries.map(\.worst).sorted()
+            let inside = (insides[what] ?? []).sorted()
+            log(String(format: "HANDSUM %@: %d times, inside median %.1f ms (worst %.1f), worst frame median %.1f (worst %.1f), frames over 16.7ms %d, dropped %d",
+                       what, summaries.count, inside[inside.count / 2], inside.last ?? 0, worst[worst.count / 2], worst.last ?? 0,
+                       summaries.map { $0.cpu.count { $0 > 16.7 } }.reduce(0, +), summaries.map(\.dropped).reduce(0, +)))
+        }
+    }
+
+    static func scrolls(in view: NSView) -> [NSScrollView] {
+        var found: [NSScrollView] = []
+        func walk(_ view: NSView) {
+            if let scroll = view as? NSScrollView, scroll.frame.width > 300, scroll.frame.height > 200 { found.append(scroll) }
+            view.subviews.forEach(walk)
+        }
+        walk(view)
+        return found
+    }
+
+    static func wheel(_ content: NSView, _ view: NSScrollView, _ step: Double, ticks: Int, decay: Double = 1, _ what: String) async throws {
+        var speed = step
+        let frames = Frames(content)
+        let done = Ticker(content, ticks: ticks) {
+            guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(speed), wheel2: 0, wheel3: 0),
+                  let ns = NSEvent(cgEvent: event)
+            else { return }
+            view.scrollWheel(with: ns)
+            speed *= decay
+        }
+        try await done.wait()
+        let summary = frames.stop()
+        try await settle(300)
+        log("\(what): y \(Int(view.contentView.bounds.origin.y)) of \(Int(view.documentView?.frame.height ?? 0)); \(summary.text)")
     }
 
     // MARK: Launch

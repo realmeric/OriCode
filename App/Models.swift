@@ -261,14 +261,21 @@ enum Store {
 
 extension Chat {
     /// The drawer's order: pinned threads first, as they were put, then the rest, a thread never
-    /// placed on top and newest first, the others as they were dragged.
-    static func drawerOrder(_ a: Chat, _ b: Chat) -> Bool {
-        if a.pinned != b.pinned { return a.pinned }
-        switch (a.position, b.position) {
-        case let (x?, y?) where x != y: return x < y
-        case (nil, _?): return true
-        case (_?, nil): return false
-        default: return a.createdAt > b.createdAt
-        }
+    /// placed on top and newest first, the others as they were dragged. Each thread's three
+    /// values are read once: a stored value read through SwiftData costs a microsecond or more,
+    /// and comparing as the sort goes read six of them every step, 15 ms for 300 threads, which
+    /// the Thread menu and the drawer paid five times over at every change they watch (K-318).
+    static func inDrawerOrder(_ chats: [Chat]) -> [Chat] {
+        chats.map { (chat: $0, pinned: $0.pinned, position: $0.position, createdAt: $0.createdAt) }
+            .sorted { a, b in
+                if a.pinned != b.pinned { return a.pinned }
+                switch (a.position, b.position) {
+                case let (x?, y?) where x != y: return x < y
+                case (nil, _?): return true
+                case (_?, nil): return false
+                default: return a.createdAt > b.createdAt
+                }
+            }
+            .map(\.chat)
     }
 }

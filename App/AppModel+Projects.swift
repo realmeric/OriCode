@@ -25,7 +25,7 @@ extension AppModel {
     /// the lines in transcripts reach those. Under the drawer's filter, when it has one.
     var chats: [Chat] {
         // The archived ones, when they're what's asked for, the latest worked on first.
-        drawerFilter == .archived ? listedChats : listedChats.sorted(by: Chat.drawerOrder)
+        drawerFilter == .archived ? listedChats : Chat.inDrawerOrder(listedChats)
     }
 
     /// Every thread under this one, at any depth, whatever the drawer's filter.
@@ -44,8 +44,12 @@ extension AppModel {
     /// Each started thread not archived, by the top thread it sits under: itself when no such
     /// thread opened it, else its opener's top.
     var topThreads: [UUID: UUID] {
-        let openers = Dictionary(projects.flatMap(\.chats).filter { $0.started && !$0.archived }.map { ($0.id, $0.openedBy) },
-                                 uniquingKeysWith: { first, _ in first })
+        Self.tops(of: projects.flatMap(\.chats).filter { $0.started && !$0.archived })
+    }
+
+    /// `topThreads` of threads already gathered, which the drawer's list has in hand.
+    private static func tops(of threads: [Chat]) -> [UUID: UUID] {
+        let openers = Dictionary(threads.map { ($0.id, $0.openedBy) }, uniquingKeysWith: { first, _ in first })
         var tops: [UUID: UUID] = [:]
         for id in openers.keys {
             var top = id
@@ -63,7 +67,7 @@ extension AppModel {
         // A thread archived with the one that opened it comes back with it, so it has no row.
         guard drawerFilter != .archived else { return archivedChats.filter { $0.archivedWith == nil } }
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
-        let tops = topThreads
+        let tops = Self.tops(of: all)
         let top = all.filter { tops[$0.id] == $0.id }
         switch drawerFilter {
         case .project(let id): return top.filter { $0.project?.id == id }

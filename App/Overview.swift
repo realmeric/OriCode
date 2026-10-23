@@ -287,7 +287,7 @@ extension AppModel {
             let under = (opened[chat.id] ?? []).sorted { $0.createdAt < $1.createdAt }
             return [OverviewRow(chat: chat, depth: depth)] + under.flatMap { rows($0, depth: depth + 1) }
         }
-        let tops = listed.filter { $0.openedBy.map { byID[$0] == nil } ?? true }.sorted(by: Chat.drawerOrder)
+        let tops = Chat.inDrawerOrder(listed.filter { $0.openedBy.map { byID[$0] == nil } ?? true })
         return projects.compactMap { project in
             let mine = tops.filter { $0.project?.id == project.id }
             // As a thread is shown while it works or has worked since OriCode opened.

@@ -11,11 +11,8 @@ struct Drawer: View {
     static let titleRow: CGFloat = TitleBar.height - inset * 2
 
     @Environment(AppModel.self) private var model
-    @State private var hovered: UUID?
-    @State private var draft = ""
     @State private var footHover: Foot?
     @State private var addHovered = false
-    @FocusState private var renameFocused: Bool
     @Environment(\.openSettings) private var openSettings
 
     private enum Foot {
@@ -38,8 +35,13 @@ struct Drawer: View {
                 let chats = model.chats
                 let pinned = chats.filter(\.pinned).count
                 let under = workUnder()
+                // What each row is told, read once here, so a row whose own values hold isn't
+                // made again when another thread is picked, peeked or hovered (K-318).
+                let open = model.chat?.id, beside = model.besideChatID, peeked = model.peekedChatID
                 ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
-                    row(chat, index: index, working: under.working.contains(chat.id), asks: under.asking.contains(chat.id))
+                    DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
+                              working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
+                              selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked)
                         // Space, not a line, parts the pinned threads from the rest.
                         .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
                         .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6))
@@ -63,7 +65,7 @@ struct Drawer: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 34)
-            .background(KeyLoopGate(open: model.drawerShown))
+            .background(KeyLoop())
             HStack(spacing: 4) {
                 Button {
                     model.openNewThread()
@@ -193,20 +195,34 @@ struct Drawer: View {
         let working = model.projects.flatMap(\.chats).filter { model.conversations[$0.id]?.working == true || $0.agentWorking }
         return (Set(working.compactMap { tops[$0.id] }), Set(model.asksByThread.keys.compactMap { tops[$0] }))
     }
+}
 
-    /// `working` and `asks` say whether the thread or one under it works, and whether an ask waits
-    /// in it or under it, which pulses its mark.
-    private func row(_ chat: Chat, index: Int, working: Bool, asks: Bool) -> some View {
-        let selected = chat.id == model.chat?.id
-        let beside = chat.id == model.besideChatID
-        let peeked = chat.id == model.peekedChatID
+/// One thread's row. Told what it needs by the drawer, and holding its own hover and rename, so
+/// a change to one thread makes its row again and not every row in the list.
+private struct DrawerRow: View {
+    @Environment(AppModel.self) private var model
+    let chat: Chat
+    let index: Int
+    /// Its own conversation, while it works.
+    let conversation: Conversation?
+    /// Whether the thread or one under it works, and whether an ask waits in it or under it, which pulses its mark.
+    let working: Bool
+    let asks: Bool
+    let selected: Bool
+    let beside: Bool
+    let peeked: Bool
+    @State private var hovered = false
+    @State private var draft = ""
+    @FocusState private var renameFocused: Bool
+
+    var body: some View {
         let missing = !FileManager.default.fileExists(atPath: chat.cwd)
         // What the row doesn't draw: a gone folder, what an agent returned or how it ended, and
         // what the thread has spent.
         let help = [missing ? "Folder missing" : nil, chat.agentLine, chat.costUSD > 0 ? String(format: "$%.2f so far", chat.costUSD) : nil]
         // A row of the list's own rather than a button, which would keep the mouse and leave the
         // list no drag to reorder with.
-        return HStack(spacing: 10) {
+        HStack(spacing: 10) {
             if let project = chat.project {
                 ProjectBadge(project: project)
             }
@@ -240,7 +256,7 @@ struct Drawer: View {
             Spacer(minLength: 4)
             // Only while the thread or one under it works or waits, so an idle row gives its
             // title the room.
-            if let conversation = model.conversations[chat.id], conversation.working {
+            if let conversation {
                 // Still while the drawer is away: hidden, it stays in the tree, and a turning
                 // mark would redraw for nobody.
                 ThreadMark(conversation: conversation, moving: model.drawerShown, waiting: asks)
@@ -267,7 +283,7 @@ struct Drawer: View {
         .padding(.horizontal, 10)
         .frame(height: 34)
         .background(
-            selected || peeked ? Surface.selected : beside || hovered == chat.id ? Surface.hover : .clear,
+            selected || peeked ? Surface.selected : beside || hovered ? Surface.hover : .clear,
             in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .offset(x: peeked ? 6 : 0)
@@ -278,7 +294,7 @@ struct Drawer: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { model.select(chat) }
         .help(help.compactMap(\.self).joined(separator: "\n"))
-        .onHover { inside in hovered = inside ? chat.id : (hovered == chat.id ? nil : hovered) }
+        .onHover { hovered = $0 }
         .contextMenu {
             if chat.archived {
                 Button("Restore") { withAnimation(Motion.move) { model.restore(chat) } }
@@ -295,6 +311,16 @@ struct Drawer: View {
             }
             Button("Delete…") { model.askToDelete(chat) }
         }
+    }
+}
+
+/// Reads whether the drawer is out in a body of its own: read in the drawer's, it made every row
+/// again each time the drawer came or went (K-318).
+private struct KeyLoop: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        KeyLoopGate(open: model.drawerShown)
     }
 }
 
