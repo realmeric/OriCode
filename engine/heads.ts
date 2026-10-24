@@ -49,6 +49,9 @@ export class Heads {
   private watched = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private told = "";
+  /// Where a background command's output goes, by its call, when its result came before the CLI
+  /// listed its task: the command's head takes it as it comes.
+  private outputs = new Map<string, string>();
   /// The thread's folder, which a step's path is given from.
   cwd = "";
 
@@ -138,9 +141,13 @@ export class Heads {
   /// with where its output goes, which is all a command's head needs to show its last line.
   result(toolUseId: string, text: string): void {
     const head = this.started(toolUseId);
-    if (head?.kind !== "command" || head.output) return;
+    if (head && (head.kind !== "command" || head.output)) return;
     const output = outputFile(text);
     if (!output) return;
+    if (!head) {
+      this.outputs.set(toolUseId, output);
+      return;
+    }
     head.output = output;
     if (this.watched) this.tail(head);
   }
@@ -163,6 +170,7 @@ export class Heads {
 
   /// The CLI that ran them has gone.
   clear(): void {
+    this.outputs.clear();
     clearTimeout(this.timer);
     this.timer = undefined;
     if (this.live.size === 0) return;
@@ -171,6 +179,11 @@ export class Heads {
   }
 
   private add(task: Task, toolUseId: string | null, type: string | null, background: boolean, depth: number): void {
+    // Listed in the background first, its call named only now: what it had is kept.
+    const had = this.live.get(task.task_id);
+    if (had) this.untail(had);
+    const output = had?.output ?? (toolUseId ? this.outputs.get(toolUseId) : undefined) ?? null;
+    if (toolUseId) this.outputs.delete(toolUseId);
     const head: Live = {
       id: task.task_id,
       kind: kindOf(task.task_type),
@@ -184,12 +197,13 @@ export class Heads {
       tools: null,
       step: null,
       line: null,
-      lines: [],
-      output: null,
+      lines: had?.lines ?? [],
+      output,
       tail: null,
       stale: false,
     };
     this.live.set(head.id, head);
+    if (this.watched) this.tail(head);
   }
 
   private end(taskId: string): void {
@@ -300,7 +314,8 @@ export function stepOf(tool: string, input: Record<string, unknown>, cwd: string
 
 /// The file a command sent to the background writes to, from its call's result.
 export function outputFile(text: string): string | null {
-  const match = /Output is being written to: (.+)/.exec(text);
+  // The path runs to the first space: the CLI goes on after it, "You will be notified when it completes."
+  const match = /Output is being written to: (\S+)/.exec(text);
   if (!match) return null;
   const path = match[1].trim();
   return path.endsWith(".") ? path.slice(0, -1) : path;

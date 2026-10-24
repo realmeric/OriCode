@@ -294,6 +294,7 @@ enum PerfBench {
     /// two phases with a third not reached, each agent calling a tool a second, as K-324's engine
     /// sends their trails. The task that sends the calls is the caller's to cancel.
     static func liveRun(_ stage: Stage, in thread: UUID) async throws -> Task<Void, Never>? {
+        if env["PERF_LANE"] == "1" { return try await liveLane(stage, in: thread) }
         guard env["PERF_STAGE"] == "1" else { return nil }
         let script = "export const meta = { name: 'review-and-fix', phases: [{ title: 'Review' }, { title: 'Fix' }, { title: 'Verify' }] }"
         stage.send("tool.use", ["toolUseId": "call-w1", "name": "Workflow", "input": ["script": .string(script)]], to: thread)
@@ -320,6 +321,60 @@ enum PerfBench {
                     stage.send("agent.steps", ["threadId": .string(id.uuidString), "steps": .array(steps)], to: id)
                     try? await Task.sleep(for: .milliseconds(250))
                 }
+                call += 1
+            }
+        }
+    }
+
+    /// PERF_LANE=1: four cards on the column of the open thread's stage, two Task subagents, a
+    /// worker and a command left running: each agent calls a tool a second, as K-324's follow and
+    /// worker.said send them, and the command prints a line every quarter second.
+    static func liveLane(_ stage: Stage, in thread: UUID) async throws -> Task<Void, Never>? {
+        let started = Date.now.timeIntervalSince1970 * 1000
+        let subagents: [(String, String)] = [("s1", "Trace SyncSession"), ("s2", "Profile Store.load")]
+        for (id, label) in subagents {
+            stage.send("tool.use", ["toolUseId": .string("call-\(id)"), "name": "Agent", "input": ["description": .string(label), "prompt": "Look", "run_in_background": true]], to: thread)
+            stage.send("tool.result", ["toolUseId": .string("call-\(id)"), "content": "Async agent launched"], to: thread)
+        }
+        stage.send("tool.use", ["toolUseId": "call-c1", "name": "Bash", "input": ["command": "swift test --filter SyncTests", "run_in_background": true]], to: thread)
+        stage.send("tool.result", ["toolUseId": "call-c1", "content": "Command running in background"], to: thread)
+        func heads(_ lines: [String]) -> [String: JSON] {
+            ["heads": .array(subagents.map { id, label in
+                ["id": .string(id), "kind": "agent", "toolUseId": .string("call-\(id)"), "label": .string(label), "background": true, "depth": 1, "startedAt": .number(started)]
+            } + [["id": "c1", "kind": "command", "toolUseId": "call-c1", "label": "Run the sync tests", "background": true, "depth": 1, "startedAt": .number(started + 1),
+                  "step": .null, "line": .string(lines.last ?? ""), "lines": .array(lines.map(JSON.string))],
+                 ["id": "w1", "kind": "agent", "label": "Check the cache", "background": true, "depth": 1, "startedAt": .number(started + 2), "worker": true, "agent": "claude"]])]
+        }
+        stage.send("heads", heads([]), to: thread)
+        for (id, label) in subagents {
+            stage.send("agent.thread", ["agentId": .string(id), "kind": "subagent", "label": .string(label), "state": "running", "transcript": .string("/tmp/oricode-perf-\(id).jsonl")], to: thread)
+        }
+        stage.send("agent.thread", ["agentId": "w1-key", "task": "w1", "kind": "worker", "label": "Check the cache", "state": "running", "agent": "claude"], to: thread)
+        try await settle(300)
+        let chats = stage.chat.project?.chats ?? []
+        let agents = subagents.compactMap { id, _ in chats.first { $0.agentID == id }?.id }
+        guard let worker = chats.first(where: { $0.agentID == "w1-key" })?.id else { return nil }
+        stage.model.stage.lane(stage.model.liveLane(of: stage.model.conversation(for: stage.chat)), in: thread, grow: true)
+        let only = env["PERF_LANE_ONLY"] ?? ""
+        if only == "static" { return nil }
+        return Task {
+            var call = 0
+            while !Task.isCancelled {
+                for id in agents where only.isEmpty || only == "subagents" {
+                    let steps: [JSON] = (max(0, call - 3)...call).map { n in
+                        ["tool": n % 2 == 0 ? "Read" : "Grep", "input": n % 2 == 0 ? ["file_path": .string("\(stage.chat.cwd)/Sources/Sync/File\(n).swift")] : ["pattern": .string("await store\(n)")]]
+                    }
+                    stage.send("agent.steps", ["threadId": .string(id.uuidString), "steps": .array(steps)], to: id)
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                if only.isEmpty || only == "worker" {
+                    stage.send("worker.said", ["agentId": "w1-key", "said": ["event": "tool.use", "toolUseId": .string("w-\(call)"), "name": "Read",
+                                                                              "input": ["file_path": .string("\(stage.chat.cwd)/Sources/Cache/Cache\(call).swift")]]], to: worker)
+                }
+                if only.isEmpty || only == "command" {
+                    stage.send("heads", heads((max(0, call - 2)...call).map { "Test Case 'SyncTests.testMerge\($0)' started" }), to: thread)
+                }
+                try? await Task.sleep(for: .milliseconds(250))
                 call += 1
             }
         }

@@ -12,6 +12,10 @@ for pair in "${@:4}"; do envs+=(--env "$pair"); done
 [ -n "$PERF_STAGE" ] && envs+=(--env PERF_STAGE=$PERF_STAGE)
 # PERF_STEP=1 with it steps the stage into one agent, and the keys' stream goes into that agent.
 [ -n "$PERF_STEP" ] && envs+=(--env PERF_STEP=$PERF_STEP)
+# PERF_LANE=1 puts four cards on the open thread's stage column: two subagents, a worker and a command.
+[ -n "$PERF_LANE" ] && envs+=(--env PERF_LANE=$PERF_LANE)
+# PERF_LANE_ONLY=subagents, worker, command or static with it keeps one kind of card moving, or none.
+[ -n "$PERF_LANE_ONLY" ] && envs+=(--env PERF_LANE_ONLY=$PERF_LANE_ONLY)
 perl -e 'alarm shift; exec @ARGV' $limit open -n -W --env XCTestConfigurationFilePath=/dev/null --env PERF_OUT="$OUT" --env PERF_BENCH="$label" --env PERF_PARTS="$parts" $envs --stdout "$OUT/run.log" --stderr "$OUT/run.log" "$APP"
 code=$?
 [ $code = 0 ] || echo "[$label] run exit $code" >> "$OUT/results.txt"

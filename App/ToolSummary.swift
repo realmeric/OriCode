@@ -78,7 +78,7 @@ enum ToolSummary {
         case "run_command": "Run: \(firstLine(call.input["command"]?.string ?? ""))"
         case "read_oricode": "Read OriCode's settings"
         case "read_plan": "Read the plan"
-        case "add_tasks": "Planned"
+        case "add_tasks": planned(call.input)
         case "wait_plan": "\(waits) the plan"
         case "claim_task": "Took a task"
         case "update_task": "Updated a task"
@@ -98,6 +98,12 @@ enum ToolSummary {
         case "scroll": "Scrolled in \(call.input["app"]?.string ?? "an app")"
         default: tool.replacingOccurrences(of: "_", with: " ").capitalizedFirst
         }
+    }
+
+    /// What add_tasks added: "Planned 4 tasks".
+    private static func planned(_ input: JSON) -> String {
+        let count = input["tasks"]?.array?.count ?? 0
+        return count == 0 ? "Planned" : "Planned \(count) \(count == 1 ? "task" : "tasks")"
     }
 
     /// What change_thread set, as the Thread menu names it: "Set this thread to Accept edits".
@@ -142,7 +148,9 @@ enum ToolSummary {
     /// read or edited, and a thread once, only when the call reached it; waiting on threads is
     /// said only when the run did nothing else. OriCode's own tools are said in words, "changed
     /// a setting", and the harness's, a ToolSearch loading tools, aren't counted at all.
-    static func run(_ calls: [ToolCall]) -> String {
+    /// `starting` is a run of calls that set agents, commands and threads going, which says one of
+    /// them as "a": "Started 2 agents, ran a command".
+    static func run(_ calls: [ToolCall], starting: Bool = false) -> String {
         var kinds: [RunKind] = []
         var seen: [RunKind: Set<String>] = [:]
         for call in calls where !harness.contains(call.name) {
@@ -152,12 +160,12 @@ enum ToolSummary {
             seen[kind, default: []].insert(key(for: call, kind))
         }
         if kinds.count > 1 { kinds.removeAll { $0 == .waited } }
-        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count, []).capitalizedFirst }
+        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count, [], starting: false).capitalizedFirst }
         if kinds == [.waited], calls.contains(where: { RunKind($0) == .waited && $0.result == nil && !$0.isError }) {
             let count = seen[.waited]?.count ?? 0
             return "Waiting on \(count) \(count == 1 ? "thread" : "threads")"
         }
-        return kinds.map { $0.phrase(seen[$0]?.count ?? 0, seen[$0] ?? []) }.joined(separator: ", ").capitalizedFirst
+        return kinds.map { $0.phrase(seen[$0]?.count ?? 0, seen[$0] ?? [], starting: starting) }.joined(separator: ", ").capitalizedFirst
     }
 
     /// Tools the agent's harness calls for itself, which do nothing the user would count.
@@ -173,7 +181,7 @@ enum ToolSummary {
     }
 
     private enum RunKind: Hashable {
-        case read, edit, command, search, list, fetch, web, agent, plan, skill, question, planning, opened, messaged, waited, stopped, other
+        case read, edit, command, search, list, fetch, web, agent, worker, plan, skill, question, planning, opened, messaged, waited, stopped, other
         case changedThread, changedSetting
         /// Another of OriCode's tools, by its words: "listed threads", "read the plan".
         case oricode(String)
@@ -189,6 +197,7 @@ enum ToolSummary {
             case "message_thread": self = .messaged
             case "wait_thread", "read_thread": self = .waited
             case "stop_thread": self = .stopped
+            case "start_worker": self = .worker
             case "change_thread": self = .changedThread
             case "change_setting": self = .changedSetting
             case .some: self = .oricode(ToolSummary.oricode(call).map { $0.prefix(1).lowercased() + $0.dropFirst() } ?? "used OriCode")
@@ -214,8 +223,15 @@ enum ToolSummary {
             }
         }
 
-        func phrase(_ count: Int, _ keys: Set<String>) -> String {
+        func phrase(_ count: Int, _ keys: Set<String>, starting: Bool) -> String {
             let one = count == 1
+            if starting, one {
+                switch self {
+                case .command: return "ran a command"
+                case .opened: return "opened a thread"
+                default: break
+                }
+            }
             return switch self {
             case .read: "read \(count) \(one ? "file" : "files")"
             case .edit: "edited \(count) \(one ? "file" : "files")"
@@ -224,7 +240,8 @@ enum ToolSummary {
             case .list: "listed \(count) \(one ? "directory" : "directories")"
             case .fetch: "fetched \(count) \(one ? "page" : "pages")"
             case .web: one ? "searched the web" : "searched the web \(count) times"
-            case .agent: "ran \(count) \(one ? "agent" : "agents")"
+            case .agent: one ? "started an agent" : "started \(count) agents"
+            case .worker: one ? "started a worker" : "started \(count) workers"
             case .plan: "updated the plan"
             case .skill: "used \(count) \(one ? "skill" : "skills")"
             case .question: "asked you"
@@ -284,5 +301,25 @@ extension ToolCall {
         guard oricodeTool == "open_thread" else { return (input["thread"]?.string.flatMap(UUID.init(uuidString:)), nil) }
         let made = isError ? nil : result.flatMap { try? JSONDecoder().decode(JSON.self, from: Data($0.utf8)) }
         return (made?["id"]?.string.flatMap(UUID.init(uuidString:)), made?["thread"]?.string ?? input["title"]?.string)
+    }
+}
+
+extension ToolCall {
+    /// Whether it set something going that has a card on the thread's stage: a Task subagent, a
+    /// command sent to the background, a worker, a thread opened, or a plan's tasks to run.
+    var startsCard: Bool {
+        guard !isError else { return false }
+        switch oricodeTool {
+        case "start_worker", "open_thread": return true
+        case "add_tasks": return input["run"]?.bool == true
+        case .some: return false
+        case nil: return kind == .agent || kind == .run && (background || input["run_in_background"]?.bool == true)
+        }
+    }
+
+    /// The worker a start_worker call started, by the id its answer gives.
+    var startedWorker: String? {
+        guard oricodeTool == "start_worker", let result else { return nil }
+        return (try? JSONDecoder().decode(JSON.self, from: Data(result.utf8)))?["worker"]?.string
     }
 }

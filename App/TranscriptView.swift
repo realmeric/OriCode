@@ -240,6 +240,10 @@ struct TranscriptView: View {
         .onChange(of: model.reveal) { takeReveal() }
         // A run coming on the glass grows its stage while the transcript is followed to its end.
         .background { StageCue(heads: conversation.heads, thread: conversation.chat.id, following: end.pinned) }
+        // What the thread sets going besides a workflow comes on its stage's column.
+        .background {
+            if !stepped { LaneCue(conversation: conversation, following: end.pinned) }
+        }
         // Its water is counted as the thread comes into view and as Settings turns water on;
         // after that its tools' results and a turn's end count it (AppModel.receive).
         .task(id: showWater) { model.readWater(for: conversation.chat) }
@@ -518,6 +522,10 @@ struct TranscriptView: View {
                 resumes: conversation.resumeAt != nil && item.id == lastLimit,
                 waiting: conversation.waiting.contains { $0.id == item.id },
                 stream: item.id == streaming ? conversation.live : nil, water: water)
+        case .run(let items) where items.contains(where: \.startsCard):
+            StageCallsRow(items: items, cwd: cwd, thread: conversation.chat.id, live: conversation.running && items.last?.id == conversation.items.last?.id,
+                          stream: items.contains { $0.id == streaming } ? conversation.live : nil,
+                          lit: lit.flatMap { id in items.contains { $0.id == id } ? id : nil })
         case .run(let items):
             ToolRunRow(items: items, cwd: cwd, thread: conversation.chat.id, live: conversation.running && items.last?.id == conversation.items.last?.id,
                        stream: items.contains { $0.id == streaming } ? conversation.live : nil,
@@ -825,6 +833,9 @@ enum TranscriptEntry: Identifiable {
     static func fold(_ items: some Collection<Item>, thinking: Bool = true) -> [TranscriptEntry] {
         var entries: [TranscriptEntry] = []
         var run: [Item] = []
+        // Whether the run's calls set things going that have cards on the stage: those are a run
+        // of their own, the line that stands for the cards.
+        var starting: Bool?
         func close() {
             let calls = run.count { if case .tool = $0 { true } else { false } }
             if calls > 1 {
@@ -833,6 +844,7 @@ enum TranscriptEntry: Identifiable {
                 entries += run.map(TranscriptEntry.item)
             }
             run = []
+            starting = nil
         }
         for item in items {
             switch item {
@@ -854,7 +866,11 @@ enum TranscriptEntry: Identifiable {
             // Settings › Conversation leaves thinking out.
             case .thinking where !thinking:
                 continue
-            case .tool, .thinking:
+            case .tool(_, let call):
+                if let starting, starting != call.startsCard { close() }
+                starting = call.startsCard
+                run.append(item)
+            case .thinking:
                 run.append(item)
             default:
                 close()
@@ -956,6 +972,8 @@ struct ItemView: View {
                 WorkflowRow(call: call, thread: thread)
             } else if let plan = call.plan {
                 PlanCard(plan: plan)
+            } else if call.startsCard {
+                StageCallsRow(items: [item], cwd: cwd, thread: thread)
             } else if call.oricodeTool != nil {
                 ThreadToolLine(call: call, parent: thread)
             } else {

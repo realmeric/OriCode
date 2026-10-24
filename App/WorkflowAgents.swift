@@ -187,7 +187,7 @@ extension AppModel {
     /// Steps a thread's stage into one of its agents, whose transcript is read as a thread's on the
     /// glass is, or with nil back out to the columns.
     func step(into agent: Chat?, of lead: UUID) {
-        stage.step(into: agent.flatMap { agent in agent.agentID.map { .init(agent: $0, thread: agent.id) } }, in: lead)
+        stage.step(into: agent.map { .init(agent: $0.agentID ?? $0.id.uuidString, thread: $0.id) }, in: lead)
     }
 
     /// A stage stepped into an agent or out of one: the agent's thread comes in from the store and

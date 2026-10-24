@@ -21,6 +21,10 @@ test("a command sent to the background says where its output goes", () => {
     outputFile("Command running in background with ID: b1. Output is being written to: /tmp/claude/tasks/b1.output."),
     "/tmp/claude/tasks/b1.output",
   );
+  assert.equal(
+    outputFile("Command running in background with ID: b1. Output is being written to: /tmp/claude/tasks/b1.output. You will be notified when it completes. To check interim output, use Read on that file path."),
+    "/tmp/claude/tasks/b1.output",
+  );
   assert.equal(outputFile("done"), null);
 });
 
@@ -274,6 +278,28 @@ test("a command's last line, and its last three, come from its output file, only
   appendFileSync(output, "GET /\n");
   await wait(400);
   assert.deepEqual(events, []);
+  found.close();
+});
+
+test("a command whose result comes before the CLI names its call still shows its last lines", async () => {
+  const cli = standIn();
+  const found = await thread(cli);
+  const output = join(folder, "b2.output");
+  writeFileSync(output, "Test Case 'SyncTests.testMerge' started\n");
+  found.watchHeads(true);
+  // Listed in the background with no call, answered, then started with its call.
+  cli.feed(system("background_tasks_changed", { tasks: [{ task_id: "b2", task_type: "local_bash", description: "Run the tests" }] }));
+  cli.feed({
+    type: "user",
+    parent_tool_use_id: null,
+    session_id: "s",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "bash2", content: `Command running in background with ID: b2. Output is being written to: ${output}.` }] },
+  });
+  cli.feed(started("b2", "local_bash", "bash2", { is_backgrounded: true }));
+  await wait(400);
+  const head = heads().at(-1)!.find((told) => told.id === "b2")!;
+  assert.equal(head.toolUseId, "bash2");
+  assert.deepEqual(head.lines, ["Test Case 'SyncTests.testMerge' started"]);
   found.close();
 });
 

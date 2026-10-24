@@ -435,17 +435,18 @@ extension AppModel {
         withAnimation(Motion.move) { headsShown = false }
     }
 
-    /// The engine tells what each head is doing only while its thread's surface is open.
+    /// The engine tells what each head is doing only while its thread's surface is open, or its
+    /// stage shows a command's card.
     func watchHeads() {
-        let wanted = headsShown ? chat?.id : nil
+        let wanted = laneHeads.union(headsShown ? [chat?.id].compactMap { $0 } : [])
         guard wanted != headsWatched else { return }
-        if let old = headsWatched {
+        for old in headsWatched.subtracting(wanted) {
             Task { _ = try? await engine.request("heads.watch", ["threadId": .string(old.uuidString), "on": false]) }
         }
-        headsWatched = wanted
-        if let wanted {
-            Task { _ = try? await engine.request("heads.watch", ["threadId": .string(wanted.uuidString), "on": true]) }
+        for new in wanted.subtracting(headsWatched) {
+            Task { _ = try? await engine.request("heads.watch", ["threadId": .string(new.uuidString), "on": true]) }
         }
+        headsWatched = wanted
     }
 
     func stop(_ head: Head, in chat: Chat) {

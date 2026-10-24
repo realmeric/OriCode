@@ -655,7 +655,7 @@ extension AppModel {
         }
         for conversation in conversations.values { conversation.endWorkflows() }
         // A new engine watches nothing until it's asked again.
-        headsWatched = nil
+        headsWatched = []
         followed = []
         stage.reset()
         heldPieces = [:]

@@ -21,8 +21,9 @@ final class Head: Identifiable {
     let kind: Kind
     /// The agent it runs on: the engine's word for it, or else the thread's own.
     let agent: String
-    /// The call that started it, which a workflow's card and its events name too.
-    let toolUseId: String?
+    /// The call that started it, which a workflow's card and its events name too. The CLI can list
+    /// a command or a subagent sent to the background before it names the call that started it.
+    fileprivate(set) var toolUseId: String?
     let startedAt: Date
     /// One of the head's workers, a session of OriCode's own on `agent`, rather than something the
     /// thread's CLI runs.
@@ -39,8 +40,9 @@ final class Head: Identifiable {
     fileprivate(set) var tokens: Int?
     fileprivate(set) var tools: Int?
     fileprivate(set) var step: Step?
-    /// A command's last line of output.
+    /// A command's last line of output, and its last three, which its card on the stage shows.
     fileprivate(set) var line: String?
+    fileprivate(set) var lines: [String] = []
     /// A workflow's run, from its own events.
     fileprivate(set) var run: WorkflowRun?
     /// The rays it holds, in the order it took them.
@@ -78,6 +80,7 @@ final class Head: Identifiable {
 
     /// What the engine says now. Only what changed is set, so a row doesn't redraw for the rest.
     fileprivate func take(_ body: JSON) {
+        if let call = body["toolUseId"]?.string, call != toolUseId { toolUseId = call }
         let label = body["label"]?.string ?? ""
         if label != self.label { self.label = label }
         let type = body["type"]?.string
@@ -92,6 +95,8 @@ final class Head: Identifiable {
             if step != self.step { self.step = step }
             let line = body["line"]?.string
             if line != self.line { self.line = line }
+            let lines = body["lines"]?.array?.compactMap(\.string) ?? []
+            if lines != self.lines { self.lines = lines }
             let cost = body["cost"]?.double
             if cost != self.cost { self.cost = cost }
         }

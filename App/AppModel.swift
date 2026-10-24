@@ -239,8 +239,10 @@ final class AppModel {
     var headsShown = false {
         didSet { watchHeads() }
     }
-    /// The thread the engine is telling what its heads are doing.
-    var headsWatched: UUID?
+    /// The threads the engine is telling what their heads are doing.
+    var headsWatched: Set<UUID> = []
+    /// The threads whose stage shows a command's card, which wants its last lines.
+    @ObservationIgnored var laneHeads: Set<UUID> = []
     /// ⌘⇧I's screen of everything running, and how each thread's latest turn in this launch went,
     /// which only that screen reads.
     var overviewShown = false {

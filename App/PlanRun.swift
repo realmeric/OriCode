@@ -15,8 +15,8 @@ extension AppModel {
         projects.flatMap(\.tasks).filter { $0.owner == owner }
     }
 
-    /// With a thread's turn over, what it started that still runs, in the line above its composer
-    /// and on ⌘⇧I: what it left running, or else the plan it runs while a task's thread works.
+    /// With a thread's turn over, what it started that still runs, on ⌘⇧I: what it left running,
+    /// or else the plan it runs while a task's thread works.
     func goingOn(_ chat: Chat) -> String? {
         guard let conversation = conversations[chat.id], !conversation.running else { return nil }
         if let line = conversation.goingOn { return line }
