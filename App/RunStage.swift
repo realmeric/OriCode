@@ -143,7 +143,8 @@ struct RunStage: View {
 
     var body: some View {
         let script = call?.input["script"]?.string ?? ""
-        let groups = call == nil ? [] : WorkflowRun.groups(run?.agents ?? [], planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
+        let agents = Self.told(run?.agents ?? [], stage: model.stage, chats: agentChats)
+        let groups = call == nil ? [] : WorkflowRun.groups(agents, planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
         let agentIDs = (run?.agents ?? []).compactMap(\.id)
         let stepped = model.stage.stepped[chat.id]
         // Stepped into an agent, no card shows a trail.
@@ -178,6 +179,17 @@ struct RunStage: View {
         }
     }
 
+    /// The run's agents, each one whose transcript has the reply that ended its turn done, ahead of
+    /// the run's next snapshot.
+    static func told(_ agents: [WorkflowRun.Agent], stage: StageModel, chats: [String: Chat]) -> [WorkflowRun.Agent] {
+        agents.map { agent in
+            guard agent.state == .running, let chat = agent.id.flatMap({ chats[$0] }), stage.trail(for: chat.id).done else { return agent }
+            var done = agent
+            done.state = .done
+            return done
+        }
+    }
+
     /// The agents at work whose transcripts their trails are read from: the run's, and the column's subagents.
     private func followed(_ groups: [(phase: String, agents: [WorkflowRun.Agent])]) -> Set<UUID> {
         let running = groups.flatMap(\.agents).filter { $0.state == .running }
@@ -202,8 +214,9 @@ struct RunStage: View {
         let across = width - inset * 2
         // The column beside the phases, a gutter after them.
         let laneWidth = lane.isEmpty ? 0 : min(StageLayout.card, (across * 0.34).rounded(.down))
+        // A hop's gutter stays open until its well has folded; the well's room goes as it folds.
         let layout = StageLayout.fitted(groups: groups, width: across - (lane.isEmpty ? 0 : StageLayout.gutter + laneWidth), narrow: width < 560, equal: equal,
-                                        wide: Set(hops.map(\.phase)), wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) },
+                                        wide: Set(hops.map(\.phase)), wells: hops.filter { !$0.folded }.reduce(into: [:]) { $0[$1.recipient] = $1.well },
                                         asks: asks.mapValues { $0.call.shown("command") ?? "" })
         let room = cap - top - Self.headHeight - Self.labelsGap
         let beside = lane.isEmpty ? { (_: Int) in CGFloat(0) } : { StageLayout.labelHeight + StageLayout.labelGap + LaneLayout.height(lane, steps: $0) }
@@ -300,6 +313,11 @@ struct RunStage: View {
         let sources: [String]
         let task: String
         let well: AttributedString
+        /// The recipient's third call has landed: its well's words fade, its wires fade and its
+        /// sources' lines brighten again, while its gutter waits for the well to have gone.
+        let settled: Bool
+        /// Then the well's room closes.
+        let folded: Bool
     }
 
     /// The oldest ask each workflow agent has waiting, by its id: the one its card shows.
@@ -317,11 +335,13 @@ struct RunStage: View {
             return groups[index].agents.compactMap { agent -> Hop? in
                 guard agent.state == .running, let id = agent.id, let chat = chats[id] else { return nil }
                 let trail = stage.trail(for: chat.id)
-                guard !trail.settled, let task = trail.task else { return nil }
+                guard !trail.closed, let task = trail.task else { return nil }
                 var sources: [String] = []
                 var runs: [Range<String.Index>] = []
                 for source in before {
-                    guard let sourceID = source.id, let result = stage.results[sourceID] ?? chats[sourceID]?.agentResult else { continue }
+                    guard let sourceID = source.id,
+                          let result = stage.results[sourceID] ?? chats[sourceID].flatMap({ stage.trail(for: $0.id).result ?? $0.agentResult })
+                    else { continue }
                     let found = stage.runs(id, task: task, source: sourceID, result: result)
                     guard !found.isEmpty else { continue }
                     sources.append(sourceID)
@@ -329,7 +349,7 @@ struct RunStage: View {
                 }
                 guard !sources.isEmpty else { return nil }
                 runs.sort { $0.lowerBound < $1.lowerBound }
-                return Hop(phase: index, recipient: id, sources: sources, task: task, well: Handoff.well(task, runs: runs))
+                return Hop(phase: index, recipient: id, sources: sources, task: task, well: Handoff.well(task, runs: runs), settled: trail.settled, folded: trail.folded)
             }
         }
     }
@@ -338,14 +358,16 @@ struct RunStage: View {
     private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop], asks: [String: PendingAsk], listening: String?,
                         rays: [String: Int], color: Color, laneWidth: CGFloat) -> some View {
         let wells = Dictionary(hops.map { ($0.recipient, $0.well) }) { first, _ in first }
-        let handed = hops.reduce(into: [String: String]()) { handed, hop in
+        let faded = Set(hops.filter(\.settled).map(\.recipient))
+        let folded = Set(hops.filter(\.folded).map(\.recipient))
+        let handed = hops.filter { !$0.settled }.reduce(into: [String: String]()) { handed, hop in
             for source in hop.sources { handed[source] = handed[source].map { $0 + "\n" + hop.task } ?? hop.task }
         }
         let content = HStack(alignment: .top, spacing: 0) {
             ForEach(Array(layout.phases.enumerated()), id: \.element.name) { index, phase in
                 if index > 0 { Color.clear.frame(width: layout.gutters[index], height: 1) }
                 PhaseColumn(phase: phase, steps: steps, rays: rays, color: color, agentChats: agentChats, cwd: chat.cwd,
-                            wells: wells, handed: handed, asks: asks, listening: listening, lead: chat.id)
+                            wells: wells, faded: faded, folded: folded, handed: handed, asks: asks, listening: listening, lead: chat.id)
             }
             // What the thread set going besides the run, unlabelled, its cards level with the phases'.
             if !lane.isEmpty {
@@ -380,6 +402,9 @@ private struct PhaseColumn: View {
     let cwd: String
     /// The task each recipient of a hop opens in its well.
     let wells: [String: AttributedString]
+    /// The recipients whose wells' words have faded, and those whose wells' room has closed.
+    let faded: Set<String>
+    let folded: Set<String>
     /// The task each source of a hop handed its words to.
     let handed: [String: String]
     /// The ask each agent waits on, by its id.
@@ -398,11 +423,11 @@ private struct PhaseColumn: View {
                 .fixedSize()
                 .frame(height: StageLayout.labelHeight)
                 .padding(.leading, StageLayout.labelInset)
-            if phase.sideBySide {
-                HStack(alignment: .top, spacing: StageLayout.spacing) { cards }
-            } else {
-                VStack(alignment: .leading, spacing: StageLayout.spacing) { cards }
-            }
+            // One layout either way, so cards going from side by side to stacked as their phase
+            // finishes move to their places rather than fade out over the next phase's cards.
+            let layout = phase.sideBySide ? AnyLayout(HStackLayout(alignment: .top, spacing: StageLayout.spacing))
+                : AnyLayout(VStackLayout(alignment: .leading, spacing: StageLayout.spacing))
+            layout { cards }
         }
         .frame(width: phase.width, alignment: .leading)
     }
@@ -411,8 +436,11 @@ private struct PhaseColumn: View {
         ForEach(Array(phase.agents.enumerated()), id: \.offset) { _, agent in
             StageCard(agent: agent, chat: agent.id.flatMap { agentChats[$0] }, ray: agent.id.flatMap { rays[$0] },
                       color: color, steps: steps, collapsed: phase.collapsed, cwd: cwd,
-                      well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] },
+                      well: agent.id.flatMap { wells[$0] }, faded: agent.id.map(faded.contains) ?? false, folded: agent.id.map(folded.contains) ?? false, handed: agent.id.flatMap { handed[$0] },
                       ask: agent.id.flatMap { asks[$0] }, listening: listening, lead: lead)
+                // A card coming into a phase waits for the phases to have sprung to their new
+                // widths, so it never fades in over a card still at its old one.
+                .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.28)), removal: .opacity))
         }
     }
 }
@@ -434,6 +462,9 @@ private struct StageCard: View {
     let cwd: String
     /// Its task, in a well under its head while it takes in what the phase before returned.
     let well: AttributedString?
+    /// Its well folds away: its words fade, then its room closes over them.
+    let faded: Bool
+    let folded: Bool
     /// The task that took its words, while that hop is drawn.
     let handed: String?
     /// What it waits on you for, under its trail.
@@ -457,14 +488,16 @@ private struct StageCard: View {
             }
             .frame(height: StageLayout.cardHead)
             if !collapsed, let well {
-                Text(well)
-                    .font(Type.secondary)
-                    .lineLimit(StageLayout.wellLines)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // The trail stays laid out under it, so folding only closes the room above the trail.
+                WellText(text: well, lines: StageLayout.wellLines)
                     .padding(.vertical, StageLayout.wellPadding.height)
                     .padding(.horizontal, StageLayout.wellPadding.width)
                     .background(Color.white.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
-                    .padding(.top, StageLayout.wellGap)
+                    .opacity(faded ? 0 : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: folded ? 0 : nil, alignment: .top)
+                    .clipped()
+                    .padding(.top, folded ? 0 : StageLayout.wellGap)
                     .transition(.opacity)
             }
             if !collapsed {
@@ -482,7 +515,7 @@ private struct StageCard: View {
                     .clipped()
                     .transition(Self.swap)
                 case .done:
-                    line(chat?.agentResult)
+                    line(chat?.agentResult ?? chat.flatMap { model.stage.trail(for: $0.id).result }.flatMap(AppModel.replyLine))
                 case .failed:
                     line(agent.error ?? chat?.agentResult)
                 default:
@@ -520,8 +553,10 @@ private struct StageCard: View {
     @ViewBuilder
     private var working: some View {
         let trail = chat.map { model.stage.trail(for: $0.id) }
+        // No room is kept for a trail before its first call has landed.
+        let any = !(trail?.steps.isEmpty ?? true) || ask == nil && fallback != nil
         VStack(alignment: .leading, spacing: 0) {
-            if steps > 0, ask == nil || !TrailLines.before(ask, in: trail?.steps ?? []).isEmpty {
+            if steps > 0, any, ask == nil || !TrailLines.before(ask, in: trail?.steps ?? []).isEmpty {
                 TrailLines(trail: trail, fallback: ask == nil ? fallback : nil, steps: steps, cwd: cwd, asked: ask)
                     .padding(.top, StageLayout.trailGap)
             }
@@ -561,7 +596,7 @@ private struct StageCard: View {
         default: nil
         }
         let input: JSON = key.flatMap { key in agent.lastDetail.map { [key: .string($0)] } } ?? [:]
-        return ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: input), cwd: cwd)
+        return ToolSummary.line(for: ToolCall(toolUseId: "", name: tool, input: input), cwd: cwd, past: true)
     }
 
     private var tint: Double {
@@ -775,7 +810,7 @@ struct TrailLines: View {
         let shown: [(id: Int, words: AttributedString)] = all.isEmpty
             ? fallback.map { [(id: -1, words: AttributedString($0))] } ?? []
             : all.enumerated().suffix(min(steps, inks.count)).reversed().map { index, step in
-                (first + index, Self.words(step, cwd: cwd, last: asked == nil && index == all.count - 1))
+                (first + index, Self.words(step, cwd: cwd))
             }
         VStack(alignment: .leading, spacing: StageLayout.stepGap) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { place, step in
@@ -791,7 +826,8 @@ struct TrailLines: View {
         // As tall as the lines it shows, so the oldest going doesn't make the card taller for a
         // moment, which moved the lead's transcript under the stage with every call.
         .frame(height: StageLayout.trailHeight(shown.count, first: asked == nil), alignment: .top)
-        .clipped()
+        // The oldest leaves under the trail's foot; the newest comes in from above whole.
+        .mask(Rectangle().padding(.top, -8))
         // A fade's length and not the spring's: with four agents at work a call lands every
         // quarter second or so, and a spring still settling under the next kept frames coming.
         .animation(Motion.fade, value: shown.map(\.id))
@@ -804,13 +840,14 @@ struct TrailLines: View {
     }
 
     /// A call as the transcript says it, with a file's folder after its name in faint ink: "Read
-    /// Cache.swift Sources/Store". A call before the last is over, so a command reads "Ran".
-    static func words(_ step: StageModel.Step, cwd: String, last: Bool) -> AttributedString {
-        words(ToolCall(toolUseId: "", name: step.tool, input: step.input, result: last ? nil : ""), cwd: cwd)
+    /// Cache.swift Sources/Store". A command reads "Ran" on every line, the one it's on too, so
+    /// the trail keeps one tense and nothing on a card reads as asked of you.
+    static func words(_ step: StageModel.Step, cwd: String) -> AttributedString {
+        words(ToolCall(toolUseId: "", name: step.tool, input: step.input), cwd: cwd)
     }
 
     static func words(_ call: ToolCall, cwd: String) -> AttributedString {
-        let line = ToolSummary.line(for: call, cwd: cwd)
+        let line = ToolSummary.line(for: call, cwd: cwd, past: true)
         guard let path = ToolSummary.path(for: call) else { return AttributedString(line) }
         let shown = ToolSummary.relative(path, to: cwd)
         let folder = (shown as NSString).deletingLastPathComponent
@@ -872,41 +909,38 @@ private struct HopsDrawing: View {
         let node: CGPoint
         let ins: [Wire]
         let outs: [(recipient: String, wire: Wire)]
+        /// Every hop into its phase has settled, so it fades.
+        let settled: Bool
+
+        /// Where it's drawn, which changes as the cards it joins move.
+        var points: [CGFloat] {
+            [node.x, node.y] + (ins + outs.map(\.wire)).flatMap { [$0.from.x, $0.from.y, $0.to.x, $0.to.y] }
+        }
     }
+
+    /// The cards' bounds are where the cards end up, not where they are while they spring: so the
+    /// wires come only once the cards have been still for a spring's length, and go at once when
+    /// the cards move again.
+    @State private var still: [CGFloat]?
 
     var body: some View {
         let wirings = Dictionary(grouping: hops, by: \.phase).keys.sorted().compactMap { wiring($0) }
+        let points = wirings.flatMap(\.points)
+        let shown = still == points
         ZStack(alignment: .topLeading) {
-            ForEach(wirings) { wiring in
-                ZStack(alignment: .topLeading) {
-                    Canvas { context, _ in
-                        for wire in wiring.ins {
-                            context.stroke(wire.path, with: .linearGradient(Gradient(colors: [.white.opacity(0.06), .white.opacity(0.34)]),
-                                                                            startPoint: wire.from, endPoint: wire.to), lineWidth: 1.5)
-                        }
-                        for out in wiring.outs {
-                            context.stroke(out.wire.path, with: .linearGradient(Gradient(colors: [.white.opacity(0.40), .white.opacity(0.14)]),
-                                                                                startPoint: out.wire.from, endPoint: out.wire.to), lineWidth: 1.5)
-                        }
-                    }
-                    Circle()
-                        .fill(Color.white.opacity(0.10))
-                        .overlay {
-                            Image(systemName: "curlybraces")
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.white.opacity(0.7))
-                        }
-                        .frame(width: Self.node, height: Self.node)
-                        .position(wiring.node)
-                    ForEach(wiring.outs, id: \.recipient) { out in
-                        SparkRun(recipient: out.recipient, wire: out.wire)
-                    }
-                }
-                .transition(.opacity)
+            // Something always here, so the wait below runs while no wire is drawn.
+            Color.clear
+            ForEach(shown ? wirings : []) { wiring in
+                WiringView(wiring: wiring)
+                    .transition(.identity)
             }
         }
         .allowsHitTesting(false)
-        .animation(Motion.fade, value: wirings.map(\.id))
+        .task(id: points) {
+            guard !points.isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(320))
+            if !Task.isCancelled { still = points }
+        }
     }
 
     private func wiring(_ phase: Int) -> Wiring? {
@@ -923,7 +957,44 @@ private struct HopsDrawing: View {
             // those on the phase's leading edge take one.
             outs: recipients.filter { $0.1.minX <= edge + 1 }.map { recipient, frame in
                 (recipient, Wire(from: CGPoint(x: node.x + half, y: node.y), to: CGPoint(x: frame.minX, y: frame.minY + Self.landing)))
-            })
+            },
+            settled: into.allSatisfy(\.settled))
+    }
+}
+
+/// A phase's hop drawn: its wires, the script's node and the spark. It fades in as it comes and
+/// out as its hop settles; moved, it's gone at once, since its place is the cards' old one.
+private struct WiringView: View {
+    let wiring: HopsDrawing.Wiring
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Canvas { context, _ in
+                for wire in wiring.ins {
+                    context.stroke(wire.path, with: .linearGradient(Gradient(colors: [.white.opacity(0.06), .white.opacity(0.34)]),
+                                                                    startPoint: wire.from, endPoint: wire.to), lineWidth: 1.5)
+                }
+                for out in wiring.outs {
+                    context.stroke(out.wire.path, with: .linearGradient(Gradient(colors: [.white.opacity(0.40), .white.opacity(0.14)]),
+                                                                        startPoint: out.wire.from, endPoint: out.wire.to), lineWidth: 1.5)
+                }
+            }
+            Circle()
+                .fill(Color.white.opacity(0.10))
+                .overlay {
+                    Image(systemName: "curlybraces")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.white.opacity(0.7))
+                }
+                .frame(width: HopsDrawing.node, height: HopsDrawing.node)
+                .position(wiring.node)
+            ForEach(wiring.outs, id: \.recipient) { out in
+                SparkRun(recipient: out.recipient, wire: out.wire)
+            }
+        }
+        .opacity(appeared && !wiring.settled ? 1 : 0)
+        .onAppear { withAnimation(Motion.fade) { appeared = true } }
     }
 }
 
@@ -943,8 +1014,8 @@ private struct SparkRun: View {
             .onAppear {
                 guard !reduceMotion, model.stage.sparked.insert(recipient).inserted else { return }
                 shown = true
-                // After the gutter has opened under it.
-                withAnimation(.easeOut(duration: 0.6).delay(0.28)) { t = 1 }
+                // The wires come once the gutter has opened under them.
+                withAnimation(.easeOut(duration: 0.6)) { t = 1 }
             }
     }
 }
@@ -1030,7 +1101,7 @@ struct StageLayout: Equatable {
     /// `wide` names the phases a hop goes into, whose gutter widens; `wells` the tasks shown in
     /// wells; `asks` the commands the agents asking wait on you to run.
     init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
-         wide: Set<Int> = [], wells: [String: String] = [:], asks: [String: String] = [:]) {
+         wide: Set<Int> = [], wells: [String: AttributedString] = [:], asks: [String: String] = [:]) {
         gutters = groups.indices.map { $0 == 0 ? 0 : wide.contains($0) ? Self.wideGutter : Self.gutter }
         let states: [State] = groups.map { group in
             if group.agents.isEmpty { return .ahead }
@@ -1071,7 +1142,7 @@ struct StageLayout: Equatable {
             for agent in phase.agents {
                 guard let id = agent.id else { continue }
                 if let task = wells[id] {
-                    heights[id] = Self.wellGap + Self.wellPadding.height * 2 + min(tall(task, .systemFont(ofSize: 12.5)), Self.secondaryLine * CGFloat(Self.wellLines))
+                    heights[id] = Self.wellGap + Self.wellPadding.height * 2 + WellText.height(task, width: inside, lines: Self.wellLines)
                 }
                 if let command = asks[id] {
                     let well = min(tall(command, .monospacedSystemFont(ofSize: 12.5, weight: .regular)), Self.askTallest)
@@ -1084,11 +1155,16 @@ struct StageLayout: Equatable {
     }
 
     /// The layout for `width`, narrow when the phases wouldn't fit across it otherwise: three phases
-    /// in a column beside another thread don't at 250pt a finished one.
+    /// in a column beside another thread don't at 250pt a finished one. A run whose every phase
+    /// is over takes equal shares first, which keep each card's result line.
     static func fitted(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
-                       wide: Set<Int>, wells: [String: String], asks: [String: String] = [:]) -> StageLayout {
+                       wide: Set<Int>, wells: [String: AttributedString], asks: [String: String] = [:]) -> StageLayout {
         let layout = StageLayout(groups: groups, width: width, narrow: narrow, equal: equal, wide: wide, wells: wells, asks: asks)
         guard !narrow, layout.widths.reduce(0, +) > width else { return layout }
+        if !equal, !layout.phases.contains(where: { $0.state == .live }) {
+            let shared = StageLayout(groups: groups, width: width, narrow: false, equal: true, wide: wide, wells: wells, asks: asks)
+            if shared.phases.allSatisfy({ $0.state != .finished || $0.width >= Self.leastNarrow }) { return shared }
+        }
         return StageLayout(groups: groups, width: width, narrow: true, equal: equal, wide: wide, wells: wells, asks: asks)
     }
 

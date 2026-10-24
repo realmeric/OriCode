@@ -108,6 +108,21 @@ struct ToolKindTests {
         #expect(ToolRunRow.collapsed(items).map(\.id) == [items[0].id, items[3].id, items[4].id])
     }
 
+    @Test func waitsOnThePlanFoldToOneAndCommandsLoseTheFolder() {
+        func wait(_ result: String?) -> ToolCall {
+            ToolCall(toolUseId: UUID().uuidString, name: "mcp__oricode__wait_plan", input: [:], result: result)
+        }
+        #expect(ToolSummary.run([wait("{}"), wait("{}")]) == "Waited on the plan")
+        #expect(ToolSummary.run([wait("{}"), wait(nil)]) == "Waiting on the plan")
+        // An agent's absolute paths into the thread's folder read from the folder.
+        let grep = ToolCall(toolUseId: "g", name: "Bash", input: ["command": .string("grep -rn \"Store\" \(Self.root)/Sources && cd \(Self.root) && ls")])
+        #expect(ToolSummary.line(for: grep, cwd: Self.root) == "Run grep -rn \"Store\" Sources && cd . && ls")
+        #expect(ToolSummary.line(for: grep, cwd: Self.root, past: true).hasPrefix("Ran grep"))
+        #expect(ToolSummary.relative(command: "ls /tmp/alphabet", to: Self.root) == "ls /tmp/alphabet")
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        #expect(ToolSummary.relative(command: "cat \(home)/.claude/notes.md", to: Self.root) == "cat ~/.claude/notes.md")
+    }
+
     @Test func anEditAndAWriteGiveTheirDiffsFooterAndProvenance() {
         let conversation = Conversation(chat: chat, context: context)
         conversation.userSent("Change a.txt")

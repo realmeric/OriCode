@@ -184,6 +184,10 @@ struct WorkflowTests {
         #expect(reopened.phases.map(\.width) == Array(repeating: (1116 - 68) / 3, count: 3))
         #expect(!reopened.phases[0].sideBySide)
         #expect(StageLayout(groups: groups, width: 1116, narrow: false).phases.map(\.width) == [250, 250, 250])
+        // At 720pt three finished phases don't fit at 250pt: they share the width before any goes
+        // to its head rows, which would lose every result line.
+        let over = StageLayout.fitted(groups: groups, width: 680, narrow: false, wide: [], wells: [:])
+        #expect(over.phases.map(\.collapsed) == [false, false, false] && over.phases.map(\.width) == Array(repeating: (680 - 68) / 3, count: 3))
     }
 
     @MainActor

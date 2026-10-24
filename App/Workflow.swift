@@ -16,7 +16,7 @@ struct WorkflowRun: Hashable {
         let id: String?
         let label: String
         let phase: String
-        let state: State
+        var state: State
         let tokens: Int
         let tools: Int
         let lastTool: String?

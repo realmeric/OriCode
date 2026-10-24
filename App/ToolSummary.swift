@@ -3,8 +3,9 @@ import Foundation
 /// The quiet one-line description of a tool call: "Read App/Engine.swift", "Ran swift build".
 enum ToolSummary {
     /// `titles` names a thread by its id, for an OriCode tool still out on one, whose answer
-    /// would have named it.
-    static func line(for call: ToolCall, cwd: String, titles: (UUID) -> String? = { _ in nil }) -> String {
+    /// would have named it. `past` says a command as run even while it runs, as a card's trail
+    /// does under its earlier steps; an ask keeps asking "Run".
+    static func line(for call: ToolCall, cwd: String, past: Bool = false, titles: (UUID) -> String? = { _ in nil }) -> String {
         if let words = oricode(call, titles: titles) { return words }
         let input = call.input
         func path(_ key: String = "file_path") -> String {
@@ -25,9 +26,9 @@ enum ToolSummary {
         case .run:
             // Claude's tool by its name, "Bash: make test". An agent's title is a word or a
             // sentence depending on the agent, so its command goes under the kind's own word.
-            let command = firstLine(call.shown("command") ?? "")
+            let command = firstLine(relative(command: String((call.shown("command") ?? "").prefix(4000)), to: cwd))
             // As Claude Code says it once it's back, "Ran make test"; before, as its ask asks it.
-            if call.namedByClaude { return "\(call.result == nil && !call.isError ? "Run" : "Ran") \(command)" }
+            if call.namedByClaude { return "\(call.result == nil && !call.isError && !past ? "Run" : "Ran") \(command)" }
             return command.isEmpty ? call.name : "Run: \(command)"
         case .search:
             if call.namedByClaude { return "\(call.name) \(input["pattern"]?.string ?? "")" }
@@ -139,7 +140,7 @@ enum ToolSummary {
     /// page or the question, in the shape the engine gives an agent's step.
     static func target(for call: ToolCall, cwd: String) -> String? {
         if let path = call.file ?? call.input["notebook_path"]?.string { return relative(path, to: cwd) }
-        if let command = call.shown("command") { return firstLine(command) }
+        if let command = call.shown("command") { return firstLine(relative(command: String(command.prefix(4000)), to: cwd)) }
         return ["pattern", "url", "query", "description", "skill", "path"].lazy.compactMap { call.shown($0) }.first { !$0.isEmpty }
     }
 
@@ -165,7 +166,11 @@ enum ToolSummary {
             let count = seen[.waited]?.count ?? 0
             return "Waiting on \(count) \(count == 1 ? "thread" : "threads")"
         }
-        return kinds.map { $0.phrase(seen[$0]?.count ?? 0, seen[$0] ?? [], starting: starting) }.joined(separator: ", ").capitalizedFirst
+        // Waits on the plan are one wait, said as it is while one of them is still open.
+        let planOpen = calls.contains { $0.oricodeTool == "wait_plan" && $0.result == nil && !$0.isError }
+        return kinds.map { kind in
+            kind == .waitedPlan ? planOpen ? "waiting on the plan" : "waited on the plan" : kind.phrase(seen[kind]?.count ?? 0, seen[kind] ?? [], starting: starting)
+        }.joined(separator: ", ").capitalizedFirst
     }
 
     /// Tools the agent's harness calls for itself, which do nothing the user would count.
@@ -176,12 +181,13 @@ enum ToolSummary {
         switch kind {
         case .changedThread: call.input["thread"]?.string ?? RunKind.this
         case .changedSetting: call.input["setting"]?.string ?? call.toolUseId
+        case .waitedPlan: "plan"
         default: path(for: call) ?? call.otherThread.id?.uuidString ?? call.toolUseId
         }
     }
 
     private enum RunKind: Hashable {
-        case read, edit, command, search, list, fetch, web, agent, worker, plan, skill, question, planning, opened, messaged, waited, stopped, other
+        case read, edit, command, search, list, fetch, web, agent, worker, plan, skill, question, planning, opened, messaged, waited, waitedPlan, stopped, other
         case changedThread, changedSetting
         /// Another of OriCode's tools, by its words: "listed threads", "read the plan".
         case oricode(String)
@@ -197,6 +203,7 @@ enum ToolSummary {
             case "message_thread": self = .messaged
             case "wait_thread", "read_thread": self = .waited
             case "stop_thread": self = .stopped
+            case "wait_plan": self = .waitedPlan
             case "start_worker": self = .worker
             case "change_thread": self = .changedThread
             case "change_setting": self = .changedSetting
@@ -249,6 +256,7 @@ enum ToolSummary {
             case .opened: "opened \(count) \(one ? "thread" : "threads")"
             case .messaged: "messaged \(count) \(one ? "thread" : "threads")"
             case .waited: "waited on \(count) \(one ? "thread" : "threads")"
+            case .waitedPlan: "waited on the plan"
             case .stopped: "stopped \(count) \(one ? "thread" : "threads")"
             case .other: "used \(count) \(one ? "tool" : "tools")"
             case .changedThread: keys == [Self.this] ? "changed this thread" : one ? "changed a thread" : "changed \(count) threads"
@@ -279,6 +287,21 @@ enum ToolSummary {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if path.hasPrefix(home) { return "~" + path.dropFirst(home.count) }
         return path
+    }
+
+    /// A command with the thread's folder taken out of the paths it names, which an agent often
+    /// gives in full: "grep -rn Store Sources" for ".../demo/Sources", and "cd ." for the folder.
+    /// A path elsewhere in the home folder starts at "~", as a file's does.
+    static func relative(command: String, to cwd: String) -> String {
+        let folder = (cwd as NSString).standardizingPath
+        let real = (folder as NSString).resolvingSymlinksInPath
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var command = command
+        for root in real == folder ? [folder] : [folder, real] where root.count > 1 && command.contains(root) {
+            command = command.replacingOccurrences(of: root + "/", with: "")
+            command = command.replacingOccurrences(of: NSRegularExpression.escapedPattern(for: root) + "(?![\\w./-])", with: ".", options: .regularExpression)
+        }
+        return command.replacingOccurrences(of: home + "/", with: "~/")
     }
 
     /// The first line that has anything on it, to 120 characters. Read no further than that, since

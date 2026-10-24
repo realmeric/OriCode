@@ -112,6 +112,21 @@ test("a follow of an agent not written yet starts with its first line", async ()
   assert.deepEqual(steps(events).map((event) => [event.steps.length, event.task]), [[0, tasks.a4]]);
 });
 
+test("the reply that ends an agent's turn ends its trail and is sent as what it returned", async () => {
+  const { path } = run();
+  await told(() => followSteps("t-end", path("a2"), true), (events) => steps(events).length >= 1);
+  const reply = { type: "assistant", agentId: "a2", message: { content: [{ type: "text", text: "Two findings.\nBoth in App/Stage.swift." }], stop_reason: "end_turn" } };
+  const events = await told(
+    () => appendFileSync(path("a2"), JSON.stringify(reply) + "\n"),
+    (events) => steps(events).some((event) => event.ended),
+  );
+  const last = steps(events).at(-1);
+  assert.equal(last.ended, true);
+  assert.equal(last.done, true);
+  assert.equal(last.result, "Two findings.\nBoth in App/Stage.swift.");
+  assert.equal(stepsFollowed(), 0);
+});
+
 test("each agent's end ends its trail and sends its whole result from the journal, and the run's end ends the rest", async () => {
   const { root, folder, path } = run();
   const journal = new Map(

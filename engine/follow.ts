@@ -156,13 +156,16 @@ export type AgentStep = { tool: string; input: Record<string, unknown> };
 
 /// A card's trail on the stage: an agent's last four calls, from the end of its transcript and
 /// then as the CLI appends, and with the first of them its task, its first user line unframed.
-/// It keeps those four and nothing else.
+/// It keeps those four and nothing else. The agent's last reply, the one that ends its turn, ends
+/// it, and is sent as what the agent returned, ahead of the run's next snapshot.
 export class Steps extends Watched {
   /// Where the next read starts; -1 until the file's end has been read back from.
   private offset = -1;
   private steps: AgentStep[] = [];
   private task: string | null = null;
   private taskTold = false;
+  private result: string | undefined;
+  private over = false;
 
   protected gone(): void {
     this.end();
@@ -170,7 +173,8 @@ export class Steps extends Watched {
 
   protected ended(): void {
     if (trails.get(this.threadId) === this) trails.delete(this.threadId);
-    event("agent.steps", { threadId: this.threadId, steps: this.steps, ended: true });
+    const done = this.result === undefined ? {} : { done: true, result: this.result };
+    event("agent.steps", { threadId: this.threadId, steps: this.steps, ended: true, ...done });
   }
 
   protected async pass(): Promise<void> {
@@ -187,17 +191,29 @@ export class Steps extends Watched {
         const buffer = Buffer.alloc(size - this.offset);
         const { bytesRead } = await file.read(buffer, 0, buffer.length, this.offset);
         const whole = buffer.subarray(0, bytesRead).lastIndexOf(10) + 1;
-        fresh = calls(buffer.subarray(0, whole));
+        fresh = this.calls(buffer.subarray(0, whole));
         this.offset += whole;
       }
     } finally {
       await file.close();
     }
     const task = this.taskTold ? null : this.task;
-    if (this.stopped || (fresh.length === 0 && task === null)) return;
+    if (this.stopped) return;
+    if (this.result !== undefined && !this.over) {
+      this.over = true;
+      this.end();
+    }
+    if (fresh.length === 0 && task === null) return;
     this.steps = [...this.steps, ...fresh].slice(-trail);
     event("agent.steps", { threadId: this.threadId, steps: this.steps, ...(task === null ? {} : { task }) });
     if (task !== null) this.taskTold = true;
+  }
+
+  /// The calls in whole lines, noting the reply that ends the agent's turn if one is there.
+  private calls(lines: Buffer): AgentStep[] {
+    const { found, result } = calls(lines);
+    if (result !== undefined) this.result = result;
+    return found;
   }
 
   /// The last four calls, read back from the last whole line a piece at a time.
@@ -222,7 +238,7 @@ export class Steps extends Watched {
       }
       // The first line of a piece may begin in the piece before.
       const first = start === 0 ? 0 : chunk.indexOf(10) + 1;
-      found = [...calls(chunk.subarray(first)), ...found];
+      found = [...this.calls(chunk.subarray(first)), ...found];
       rest = chunk.subarray(0, first);
       at = start;
     }
@@ -231,24 +247,31 @@ export class Steps extends Watched {
   }
 }
 
-/// The calls in whole lines, in order. Only an agent's own lines name a tool_use, so the rest,
-/// its tool results above all, are passed over without being parsed.
-function calls(lines: Buffer): AgentStep[] {
+/// The calls in whole lines, in order, and the text of a reply that ended the agent's turn. Only
+/// an agent's own lines name a tool_use or a stop, so the rest, its tool results above all, are
+/// passed over without being parsed.
+function calls(lines: Buffer): { found: AgentStep[]; result?: string } {
   const found: AgentStep[] = [];
+  let result: string | undefined;
   for (const line of lines.toString("utf8").split("\n")) {
-    if (!line.includes('"type":"tool_use"')) continue;
-    let record: { type?: string; message?: { content?: unknown } };
+    const ends = line.includes('"stop_reason":"end_turn"');
+    if (!ends && !line.includes('"type":"tool_use"')) continue;
+    let record: { type?: string; message?: { content?: unknown; stop_reason?: unknown } };
     try {
       record = JSON.parse(line);
     } catch {
       continue;
     }
     if (record.type !== "assistant" || !Array.isArray(record.message?.content)) continue;
-    for (const block of record.message.content as { type?: string; name?: string; input?: unknown }[]) {
+    const blocks = record.message.content as { type?: string; name?: string; input?: unknown; text?: unknown }[];
+    for (const block of blocks) {
       if (block.type === "tool_use" && typeof block.name === "string") found.push({ tool: block.name, input: brief(block.input) });
     }
+    if (ends && record.message.stop_reason === "end_turn") {
+      result = blocks.flatMap((block) => (block.type === "text" && typeof block.text === "string" ? [block.text] : [])).join("\n");
+    }
   }
-  return found;
+  return { found, result };
 }
 
 /// A call's input as a trail needs it: what it was given in words and numbers, each word cut at 200.

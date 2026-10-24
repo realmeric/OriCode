@@ -24,7 +24,19 @@ final class StageModel {
         fileprivate(set) var first = 0
         /// Its third call has landed, which folds the well its task opened in.
         fileprivate(set) var settled = false
+        /// The well's words have faded, and its room closes.
+        fileprivate(set) var folded = false
+        /// The well has gone, so the hop is no longer drawn and its gutter closes.
+        fileprivate(set) var closed = false
+        /// Its transcript has the reply that ended its turn, which says it's done before the run's
+        /// next snapshot does, and that reply's text.
+        fileprivate(set) var done = false
+        fileprivate(set) var result: String?
     }
+
+    /// A well folds in two steps a fade long each: its words fade, then its room closes. Only then
+    /// does the hop's gutter close.
+    static let folding: Duration = .milliseconds(180)
 
     @ObservationIgnored private var trails: [UUID: Trail] = [:]
     /// The run each thread's stage is up for, by the thread.
@@ -43,6 +55,9 @@ final class StageModel {
     @ObservationIgnored var sparked: Set<String> = []
     /// Each stage whose run has ended and folds in a moment, by its thread.
     @ObservationIgnored private var endings: [UUID: UUID] = [:]
+    /// Each stage whose run ended while it was stepped into an agent, by its thread: it folds once
+    /// it steps back out.
+    @ObservationIgnored private var overWhileStepped: [UUID: String] = [:]
     /// How long a stage stays as its run ended before it folds.
     static let lingering: Duration = .milliseconds(1200)
 
@@ -85,14 +100,43 @@ final class StageModel {
             step["tool"]?.string.map { Step(tool: $0, input: step["input"] ?? .null) }
         }
         if trail.steps != steps {
+            // A trail read for the first time with its three calls already made never opened a well.
+            let fresh = trail.steps.isEmpty && trail.first == 0 && trail.task == nil
             // The engine sends the last four each time: those it sent before are the new ones' start.
             let kept = (0...min(trail.steps.count, steps.count)).last { trail.steps.suffix($0).elementsEqual(steps.prefix($0)) } ?? 0
             trail.first += trail.steps.count - kept
             trail.steps = steps
-            if !trail.settled, trail.first + steps.count >= 3 { trail.settled = true }
+            if !trail.settled, trail.first + steps.count >= 3 {
+                if fresh {
+                    trail.settled = true
+                    trail.folded = true
+                    trail.closed = true
+                } else {
+                    fold(trail)
+                }
+            }
         }
         if let task = body["task"]?.string { trail.task = task }
+        if body["done"]?.bool == true {
+            trail.result = body["result"]?.string
+            trail.done = true
+        }
         if body["ended"]?.bool == true { followed.remove(agent) }
+    }
+
+    /// Folds a trail's well: its words fade, then its room closes with the card closing up around
+    /// it, so the trail under it moves up only into glass; then the hop goes.
+    private func fold(_ trail: Trail) {
+        Task {
+            // After the call that settled it has been laid out on its own, so its card grows
+            // under no animation of the fold's.
+            try? await Task.sleep(for: .milliseconds(50))
+            withAnimation(Motion.fade) { trail.settled = true }
+            try? await Task.sleep(for: Self.folding)
+            withAnimation(Motion.fade) { trail.folded = true }
+            try? await Task.sleep(for: Self.folding)
+            withAnimation(Motion.move) { trail.closed = true }
+        }
     }
 
     /// An agent's `agent.result`, sent once as it ends.
@@ -171,7 +215,8 @@ final class StageModel {
     }
 
     /// A run whose stage is up has ended: the stage stays as the run ended for a moment, then folds
-    /// into its line, unless it's stepped into an agent, whose transcript is being read.
+    /// into its line, unless it's stepped into an agent, whose transcript is being read: then it
+    /// does once it steps back out.
     func ended(_ run: String, in thread: UUID) {
         guard shown[thread] == run else { return }
         let folding = UUID()
@@ -180,7 +225,11 @@ final class StageModel {
             try? await Task.sleep(for: Self.lingering)
             guard let self, endings[thread] == folding else { return }
             endings[thread] = nil
-            guard shown[thread] == run, stepped[thread] == nil else { return }
+            guard shown[thread] == run else { return }
+            guard stepped[thread] == nil else {
+                overWhileStepped[thread] = run
+                return
+            }
             // What else the thread set going keeps the stage up while it works.
             if lanes[thread]?.contains(where: \.working) == true {
                 withAnimation(Motion.move) { shown[thread] = Self.laneKey }
@@ -192,6 +241,7 @@ final class StageModel {
 
     func toggle(_ run: String, in thread: UUID) {
         endings[thread] = nil
+        overWhileStepped[thread] = nil
         let left = stepped[thread]
         withAnimation(Motion.move) {
             shown[thread] = shown[thread] == run ? nil : run
@@ -204,6 +254,7 @@ final class StageModel {
     /// Calls a thread's stage up for a run, or with `laneKey` for its column, as ⌘⇧I's line does.
     func show(_ run: String, in thread: UUID) {
         endings[thread] = nil
+        overWhileStepped[thread] = nil
         guard shown[thread] != run else { return }
         let left = stepped[thread]
         withAnimation(Motion.move) {
@@ -216,6 +267,7 @@ final class StageModel {
     /// Folds a thread's stage, saying whether one was up.
     func fold(_ thread: UUID) -> Bool {
         endings[thread] = nil
+        overWhileStepped[thread] = nil
         guard shown[thread] != nil else { return false }
         let left = stepped[thread]
         withAnimation(Motion.move) {
@@ -235,7 +287,9 @@ final class StageModel {
         guard left != agent else { return }
         withAnimation(left == nil || agent == nil ? Motion.move : Motion.fade) { stepped[thread] = agent }
         steppedMoved?(left?.thread)
-        // Back out of a column whose work ended while it was stepped into: it folds now.
+        // Back out of a run or a column whose work ended while it was stepped into: it folds now,
+        // after the moment it would have stayed as it ended.
+        if agent == nil, let run = overWhileStepped.removeValue(forKey: thread) { ended(run, in: thread) }
         if agent == nil, let lane = lanes[thread], !lane.contains(where: \.working) { laneEnded(in: thread) }
     }
 
