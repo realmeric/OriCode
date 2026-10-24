@@ -426,6 +426,7 @@ final class AppModel {
             returnKeyboard()
             watchHeads()
             tellWindow()
+            stepOutOfStagesGone()
             followAgents()
         }
     }
@@ -441,6 +442,7 @@ final class AppModel {
                 letGoSoon(oldValue)
             }
             UserDefaults.standard.set(besideChatID?.uuidString, forKey: "besideChat")
+            stepOutOfStagesGone()
             followAgents()
             guard let besideChatID else {
                 composerHalf = .left
@@ -508,9 +510,10 @@ final class AppModel {
         id == selectedChatID || id == besideShown?.id
     }
 
-    /// Whether a thread is on the glass: the open one, or the one beside it.
+    /// Whether a thread is on the glass: the open one, the one beside it, or an agent's a stage of
+    /// either is stepped into.
     func inView(_ id: UUID) -> Bool {
-        id == selectedChatID || id == besideChatID
+        id == selectedChatID || id == besideChatID || steppedInView.contains(id)
     }
 
     /// Whether a thread can be left in view: one that has begun and is still in the drawer.
@@ -610,6 +613,7 @@ final class AppModel {
         if let selectedChatID { openRead = loadConversation(selectedChatID) }
         restorePair()
         notifier.open = { [weak self] id in self?.open(chatID: id) }
+        stage.steppedMoved = { [weak self] left in self?.steppedMoved(left: left) }
         notifier.openAsk = { [weak self] id, ask in self?.showAsk(ask, holder: id) }
         colourProjects()
         settleAgents()
@@ -656,7 +660,7 @@ final class AppModel {
     /// here. Anything that needs the conversation meanwhile, an engine event or a send, makes it
     /// at once through `conversation(for:)`, and then this one is dropped.
     @discardableResult
-    private func loadConversation(_ id: UUID) -> Task<Void, Never>? {
+    func loadConversation(_ id: UUID) -> Task<Void, Never>? {
         guard conversations[id] == nil else {
             transcriptStatus[id] = nil
             return nil

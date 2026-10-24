@@ -73,6 +73,24 @@ struct WorkflowTests {
     }
 
     @MainActor
+    @Test func aStageStepsIntoAnAgentAcrossAndBackOut() {
+        let stage = StageModel()
+        let lead = UUID(), fix = UUID(), verify = UUID()
+        var left: [UUID?] = []
+        stage.steppedMoved = { left.append($0) }
+        stage.cue("run", in: lead, grow: true)
+        stage.step(into: .init(agent: "a3", thread: fix), in: lead)
+        stage.step(into: .init(agent: "a3", thread: fix), in: lead)
+        stage.step(into: .init(agent: "a4", thread: verify), in: lead)
+        #expect(stage.stepped[lead]?.thread == verify && left == [nil, fix])
+        stage.step(into: nil, in: lead)
+        #expect(stage.stepped[lead] == nil && stage.shown[lead] == "run" && left == [nil, fix, verify])
+        // Folding a stage stepped into an agent steps out of it too.
+        stage.step(into: .init(agent: "a3", thread: fix), in: lead)
+        #expect(stage.fold(lead) && stage.stepped[lead] == nil && left.last == fix)
+    }
+
+    @MainActor
     @Test func aStepKeepsItsPlaceAsNewerOnesPushItDown() {
         let stage = StageModel()
         let agent = UUID()
@@ -120,6 +138,11 @@ struct WorkflowTests {
         // A finished phase is 250pt; three at work in what's left stack, no wider than one card.
         let later = StageLayout(groups: [("Review", [agent("done")]), ("Fix", [agent("running"), agent("running"), agent("running")])], width: 680, narrow: false)
         #expect(later.phases[0].width == 250 && later.phases[1].width == 396 && !later.phases[1].sideBySide)
+        // Beside another thread, three phases that wouldn't fit go narrow: the finished ones to their
+        // head rows and the live one to what's left.
+        let beside = StageLayout.fitted(groups: [("Review", [agent("done"), agent("done")]), ("Fix", [agent("done")]), ("Verify", [agent("running")])],
+                                        width: 550, narrow: false, wide: [], wells: [:])
+        #expect(beside.phases.map(\.collapsed) == [true, true, false] && beside.widths.reduce(0, +) <= 550)
         // Past the cap, cards drop calls before anything scrolls.
         let full = wide.height(steps: 4)
         #expect(wide.steps(within: full) == 4 && wide.steps(within: full - 1) == 3 && wide.steps(within: 0) == 0)

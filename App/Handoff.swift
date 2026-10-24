@@ -59,20 +59,33 @@ enum Handoff {
                 start = task[near..<first].firstIndex(where: \.isWhitespace).map(task.index(after:)) ?? near
             }
         }
-        while start < task.endIndex, task[start].isWhitespace { start = task.index(after: start) }
         var shown = AttributedString(start > task.startIndex ? "…" : "")
         shown.foregroundColor = Color.white.opacity(0.34)
-        var rest = AttributedString(task[start...])
+        shown.append(inked(task, from: start, runs: runs))
+        return shown
+    }
+
+    /// An agent's task whole, as it opens the agent's transcript: faint, and in ink what it took
+    /// from the results before it.
+    static func task(_ task: String, runs: [Range<String.Index>]) -> AttributedString {
+        inked(task, from: task.startIndex, runs: merged(runs))
+    }
+
+    /// The task from `start`, past its leading whitespace, faint with the runs in ink.
+    private static func inked(_ task: String, from start: String.Index, runs: [Range<String.Index>]) -> AttributedString {
+        var start = start
+        while start < task.endIndex, task[start].isWhitespace { start = task.index(after: start) }
+        let end = task[start...].lastIndex { !$0.isWhitespace }.map(task.index(after:)) ?? start
+        var rest = AttributedString(task[start..<end])
         rest.foregroundColor = Color.white.opacity(0.34)
-        for run in runs where run.upperBound > start {
-            let clipped = max(run.lowerBound, start)..<run.upperBound
+        for run in runs where run.upperBound > start && run.lowerBound < end {
+            let clipped = max(run.lowerBound, start)..<min(run.upperBound, end)
             let offset = task.distance(from: start, to: clipped.lowerBound)
             let lower = rest.index(rest.startIndex, offsetByCharacters: offset)
             let upper = rest.index(lower, offsetByCharacters: task.distance(from: clipped.lowerBound, to: clipped.upperBound))
             rest[lower..<upper].foregroundColor = Ink.primary
         }
-        shown.append(rest)
-        return shown
+        return rest
     }
 
     /// A source's result line, dimmed to 34% where the recipient's task took its words.

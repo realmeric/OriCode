@@ -165,7 +165,7 @@ extension AppModel {
     /// thread's stored copy ends.
     func followAgents() {
         guard engineState == .ready else { return }
-        let wanted = Set([selectedChatID, besideChatID].compactMap { $0 }.filter { chat(withID: $0)?.agentTranscript != nil })
+        let wanted = Set([selectedChatID, besideChatID].compactMap { $0 }).union(steppedInView).filter { chat(withID: $0)?.agentTranscript != nil }
         // A read cut off between its pieces starts again from the stored copy.
         for id in followed.symmetricDifference(wanted) { heldPieces[id] = nil }
         for id in followed.subtracting(wanted) {
@@ -177,6 +177,56 @@ extension AppModel {
             Task { _ = try? await engine.request("agent.follow", params) }
         }
         followed = wanted
+    }
+
+    /// The agents' threads stepped into on the stages of the threads in view.
+    var steppedInView: Set<UUID> {
+        Set(stage.stepped.compactMap { lead, stepped in lead == selectedChatID || lead == besideChatID ? stepped.thread : nil })
+    }
+
+    /// Steps a thread's stage into one of its agents, whose transcript is read as a thread's on the
+    /// glass is, or with nil back out to the columns.
+    func step(into agent: Chat?, of lead: UUID) {
+        stage.step(into: agent.flatMap { agent in agent.agentID.map { .init(agent: $0, thread: agent.id) } }, in: lead)
+    }
+
+    /// A stage stepped into an agent or out of one: the agent's thread comes in from the store and
+    /// is read while it shows, and the one left is let go once it's been away a while.
+    func steppedMoved(left: UUID?) {
+        for id in steppedInView {
+            leaving[id]?.cancel()
+            loadConversation(id)
+        }
+        if let left, !inView(left) {
+            if conversations[left] == nil { stopConversationRead(left) }
+            letGoSoon(left)
+        }
+        followAgents()
+    }
+
+    /// The stages of threads that have left the glass step back out to their columns.
+    func stepOutOfStagesGone() {
+        for lead in stage.stepped.keys where lead != selectedChatID && lead != besideChatID {
+            stage.step(into: nil, in: lead)
+        }
+    }
+
+    /// An agent's task as it opens its transcript, in a well: the script's words faint and what it
+    /// took from the agents of the phase before it in ink. Before the run's phases are known, or
+    /// after, any agent of the run that had finished is a source.
+    func taskWell(_ task: String, of agent: Chat) -> AttributedString {
+        guard let id = agent.agentID, let parent = agent.openedBy.flatMap(chat(withID:)) else { return Handoff.task(task, runs: []) }
+        let run = conversations[parent.id]?.heads.list.first { $0.id == agent.agentTask }?.run
+        let phase = run?.agents.first { $0.id == id }?.phaseIndex
+        let before = phase.map { phase in Set(run?.agents.filter { $0.phaseIndex == phase - 1 }.compactMap(\.id) ?? []) }
+        var runs: [Range<String.Index>] = []
+        for source in agentChats(of: parent).values where source.agentTask == agent.agentTask && source.agentState == "done" {
+            guard let sourceID = source.agentID, sourceID != id, before?.contains(sourceID) ?? true,
+                  let result = stage.results[sourceID] ?? source.agentResult
+            else { continue }
+            runs += stage.runs(id, task: task, source: sourceID, result: result).task
+        }
+        return Handoff.task(task, runs: runs)
     }
 
     /// A thread's workflow agents' threads, by Claude Code's id for each agent.

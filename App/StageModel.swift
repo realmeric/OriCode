@@ -42,6 +42,17 @@ final class StageModel {
     /// The agents a spark has travelled to, so it does once.
     @ObservationIgnored var sparked: Set<String> = []
 
+    /// An agent a stage is stepped into: Claude Code's id for it and its thread.
+    struct Stepped: Equatable {
+        let agent: String
+        let thread: UUID
+    }
+
+    /// The agent each thread's stage is stepped into, by the thread.
+    private(set) var stepped: [UUID: Stepped] = [:]
+    /// Told of the agent's thread a stage stepped out of, or nil, each time one steps in or out.
+    @ObservationIgnored var steppedMoved: ((UUID?) -> Void)?
+
     func trail(for agent: UUID) -> Trail {
         if let trail = trails[agent] { return trail }
         let trail = Trail()
@@ -90,14 +101,34 @@ final class StageModel {
     }
 
     func toggle(_ run: String, in thread: UUID) {
-        withAnimation(Motion.move) { shown[thread] = shown[thread] == run ? nil : run }
+        let left = stepped[thread]
+        withAnimation(Motion.move) {
+            shown[thread] = shown[thread] == run ? nil : run
+            stepped[thread] = nil
+        }
+        if let left { steppedMoved?(left.thread) }
     }
 
     /// Folds a thread's stage, saying whether one was up.
     func fold(_ thread: UUID) -> Bool {
         guard shown[thread] != nil else { return false }
-        withAnimation(Motion.move) { shown[thread] = nil }
+        let left = stepped[thread]
+        withAnimation(Motion.move) {
+            shown[thread] = nil
+            stepped[thread] = nil
+        }
+        if let left { steppedMoved?(left.thread) }
         return true
+    }
+
+    /// Steps a thread's stage into an agent, from the columns or across from another, or with nil
+    /// back out to the columns. The card grows into the agent's transcript with the spring; one
+    /// agent's gives way to another's with a fade.
+    func step(into agent: Stepped?, in thread: UUID) {
+        let left = stepped[thread]
+        guard left != agent else { return }
+        withAnimation(left == nil || agent == nil ? Motion.move : Motion.fade) { stepped[thread] = agent }
+        steppedMoved?(left?.thread)
     }
 
     /// Its engine went, and every follow with it.

@@ -456,6 +456,7 @@ struct Composer: View {
             // Fonts don't interpolate, so the field's text and placeholder fade in with the new type
             // over a copy of what it showed in the old one. The field itself stays, and keeps the
             // keyboard; SwiftUI's opacity doesn't reach its AppKit view, so its colours fade instead.
+            let stepped = chat.map { model.stage.stepped[$0.id] != nil } ?? false
             KeyframeAnimator(initialValue: 1.0, trigger: morph) { shown in
                 let placeholder = placeholder(shell: state.shellPrompt)
                 let font = state.shellPrompt ? ComposerTextView.mono : ComposerTextView.body
@@ -468,7 +469,9 @@ struct Composer: View {
                         if draft.empty {
                             Text(placeholder)
                                 .font(state.shellPrompt ? Type.mono : Type.body)
-                                .foregroundStyle(Self.placeholderInk.opacity(underDrawer ? 0 : shown))
+                                // Under an agent stepped into, it reads as under the surface.
+                                .foregroundStyle((stepped ? Ink.faint : Self.placeholderInk).opacity(underDrawer ? 0 : shown))
+                                .animation(Motion.fade, value: stepped)
                                 .animation(Motion.fade, value: underDrawer)
                                 .lineLimit(1)
                                 .allowsHitTesting(false)

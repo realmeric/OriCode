@@ -10,6 +10,8 @@ envs=()
 for pair in "${@:4}"; do envs+=(--env "$pair"); done
 # PERF_STAGE=1 from the caller puts a live four-agent run in the thread keys and stream type into.
 [ -n "$PERF_STAGE" ] && envs+=(--env PERF_STAGE=$PERF_STAGE)
+# PERF_STEP=1 with it steps the stage into one agent, and the keys' stream goes into that agent.
+[ -n "$PERF_STEP" ] && envs+=(--env PERF_STEP=$PERF_STEP)
 perl -e 'alarm shift; exec @ARGV' $limit open -n -W --env XCTestConfigurationFilePath=/dev/null --env PERF_OUT="$OUT" --env PERF_BENCH="$label" --env PERF_PARTS="$parts" $envs --stdout "$OUT/run.log" --stderr "$OUT/run.log" "$APP"
 code=$?
 [ $code = 0 ] || echo "[$label] run exit $code" >> "$OUT/results.txt"

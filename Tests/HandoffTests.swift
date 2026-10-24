@@ -63,4 +63,14 @@ struct HandoffTests {
         let shown = Handoff.source(line, task: task)
         #expect(shown.runs.allSatisfy { $0.foregroundColor == Color.white.opacity(0.34) })
     }
+
+    @Test func anAgentsTaskOpensWholeWithWhatItTookInInk() {
+        let runs = Handoff.runs(task: task, result: result)
+        let well = Handoff.task(task + "\n\n", runs: runs.task)
+        // From its first word to its last, the preamble too, with nothing after it.
+        #expect(String(well.characters).hasPrefix("You are working in") && String(well.characters).hasSuffix("move REA-242 to Done in Linear."))
+        let inked = well.runs.filter { $0.foregroundColor == Ink.primary }.map { String(well[$0.range].characters) }
+        #expect(inked.contains { $0.contains("For one second after the press") })
+        #expect(!inked.contains { $0.contains("How to work this board") })
+    }
 }

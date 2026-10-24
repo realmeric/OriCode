@@ -10,6 +10,7 @@ extension EnvironmentValues {
 /// A conversation column: its thread's transcript, and over its top the stage of the run the
 /// thread has out, while that's up. The transcript is bounded under the stage's lowest card.
 struct ConversationColumn: View {
+    @Environment(AppModel.self) private var model
     let conversation: Conversation
     let chat: Chat
     let active: Bool
@@ -19,7 +20,13 @@ struct ConversationColumn: View {
     @State private var size = CGSize.zero
 
     var body: some View {
+        let stepped = model.stage.stepped[chat.id] != nil
+        // Stepped into an agent, the lead's transcript fades out where it is, as under ⌘I, and
+        // comes back as it was once the stage steps out.
         TranscriptView(conversation: conversation, cwd: chat.cwd, active: active, stageFoot: foot)
+            .opacity(stepped ? 0 : 1)
+            .allowsHitTesting(!stepped)
+            .animation(stepped ? .easeOut(duration: 0.1) : Motion.fade.delay(0.12), value: stepped)
             .overlay(alignment: .top) {
                 StageSlot(conversation: conversation, chat: chat, active: active, size: size) { foot in
                     if foot != self.foot { self.foot = foot }
@@ -48,8 +55,8 @@ private struct StageSlot: View {
         let up = head?.call.map { model.stage.shown[chat.id] == $0 } ?? false
         ZStack(alignment: .top) {
             if let head, up {
-                RunStage(head: head, call: call, chat: chat, width: size.width,
-                         top: RunStage.top(active: active), cap: size.height - RunStage.underneath, foot: foot)
+                RunStage(head: head, call: call, chat: chat, width: size.width, top: RunStage.top(active: active),
+                         cap: size.height - RunStage.underneath, floor: size.height - RunStage.gap, foot: foot)
                     .transition(.opacity)
             }
         }
@@ -79,6 +86,8 @@ struct RunStage: View {
     let top: CGFloat
     /// The lowest the cards may reach.
     let cap: CGFloat
+    /// Where an agent stepped into ends, the gap the lead's transcript keeps above the composer.
+    let floor: CGFloat
     let foot: (CGFloat?) -> Void
     @State private var hovering = false
     /// The agents' threads, looked up as agents come rather than on every draw, which would have
@@ -92,8 +101,11 @@ struct RunStage: View {
     static func top(active: Bool) -> CGFloat {
         active ? Island.top + TitleCapsule.height + 24 : TitleBar.height + BesideTitle.height + 24
     }
-    /// What the stage leaves the lead under it: 180pt of transcript and the 28pt between.
-    static let underneath: CGFloat = 180 + 28
+    /// Between the stage's lowest card and the lead's transcript, and between an agent stepped
+    /// into and the composer.
+    static let gap: CGFloat = 28
+    /// What the stage leaves the lead under it: 180pt of transcript and the gap between.
+    static let underneath: CGFloat = 180 + gap
     static let headHeight: CGFloat = 28
     /// From the head row's foot to the phases' labels.
     static let labelsGap: CGFloat = 14
@@ -105,14 +117,16 @@ struct RunStage: View {
         let name = run?.name ?? call?.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         let inset: CGFloat = width < 900 ? 20 : 32
         let hops = Self.hops(groups, stage: model.stage, chats: agentChats)
-        let layout = StageLayout(groups: groups, width: width - inset * 2, narrow: width < 560, wide: Set(hops.map(\.phase)),
-                                 wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) })
+        let layout = StageLayout.fitted(groups: groups, width: width - inset * 2, narrow: width < 560, wide: Set(hops.map(\.phase)),
+                                        wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) })
         let room = cap - top - Self.headHeight - Self.labelsGap
         let steps = layout.steps(within: room)
         // Past the cap with no call left to drop, the cards scroll.
         let scrolls = layout.height(steps: 0) > room
         let agentIDs = (run?.agents ?? []).compactMap(\.id)
-        let watched = Set(groups.flatMap(\.agents).filter { $0.state == .running }.compactMap { $0.id.flatMap { agentChats[$0] } }
+        let stepped = model.stage.stepped[chat.id]
+        // Stepped into an agent, no card shows a trail.
+        let watched = stepped != nil ? [] : Set(groups.flatMap(\.agents).filter { $0.state == .running }.compactMap { $0.id.flatMap { agentChats[$0] } }
             .filter { $0.agentTranscript != nil }.map(\.id))
         VStack(alignment: .leading, spacing: Self.labelsGap) {
             HStack(spacing: 8) {
@@ -126,23 +140,37 @@ struct RunStage: View {
                 }
                 .stageMatched(RunLine.matchID(head.call ?? head.id), in: space)
                 Spacer(minLength: 8)
-                Button("Stop workflow") { model.stopWorkflow(head.id, of: chat.id) }
-                    .buttonStyle(.action(small: true))
-                    .opacity(hovering ? 1 : 0)
-                    .allowsHitTesting(hovering)
-                    .help("Stops every agent of this workflow")
+                // Stepped in, the marks keep the row's end and Stop comes in beside them.
+                if stepped == nil || hovering {
+                    Button("Stop workflow") { model.stopWorkflow(head.id, of: chat.id) }
+                        .buttonStyle(.action(small: true))
+                        .opacity(hovering ? 1 : 0)
+                        .allowsHitTesting(hovering)
+                        .help("Stops every agent of this workflow")
+                        .transition(.opacity)
+                }
+                if let stepped {
+                    StepMarks(phases: layout.phases, stepped: stepped.agent, head: head, agentChats: agentChats, lead: chat.id)
+                }
             }
             .frame(height: Self.headHeight)
-            phases(layout, steps: steps, scrolls: scrolls, hops: hops)
-                .frame(maxHeight: scrolls ? max(room, 0) : nil, alignment: .top)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+            if let stepped {
+                AgentSurface(stepped: stepped)
+                    .frame(height: max(floor - top - Self.headHeight - Self.labelsGap, 0))
+                    .transition(.opacity)
+            } else {
+                phases(layout, steps: steps, scrolls: scrolls, hops: hops)
+                    .frame(maxHeight: scrolls ? max(room, 0) : nil, alignment: .top)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+            }
         }
         .padding(.horizontal, inset)
         .padding(.top, top)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { hovering = $0 }
         .animation(Motion.fade, value: hovering)
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .local).maxY } action: { foot($0) }
+        // Stepped into an agent, the lead's transcript under it keeps the top it had.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .local).maxY } action: { if model.stage.stepped[chat.id] == nil { foot($0) } }
         .onChange(of: agentIDs, initial: true) { agentChats = model.agentChats(of: chat) }
         // The trails of the agents at work are read while the stage is up, and no longer.
         .onChange(of: watched, initial: true) { model.watchSteps(watched, for: watcher) }
@@ -198,7 +226,7 @@ struct RunStage: View {
             ForEach(Array(layout.phases.enumerated()), id: \.element.name) { index, phase in
                 if index > 0 { Color.clear.frame(width: layout.gutters[index], height: 1) }
                 PhaseColumn(phase: phase, steps: steps, head: head, agentChats: agentChats, cwd: chat.cwd,
-                            wells: wells, handed: handed)
+                            wells: wells, handed: handed, lead: chat.id)
             }
         }
         .overlayPreferenceValue(CardBounds.self) { bounds in
@@ -226,6 +254,8 @@ private struct PhaseColumn: View {
     let wells: [String: AttributedString]
     /// The task each source of a hop handed its words to.
     let handed: [String: String]
+    /// The thread whose stage it is.
+    let lead: UUID
 
     var body: some View {
         VStack(alignment: .leading, spacing: StageLayout.labelGap) {
@@ -249,7 +279,7 @@ private struct PhaseColumn: View {
         ForEach(Array(phase.agents.enumerated()), id: \.offset) { _, agent in
             StageCard(agent: agent, chat: agent.id.flatMap { agentChats[$0] }, ray: agent.id.flatMap { head.agentRays[$0] },
                       color: MarkPalette.color(for: head.agent), steps: steps, collapsed: phase.collapsed, cwd: cwd,
-                      well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] })
+                      well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] }, lead: lead)
         }
     }
 }
@@ -273,11 +303,16 @@ private struct StageCard: View {
     let well: AttributedString?
     /// The task that took its words, while that hop is drawn.
     let handed: String?
+    /// The thread whose stage it is.
+    let lead: UUID
+    @Environment(\.stageSpace) private var space
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 9) {
-                mark.frame(width: 14, height: 14)
+                StageMark(state: agent.state, ray: ray, color: color)
+                    .frame(width: 14, height: 14)
+                    .stageMatched(agent.id.map { StageMark.matchID($0) } ?? "", in: agent.id == nil ? nil : space)
                 Text(agent.label)
                     .font(Type.mono)
                     .foregroundStyle(agent.state == .queued ? Ink.faint : agent.state == .running ? Ink.primary : Ink.secondary)
@@ -313,8 +348,19 @@ private struct StageCard: View {
         .padding(.horizontal, StageLayout.cardSide)
         .padding(.bottom, StageLayout.cardBottom)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(tint), in: .rect(cornerRadius: 14, style: .continuous))
+        .background {
+            // What grows into the agent's surface as the stage steps into it.
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(tint))
+                .stageMatched(agent.id.map { AgentSurface.matchID($0) } ?? "", in: agent.id == nil ? nil : space)
+        }
         .anchorPreference(key: CardBounds.self, value: .bounds) { bounds in agent.id.map { [$0: bounds] } ?? [:] }
+        .contentShape(.rect(cornerRadius: 14, style: .continuous))
+        // A click steps into the agent, and with ⌥ opens its thread beside.
+        .onTapGesture {
+            guard let chat else { return }
+            if NSEvent.modifierFlags.contains(.option) { model.openBeside(chat) } else { model.step(into: chat, of: lead) }
+        }
         .help(agent.label)
         .animation(Motion.fade, value: agent.state)
         .animation(Motion.fade, value: well == nil)
@@ -356,9 +402,20 @@ private struct StageCard: View {
         }
     }
 
-    @ViewBuilder
-    private var mark: some View {
-        switch agent.state {
+}
+
+/// An agent's mark on the stage, by its state: its own ray turning while it works, a dot once it's
+/// over, faint while it waits its turn.
+private struct StageMark: View {
+    let state: WorkflowRun.Agent.State
+    /// The ray it holds on the run's mark while it works.
+    let ray: Int?
+    let color: Color
+
+    static func matchID(_ agent: String) -> String { "mark:" + agent }
+
+    var body: some View {
+        switch state {
         case .running:
             RaysMark(slots: ray.map { [$0] } ?? [], turning: ray != nil, restingOpacity: 0.16,
                      colors: ray.map { [$0: color] } ?? [:])
@@ -368,6 +425,92 @@ private struct StageCard: View {
             RaysMark(restingOpacity: 0.16, dotColor: Ink.deleted)
         case .queued:
             RaysMark(restingOpacity: 0.10, dotOpacity: 0.18)
+        }
+    }
+}
+
+/// The run's agents as their marks on the head row while the stage is stepped into one, grouped by
+/// phase: each a capsule to click across to, the one stepped into on the selected tint with its
+/// label, which steps back out. Every mark's label is its hover.
+private struct StepMarks: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.stageSpace) private var space
+    let phases: [StageLayout.Phase]
+    let stepped: String
+    let head: Head
+    let agentChats: [String: Chat]
+    let lead: UUID
+
+    var body: some View {
+        HStack(spacing: 18) {
+            ForEach(Array(phases.filter { !$0.agents.isEmpty }.enumerated()), id: \.element.name) { _, phase in
+                HStack(spacing: 2) {
+                    ForEach(Array(phase.agents.enumerated()), id: \.offset) { _, agent in
+                        capsule(agent)
+                    }
+                }
+            }
+        }
+    }
+
+    private func capsule(_ agent: WorkflowRun.Agent) -> some View {
+        let selected = agent.id == stepped
+        let chat = agent.id.flatMap { agentChats[$0] }
+        return HStack(spacing: 9) {
+            StageMark(state: agent.state, ray: agent.id.flatMap { head.agentRays[$0] }, color: MarkPalette.color(for: head.agent))
+                .frame(width: 14, height: 14)
+                .stageMatched(agent.id.map { StageMark.matchID($0) } ?? "", in: agent.id == nil ? nil : space)
+            if selected {
+                // Gone at once from the capsule left and in once the new one has its room, so
+                // two labels never read over each other on the way.
+                Text(agent.label)
+                    .font(Type.mono)
+                    .foregroundStyle(Ink.primary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)), removal: .identity))
+            }
+        }
+        .padding(.leading, 7)
+        .padding(.trailing, selected ? 11 : 7)
+        .frame(height: 28)
+        .background {
+            if selected { Capsule().fill(Surface.selected) }
+        }
+        .contentShape(Capsule())
+        .onTapGesture {
+            guard let chat else { return }
+            if NSEvent.modifierFlags.contains(.option) {
+                model.openBeside(chat)
+            } else {
+                model.step(into: selected ? nil : chat, of: lead)
+            }
+        }
+        .help(agent.label)
+    }
+}
+
+/// The agent a stage is stepped into, on a surface of its own grown out of its card: its thread's
+/// transcript, read-only, its task in a well at its top. The composer under it stays the lead's.
+private struct AgentSurface: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.stageSpace) private var space
+    let stepped: StageModel.Stepped
+
+    static func matchID(_ agent: String) -> String { "card:" + agent }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+                .stageMatched(Self.matchID(stepped.agent), in: space)
+            // Across to another agent, one transcript goes before the next comes, so no line is
+            // read over another.
+            if let conversation = model.conversations[stepped.thread] {
+                TranscriptView(conversation: conversation, cwd: conversation.chat.cwd, active: false, stepped: true)
+                    .id(stepped.thread)
+                    .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)), removal: .opacity.animation(.easeOut(duration: 0.1))))
+            }
         }
     }
 }
@@ -588,6 +731,7 @@ struct StageLayout: Equatable {
     static let spacing: CGFloat = 10
     static let card: CGFloat = 400
     static let leastCard: CGFloat = 240
+    static let leastNarrow: CGFloat = 160
     static let finished: CGFloat = 250
     /// A finished phase in a column under 560pt, its cards their head rows.
     static let collapsedFinished: CGFloat = 150
@@ -633,7 +777,8 @@ struct StageLayout: Equatable {
         }
         let live = states.count { $0 == .live }
         let left = width - fixed.compactMap { $0 }.reduce(0, +) - gutters.reduce(0, +)
-        let share = live == 0 ? 0 : max(left / CGFloat(live), Self.leastCard)
+        // Narrow, a live phase takes what's left down to a stacked card of 160pt.
+        let share = live == 0 ? 0 : max(left / CGFloat(live), narrow ? Self.leastNarrow : Self.leastCard)
         phases = zip(groups, zip(states, fixed)).map { group, entry in
             let (state, fixed) = entry
             let count = CGFloat(max(group.agents.count, 1))
@@ -658,6 +803,15 @@ struct StageLayout: Equatable {
             }
         }
         self.wells = heights
+    }
+
+    /// The layout for `width`, narrow when the phases wouldn't fit across it otherwise: three phases
+    /// in a column beside another thread don't at 250pt a finished one.
+    static func fitted(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool,
+                       wide: Set<Int>, wells: [String: String]) -> StageLayout {
+        let layout = StageLayout(groups: groups, width: width, narrow: narrow, wide: wide, wells: wells)
+        guard !narrow, layout.widths.reduce(0, +) > width else { return layout }
+        return StageLayout(groups: groups, width: width, narrow: true, wide: wide, wells: wells)
     }
 
     static func labelWidth(_ label: String) -> CGFloat {

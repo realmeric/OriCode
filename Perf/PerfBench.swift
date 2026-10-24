@@ -450,8 +450,14 @@ enum PerfBench {
         let run = try await liveRun(stage, in: a)
         defer { run?.cancel() }
         if run != nil { try await settle(1000) }
+        var target = pair ? b : a
+        // PERF_STEP=1: the stage stepped into an agent, which the stream goes into while keys go to the lead.
+        if run != nil, env["PERF_STEP"] == "1", let agent = stage.chat.project?.chats.first(where: { $0.agentID == "a1" }) {
+            stage.model.step(into: agent, of: a)
+            try await settle(800)
+            target = agent.id
+        }
         guard try await stage.focusComposer() else { return log("keys: the composer never took the keyboard") }
-        let target = pair ? b : a
         for streaming in [false, true] {
             var player: Task<Void, Error>?
             if streaming {

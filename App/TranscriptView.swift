@@ -12,6 +12,8 @@ struct TranscriptView: View {
     var active = true
     /// Where the stage over the column ends while it's up: the transcript starts 28pt under it.
     var stageFoot: CGFloat?
+    /// An agent's, on the surface of a stage stepped into it: nothing over its top but its fade.
+    var stepped = false
     @State private var position = ScrollPosition()
     /// Where the transcript stands against its end.
     @State private var end = TranscriptEnd.Standing()
@@ -76,7 +78,8 @@ struct TranscriptView: View {
     private var clear: CGFloat { clear(under: stageFoot) }
 
     private func clear(under foot: CGFloat?) -> CGFloat {
-        foot.map { $0 + 28 - Self.fadeLength / 2 } ?? Self.clear(active: active)
+        if stepped { return 0 }
+        return foot.map { $0 + 28 - Self.fadeLength / 2 } ?? Self.clear(active: active)
     }
 
     private var shown: ArraySlice<Item> {
@@ -107,11 +110,13 @@ struct TranscriptView: View {
                 // The thread's water so far, under its latest turn, when Settings asks. The footer
                 // reads the meter itself, so a new figure draws that line and not the transcript.
                 let watered = showWater ? conversation.lastFooter : nil
+                // An agent's task, the script's words and not anyone's message, opens its thread.
+                let task = conversation.chat.agentID == nil ? nil : conversation.items.first { if case .user = $0 { true } else { false } }?.id
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     // One view a row, whatever the item draws: an item that can draw nothing, a footer
                     // with nothing to say, would have the lazy stack make every row to count them.
                     VStack(alignment: .leading, spacing: 0) {
-                        view(of: entry, listening: listening, lastLimit: lastLimit, water: entry.id == watered ? conversation.water : nil)
+                        view(of: entry, listening: listening, lastLimit: lastLimit, water: entry.id == watered ? conversation.water : nil, task: task)
                     }
                         .background {
                             // An item in a run is lit where it stands, in the run opened for it.
@@ -500,9 +505,11 @@ struct TranscriptView: View {
     private static let settling = Duration.milliseconds(400)
 
     @ViewBuilder
-    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?, water: WaterMeter?) -> some View {
+    private func view(of entry: TranscriptEntry, listening: String?, lastLimit: UUID?, water: WaterMeter?, task: UUID?) -> some View {
         let streaming = conversation.live.id
         switch entry {
+        case .item(.user(let id, let text, _, _)) where id == task:
+            TaskWell(text: model.taskWell(text, of: conversation.chat))
         case .item(let item):
             ItemView(
                 item: item, cwd: cwd, thread: conversation.chat.id, listening: listening,
@@ -1376,5 +1383,22 @@ extension TurnFooter {
         if showTime { parts.append("Worked for \(time)") }
         if showCost { parts.append(String(format: "$%.2f", costUSD)) }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// An agent's task where its thread opens, in the well a hop shows it in on the stage, left and
+/// not as a bubble: it's the script's words, never something the user typed.
+struct TaskWell: View {
+    let text: AttributedString
+
+    var body: some View {
+        Text(text)
+            .font(Type.secondary)
+            .lineSpacing(4)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, StageLayout.wellPadding.height)
+            .padding(.horizontal, StageLayout.wellPadding.width)
+            .background(Color.white.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
     }
 }
