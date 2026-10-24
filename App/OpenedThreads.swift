@@ -682,6 +682,11 @@ struct ThreadAct: Equatable {
     /// Who a passed ask went to; nil is the user.
     var to: String?
 
+    /// An ask allowed, denied, answered or sent up.
+    var isAsk: Bool {
+        [.allowed, .denied, .answered, .passed].contains(act)
+    }
+
     init(act: Kind, by: Bool, thread: UUID, title: String, reason: String, what: String = "", to: String? = nil) {
         self.act = act
         self.by = by

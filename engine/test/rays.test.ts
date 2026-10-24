@@ -112,6 +112,13 @@ test("a head is told its rays in its own instructions, and lists and starts only
   const worker = await call(url, "start_worker", { agent: "opencode", task: "look" });
   assert.equal(worker.model, "small");
   await call(url, "worker_result", { worker: worker.worker, wait: true });
+  // Two given the same task are told apart by the titles the head gave them.
+  const task = "Read every file under src and list the functions that take more than three arguments, with their files.";
+  const first = await call(url, "start_worker", { agent: "opencode", title: "List long signatures in src", task });
+  const second = await call(url, "start_worker", { agent: "opencode", title: "Check the list again", task });
+  assert.equal((await call(url, "worker_status", { worker: first.worker })).task, "List long signatures in src");
+  assert.equal((await call(url, "worker_status", { worker: second.worker })).task, "Check the list again");
+  for (const started of [first, second]) await call(url, "worker_result", { worker: started.worker, wait: true });
   await engine.end();
 });
 
@@ -485,7 +492,7 @@ test("a head that chooses is told so, lists every model it may use, starts a wor
     ],
   );
   const chosen = (await mcp(url, "tools/list")).tools.find((tool: { name: string }) => tool.name === "start_worker");
-  assert.deepEqual(chosen.inputSchema.required, ["agent", "model", "task", "reason"]);
+  assert.deepEqual(chosen.inputSchema.required, ["agent", "model", "title", "task", "reason"]);
   assert.match((await call(url, "start_worker", { agent: "codex", task: "x", reason: "x" })).error, /^Name the model in `model`/);
   assert.match((await call(url, "start_worker", { agent: "codex", model: "gpt-small", task: "x" })).error, /^Say why this model at this level in `reason`/);
   assert.match((await call(url, "start_worker", { agent: "codex", model: "gpt-large", task: "x", reason: "x" })).error, /^codex gpt-large isn't one of the models you may use: codex gpt-small, opencode small\./);

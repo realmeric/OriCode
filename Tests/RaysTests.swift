@@ -209,16 +209,10 @@ struct RaysTests {
         #expect(sent()["choose"]?["models"] == ["claude/opus", "codex/gpt-6-luna"])
         #expect(sent()["choose"]?["keepOff"] == ["claude/sonnet"])
         #expect(sent()["choose"]?["budget"] == 2)
-        // What it spent before the budget was set isn't counted in it.
-        #expect(chat.spentBefore == 3)
-        #expect(sent()["choose"]?["spent"] == 0)
+        // What it spent before the budget was set counts too, so a thread past it stops.
+        #expect(sent()["choose"]?["spent"] == 3)
         chat.costUSD = 3.5
-        #expect(sent()["choose"]?["spent"] == .number(0.5))
-        // Lifted, the budget lets go of it; set again, it counts from then.
-        UserDefaults.standard.removeObject(forKey: Rays.budgetKey)
-        #expect(sent()["choose"]?["spent"] == .number(3.5) && chat.spentBefore == nil)
-        UserDefaults.standard.set(2.0, forKey: Rays.budgetKey)
-        #expect(sent()["choose"]?["spent"] == 0 && chat.spentBefore == 3.5)
+        #expect(sent()["choose"]?["spent"] == .number(3.5))
         model.keepHeadsOff(ModelRef(provider: ProviderInfo.claudeID, id: "sonnet"), false)
         #expect(model.headsKeepOff.isEmpty)
 

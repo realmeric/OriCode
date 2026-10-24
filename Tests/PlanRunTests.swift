@@ -160,14 +160,18 @@ struct PlanRunTests {
         for event in done(words, replying: "12 words.") { model.route(event) }
         let conversation = model.conversation(for: lead)
         #expect(conversation.running)
-        let sent = conversation.items.compactMap { if case .user(_, let text, _, _) = $0 { text } else { nil } }.last ?? ""
+        // OriCode's own prompt starts the turn and draws nothing: no bubble, no line.
+        #expect(!conversation.items.contains { if case .user = $0 { true } else { false } })
+        #expect(acts(conversation).isEmpty)
+        guard case .woke = conversation.items.last else { Issue.record("No woken turn"); return }
+        #expect(TranscriptEntry.fold(conversation.items).isEmpty)
+        // The store keeps what was sent, under its own kind, which neither search nor read_thread reads.
+        let sent = try #require(StoredEvent.read(lead.id, from: container.mainContext).last { $0.kind == "wake" }?.body?["text"]?.string)
         #expect(sent.hasPrefix("[OriCode] Tasks of the plan you run have ended."))
         #expect(sent.contains("T2 · Write words.sh is done. Its last reply:\n\n12 words."))
         #expect(sent.hasSuffix("Call wait_plan for the rest of the plan."))
-        #expect(lead.turnFrom == words.id)
+        #expect(lead.turnFrom == nil)
         #expect(try task("T2").heard)
-        // Its line comes ahead of the message, as message_thread's does.
-        #expect(acts(conversation).last == "From Write words.sh · T2 done")
     }
 
     @Test func aTaskStoppedIsStuckStopsWhatWaitsOnItAndIsTakenUpAgainWhenItsThreadIsWrittenInto() async throws {
@@ -323,7 +327,7 @@ struct PlanRunTests {
 
         model.engineState = .ready
         model.movePlans()
-        let sent = model.conversation(for: lead).items.compactMap { if case .user(_, let text, _, _) = $0 { text } else { nil } }.last ?? ""
+        let sent = try StoredEvent.read(lead.id, from: container.mainContext).last { $0.kind == "wake" }?.body?["text"]?.string ?? ""
         #expect(sent.contains("T1 · A is stuck: Stopped: "))
         #expect(try task("T1").heard && task("T2").heard)
         #expect(model.startingTasks == [try task("T3").id])

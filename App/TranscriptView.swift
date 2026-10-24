@@ -171,8 +171,10 @@ struct TranscriptView: View {
             content.visible = new.visible
             // The composer growing with what's typed, or shrinking once it's sent, changes the
             // room the transcript has: one following its end keeps it in view, and doesn't take
-            // the moment the end went under the composer for leaving it.
-            if old.visible != new.visible, old.place == .end, new.place != .end, end.pinned, !end.heading {
+            // the moment the end went under the composer for leaving it. The scroll view can say
+            // the room changed with the end still in view and only then that the end went under,
+            // which beside another thread left a send's column where it was.
+            if old.visible != new.visible, old.place == .end, end.pinned, !end.heading {
                 position.scrollTo(edge: .bottom)
                 return
             }
@@ -815,6 +817,9 @@ enum TranscriptEntry: Identifiable {
             // getting close, which stops nothing: the usage glass's colour says so.
             case .opened, .nearLimit:
                 continue
+            // A turn OriCode started: its prompt is its own, and the reply follows what came before.
+            case .woke:
+                continue
             // Settings › Conversation leaves thinking out.
             case .thinking where !thinking:
                 continue
@@ -955,6 +960,8 @@ struct ItemView: View {
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 .help(reason)
+        case .woke:
+            EmptyView()
         }
     }
 }

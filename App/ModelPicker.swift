@@ -559,6 +559,10 @@ struct ModelRow: View {
 /// The permission modes the agent has as tiles, five for Claude Code, the highlight moving to the
 /// chosen one, with its name and line under them; a hovered tile previews its line.
 struct ModeTiles: View {
+    static func swap(_ half: Double) -> AnyTransition {
+        .asymmetric(insertion: .opacity.animation(.easeOut(duration: half).delay(half)), removal: .opacity.animation(.easeIn(duration: half)))
+    }
+
     let modes: [PermissionModeOption]
     @Binding var mode: String
     /// The mode Back to Defaults would pick, lit as if hovered.
@@ -608,22 +612,26 @@ struct ModeTiles: View {
                 .pickerStyle(.segmented)
             }
             if !compact {
-                HStack(spacing: 0) {
-                    Text(shown.title)
-                        .foregroundStyle(Ink.primary.opacity(hovered == nil ? 1 : 0.7))
-                        .fontWeight(.medium)
-                    if shown == .ask {
-                        Tag(text: "Default")
-                            .padding(.leading, 5)
+                // One slot, so the words going and the words coming share it, the old gone in the
+                // first half of the change before the new come in the second.
+                ZStack {
+                    HStack(spacing: 0) {
+                        Text(shown.title)
+                            .foregroundStyle(Ink.primary.opacity(hovered == nil ? 1 : 0.7))
+                            .fontWeight(.medium)
+                        if shown == .ask {
+                            Tag(text: "Default")
+                                .padding(.leading, 5)
+                        }
+                        Text(" · " + shown.summary)
+                            .foregroundStyle(Ink.secondary)
                     }
-                    Text(" · " + shown.summary)
-                        .foregroundStyle(Ink.secondary)
+                    .id(shown)
+                    .transition(ModeTiles.swap(hovered == nil ? 0.09 : 0.06))
                 }
                 .font(Type.secondary)
                 .lineLimit(1)
                 .frame(height: 16)
-                .id(shown)
-                .transition(.opacity.animation(hovered == nil ? Motion.fade : .easeOut(duration: 0.12)))
             }
         }
     }

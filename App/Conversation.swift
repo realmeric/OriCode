@@ -240,12 +240,15 @@ enum Item: Identifiable, Hashable {
     case act(id: UUID, thread: UUID, text: String, hover: String)
     /// The head moved itself to another model or level: where to, and the reason it gave.
     case changed(id: UUID, text: String, reason: String)
+    /// A turn OriCode started on its own, a plan's ends told to the thread running it. Its prompt
+    /// is the app's and draws nothing: the reply follows whatever came before.
+    case woke(id: UUID)
 
     var id: UUID {
         switch self {
         case .user(let id, _, _, _), .text(let id, _), .thinking(let id, _), .tool(let id, _), .ask(let id, _),
              .footer(let id, _), .note(let id, _), .limited(let id, _, _), .nearLimit(let id, _, _, _, _), .shell(let id, _),
-             .opened(let id, _, _, _, _, _), .suggested(let id, _, _), .act(let id, _, _, _), .changed(let id, _, _):
+             .opened(let id, _, _, _, _, _), .suggested(let id, _, _), .act(let id, _, _, _), .changed(let id, _, _), .woke(let id):
             id
         }
     }
@@ -510,9 +513,12 @@ final class Conversation {
     /// What goes under a turn that's still running here, for its end: lines for threads this one
     /// opened whose first turn ended meanwhile, and the threads the turn suggested.
     @ObservationIgnored private var underTurn: [(kind: String, line: JSON)] = []
+    /// Lines for the running turn written as it ends, ahead of its footer: asks it settled.
+    @ObservationIgnored private var inTurn: [(kind: String, line: JSON)] = []
     /// The files this turn edited that another working thread of the project edited in its own
     /// turn, each with that thread, which wait_thread tells the thread waiting on this one.
     @ObservationIgnored private(set) var sameFiles: [SameFile] = []
+    @ObservationIgnored private var writtenByCommands: Set<String> = []
     let chat: Chat
     private let context: ModelContext
     private var seq = 0
@@ -699,6 +705,18 @@ final class Conversation {
         recordUser(text, previews: previews, midTurn: false, id: id)
     }
 
+    /// A turn OriCode starts on its own with `text`, which is kept but never drawn.
+    func woke(_ text: String) {
+        turn += 1
+        running = true
+        failed = false
+        chat.archived = false
+        chat.archivedWith = nil
+        chat.quitMidTurn = false
+        chat.resumeAt = nil
+        record("wake", ["event": "wake", "text": .string(text)])
+    }
+
     /// A message a worker's head sent into its running turn, which doesn't start one.
     func sentIntoWorkerTurn(_ text: String) {
         recordUser(text, previews: [], midTurn: true, id: UUID())
@@ -874,8 +892,14 @@ final class Conversation {
     /// end of a turn running here, as a thread's finished first turn is.
     func threadAct(_ act: ThreadAct) {
         let line = act.json
-        guard !running else { return underTurn.append(("thread.act", line)) }
-        record("thread.act", line)
+        if !running {
+            record("thread.act", line)
+        } else if act.isAsk {
+            // An ask settled belongs to the turn it was asked in, so its line goes above that turn's footer.
+            inTurn.append(("thread.act", line))
+        } else {
+            underTurn.append(("thread.act", line))
+        }
     }
 
     /// A line under the turn for a file this thread and another both edit, as threadAct's.
@@ -894,9 +918,23 @@ final class Conversation {
         return Self.edited(call, cwd: chat.cwd)
     }
 
-    /// Every file the turn running here has edited, from the thread's folder.
+    /// The start of a command the thread's agent ran, for the call `toolUseId`.
+    func commandStarted(_ toolUseId: String?) -> Date? {
+        guard let toolUseId, let item = items.last(where: { if case .tool(_, let call) = $0 { call.toolUseId == toolUseId } else { false } }),
+              case .tool(_, let call) = item, call.kind == .run
+        else { return nil }
+        return call.startedAt
+    }
+
+    /// Files a command of the running turn wrote, as git listed them.
+    func commandWrote(_ paths: [String]) {
+        writtenByCommands.formUnion(paths)
+    }
+
+    /// Every file the turn running here has edited, from the thread's folder: by an edit tool, or
+    /// by a command as git told of it.
     var editedThisTurn: Set<String> {
-        var paths = Set<String>()
+        var paths = writtenByCommands
         for item in items.reversed() {
             if item.startsTurn { break }
             if case .tool(_, let call) = item, let path = Self.edited(call, cwd: chat.cwd) { paths.insert(path) }
@@ -909,7 +947,13 @@ final class Conversation {
         return ToolSummary.relative(file, to: cwd)
     }
 
+    private func writeInTurn() {
+        for (kind, line) in inTurn { record(kind, line) }
+        inTurn = []
+    }
+
     private func writeUnderTurn() {
+        writeInTurn()
         for (kind, line) in underTurn { record(kind, line) }
         underTurn = []
     }
@@ -935,6 +979,7 @@ final class Conversation {
         case "turn.started":
             running = true
             sameFiles = []
+            writtenByCommands = []
             // A turn nobody sent, a background agent reporting back, doesn't carry the last one's error.
             failed = false
             // A session of the new agent's own is up, and has been handed the thread.
@@ -1033,6 +1078,7 @@ final class Conversation {
                 chat.contextUsed = used
                 chat.contextWindow = event.body["context"]?["window"]?.int ?? chat.contextWindow
             }
+            writeInTurn()
             record(event.name, event.body)
             writeUnderTurn()
             endedByItself = QueuedMessage.endedByItself(event.body["stopReason"]?.string, failed: failed)
@@ -1427,6 +1473,8 @@ final class Conversation {
         case "user":
             let images = body["images"]?.array?.compactMap { $0.string.flatMap { Data(base64Encoded: $0) } } ?? []
             items.append(.user(id: id, text: body["text"]?.string ?? "", images: images, midTurn: body["midTurn"]?.bool ?? false))
+        case "wake":
+            items.append(.woke(id: id))
         case "text":
             items.append(.text(id: id, text: body["delta"]?.string ?? ""))
         case "thinking":
@@ -1610,9 +1658,14 @@ extension Item {
         }
     }
 
-    /// A message sent between turns, which starts one. One Claude took up mid-turn doesn't.
+    /// A message sent between turns, which starts one, or a turn OriCode started. One Claude took
+    /// up mid-turn doesn't.
     var startsTurn: Bool {
-        if case .user(_, _, _, let midTurn) = self { !midTurn } else { false }
+        switch self {
+        case .user(_, _, _, let midTurn): !midTurn
+        case .woke: true
+        default: false
+        }
     }
 
     /// A line written under a turn once it's over, after its footer: a thread it opened ending its

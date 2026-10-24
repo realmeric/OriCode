@@ -106,14 +106,34 @@ extension AppModel {
         }
     }
 
-    /// An edit landed in `chat`: each other working thread of the project whose turn edited the
+    /// A call came back in `chat`. An edit tool's file is known from the call; a command's files,
+    /// while another thread of the project works, are what git lists as written since it started.
+    /// With no other thread at work nothing is read.
+    func sameFile(after event: EngineEvent, in chat: Chat) {
+        guard let conversation = conversations[chat.id], let project = chat.project?.id else { return }
+        let toolUseId = event.body["toolUseId"]?.string
+        if let path = conversation.editedFile(toolUseId) { return sameFile(path, in: chat, project: project) }
+        guard let started = conversation.commandStarted(toolUseId), !others(of: conversation, in: project).isEmpty else { return }
+        let cwd = chat.cwd
+        Task {
+            guard let reply = try? await engine.request("git.changed", ["cwd": .string(cwd), "since": .number(started.timeIntervalSince1970 * 1000)]),
+                  let paths = reply["paths"]?.array?.compactMap(\.string), !paths.isEmpty, conversation.running
+            else { return }
+            conversation.commandWrote(paths)
+            for path in paths { sameFile(path, in: chat, project: project) }
+        }
+    }
+
+    private func others(of conversation: Conversation, in project: UUID) -> [Conversation] {
+        conversations.values.filter { $0 !== conversation && $0.running && $0.chat.agentID == nil && $0.chat.project?.id == project }
+    }
+
+    /// `path` was written in `chat`: each other working thread of the project whose turn wrote the
     /// same file gets a line, this one gets one naming it, and each thread that opened either hears
     /// it, once a turn for each pair and file. Nothing is read but the turns in memory.
-    func sameFile(after event: EngineEvent, in chat: Chat) {
-        guard let conversation = conversations[chat.id], let project = chat.project?.id,
-              let path = conversation.editedFile(event.body["toolUseId"]?.string)
-        else { return }
-        for other in conversations.values where other !== conversation && other.running && other.chat.agentID == nil && other.chat.project?.id == project {
+    private func sameFile(_ path: String, in chat: Chat, project: UUID) {
+        guard let conversation = conversations[chat.id] else { return }
+        for other in others(of: conversation, in: project) {
             guard !conversation.sameFiles.contains(where: { $0.path == path && $0.thread == other.chat.id }),
                   other.editedThisTurn.contains(path)
             else { continue }

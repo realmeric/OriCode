@@ -134,18 +134,23 @@ extension AppModel {
     }
 
     /// Starts a turn in any thread, on screen or not. `from` is the thread that sent it through
-    /// one of OriCode's tools, which the session is told.
-    func send(_ text: String, images: [ImageAttachment], in chat: Chat, from sender: Chat? = nil) -> Bool {
+    /// one of OriCode's tools, which the session is told. An `internal` prompt is OriCode's own,
+    /// kept in the store and never drawn.
+    func send(_ text: String, images: [ImageAttachment], in chat: Chat, from sender: Chat? = nil, internal unseen: Bool = false) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty, chat.agentID == nil else { return false }
         let conversation = conversation(for: chat)
         guard !conversation.running, !heldInBlock(chat), !tooLong(trimmed, for: chat) else { return false }
         let text = Self.asked(trimmed, images)
-        // Only the pictures with a preview show, so only they are kept, and in the bubble's order.
-        let shown = images.compactMap { image in image.preview.map { (image: image, preview: $0) } }
-        let id = UUID()
-        conversation.userSent(text, previews: shown.map { $0.preview }, id: id)
-        conversation.pictures?.keep(shown.map { $0.image }, thread: chat.id, message: id)
+        if unseen {
+            conversation.woke(text)
+        } else {
+            // Only the pictures with a preview show, so only they are kept, and in the bubble's order.
+            let shown = images.compactMap { image in image.preview.map { (image: image, preview: $0) } }
+            let id = UUID()
+            conversation.userSent(text, previews: shown.map { $0.preview }, id: id)
+            conversation.pictures?.keep(shown.map { $0.image }, thread: chat.id, message: id)
+        }
         chat.turnFrom = sender?.id
         planTurnStarts(in: chat)
         startTurn(in: chat, text: text, images: images, from: sender)
@@ -426,16 +431,19 @@ extension AppModel {
     }
 
     /// The threads it opened whose turn it set going, with open_thread or message_thread, that are
-    /// working. A turn the user or another thread started there isn't its to stop.
+    /// working or left something working, a command say. A turn the user or another thread
+    /// started there isn't its to stop.
     func setGoing(by chat: Chat, sparing: UUID?) -> [Conversation] {
         // A thread at work has its conversation in memory, so nothing is fetched for this.
         conversations.values.filter {
-            $0.chat.openedBy == chat.id && $0.chat.turnFrom == chat.id && $0.chat.id != sparing && $0.chat.agentID == nil && ($0.running || $0.waitingAfterQuit)
+            $0.chat.openedBy == chat.id && $0.chat.turnFrom == chat.id && $0.chat.id != sparing && $0.chat.agentID == nil
+                && ($0.running || $0.waitingAfterQuit || leftWorking($0.chat))
         }
     }
 
-    /// Stop on a thread reaches what it started: each thread it set going stops too, and so on
-    /// down, with a line in both saying so. Its workers and subagents stop with its turn.
+    /// Stop on a thread reaches what it started: each thread it set going stops too, what each
+    /// left running, and so on down, with a line in both saying so. Its workers and subagents
+    /// stop with its turn.
     func stopOpened(by chat: Chat, sparing: UUID? = nil) {
         for other in setGoing(by: chat, sparing: sparing) {
             let thread = other.chat

@@ -22,7 +22,7 @@ import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.
 import type { Model } from "./models.ts";
 import { answer, brevity, scratch, type Answer, type Availability, type Capabilities, type Provider, type SendParams, type Session } from "./provider.ts";
 import { describe, sessionTitle } from "./thread.ts";
-import { addWorktree, branch, branches, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
+import { addWorktree, branch, branches, changedSince, create, previous, pull, push, remote, removeWorktree, switchTo, worktreeLoss } from "./git.ts";
 import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore, unrestore, workingDiff, type IndexEntry } from "./review.ts";
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
 import { folderCommit, unchanged } from "./merge.ts";
@@ -425,6 +425,11 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
 
   async "git.branch"({ cwd }: { cwd: string }) {
     return branch(cwd);
+  },
+
+  /// What a command a thread ran wrote, read only while another thread of its project works.
+  async "git.changed"({ cwd, since }: { cwd: string; since: number }) {
+    return { paths: await changedSince(cwd, since) };
   },
 
   async "git.branches"({ cwd }: { cwd: string }) {

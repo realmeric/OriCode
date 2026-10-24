@@ -270,6 +270,26 @@ struct OpenedThreadsTests {
         #expect(!acts(model.conversation(for: lines)).contains { $0.hasPrefix("Stopped") })
     }
 
+    @Test func stopOnAThreadReachesAThreadItOpenedWhoseTurnIsOverButLeftACommandRunning() async throws {
+        let (model, parent) = try model()
+        parent.titleIsCustom = true
+        let asked = request(parent)
+        let rename = try model.open(model.opening(for: asked), asked)
+        rename.titleIsCustom = true
+        try await working(model, rename)
+        model.route(EngineEvent(name: "heads", threadId: rename.id.uuidString, body: [
+            "event": "heads", "heads": [["id": "b1", "kind": "command", "label": "sleep 120", "background": true]],
+        ]))
+        model.route(done(rename))
+        try await working(model, parent)
+        #expect(model.leftWorking(rename))
+
+        model.stop(in: parent)
+        model.route(done(parent, "interrupted"))
+        #expect(acts(model.conversation(for: rename)).last == "Stopped with Sums")
+        #expect(acts(model.conversation(for: parent)).filter { $0.hasPrefix("Stopped") } == ["Stopped Rename sum.txt"])
+    }
+
     @Test func stopOnAThreadReachesOnlyTheTurnsItSetGoingInTheThreadsItOpened() async throws {
         let (model, parent) = try model()
         parent.titleIsCustom = true

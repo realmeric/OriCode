@@ -202,10 +202,11 @@ const tools = [
         agent: { type: "string", description: "A ray's agent, such as codex or opencode." },
         model: { type: "string", description: "A ray's model on that agent. The agent's first ray when left out." },
         effort: { type: "string", description: "One of the model's effort levels from list_agents. Your own level when left out and the model has it, else the model's default." },
+        title: { type: "string", description: "A few words saying what the worker does, as the user will see it beside the thread: Write primes.py and run it." },
         task: { type: "string", description: "What the worker should do, written for someone who hasn't seen this conversation." },
         isolated: { type: "boolean", description: "Work in a worktree of its own. Use it for a worker that edits files, so its edits can't run into yours or another worker's." },
       },
-      required: ["agent", "task"],
+      required: ["agent", "title", "task"],
     },
   },
   {
@@ -254,7 +255,7 @@ const startChosen = (() => {
         model: { type: "string", description: "One of that agent's models from list_agents." },
         reason: { type: "string", description: "Why this model at this level for this part, in one line the user reads, such as \"Mechanical rename, so Luna at low\"." },
       },
-      required: ["agent", "model", "task", "reason"],
+      required: ["agent", "model", "title", "task", "reason"],
     },
   };
 })();
@@ -910,7 +911,7 @@ export class Rays {
       effort: named ?? inherited ?? null,
       // The thread's mode, or the agent's first when it has no such mode.
       mode: agent.modes.includes(this.mode) ? this.mode : (agent.modes[0] ?? this.mode),
-      label: task.split("\n")[0].slice(0, 80),
+      label: (String(args.title ?? "").trim() || task).split("\n")[0].slice(0, 80),
       cap,
       cwd,
       isolated,

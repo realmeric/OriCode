@@ -272,7 +272,7 @@ extension AppModel {
     }
 
     /// Each owner with ends unheard hears them: in its wait_plan while it works, or else in a
-    /// message, sent as the task's thread messaging it, when its last turn wasn't stopped.
+    /// turn OriCode starts with them, when its last turn wasn't stopped.
     private func tellOwners() {
         guard engineState == .ready else { return }
         for owner in Set(projects.flatMap(\.tasks).compactMap(\.owner)) {
@@ -285,14 +285,9 @@ extension AppModel {
             guard let chat = chat(withID: owner), !chat.archived, !chat.planHeld,
                   conversations.values.count(where: \.running) + startingTasks.count < threadsAtOnce
             else { continue }
-            let from = ended.first?.thread.flatMap(self.chat(withID:))
             let text = report(ended, to: owner)
             guard whyTooLong(text, for: chat) == nil, !heldInBlock(chat), conversation(for: chat).waitingAfterQuit == false else { continue }
-            if let from {
-                conversation(for: chat).threadAct(ThreadAct(act: .messaged, by: false, thread: from.id, title: from.title,
-                                                            reason: ended.map { "\($0.name) \($0.state)" }.joined(separator: ", ")))
-            }
-            guard send(text, images: [], in: chat, from: from) else { continue }
+            guard send(text, images: [], in: chat, internal: true) else { continue }
             for task in ended { task.heard = true }
             save()
         }

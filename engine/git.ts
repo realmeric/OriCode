@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import { run } from "./child.ts";
 
 /// What can wait on the network or on the user's hooks, a pre-commit running its tests.
@@ -173,6 +175,24 @@ export async function status(cwd: string): Promise<ChangedFile[]> {
     files.push({ path, status });
   }
   return files;
+}
+
+/// The files under `cwd` that git lists as changed or new and that were written at `since` or
+/// later, by their modification time, as paths from `cwd`: what a command that started then wrote.
+/// A file it deleted has no time to read, so it isn't among them.
+export async function changedSince(cwd: string, since: number): Promise<string[]> {
+  // -z gives paths from the repository's top, unquoted; cwd's place under it comes off them.
+  const [prefix, out] = await Promise.all([git(cwd, ["rev-parse", "--show-prefix"]), git(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."])]);
+  const under = prefix.trim();
+  const entries = out.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    paths.push(entries[i].slice(3 + under.length));
+    // A rename carries its old path as the next entry.
+    if (entries[i].slice(0, 2).includes("R")) i++;
+  }
+  const written = await Promise.all(paths.map((path) => stat(join(cwd, path)).then((found) => found.mtimeMs >= since, () => false)));
+  return paths.filter((_, index) => written[index]);
 }
 
 export async function push(cwd: string): Promise<void> {

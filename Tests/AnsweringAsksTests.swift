@@ -108,9 +108,12 @@ final class AnsweringAsksTests {
         #expect(settled?.state == .allowed)
         #expect(settled?.answeredBy == "Lead")
         #expect(settled?.answerReason == "Its own worktree.")
-        // The lead's line waits for its turn's end, as every line between threads does.
+        // The lead's line waits for its turn's end, and goes above its footer: the ask was settled in that turn.
+        #expect(lines(lead, in: model).isEmpty)
         turnEnds(lead, in: model)
         #expect(lines(lead, in: model) == ["Allowed Rename · Edit sum.py · Its own worktree."])
+        let items = model.conversation(for: lead).items
+        #expect(items.lastIndex { if case .act = $0 { true } else { false } }! < items.lastIndex { if case .footer = $0 { true } else { false } }!)
         #expect(throws: AppModel.Refused.self) { try model.answerAsk(["ask": "e1", "answer": "allow", "reason": "Again."], from: lead.id) }
     }
 

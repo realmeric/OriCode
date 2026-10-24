@@ -98,13 +98,12 @@ extension AppModel {
                 if !keepOff.contains(ref) { models.append(.string(ref)) }
             }
         }
-        // A thread that spent before the budget was set starts on it with all of it.
-        chat.spentBefore = Rays.budget > 0 ? chat.spentBefore ?? chat.costUSD : nil
         var choice: [String: JSON] = [
             "models": .array(models),
             "unread": .array(unread),
             "keepOff": .array(keepOff.map(JSON.string)),
-            "spent": .number(chat.costUSD - (chat.spentBefore ?? 0)),
+            // All it has spent, so a thread already past a budget set or lowered since stops there.
+            "spent": .number(chat.costUSD),
         ]
         if Rays.budget > 0 { choice["budget"] = .number(Rays.budget) }
         return .object(choice)

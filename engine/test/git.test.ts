@@ -2,10 +2,10 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addWorktree, branch, branches, create, friendly, git, notARepository, previous, pull, remote, switchTo, webURL } from "../git.ts";
+import { addWorktree, branch, branches, changedSince, create, friendly, git, notARepository, previous, pull, remote, switchTo, webURL } from "../git.ts";
 import { top } from "../review.ts";
 import { folderCommit, unchanged } from "../merge.ts";
 
@@ -154,4 +154,16 @@ test("a worktree is unchanged until a file in it is, from a clean folder or a di
   assert.equal(await unchanged(dirty.path, dirty.branch), true);
   await writeFile(join(dirty.path, "f"), "edited again\n");
   assert.equal(await unchanged(dirty.path, dirty.branch), false);
+});
+
+test("changedSince names what was written from then, from the folder asked about, and nothing older", async () => {
+  const dir = await repo();
+  await mkdir(join(dir, "sub/deep"), { recursive: true });
+  await writeFile(join(dir, "sub/old.txt"), "before\n");
+  await utimes(join(dir, "sub/old.txt"), new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  const since = Date.now() - 1_000;
+  await writeFile(join(dir, "f"), "two\n");
+  await writeFile(join(dir, "sub/deep/new.txt"), "new\n");
+  assert.deepEqual((await changedSince(join(dir, "sub"), since)).sort(), ["deep/new.txt"]);
+  assert.deepEqual((await changedSince(dir, since)).sort(), ["f", "sub/deep/new.txt"]);
 });
