@@ -1150,11 +1150,14 @@ struct RunLine: View {
     let head: Head?
     /// The thread it's in, nil where no stage can be called up.
     let thread: UUID?
+    /// What a click does in place of opening or folding the stage here: ⌘⇧I's opens the thread.
+    var opens: (() -> Void)?
 
     static func matchID(_ run: String) -> String { "run:" + run }
 
     var body: some View {
-        let open = thread.map { model.stage.shown[$0] == call.toolUseId } ?? false
+        // On ⌘⇧I it points the way the thread is, never up at a stage that isn't there.
+        let open = opens == nil && thread.map { model.stage.shown[$0] == call.toolUseId } ?? false
         // Folded, an agent asking on its card pulses the line's mark.
         let asking = head != nil && !open && thread.flatMap { model.conversations[$0] }?.waitingAsks.contains(where: \.staged) == true
         let script = call.input["script"]?.string ?? ""
@@ -1162,7 +1165,11 @@ struct RunLine: View {
         let name = run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         let rays = head?.rays ?? []
         Button {
-            if let thread { model.stage.toggle(call.toolUseId, in: thread) }
+            if let opens {
+                opens()
+            } else if let thread {
+                model.stage.toggle(call.toolUseId, in: thread)
+            }
         } label: {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {

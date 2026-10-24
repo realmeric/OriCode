@@ -36,21 +36,19 @@ struct OverviewTests {
     }
 
     private func titles(_ model: AppModel) -> [[String]] {
-        model.overview.map { section in [section.project.name] + section.rows.map { String(repeating: "  ", count: $0.depth) + $0.chat.title } }
+        model.overview.map { section in [section.project.name] + section.rows.map(\.chat.title) }
     }
 
-    @Test func aThreadThatRunsBringsTheThreadsAboveItAndNothingElse() throws {
-        let (model, _, _, _, primes, test, _, docs) = try model()
+    @Test func aThreadThatRunsIsListedAloneWithNoneUnderAnother() throws {
+        let (model, _, _, _, _, test, _, docs) = try model()
         #expect(model.overview.isEmpty)
 
         model.route(EngineEvent(name: "turn.started", threadId: test.id.uuidString, body: ["event": "turn.started"]))
         model.route(EngineEvent(name: "turn.started", threadId: docs.id.uuidString, body: ["event": "turn.started"]))
-        // Each project under its name, in the projects' order; the tree the drawer's; Quiet, which
-        // nothing touched, isn't listed, and nor is Sums, Primes's sibling, which didn't run.
-        #expect(titles(model) == [["alpha", "Lead", "  Primes", "    Test"], ["beta", "Docs"]])
+        // Each project under its name, in the projects' order; Lead and Primes, which opened Test,
+        // aren't brought along, and nor is Quiet, which nothing touched.
+        #expect(titles(model) == [["alpha", "Test"], ["beta", "Docs"]])
         #expect(model.status(of: test).state == .working)
-        // Lead and Primes are there for Test's sake, with no state of their own.
-        #expect(model.status(of: primes).state == .idle && model.status(of: primes).word.isEmpty)
     }
 
     @Test func theRowsAreTheSameWhicheverThreadIsOpen() throws {
@@ -103,47 +101,49 @@ struct OverviewTests {
         #expect(titles(model) == [["alpha", lead.title]])
     }
 
-    @Test func aWorkflowsAgentsComeUnderItsThreadWithTheirStateAndStep() throws {
+    @Test func aRunIsItsThreadsLineAndNotItsAgentsRowsAcrossARelaunch() throws {
         let (model, alpha, _, lead, _, _, _, _) = try model()
         let id = lead.id.uuidString
+        model.conversation(for: lead).userSent("Review it", previews: [], id: UUID())
         model.route(EngineEvent(name: "turn.started", threadId: id, body: ["event": "turn.started"]))
-        model.route(EngineEvent(name: "heads", threadId: id, body: ["heads": [["id": "w1", "kind": "workflow", "label": "Echo"]]]))
-        let snapshot: JSON = ["taskId": "w1", "state": "running", "name": "Echo", "agents": [
+        model.route(EngineEvent(name: "tool.use", threadId: id, body: ["event": "tool.use", "toolUseId": "call", "name": "Workflow", "input": .object([:])]))
+        // Claude Code answers the call as the run starts in the background.
+        model.route(EngineEvent(name: "tool.result", threadId: id, body: ["event": "tool.result", "toolUseId": "call", "content": "Started", "isError": false]))
+        model.route(EngineEvent(name: "heads", threadId: id, body: ["heads": [["id": "w1", "kind": "workflow", "toolUseId": "call", "label": "Echo"]]]))
+        model.route(EngineEvent(name: "workflow", threadId: id, body: ["taskId": "w1", "toolUseId": "call", "state": "running", "name": "Echo", "agents": [
             ["label": "alpha", "agentId": "a1", "state": "running", "lastTool": "Bash", "lastDetail": "echo alpha-3"],
             ["label": "beta", "agentId": "b2", "state": "done", "result": "beta-10"],
-            ["label": "gamma", "state": "queued"],
-        ]]
-        model.route(EngineEvent(name: "workflow", threadId: id, body: snapshot))
-
-        #expect(titles(model) == [["alpha", "Lead", "  alpha", "  beta"]])
-        let agents = model.agents(under: lead)
-        let first = try #require(agents.first { $0.agentID == "a1" })
-        let second = try #require(agents.first { $0.agentID == "b2" })
-        #expect(model.status(of: first) == OverviewStatus(state: .working, step: "echo alpha-3"))
-        #expect(model.status(of: second) == OverviewStatus(state: .done, step: nil))
-
-        // A relaunch stops the agent the last launch left running, and lists it stopped; the one
-        // that had ended, under a thread nothing touched since, isn't listed.
-        let again = AppModel(container: alpha.modelContext!.container)
-        #expect(titles(again) == [["alpha", "Lead", "  alpha"]])
-        #expect(again.status(of: first).state == .stopped)
-    }
-
-    @Test func agentsWithOneLabelEachSayTheirOwnStep() throws {
-        let (model, _, _, lead, _, _, _, _) = try model()
-        let id = lead.id.uuidString
-        model.route(EngineEvent(name: "turn.started", threadId: id, body: ["event": "turn.started"]))
-        model.route(EngineEvent(name: "heads", threadId: id, body: ["heads": [["id": "w1", "kind": "workflow", "label": "Echo"]]]))
-        // A script that names no agent leaves each its type for a label.
-        model.route(EngineEvent(name: "workflow", threadId: id, body: ["taskId": "w1", "state": "running", "name": "Echo", "agents": [
-            ["label": "general-purpose", "agentId": "a1", "state": "running", "lastTool": "Bash", "lastDetail": "echo one"],
-            ["label": "general-purpose", "agentId": "a2", "state": "running", "lastTool": "Read", "lastDetail": "two.txt"],
         ]]))
-        let agents = model.agents(under: lead)
-        let one = try #require(agents.first { $0.agentID == "a1" })
-        let two = try #require(agents.first { $0.agentID == "a2" })
-        #expect(model.status(of: one).step == "echo one")
-        #expect(model.status(of: two).step == "Read · two.txt")
+        #expect(model.agents(under: lead).count == 2)
+        #expect(titles(model) == [["alpha", lead.title]])
+        guard case .run(let call) = model.stageLine(of: lead) else {
+            Issue.record("no run line")
+            return
+        }
+        #expect(call.toolUseId == "call")
+
+        // Quit and relaunched, the thread cut off is sent on with the quit's line, and its run,
+        // read from the store, is still its line; a click opens it with the run's stage up.
+        model.markCutOffTurns()
+        #expect(lead.quitMidTurn)
+        let again = AppModel(container: alpha.modelContext!.container)
+        again.conversation(for: lead).userSent(AppModel.quitLine, previews: [], id: UUID())
+        again.route(EngineEvent(name: "turn.started", threadId: id, body: ["event": "turn.started"]))
+        #expect(titles(again) == [["alpha", lead.title]])
+        let line = try #require(again.stageLine(of: lead))
+        guard case .run(let stored) = line else {
+            Issue.record("no run line after the relaunch")
+            return
+        }
+        #expect(stored.toolUseId == "call")
+        again.toggleOverview()
+        again.openStage(of: lead, line: line, beside: false)
+        #expect(again.selectedChatID == lead.id && !again.overviewShown)
+        #expect(again.stage.shown[lead.id] == "call")
+
+        // Something said since is the thread's latest, and the run's line goes.
+        again.conversation(for: lead).userSent("Thanks", previews: [], id: UUID())
+        #expect(again.stageLine(of: lead) == nil)
     }
 
     @Test func aRowsClickOpensItsThreadAndTheScreenGoes() throws {

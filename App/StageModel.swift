@@ -201,6 +201,18 @@ final class StageModel {
         if shown[thread] == nil { clearLane(thread) }
     }
 
+    /// Calls a thread's stage up for a run, or with `laneKey` for its column, as ⌘⇧I's line does.
+    func show(_ run: String, in thread: UUID) {
+        endings[thread] = nil
+        guard shown[thread] != run else { return }
+        let left = stepped[thread]
+        withAnimation(Motion.move) {
+            shown[thread] = run
+            stepped[thread] = nil
+        }
+        if let left { steppedMoved?(left.thread) }
+    }
+
     /// Folds a thread's stage, saying whether one was up.
     func fold(_ thread: UUID) -> Bool {
         endings[thread] = nil

@@ -521,11 +521,12 @@ private struct PlanLine: View {
                     .foregroundStyle(lit ? Ink.secondary : Ink.faint)
                     .fixedSize()
                     .opacity(under ? 0 : 1)
+                    .animation(Overview.word(under: under), value: under)
                 if under {
                     HStack(spacing: 6) { actions(state) }
                         .buttonStyle(.action(small: true))
                         .fixedSize()
-                        .transition(.opacity)
+                        .transition(Overview.actions)
                         // VoiceOver has them as the row's actions. Inside the row they'd take its
                         // press, and a press would delete the task.
                         .accessibilityHidden(true)

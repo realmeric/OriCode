@@ -217,8 +217,6 @@ struct PlanRunTests {
         for event in done(words, "stop_sequence", replying: "Counting") { model.route(event) }
         let waiting = try task("T2")
         #expect(waiting.state == "working" && waiting.note == "Limit · \(Limit.time(resetsAt))")
-        _ = model.conversation(for: lead)
-        #expect(model.goingOn(lead)?.hasPrefix("0/4") == true)
 
         // The reset comes, the thread goes on by itself, and its owner hears it did.
         words.resumeAt = Date.now.addingTimeInterval(-60)

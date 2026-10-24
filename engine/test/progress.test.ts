@@ -1,7 +1,6 @@
 // A long job's progress and time left, worked out from how its steps have actually gone.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planProgress } from "../plan.ts";
 import { progressLine, secondsLeft, spokenLine, type Step } from "../progress.ts";
 
 const steps = (kind: string, guess: number, count: number): Step[] => Array.from({ length: count }, () => ({ kind, guess }));
@@ -52,7 +51,3 @@ test("the line in words, for a terminal", () => {
   assert.equal(spokenLine(steps("keys", 15, 2), 0, [20, 3700], 3700), "2 of 2 done, took 1 h 02 min");
 });
 
-test("a plan's line goes by when its tasks ended, each agent's at its own pace", () => {
-  assert.equal(planProgress(["claude", "codex", "claude"], 0, [], 30), "0/3");
-  assert.equal(planProgress(["claude", "codex", "claude", "codex"], 0, [600, 1800], 1800), "2/4 · 30 min");
-});

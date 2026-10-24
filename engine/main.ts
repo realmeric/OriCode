@@ -16,7 +16,7 @@ import { pi } from "./pi-provider.ts";
 import { handed } from "./handover.ts";
 import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, settleMerges, usd, type Choice, type Seam } from "./rays.ts";
 import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
-import { planProgress, taskLead } from "./plan.ts";
+import { taskLead } from "./plan.ts";
 import { seeing } from "./mac.ts";
 import { brief as fanning, claudeLead, lead, levels, onRays } from "./ultracode.ts";
 import type { Model } from "./models.ts";
@@ -625,11 +625,6 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   /// A custom action run quietly; the app has already quoted every value in the line.
-  /// The line of a plan that runs, from the app's tasks (plan.ts).
-  async "plan.progress"({ kinds, began, ended }: { kinds: string[]; began: number; ended: number[] }) {
-    return { line: planProgress(kinds, began, ended, Date.now() / 1000) };
-  },
-
   async "shell.run"({ cwd, command }: { cwd: string; command: string }) {
     return run(cwd, command);
   },

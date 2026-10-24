@@ -15,39 +15,6 @@ extension AppModel {
         projects.flatMap(\.tasks).filter { $0.owner == owner }
     }
 
-    /// With a thread's turn over, what it started that still runs, on ⌘⇧I: what it left running,
-    /// or else the plan it runs while a task's thread works.
-    func goingOn(_ chat: Chat) -> String? {
-        guard let conversation = conversations[chat.id], !conversation.running else { return nil }
-        if let line = conversation.goingOn { return line }
-        let tasks = runTasks(of: chat.id)
-        guard tasks.contains(where: { $0.state == "working" }) else { return nil }
-        return planLines[chat.id] ?? "\(tasks.count { $0.state == "done" })/\(tasks.count)"
-    }
-
-    /// Asks the engine how far each plan that runs is, as its tasks start and end, so its line
-    /// moves only then: each task a step of its agent's, the done ones in the order they ended.
-    func askPlanLines() {
-        guard engineState == .ready else { return }
-        let owners = Set(projects.flatMap(\.tasks).compactMap(\.owner))
-        for owner in planLines.keys where !owners.contains(owner) { planLines[owner] = nil }
-        for owner in owners {
-            let tasks = runTasks(of: owner)
-            guard tasks.contains(where: { $0.state == "working" }), let began = tasks.map(\.createdAt).min() else {
-                if planLines[owner] != nil { planLines[owner] = nil }
-                continue
-            }
-            let done = tasks.filter { $0.state == "done" }.sorted { $0.updatedAt < $1.updatedAt }
-            let order = done + tasks.filter { $0.state != "done" }
-            let params: JSON = ["kinds": .array(order.map { .string($0.agent ?? "") }), "began": .number(began.timeIntervalSince1970),
-                                "ended": .array(done.map { .number($0.updatedAt.timeIntervalSince1970) })]
-            Task {
-                guard let line = try? await engine.request("plan.progress", params)["line"]?.string, planLines[owner] != line else { return }
-                planLines[owner] = line
-            }
-        }
-    }
-
     /// A thread a limit stopped has gone on at the reset: a run task it works no longer waits, and
     /// the thread that opened it, its owner for a task, hears that it went on.
     func wentOn(_ chat: Chat) {
@@ -73,7 +40,6 @@ extension AppModel {
     /// Starts every task that can start, as long as the ceiling leaves room, oldest plan first.
     func runPlans() {
         guard engineState == .ready else { return }
-        askPlanLines()
         let ready = projects.flatMap(\.tasks).filter { task in
             guard let owner = task.owner.flatMap(chat(withID:)), !owner.archived, !owner.planHeld else { return false }
             return startable(task)
@@ -104,7 +70,6 @@ extension AppModel {
                 let (chat, _) = try await openThread(request)
                 if chat.worktreeBranch != nil { task.unmerged = true }
                 save()
-                askPlanLines()
             } catch {
                 startingTasks.remove(task.id)
                 // Full just now: it starts once a thread ends.

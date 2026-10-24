@@ -245,11 +245,7 @@ final class AppModel {
     @ObservationIgnored var laneHeads: Set<UUID> = []
     /// ⌘⇧I's screen of everything running, and how each thread's latest turn in this launch went,
     /// which only that screen reads.
-    var overviewShown = false {
-        didSet { if overviewShown != oldValue { overviewHeld = [:] } }
-    }
-    /// Whether each row on ⌘⇧I was at work as it opened, which holds its place while it's up.
-    @ObservationIgnored var overviewHeld: [UUID: Bool] = [:]
+    var overviewShown = false
     var outcomes: [UUID: Outcome] = [:]
     /// The ask a notification's click opened the screen on, lit at the top of its queue until the
     /// screen goes.
@@ -329,9 +325,6 @@ final class AppModel {
     @ObservationIgnored var pullWatches: [String: Task<Void, Never>] = [:]
     /// wait_thread's calls by the thread they wait on, each woken when that thread's turn ends.
     @ObservationIgnored var turnWaits: [UUID: [UUID: TurnWait]] = [:]
-    /// Each thread's plan that runs, how far it is and the time left, in engine/progress.ts's words,
-    /// while a task of it works.
-    var planLines: [UUID: String] = [:]
     /// Tasks of a plan that runs whose thread is being made, a worktree say, so none starts twice.
     @ObservationIgnored var startingTasks: Set<UUID> = []
     /// Threads the user stopped whose turn hasn't ended yet, so a task of a plan there says so.
