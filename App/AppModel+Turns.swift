@@ -524,6 +524,14 @@ extension AppModel {
             transcribed(event.body, into: chat)
             return
         }
+        if event.name == "agent.steps" {
+            stage.take(event.body, for: chat.id)
+            return
+        }
+        if event.name == "agent.result" {
+            stage.took(event.body)
+            return
+        }
         if event.name == "agent.thread" {
             syncAgent(of: chat, event.body)
             return
@@ -649,6 +657,7 @@ extension AppModel {
         // A new engine watches nothing until it's asked again.
         headsWatched = nil
         followed = []
+        stage.reset()
         heldPieces = [:]
         agentThreads = [:]
         askers = [:]

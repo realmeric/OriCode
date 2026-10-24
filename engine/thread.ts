@@ -20,11 +20,11 @@ import {
 import { within } from "./child.ts";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
-import { subagentTranscript } from "./follow.ts";
+import { stepsEnded, subagentTranscript } from "./follow.ts";
 import { Heads } from "./heads.ts";
 import { asks, told, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
-import { finalShape, stampEnds, workflowProgress, workflowShape, type WorkflowShape } from "./workflow.ts";
+import { finalShape, journalResults, stampEnds, workflowProgress, workflowShape, type WorkflowShape } from "./workflow.ts";
 
 /// What an `effort` event tells the app: the level the session sends, null for none, and
 /// whether it runs as Ultracode.
@@ -108,10 +108,11 @@ export class Thread implements Session {
   /// Workflows the thread started, by task, with the call that started them, their last snapshot
   /// and the folder their agents' transcripts are written to, which the call's result names. One
   /// the CLI has said is over stays until its notification brings the run's last snapshot.
-  /// `began` and `ends`, in seconds, are when it started and when each of its agents was seen over.
+  /// `began` and `ends`, in seconds, are when it started and when each of its agents was seen over;
+  /// `results` the agents whose whole result the app has been sent.
   private workflows = new Map<
     string,
-    { toolUseId: string | null; name: string; shape: WorkflowShape; transcriptDir: string | null; ended: boolean; began: number; ends: number[] }
+    { toolUseId: string | null; name: string; shape: WorkflowShape; transcriptDir: string | null; ended: boolean; began: number; ends: number[]; results: Set<string> }
   >();
   /// The Task subagents the thread's own loop started, by task, each a thread under this one in the
   /// app, with where the CLI writes its transcript. One the CLI has said is over stays until its
@@ -425,7 +426,12 @@ export class Thread implements Session {
   /// What the CLI ran goes with it: its workflows and subagents stop, and its heads end with their
   /// watchers.
   private endHeads(): void {
-    for (const [taskId, workflow] of this.workflows) if (!workflow.ended) this.tellWorkflow(taskId, "stopped");
+    for (const [taskId, workflow] of this.workflows) {
+      if (workflow.transcriptDir) stepsEnded(workflow.transcriptDir, true);
+      if (workflow.ended) continue;
+      workflow.shape.endedAt ??= Date.now();
+      this.tellWorkflow(taskId, "stopped");
+    }
     this.workflows.clear();
     for (const [taskId, subagent] of this.subagents) if (!subagent.ended) this.tellSubagent(taskId, "stopped");
     this.subagents.clear();
@@ -568,6 +574,7 @@ export class Thread implements Session {
             ended: false,
             began: Date.now() / 1000,
             ends: [],
+            results: new Set(),
           });
           this.tellWorkflow(message.task_id, "running");
         }
@@ -585,6 +592,7 @@ export class Thread implements Session {
           workflow.shape = workflowShape(progress);
           stampEnds(workflow.shape, workflow.ends, Date.now() / 1000);
           this.tellWorkflow(message.task_id, "running");
+          void this.agentsOver(message.task_id);
         }
         break;
       }
@@ -648,6 +656,7 @@ export class Thread implements Session {
     const subagent = this.subagents.get(taskId);
     if (!subagent) return;
     event("agent.thread", { threadId: this.id, agentId: taskId, kind: "subagent", label: subagent.label, state, transcript: subagent.transcript, ...(result !== undefined ? { result } : {}) });
+    if (state !== "running" && subagent.transcript) stepsEnded(subagent.transcript);
   }
 
   /// Where a workflow the thread started has got, with its last snapshot, whole each time.
@@ -669,8 +678,32 @@ export class Thread implements Session {
       workflow.shape = shape;
       stampEnds(shape, workflow.ends, Date.now() / 1000);
     }
+    workflow.shape.endedAt ??= Date.now();
+    await this.agentsOver(taskId, true);
+    if (this.workflows.get(taskId) !== workflow) return;
     this.tellWorkflow(taskId, status, summary);
     this.workflows.delete(taskId);
+  }
+
+  /// The run's agents that are over, or with `all` every one: their trails end, and each one
+  /// done is sent what it returned, whole, from the run's journal, once. One the journal has no
+  /// result for yet is looked for again with the next snapshot.
+  private async agentsOver(taskId: string, all = false): Promise<void> {
+    const workflow = this.workflows.get(taskId);
+    const folder = workflow?.transcriptDir;
+    if (!workflow || !folder) return;
+    if (all) stepsEnded(folder, true);
+    const over = workflow.shape.agents.filter((agent) => agent.agentId && (agent.state === "done" || agent.state === "failed"));
+    if (!all) for (const agent of over) stepsEnded(join(folder, `agent-${agent.agentId}.jsonl`));
+    const owed = over.filter((agent) => agent.state === "done" && !workflow.results.has(agent.agentId!)).map((agent) => agent.agentId!);
+    if (owed.length === 0) return;
+    for (const id of owed) workflow.results.add(id);
+    const results = await journalResults(folder);
+    for (const id of owed) {
+      const result = results.get(id);
+      if (result === undefined) workflow.results.delete(id);
+      else event("agent.result", { threadId: this.id, taskId, agentId: id, result });
+    }
   }
 
   /// The Workflow call's result names the folder its agents' transcripts go to.

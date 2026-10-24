@@ -27,7 +27,7 @@ import { commentsIn, reviewLead, applyPatch, commitAll, commitReviewed, restore,
 import { addMcpServer, mcpServers, removeMcpServer } from "./mcp.ts";
 import { folderCommit, unchanged } from "./merge.ts";
 import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
-import { Follow } from "./follow.ts";
+import { Follow, followSteps } from "./follow.ts";
 import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
 import { t3Code } from "./t3code.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
@@ -654,15 +654,20 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { ok: true };
   },
 
-  /// A workflow agent's thread came into view, or left it. Only Claude Code's transcripts of its
-  /// workflows' agents are read; a follow already going for the thread goes on from where it is.
-  async "agent.follow"({ threadId, path, from, on }: { threadId: string; path: string; from: number; on: boolean }) {
+  /// A workflow agent's thread came into view, or left it; with `steps`, its card on the stage. Only
+  /// Claude Code's transcripts of its workflows' agents and subagents are read; a follow already
+  /// going for the thread goes on from where it is.
+  async "agent.follow"({ threadId, path, from, on, steps }: { threadId: string; path: string; from: number; on: boolean; steps?: boolean }) {
+    if (on && !/\/subagents\/(workflows\/[^/]+\/)?agent-[\w-]+\.jsonl$/.test(path)) throw new Error("That isn't an agent's transcript.");
+    if (steps) {
+      followSteps(threadId, path, on);
+      return { ok: true };
+    }
     const following = follows.get(threadId);
     if (on && following?.path === path) return { ok: true };
     following?.stop();
     follows.delete(threadId);
     if (!on) return { ok: true };
-    if (!/\/subagents\/(workflows\/[^/]+\/)?agent-[\w-]+\.jsonl$/.test(path)) throw new Error("That isn't an agent's transcript.");
     const follow = new Follow(threadId, path, Math.max(0, from));
     follows.set(threadId, follow);
     follow.start();

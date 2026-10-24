@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { open } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { lastLine } from "./shell.ts";
+import { lastLines } from "./shell.ts";
 import { event } from "./wire.ts";
 
 // A thread's heads besides its main loop: the subagents, commands, workflows and other tasks the
@@ -27,8 +27,9 @@ export type Head = {
   tokens: number | null;
   tools: number | null;
   step: Step | null;
-  /// A command's last line of output.
+  /// A command's last line of output, and its last three, which its card on the stage shows.
   line: string | null;
+  lines: string[];
 };
 
 type Live = Head & {
@@ -183,6 +184,7 @@ export class Heads {
       tools: null,
       step: null,
       line: null,
+      lines: [],
       output: null,
       tail: null,
       stale: false,
@@ -254,7 +256,7 @@ export class Heads {
         depth: head.depth,
         startedAt: head.startedAt,
       };
-      if (this.watched) Object.assign(shown, { tokens: head.tokens, tools: head.tools, step: head.step, line: head.line });
+      if (this.watched) Object.assign(shown, { tokens: head.tokens, tools: head.tools, step: head.step, line: head.line, lines: head.lines });
       return shown;
     });
     const told = JSON.stringify(heads);
@@ -304,7 +306,7 @@ export function outputFile(text: string): string | null {
   return path.endsWith(".") ? path.slice(0, -1) : path;
 }
 
-/// The last line a command printed, from the end of its output file.
+/// The last lines a command printed, from the end of its output file.
 async function readLine(head: Live): Promise<void> {
   head.stale = false;
   if (!head.output) return;
@@ -314,7 +316,8 @@ async function readLine(head: Live): Promise<void> {
       const { size } = await file.stat();
       const length = Math.min(size, 4096);
       const { buffer } = await file.read(Buffer.alloc(length), 0, length, size - length);
-      head.line = lastLine(buffer.toString("utf8")).slice(0, 200) || null;
+      head.lines = lastLines(buffer.toString("utf8"), 3).map((line) => line.slice(0, 200));
+      head.line = head.lines.at(-1) ?? null;
     } finally {
       await file.close();
     }

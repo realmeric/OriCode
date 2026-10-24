@@ -179,6 +179,23 @@ extension AppModel {
         followed = wanted
     }
 
+    /// The cards on the stage whose agents' last calls the engine reads, each from the end of its
+    /// transcript; an agent's left out is no longer read. An agent that ends stops its own.
+    func followSteps(_ wanted: Set<UUID>) {
+        guard engineState == .ready else { return }
+        for id in stage.followed.subtracting(wanted) {
+            Task { _ = try? await engine.request("agent.follow", ["threadId": .string(id.uuidString), "path": "", "from": 0, "on": false, "steps": true]) }
+        }
+        var followed = stage.followed.intersection(wanted)
+        for id in wanted.subtracting(stage.followed) {
+            guard let path = chat(withID: id)?.agentTranscript else { continue }
+            followed.insert(id)
+            let params: JSON = ["threadId": .string(id.uuidString), "path": .string(path), "from": 0, "on": true, "steps": true]
+            Task { _ = try? await engine.request("agent.follow", params) }
+        }
+        stage.followed = followed
+    }
+
     /// A piece of an agent's transcript, taken only where the stored copy ends: a piece read twice,
     /// by a follow that ended and began again, would show twice. A read that comes in pieces is
     /// held until its last and shown and saved at once: each piece shown alone laid the whole

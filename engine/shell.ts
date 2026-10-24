@@ -14,8 +14,12 @@ export type ShellResult = {
 const colour = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 export function lastLine(output: string): string {
-  const lines = output.replace(colour, "").split(/\r\n|\r|\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.at(-1) ?? "";
+  return lastLines(output, 1)[0] ?? "";
+}
+
+/// The last `count` lines with anything on them, colour taken off.
+export function lastLines(output: string, count: number): string[] {
+  return output.replace(colour, "").split(/\r\n|\r|\n/).map((line) => line.trim()).filter(Boolean).slice(-count);
 }
 
 /// The process groups of quiet actions still running, which go when the engine does.

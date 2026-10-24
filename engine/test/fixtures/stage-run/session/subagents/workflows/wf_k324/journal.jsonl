@@ -1,0 +1,9 @@
+{"type": "launched"}
+{"type": "started", "key": "v2:a1", "agentId": "a1", "label": "review logic", "phase": "Review"}
+{"type":"result","key":"v2:a1","agentId":"a1","result":"Two findings in App/Stage.swift. The trail keeps every step it is sent and never drops the oldest, so a long run grows the card past the stage's cap; it should keep the last four. The fold doesn't stop the follows it started, so an engine keeps a watcher open on each agent's transcript after the stage has gone, which is what rule 6 says never to do while nobody is looking. Both are small."}
+{"type": "started", "key": "v2:a2", "agentId": "a2", "label": "review api", "phase": "Review"}
+{"type":"result","key":"v2:a2","agentId":"a2","result":{"holds":false,"findings":[{"where":"engine/follow.ts:212","what":"agent.steps sends the task with every message instead of once, which the wire protocol says goes with the first only; the app would take it as a new task each time and the well would open again on every step the agent takes."},{"where":"KANBAN.md, Wire protocol","what":"agent.result is not in the list of events, though the engine sends it at each agent's end."}]}}
+{"type": "started", "key": "v2:a3", "agentId": "a3", "label": "fix", "phase": "Fix"}
+{"type":"result","key":"v2:a3","agentId":"a3","result":{"done":true,"summary":"Kept the last four steps in the trail, stopped the follows when the stage folds, sent the task once and wrote agent.result into the wire protocol. make test passes, 371 engine tests and the Swift suite, and the card's Notes say what was seen in Molten and what wasn't."}}
+{"type": "started", "key": "v2:a4", "agentId": "a4", "label": "test", "phase": "Test"}
+{"type":"result","key":"v2:a4","agentId":"a4","result":"make test passes: 371 engine tests and the Swift suite. Nothing failed on the second run either, and the only warning was the one SwiftTerm has always printed about its Metal shader, which is not ours."}

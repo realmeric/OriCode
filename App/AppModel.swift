@@ -275,6 +275,8 @@ final class AppModel {
     /// The subagents' and workers' threads this engine has told of, by the agent's id, which each of
     /// a worker's events names.
     @ObservationIgnored var agentThreads: [String: UUID] = [:]
+    /// The running agents' last calls and the finished ones' whole results, for the stage.
+    let stage = StageModel()
     /// Your own ⌘K rows, from Application Support/OriCode/actions.json.
     let customActions = CustomActionStore()
     let shortcuts = Shortcuts()

@@ -22,6 +22,15 @@ struct WorkflowRun: Hashable {
         let lastTool: String?
         let lastDetail: String?
         let error: String?
+        /// Its phase's place among the run's, from 1.
+        let phaseIndex: Int?
+        let queuedAt: Date?
+        let startedAt: Date?
+        /// Which try at its task this is, from 1.
+        let attempt: Int
+        /// The start of its task, about 400 characters, and whether the CLI framed it as the script's.
+        let promptPreview: String?
+        let promptFramed: Bool
     }
 
     var state: State
@@ -31,6 +40,8 @@ struct WorkflowRun: Hashable {
     /// How far it is and the time left, in the engine's words: "3/8 · 12 min".
     let progress: String?
     let summary: String?
+    /// When it ended, which the store keeps with its last shape.
+    let endedAt: Date?
 
     init(_ body: JSON) {
         state = State(rawValue: body["state"]?.string ?? "") ?? .running
@@ -46,10 +57,22 @@ struct WorkflowRun: Hashable {
                 tools: agent["tools"]?.int ?? 0,
                 lastTool: agent["lastTool"]?.string,
                 lastDetail: agent["lastDetail"]?.string,
-                error: agent["error"]?.string)
+                error: agent["error"]?.string,
+                phaseIndex: agent["phaseIndex"]?.int,
+                queuedAt: Self.date(agent["queuedAt"]),
+                startedAt: Self.date(agent["startedAt"]),
+                attempt: agent["attempt"]?.int ?? 1,
+                promptPreview: agent["promptPreview"]?.string,
+                promptFramed: agent["promptFramed"]?.bool ?? false)
         }
         progress = body["progress"]?.string
         summary = body["summary"]?.string
+        endedAt = Self.date(body["endedAt"])
+    }
+
+    /// A time the engine gives in ms.
+    private static func date(_ value: JSON?) -> Date? {
+        value?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
     }
 
     func count(_ state: Agent.State) -> Int {

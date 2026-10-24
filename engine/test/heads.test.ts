@@ -247,7 +247,7 @@ test("unwatched, detail sends nothing; watching sends it at once, and closing dr
   found.close();
 });
 
-test("a command's last line comes from its output file, only while watched", async () => {
+test("a command's last line, and its last three, come from its output file, only while watched", async () => {
   const cli = standIn();
   const found = await thread(cli);
   const output = join(folder, "b1.output");
@@ -266,6 +266,9 @@ test("a command's last line comes from its output file, only while watched", asy
   appendFileSync(output, "\x1b[32mready\x1b[0m on :3000\n\n");
   await wait(500);
   assert.equal(heads().at(-1)![0].line, "ready on :3000");
+  appendFileSync(output, "GET /\nGET /a\n");
+  await wait(500);
+  assert.deepEqual(heads().at(-1)![0].lines, ["ready on :3000", "GET /", "GET /a"]);
   found.watchHeads(false);
   events.length = 0;
   appendFileSync(output, "GET /\n");

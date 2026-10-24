@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import Testing
 @testable import OriCode
@@ -41,6 +42,36 @@ struct WorkflowTests {
         #expect(groups.map(\.agents.count) == [2, 0, 1, 1])
     }
 
+    @Test func aFinishedRunKeepsItsEndAndEachAgentsTimes() {
+        let run = WorkflowRun([
+            "state": "completed", "name": "review", "phases": ["Review"], "endedAt": 1_792_836_361_000,
+            "agents": [[
+                "label": "review:a", "phase": "Review", "state": "done", "phaseIndex": 1, "queuedAt": 1_792_836_000_000,
+                "startedAt": 1_792_836_000_010, "attempt": 2, "promptPreview": "Review the diff", "promptFramed": true,
+            ]],
+        ])
+        #expect(run.endedAt == Date(timeIntervalSince1970: 1_792_836_361))
+        let agent = run.agents[0]
+        #expect(agent.phaseIndex == 1 && agent.attempt == 2 && agent.promptPreview == "Review the diff" && agent.promptFramed)
+        #expect(agent.startedAt == Date(timeIntervalSince1970: 1_792_836_000.01))
+        #expect(WorkflowRun(["state": "running", "agents": [["label": "a"]]]).endedAt == nil)
+    }
+
+    @MainActor
+    @Test func aTrailKeepsItsAgentsLastStepsAndTaskApartFromTheResults() {
+        let stage = StageModel()
+        let agent = UUID()
+        stage.followed = [agent]
+        stage.take(["steps": [["tool": "Read", "input": ["file_path": "/w/a"]]], "task": "Review it"], for: agent)
+        stage.take(["steps": [["tool": "Read", "input": ["file_path": "/w/a"]], ["tool": "Bash", "input": ["command": "make"]]]], for: agent)
+        let trail = stage.trail(for: agent)
+        #expect(trail.steps.map(\.tool) == ["Read", "Bash"] && trail.task == "Review it")
+        stage.take(["steps": [], "ended": true], for: agent)
+        #expect(stage.followed.isEmpty)
+        stage.took(["agentId": "a1", "result": "whole"])
+        #expect(stage.results["a1"] == "whole")
+    }
+
     @MainActor
     @Test func restartingTheEngineStopsTheWorkflowsItRan() async throws {
         let container = try TestStore.memory()
@@ -72,5 +103,6 @@ struct WorkflowTests {
             return
         }
         #expect(call.workflow?.state == .stopped)
+        #expect(call.workflow?.endedAt != nil)
     }
 }

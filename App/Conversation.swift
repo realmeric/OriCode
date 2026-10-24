@@ -1175,6 +1175,8 @@ final class Conversation {
             else { continue }
             body["state"] = "stopped"
             if saving {
+                // It ended with the engine just now. Read back at launch, when isn't known.
+                if body["endedAt"] == nil { body["endedAt"] = .number((Date.now.timeIntervalSince1970 * 1000).rounded()) }
                 workflowChanged(.object(body))
             } else {
                 apply("workflow", .object(body), id: event.id, at: event.createdAt)
