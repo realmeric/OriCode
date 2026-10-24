@@ -876,14 +876,15 @@ private struct Isolated<Content: View>: View {
 }
 
 /// While the thread's turn is over but what it started still runs, how far that is, where the
-/// work can tell, in one quiet line at the top of the composer's glass, as the queue's lines are. A view of its own, so the
-/// composer's body never reads the heads, and nothing at all while nothing runs.
+/// work can tell, in one quiet line at the top of the composer's glass, as the queue's lines are;
+/// a workflow says it on its stage instead. A view of its own, so the composer's body never reads
+/// the heads, and nothing at all while nothing runs.
 private struct GoingOnLine: View {
     @Environment(AppModel.self) private var model
     let chat: Chat
 
     var body: some View {
-        if let line = model.goingOn(chat) {
+        if let line = model.goingOn(chat, leavingOut: .workflow) {
             Text(line)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)

@@ -8,6 +8,8 @@ label=$1; parts=$2; limit=${3:-240}
 $HERE/quiet.sh $label > /dev/null || { echo "[$label] not run: the machine isn't quiet" >> "$OUT/results.txt"; exit 3; }
 envs=()
 for pair in "${@:4}"; do envs+=(--env "$pair"); done
+# PERF_STAGE=1 from the caller puts a live four-agent run in the thread keys and stream type into.
+[ -n "$PERF_STAGE" ] && envs+=(--env PERF_STAGE=$PERF_STAGE)
 perl -e 'alarm shift; exec @ARGV' $limit open -n -W --env XCTestConfigurationFilePath=/dev/null --env PERF_OUT="$OUT" --env PERF_BENCH="$label" --env PERF_PARTS="$parts" $envs --stdout "$OUT/run.log" --stderr "$OUT/run.log" "$APP"
 code=$?
 [ $code = 0 ] || echo "[$label] run exit $code" >> "$OUT/results.txt"

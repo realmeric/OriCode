@@ -10,6 +10,8 @@ struct TranscriptView: View {
     /// The open thread's transcript, the one the composer is under: with another beside it, only
     /// this one answers Return, goes to its end when asked, and has what's open drawn over it.
     var active = true
+    /// Where the stage over the column ends while it's up: the transcript starts 28pt under it.
+    var stageFoot: CGFloat?
     @State private var position = ScrollPosition()
     /// Where the transcript stands against its end.
     @State private var end = TranscriptEnd.Standing()
@@ -46,6 +48,8 @@ struct TranscriptView: View {
         var gone = false
         /// When a row was last added under the others.
         var added: ContinuousClock.Instant?
+        /// How far the thread is scrolled.
+        var offset: CGFloat = 0
     }
 
     /// The room under the last row, a row of its own with a name: the one place in a lazy stack
@@ -66,9 +70,14 @@ struct TranscriptView: View {
     }
     /// How far the fade under that runs before the transcript is at full strength.
     private static let fadeLength: CGFloat = 28
-    private static func fade(active: Bool) -> CGFloat { clear(active: active) + fadeLength }
     /// Where a column's first row starts: half way into its fade.
     static func top(active: Bool) -> CGFloat { clear(active: active) + fadeLength / 2 }
+    /// Under a stage, the clear top reaches down so the first row starts 28pt under its lowest card.
+    private var clear: CGFloat { clear(under: stageFoot) }
+
+    private func clear(under foot: CGFloat?) -> CGFloat {
+        foot.map { $0 + 28 - Self.fadeLength / 2 } ?? Self.clear(active: active)
+    }
 
     private var shown: ArraySlice<Item> {
         showAll ? conversation.items[...] : conversation.items.suffix(Self.recent)
@@ -151,12 +160,12 @@ struct TranscriptView: View {
             }
             .column()
             // Under the toolbar's row, and under the title a column beside the open thread has.
-            .padding(.top, Self.top(active: active))
+            .padding(.top, clear + Self.fadeLength / 2)
             .coordinateSpace(.named(Self.thread))
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.links(in: conversation.chat.id))
-        .environment(\.codeCopyLine, Self.fade(active: active) - CodeCopy.inset)
+        .environment(\.codeCopyLine, clear + Self.fadeLength - CodeCopy.inset)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
@@ -181,6 +190,16 @@ struct TranscriptView: View {
             place(reached: new.place)
         }
         .onScrollGeometryChange(for: CGFloat.self, of: \.contentSize.height) { content.height = $1 }
+        .onScrollGeometryChange(for: CGFloat.self, of: \.contentOffset.y) { content.offset = $1 }
+        // The stage coming or going moves the transcript's first row: one following its end stays
+        // there, and one read further up keeps what's read where it was on screen.
+        .onChange(of: stageFoot) { old, new in
+            if end.pinned, !end.heading {
+                DispatchQueue.main.async { position.scrollTo(edge: .bottom) }
+            } else {
+                position.scrollTo(y: max(0, content.offset + clear(under: new) - clear(under: old)))
+            }
+        }
         .onScrollPhaseChange {
             content.resting = $1 == .idle
             // A hand on the scroll has it from there.
@@ -214,6 +233,8 @@ struct TranscriptView: View {
         }
         .onDisappear { content.gone = true }
         .onChange(of: model.reveal) { takeReveal() }
+        // A run coming on the glass grows its stage while the transcript is followed to its end.
+        .background { StageCue(heads: conversation.heads, thread: conversation.chat.id, following: end.pinned) }
         // Its water is counted as the thread comes into view and as Settings turns water on;
         // after that its tools' results and a turn's end count it (AppModel.receive).
         .task(id: showWater) { model.readWater(for: conversation.chat) }
@@ -244,7 +265,7 @@ struct TranscriptView: View {
                 // traffic lights and the capsule in the toolbar's row. Beside the open thread, a
                 // column has its own title under that row: clear through it too, and the fade
                 // starts that much lower.
-                Color.clear.frame(height: Self.clear(active: active))
+                Color.clear.frame(height: clear)
                 LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
                     .frame(height: Self.fadeLength)
                 Color.black
@@ -922,7 +943,7 @@ struct ItemView: View {
             if call.isEdit && !call.isError {
                 DiffCard(call: call, cwd: cwd)
             } else if call.kind == .workflow && !call.isError {
-                WorkflowCard(call: call)
+                WorkflowRow(call: call, thread: thread)
             } else if let plan = call.plan {
                 PlanCard(plan: plan)
             } else if call.oricodeTool != nil {

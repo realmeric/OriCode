@@ -82,6 +82,8 @@ extension AppModel {
             hideDrawer()
             return true
         }
+        // The open thread's stage folds into its line.
+        if let chat, stage.fold(chat.id) { return true }
         if let chat, let ask = conversation(for: chat).waitingAsk {
             answer(ask, allow: false, message: ask.kind == "question" ? AskCard.skipMessage : nil)
             return true

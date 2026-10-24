@@ -35,6 +35,8 @@ struct WorkflowRun: Hashable {
 
     var state: State
     let name: String
+    /// The Workflow call that started it.
+    let toolUseId: String?
     let phases: [String]
     let agents: [Agent]
     /// How far it is and the time left, in the engine's words: "3/8 · 12 min".
@@ -46,6 +48,7 @@ struct WorkflowRun: Hashable {
     init(_ body: JSON) {
         state = State(rawValue: body["state"]?.string ?? "") ?? .running
         name = body["name"]?.string ?? "Workflow"
+        toolUseId = body["toolUseId"]?.string
         phases = body["phases"]?.array?.compactMap(\.string) ?? []
         agents = (body["agents"]?.array ?? []).map { agent in
             Agent(

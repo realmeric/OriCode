@@ -73,6 +73,59 @@ struct WorkflowTests {
     }
 
     @MainActor
+    @Test func aStepKeepsItsPlaceAsNewerOnesPushItDown() {
+        let stage = StageModel()
+        let agent = UUID()
+        func steps(_ names: [String]) -> JSON {
+            ["steps": .array(names.map { ["tool": "Read", "input": ["file_path": .string($0)]] })]
+        }
+        stage.take(steps(["a", "b"]), for: agent)
+        #expect(stage.trail(for: agent).first == 0)
+        stage.take(steps(["a", "b", "c", "d"]), for: agent)
+        #expect(stage.trail(for: agent).first == 0)
+        // The oldest dropped as a fifth came: d is still the fourth call.
+        stage.take(steps(["b", "c", "d", "e"]), for: agent)
+        #expect(stage.trail(for: agent).first == 1)
+        stage.take(steps(["d", "e", "f", "g"]), for: agent)
+        #expect(stage.trail(for: agent).first == 3)
+    }
+
+    @MainActor
+    @Test func eachWorkflowAgentKeepsItsOwnRay() {
+        let heads = Heads()
+        heads.update(["heads": [["id": "w", "kind": "workflow", "toolUseId": "call"]]], agent: "claude")
+        func run(_ states: [(String, String)]) {
+            heads.workflow(["taskId": "w", "state": "running", "agents": .array(states.map { ["agentId": .string($0.0), "label": .string($0.0), "phase": "P", "state": .string($0.1)] })])
+        }
+        run([("a1", "running"), ("a2", "running"), ("a3", "queued")])
+        let head = heads.liveWorkflow!
+        #expect(head.agentRays == ["a1": 0, "a2": 1])
+        run([("a1", "done"), ("a2", "running"), ("a3", "running")])
+        #expect(head.agentRays == ["a2": 1, "a3": 0])
+        #expect(Set(head.rays) == [0, 1] && heads.lit == [0, 1])
+    }
+
+    @Test func aLivePhaseTakesWhatTheOthersLeave() {
+        func agent(_ state: String) -> WorkflowRun.Agent {
+            WorkflowRun(["agents": [["label": "a", "phase": "P", "state": .string(state)]]]).agents[0]
+        }
+        // 03 at 1180pt: Review's two at work share what Fix's and Verify's labels leave, 400pt a card at most.
+        let wide = StageLayout(groups: [("Review", [agent("running"), agent("running")]), ("Fix", []), ("Verify", [])], width: 1116, narrow: false)
+        #expect(wide.phases.map(\.state) == [.live, .ahead, .ahead])
+        #expect(wide.phases[0].width == 810 && wide.phases[0].sideBySide)
+        #expect(wide.phases[1].width < 40 && wide.phases[2].width < 60)
+        // 12 at 720pt: still side by side, each over 240pt.
+        let narrow = StageLayout(groups: [("Review", [agent("running"), agent("running")]), ("Fix", []), ("Verify", [])], width: 680, narrow: false)
+        #expect(narrow.phases[0].sideBySide && narrow.phases[0].width > 500)
+        // A finished phase is 250pt; three at work in what's left stack, no wider than one card.
+        let later = StageLayout(groups: [("Review", [agent("done")]), ("Fix", [agent("running"), agent("running"), agent("running")])], width: 680, narrow: false)
+        #expect(later.phases[0].width == 250 && later.phases[1].width == 396 && !later.phases[1].sideBySide)
+        // Past the cap, cards drop calls before anything scrolls.
+        let full = wide.height(steps: 4)
+        #expect(wide.steps(within: full) == 4 && wide.steps(within: full - 1) == 3 && wide.steps(within: 0) == 0)
+    }
+
+    @MainActor
     @Test func restartingTheEngineStopsTheWorkflowsItRan() async throws {
         let container = try TestStore.memory()
         let project = Project(name: "alpha", path: "/tmp/alpha")

@@ -45,6 +45,9 @@ final class Head: Identifiable {
     fileprivate(set) var run: WorkflowRun?
     /// The rays it holds, in the order it took them.
     fileprivate(set) var rays: [Int] = []
+    /// A workflow's agents at work and the ray each holds, by Claude Code's id for the agent, so
+    /// its card on the stage draws the arc it lights on the thread's mark.
+    fileprivate(set) var agentRays: [String: Int] = [:]
     /// Gone from the engine's list: its ray has gone out, and its row goes next.
     fileprivate(set) var ending = false
 
@@ -60,6 +63,12 @@ final class Head: Identifiable {
         background = false
         depth = 1
         take(body)
+    }
+
+    /// The call that started it. The CLI starts a workflow's task without naming it, which the
+    /// workflow's own events do.
+    var call: String? {
+        toolUseId ?? run?.toolUseId
     }
 
     /// Whether it lights rays: an agent its own, and a workflow one for each of its agents at work.
@@ -173,6 +182,11 @@ final class Heads {
         list.count { !$0.ending && $0.lights }
     }
 
+    /// The workflow at work here, the one the thread's stage draws.
+    var liveWorkflow: Head? {
+        list.first { !$0.ending && $0.kind == .workflow }
+    }
+
     /// Whether a workflow is at work here, or the one with this task.
     func workflowRuns(_ task: String? = nil) -> Bool {
         list.contains { !$0.ending && $0.kind == .workflow && (task == nil || $0.id == task) }
@@ -274,6 +288,10 @@ final class Heads {
     private func assignRays() {
         var taken = Set(list.flatMap(\.rays))
         for head in list {
+            if head.kind == .workflow, !head.ending {
+                holdAgentRays(head, &taken)
+                continue
+            }
             let wanted = head.ending ? head.rays.count : wants(head)
             if head.rays.count > wanted {
                 let freed = head.rays.suffix(head.rays.count - wanted)
@@ -294,10 +312,26 @@ final class Heads {
         if rayAgents != self.rayAgents { self.rayAgents = rayAgents }
     }
 
+    /// A workflow's rays, one for each agent at work, each kept by its agent for as long as it works.
+    private func holdAgentRays(_ head: Head, _ taken: inout Set<Int>) {
+        // An agent the CLI hasn't named yet goes by its place in the run.
+        let working = (head.run?.agents ?? []).enumerated().filter { $0.element.state == .running }.map { $0.element.id ?? "#\($0.offset)" }
+        var rays = head.agentRays.filter { working.contains($0.key) }
+        taken.subtract(Set(head.rays).subtracting(rays.values))
+        for agent in working where rays[agent] == nil {
+            guard let free = (0..<RaysMark.rays).first(where: { !taken.contains($0) }) else { break }
+            rays[agent] = free
+            taken.insert(free)
+        }
+        if rays != head.agentRays { head.agentRays = rays }
+        let held = head.rays.filter { rays.values.contains($0) } + rays.values.filter { !head.rays.contains($0) }.sorted()
+        if held != head.rays { head.rays = held }
+    }
+
     private func wants(_ head: Head) -> Int {
         switch head.kind {
         case .agent: 1
-        case .workflow: head.run?.count(.running) ?? 0
+        case .workflow: head.rays.count
         case .command, .other: 0
         }
     }
@@ -314,8 +348,14 @@ extension Conversation {
     /// progress are a bare count, and one is nothing, since the rays show it runs and ⌘I names it.
     /// Nil while a turn runs. It changes only as the engine's heads and workflow events come.
     var goingOn: String? {
-        guard !running else { return nil }
-        let live = heads.list.filter { !$0.ending }
+        goingOn(leavingOut: nil)
+    }
+
+    /// The same, leaving out heads of a kind: the composer's line leaves a workflow to its stage,
+    /// and says nothing while one runs, since the commands its agents run are heads of their own.
+    func goingOn(leavingOut kind: Head.Kind?) -> String? {
+        guard !running, kind != .workflow || heads.liveWorkflow == nil else { return nil }
+        let live = heads.list.filter { !$0.ending && $0.kind != kind }
         guard let far = live.first(where: { $0.progress != nil }), let progress = far.progress else {
             return live.count > 1 ? "\(live.count)" : nil
         }

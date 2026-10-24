@@ -13,7 +13,7 @@ struct WorkflowCard: View {
         let run = call.workflow
         let script = call.input["script"]?.string ?? ""
         let groups = WorkflowRun.groups(run?.agents ?? [], planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
-        let head = run?.state == .running ? heads?.list.first { $0.toolUseId == call.toolUseId && !$0.ending } : nil
+        let head = run?.state == .running ? heads?.list.first { $0.call == call.toolUseId && !$0.ending } : nil
         let rays = Set(head?.rays ?? [])
         let name = run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         VStack(alignment: .leading, spacing: 12) {

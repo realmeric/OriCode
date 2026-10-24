@@ -52,7 +52,7 @@ struct RootView: View {
                                 let open = thread.id == chat.id
                                 ZStack {
                                     if let conversation = model.conversations[thread.id] {
-                                        TranscriptView(conversation: conversation, cwd: thread.cwd, active: open)
+                                        ConversationColumn(conversation: conversation, chat: thread, active: open)
                                     } else if let line = model.transcriptStatus[thread.id] {
                                         Text(line)
                                             .font(Type.secondary)

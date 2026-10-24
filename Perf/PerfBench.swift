@@ -290,6 +290,41 @@ enum PerfBench {
 
     static var gap: Int { env["PERF_GAP"].flatMap(Int.init) ?? 100 }
 
+    /// PERF_STAGE=1: a workflow of four agents at work in the open thread, two in each of its first
+    /// two phases with a third not reached, each agent calling a tool a second, as K-324's engine
+    /// sends their trails. The task that sends the calls is the caller's to cancel.
+    static func liveRun(_ stage: Stage, in thread: UUID) async throws -> Task<Void, Never>? {
+        guard env["PERF_STAGE"] == "1" else { return nil }
+        let script = "export const meta = { name: 'review-and-fix', phases: [{ title: 'Review' }, { title: 'Fix' }, { title: 'Verify' }] }"
+        stage.send("tool.use", ["toolUseId": "call-w1", "name": "Workflow", "input": ["script": .string(script)]], to: thread)
+        stage.send("tool.result", ["toolUseId": "call-w1", "content": "Started workflow wf1"], to: thread)
+        let agents: [(String, String, String)] = [("a1", "logic", "Review"), ("a2", "api", "Review"), ("a3", "fix", "Fix"), ("a4", "docs", "Fix")]
+        let started = Date.now.timeIntervalSince1970 * 1000
+        stage.send("heads", ["heads": [["id": "w1", "kind": "workflow", "toolUseId": "call-w1", "label": "review-and-fix", "background": true, "depth": 1,
+                                        "startedAt": .number(started)]]], to: thread)
+        stage.send("workflow", ["taskId": "w1", "toolUseId": "call-w1", "name": "review-and-fix", "state": "running", "phases": ["Review", "Fix"],
+                                "transcriptDir": "/tmp/oricode-perf-wf1",
+                                "agents": .array(agents.map { id, label, phase in
+                                    ["agentId": .string(id), "label": .string(label), "phase": .string(phase), "state": "running", "lastTool": "Read", "lastDetail": "Cache.swift"]
+                                })], to: thread)
+        try await settle(300)
+        let chats = stage.chat.project?.chats ?? []
+        let ids = agents.compactMap { id, _, _ in chats.first { $0.agentID == id }?.id }
+        return Task {
+            var call = 0
+            while !Task.isCancelled {
+                for id in ids {
+                    let steps: [JSON] = (max(0, call - 3)...call).map { n in
+                        ["tool": n % 2 == 0 ? "Read" : "Grep", "input": n % 2 == 0 ? ["file_path": .string("\(stage.chat.cwd)/Sources/Store/File\(n).swift")] : ["pattern": .string("invalidate\(n)(")]]
+                    }
+                    stage.send("agent.steps", ["threadId": .string(id.uuidString), "steps": .array(steps)], to: id)
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+                call += 1
+            }
+        }
+    }
+
     /// K-164's bench reply, 40 characters into each of the threads on every beat.
     /// A beat's cost is the main thread's CPU until the next; `waited` is the clock inside the delta's own delivery.
     static func play(_ stage: Stage, into ids: [UUID], every: Int, text: String) async throws -> (costs: [Double], waited: [Double]) {
@@ -329,6 +364,9 @@ enum PerfBench {
             defer { stage.window.close() }
             await front(stage.window)
             try await settle(1800)
+            let run = try await liveRun(stage, in: a)
+            defer { run?.cancel() }
+            if run != nil { try await settle(1000) }
             let ids = both ? [a, b] : [a]
             for id in ids { stage.send("turn.started", [:], to: id) }
             try await settle(100)
@@ -409,6 +447,9 @@ enum PerfBench {
         defer { stage.window.close() }
         await front(stage.window)
         try await settle(1800)
+        let run = try await liveRun(stage, in: a)
+        defer { run?.cancel() }
+        if run != nil { try await settle(1000) }
         guard try await stage.focusComposer() else { return log("keys: the composer never took the keyboard") }
         let target = pair ? b : a
         for streaming in [false, true] {

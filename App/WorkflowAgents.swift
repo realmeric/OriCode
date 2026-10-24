@@ -179,6 +179,33 @@ extension AppModel {
         followed = wanted
     }
 
+    /// A thread's workflow agents' threads, by Claude Code's id for each agent.
+    func agentChats(of parent: Chat) -> [String: Chat] {
+        var chats: [String: Chat] = [:]
+        for chat in parent.project?.chats ?? [] where chat.openedBy == parent.id {
+            if let id = chat.agentID { chats[id] = chat }
+        }
+        return chats
+    }
+
+    /// A stage's running agents, whose trails are read while it's up.
+    func watchSteps(_ agents: Set<UUID>, for watcher: UUID) {
+        guard stage.watched[watcher] ?? [] != agents else { return }
+        stage.watched[watcher] = agents.isEmpty ? nil : agents
+        followSteps(stage.watched.values.reduce(into: Set<UUID>()) { $0.formUnion($1) })
+    }
+
+    /// Stops a thread's workflow, every agent of it.
+    func stopWorkflow(_ task: String, of thread: UUID) {
+        Task {
+            do {
+                _ = try await engine.request("task.stop", ["threadId": .string(thread.uuidString), "taskId": .string(task)])
+            } catch {
+                say(error.localizedDescription)
+            }
+        }
+    }
+
     /// The cards on the stage whose agents' last calls the engine reads, each from the end of its
     /// transcript; an agent's left out is no longer read. An agent that ends stops its own.
     func followSteps(_ wanted: Set<UUID>) {
@@ -222,13 +249,7 @@ extension AppModel {
     /// going. So a workflow agent's Stop is its workflow's, and its thread says so beside the button.
     func stopAgent(_ agent: Chat) {
         guard let parent = agent.openedBy, let task = agent.agentTask else { return }
-        Task {
-            do {
-                _ = try await engine.request("task.stop", ["threadId": .string(parent.uuidString), "taskId": .string(task)])
-            } catch {
-                say(error.localizedDescription)
-            }
-        }
+        stopWorkflow(task, of: parent)
     }
 
     /// Whether the workflow a thread's CLI runs, or the agent a thread is, or the workflow it's part

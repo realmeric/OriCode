@@ -629,6 +629,14 @@ final class Conversation {
         items.last { if case .limited = $0 { true } else { false } }
     }
 
+    /// The call with this id, latest first.
+    func call(_ toolUseId: String) -> ToolCall? {
+        for item in items.reversed() {
+            if case .tool(_, let call) = item, call.toolUseId == toolUseId { return call }
+        }
+        return nil
+    }
+
     /// The footer under the thread's latest turn, where its water stands.
     var lastFooter: UUID? {
         items.last { if case .footer = $0 { true } else { false } }?.id
