@@ -38,7 +38,7 @@ struct ConversationColumn: View {
 }
 
 /// The stage's place in a column, which reads the thread's heads so that neither the transcript
-/// nor the column does: nothing at all while the stage is folded or nothing runs.
+/// nor the column does: nothing at all while the stage is folded.
 private struct StageSlot: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -46,26 +46,36 @@ private struct StageSlot: View {
     let active: Bool
     let size: CGSize
     let foot: (CGFloat?) -> Void
-    /// The call that started the run, read once as the run comes, so the transcript's items
+    /// The call that started the run shown, read once as it's called up, so the transcript's items
     /// changing never draws the stage again.
     @State private var call: ToolCall?
+    /// The run was over when its stage was called up, which gives every phase an equal share.
+    @State private var reopened = false
 
     var body: some View {
-        let head = conversation.heads.liveWorkflow
-        let up = head?.call.map { model.stage.shown[chat.id] == $0 } ?? false
+        let shown = model.stage.shown[chat.id]
+        let live = conversation.heads.liveWorkflow
+        let head = live.flatMap { $0.call == shown ? $0 : nil }
+        // Over, the run is as it last was: in this launch, as the engine last told of it, which
+        // can come after its head has gone; before, as the store has it.
+        let run = head?.run ?? shown.flatMap { conversation.heads.finished[$0] } ?? call?.workflow
+        let up = shown != nil && shown == call?.toolUseId && (head != nil || run != nil)
         ZStack(alignment: .top) {
-            if let head, up {
-                RunStage(head: head, call: call, chat: chat, active: active, width: size.width, top: RunStage.top(active: active),
-                         cap: size.height - RunStage.underneath, floor: size.height - RunStage.gap, foot: foot)
+            if up, let call {
+                RunStage(head: head, run: run, call: call, equal: reopened, chat: chat, active: active, width: size.width,
+                         top: RunStage.top(active: active), cap: size.height - RunStage.underneath, floor: size.height - RunStage.gap, foot: foot)
                     .transition(.opacity)
             }
         }
         // The transcript takes its room back as the fold begins, not once the cards have faded.
         .onChange(of: up) { if !up { foot(nil) } }
-        .onChange(of: head?.call, initial: true) { old, now in
-            call = now.flatMap(conversation.call)
-            // Its run over, its stage leaves for good, and its line goes back to the card.
-            if let old, now == nil, model.stage.shown[chat.id] == old { _ = model.stage.fold(chat.id) }
+        .onChange(of: shown, initial: true) {
+            call = shown.flatMap(conversation.call)
+            reopened = shown != nil && head == nil
+        }
+        .onChange(of: live?.call) { old, now in
+            // Its run over, its stage folds into its line a moment later.
+            if let old, now == nil { model.stage.ended(old, in: chat.id) }
         }
     }
 }
@@ -76,9 +86,13 @@ private struct StageSlot: View {
 struct RunStage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.stageSpace) private var space
-    let head: Head
+    /// The run's head while it works, nil once it's over.
+    let head: Head?
+    let run: WorkflowRun?
     /// The Workflow call that started it, for the phases its script plans and its name.
-    let call: ToolCall?
+    let call: ToolCall
+    /// Every phase on an equal share, for a run called up again after it was over.
+    let equal: Bool
     let chat: Chat
     /// The column has the keyboard, so the oldest ask's Allow takes Return.
     let active: Bool
@@ -113,17 +127,18 @@ struct RunStage: View {
     static let labelsGap: CGFloat = 14
 
     var body: some View {
-        let run = head.run
-        let script = call?.input["script"]?.string ?? ""
+        let script = call.input["script"]?.string ?? ""
         let groups = WorkflowRun.groups(run?.agents ?? [], planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
-        let name = run?.name ?? call?.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
+        let name = run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
+        let rays = head?.agentRays ?? [:]
+        let color = MarkPalette.color(for: head?.agent ?? chat.providerID)
         let inset: CGFloat = width < 900 ? 20 : 32
         let hops = Self.hops(groups, stage: model.stage, chats: agentChats)
         let lead = model.conversations[chat.id]
         let asks = Self.asks(lead?.waitingAsks ?? [])
         // Not while a block is open: Return typed there mustn't answer the card.
         let listening = active && model.openShell == nil ? lead?.waitingAsk?.requestId : nil
-        let layout = StageLayout.fitted(groups: groups, width: width - inset * 2, narrow: width < 560, wide: Set(hops.map(\.phase)),
+        let layout = StageLayout.fitted(groups: groups, width: width - inset * 2, narrow: width < 560, equal: equal, wide: Set(hops.map(\.phase)),
                                         wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) },
                                         asks: asks.mapValues { $0.call.shown("command") ?? "" })
         let room = cap - top - Self.headHeight - Self.labelsGap
@@ -138,17 +153,17 @@ struct RunStage: View {
         VStack(alignment: .leading, spacing: Self.labelsGap) {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    RaysMark(slots: Set(head.rays), turning: !head.rays.isEmpty, colors: MarkPalette.colors(of: head))
+                    RaysMark(slots: Set(head?.rays ?? []), turning: !(head?.rays ?? []).isEmpty, colors: head.map(MarkPalette.colors(of:)) ?? [:])
                         .frame(width: 16, height: 16)
                     Text(name)
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
                         .lineLimit(1)
                 }
-                .stageMatched(RunLine.matchID(head.call ?? head.id), in: space)
+                .stageMatched(RunLine.matchID(call.toolUseId), in: space)
                 Spacer(minLength: 8)
                 // Stepped in, the marks keep the row's end and Stop comes in beside them.
-                if stepped == nil || hovering {
+                if let head, stepped == nil || hovering {
                     Button("Stop workflow") { model.stopWorkflow(head.id, of: chat.id) }
                         .buttonStyle(.action(small: true))
                         .opacity(hovering ? 1 : 0)
@@ -157,7 +172,7 @@ struct RunStage: View {
                         .transition(.opacity)
                 }
                 if let stepped {
-                    StepMarks(phases: layout.phases, stepped: stepped.agent, head: head, agentChats: agentChats, lead: chat.id, asking: Set(asks.keys))
+                    StepMarks(phases: layout.phases, stepped: stepped.agent, rays: rays, color: color, agentChats: agentChats, lead: chat.id, asking: Set(asks.keys))
                 }
             }
             .frame(height: Self.headHeight)
@@ -166,7 +181,7 @@ struct RunStage: View {
                     .frame(height: max(floor - top - Self.headHeight - Self.labelsGap, 0))
                     .transition(.opacity)
             } else {
-                phases(layout, steps: steps, scrolls: scrolls, hops: hops, asks: asks, listening: listening)
+                phases(layout, steps: steps, scrolls: scrolls, hops: hops, asks: asks, listening: listening, rays: rays, color: color)
                     .frame(maxHeight: scrolls ? max(room, 0) : nil, alignment: .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
             }
@@ -232,7 +247,8 @@ struct RunStage: View {
     }
 
     @ViewBuilder
-    private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop], asks: [String: PendingAsk], listening: String?) -> some View {
+    private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop], asks: [String: PendingAsk], listening: String?,
+                        rays: [String: Int], color: Color) -> some View {
         let wells = Dictionary(hops.map { ($0.recipient, $0.well) }) { first, _ in first }
         let handed = hops.reduce(into: [String: String]()) { handed, hop in
             for source in hop.sources { handed[source] = handed[source].map { $0 + "\n" + hop.task } ?? hop.task }
@@ -240,7 +256,7 @@ struct RunStage: View {
         let content = HStack(alignment: .top, spacing: 0) {
             ForEach(Array(layout.phases.enumerated()), id: \.element.name) { index, phase in
                 if index > 0 { Color.clear.frame(width: layout.gutters[index], height: 1) }
-                PhaseColumn(phase: phase, steps: steps, head: head, agentChats: agentChats, cwd: chat.cwd,
+                PhaseColumn(phase: phase, steps: steps, rays: rays, color: color, agentChats: agentChats, cwd: chat.cwd,
                             wells: wells, handed: handed, asks: asks, listening: listening, lead: chat.id)
             }
         }
@@ -262,7 +278,9 @@ struct RunStage: View {
 private struct PhaseColumn: View {
     let phase: StageLayout.Phase
     let steps: Int
-    let head: Head
+    /// The ray each agent at work holds on the run's mark, by its id.
+    let rays: [String: Int]
+    let color: Color
     let agentChats: [String: Chat]
     let cwd: String
     /// The task each recipient of a hop opens in its well.
@@ -296,8 +314,8 @@ private struct PhaseColumn: View {
 
     private var cards: some View {
         ForEach(Array(phase.agents.enumerated()), id: \.offset) { _, agent in
-            StageCard(agent: agent, chat: agent.id.flatMap { agentChats[$0] }, ray: agent.id.flatMap { head.agentRays[$0] },
-                      color: MarkPalette.color(for: head.agent), steps: steps, collapsed: phase.collapsed, cwd: cwd,
+            StageCard(agent: agent, chat: agent.id.flatMap { agentChats[$0] }, ray: agent.id.flatMap { rays[$0] },
+                      color: color, steps: steps, collapsed: phase.collapsed, cwd: cwd,
                       well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] },
                       ask: agent.id.flatMap { asks[$0] }, listening: listening, lead: lead)
         }
@@ -367,6 +385,7 @@ private struct StageCard: View {
                     // What goes doesn't hang past the card as it closes up.
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .clipped()
+                    .transition(Self.swap)
                 case .done:
                     line(chat?.agentResult)
                 case .failed:
@@ -376,10 +395,12 @@ private struct StageCard: View {
                 }
             }
         }
+        // A card narrowing as its phase finishes keeps what's leaving inside it.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
         .padding(.top, StageLayout.cardTop)
         .padding(.horizontal, StageLayout.cardSide)
         .padding(.bottom, StageLayout.cardBottom)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             // What grows into the agent's surface as the stage steps into it.
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -425,9 +446,14 @@ private struct StageCard: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.top, StageLayout.resultGap)
-                .transition(.opacity)
+                .transition(Self.swap)
         }
     }
+
+    /// The trail giving way to the result as the agent ends, or the other way: what was there goes
+    /// before the rest comes, so no line is read over another.
+    private static let swap = AnyTransition.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)),
+                                                       removal: .opacity.animation(.easeOut(duration: 0.1)))
 
     /// The snapshot's last call, for an agent whose own transcript hasn't been read yet, in the
     /// words its trail would have for it.
@@ -488,7 +514,8 @@ private struct StepMarks: View {
     @Environment(\.stageSpace) private var space
     let phases: [StageLayout.Phase]
     let stepped: String
-    let head: Head
+    let rays: [String: Int]
+    let color: Color
     let agentChats: [String: Chat]
     let lead: UUID
     /// The agents waiting on you, whose marks pulse.
@@ -510,7 +537,7 @@ private struct StepMarks: View {
         let selected = agent.id == stepped
         let chat = agent.id.flatMap { agentChats[$0] }
         return HStack(spacing: 9) {
-            StageMark(state: agent.state, ray: agent.id.flatMap { head.agentRays[$0] }, color: MarkPalette.color(for: head.agent),
+            StageMark(state: agent.state, ray: agent.id.flatMap { rays[$0] }, color: color,
                       asking: agent.id.map(asking.contains) ?? false)
                 .frame(width: 14, height: 14)
                 .stageMatched(agent.id.map { StageMark.matchID($0) } ?? "", in: agent.id == nil ? nil : space)
@@ -848,9 +875,10 @@ struct StageLayout: Equatable {
 
     var widths: [CGFloat] { phases.map(\.width) + gutters }
 
+    /// `equal` gives every phase reached an equal share, for a run called up again once over;
     /// `wide` names the phases a hop goes into, whose gutter widens; `wells` the tasks shown in
     /// wells; `asks` the commands the agents asking wait on you to run.
-    init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool,
+    init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
          wide: Set<Int> = [], wells: [String: String] = [:], asks: [String: String] = [:]) {
         gutters = groups.indices.map { $0 == 0 ? 0 : wide.contains($0) ? Self.wideGutter : Self.gutter }
         let states: [State] = groups.map { group in
@@ -860,21 +888,22 @@ struct StageLayout: Equatable {
         let fixed: [CGFloat?] = zip(groups, states).map { group, state in
             switch state {
             case .ahead: ceil(Self.labelWidth(group.phase)) + Self.labelInset
-            case .finished: narrow ? Self.collapsedFinished : Self.finished
+            case .finished: equal ? nil : narrow ? Self.collapsedFinished : Self.finished
             case .live: nil
             }
         }
-        let live = states.count { $0 == .live }
+        let shared = fixed.count { $0 == nil }
         let left = width - fixed.compactMap { $0 }.reduce(0, +) - gutters.reduce(0, +)
         // Narrow, a live phase takes what's left down to a stacked card of 160pt.
-        let share = live == 0 ? 0 : max(left / CGFloat(live), narrow ? Self.leastNarrow : Self.leastCard)
+        let share = shared == 0 ? 0 : equal ? max(left / CGFloat(shared), 0) : max(left / CGFloat(shared), narrow ? Self.leastNarrow : Self.leastCard)
         phases = zip(groups, zip(states, fixed)).map { group, entry in
             let (state, fixed) = entry
             let count = CGFloat(max(group.agents.count, 1))
-            var width = fixed ?? min(share, count * Self.card + (count - 1) * Self.spacing)
-            // A finished phase stacks its cards, a result line each, in its 250pt.
-            let sideBySide = state == .live && (width - (count - 1) * Self.spacing) / count >= Self.leastCard
-            if state == .live, !sideBySide { width = min(width, Self.card) }
+            var width = fixed ?? (equal ? share : min(share, count * Self.card + (count - 1) * Self.spacing))
+            // A finished phase stacks its cards, a result line each, in its 250pt; on equal shares
+            // any phase sits its cards side by side while each has 240pt.
+            let sideBySide = (state == .live || equal && state == .finished) && (width - (count - 1) * Self.spacing) / count >= Self.leastCard
+            if state == .live, !sideBySide, !equal { width = min(width, Self.card) }
             return Phase(name: group.phase, agents: group.agents, state: state, width: width, sideBySide: sideBySide,
                          collapsed: narrow && state == .finished)
         }
@@ -905,11 +934,11 @@ struct StageLayout: Equatable {
 
     /// The layout for `width`, narrow when the phases wouldn't fit across it otherwise: three phases
     /// in a column beside another thread don't at 250pt a finished one.
-    static func fitted(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool,
+    static func fitted(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
                        wide: Set<Int>, wells: [String: String], asks: [String: String] = [:]) -> StageLayout {
-        let layout = StageLayout(groups: groups, width: width, narrow: narrow, wide: wide, wells: wells, asks: asks)
+        let layout = StageLayout(groups: groups, width: width, narrow: narrow, equal: equal, wide: wide, wells: wells, asks: asks)
         guard !narrow, layout.widths.reduce(0, +) > width else { return layout }
-        return StageLayout(groups: groups, width: width, narrow: true, wide: wide, wells: wells, asks: asks)
+        return StageLayout(groups: groups, width: width, narrow: true, equal: equal, wide: wide, wells: wells, asks: asks)
     }
 
     static func labelWidth(_ label: String) -> CGFloat {
@@ -951,29 +980,34 @@ struct StageLayout: Equatable {
     }
 }
 
-/// The run in the transcript while it works, in its card's place: its mark, its name and a chevron
-/// that points up at the stage while it's open. A click opens or folds the stage.
+/// A workflow call in the transcript: its mark and name, how long it took once it's over, and a
+/// chevron that points up at the stage while it's open. A click opens or folds the stage, which
+/// grows out of the line and folds back into it.
 struct RunLine: View {
     @Environment(AppModel.self) private var model
     @Environment(\.stageSpace) private var space
     let call: ToolCall
-    let head: Head
-    let thread: UUID
+    /// The run's head while it works.
+    let head: Head?
+    /// The thread it's in, nil where no stage can be called up.
+    let thread: UUID?
 
     static func matchID(_ run: String) -> String { "run:" + run }
 
     var body: some View {
-        let open = model.stage.shown[thread] == call.toolUseId
+        let open = thread.map { model.stage.shown[$0] == call.toolUseId } ?? false
         // Folded, an agent asking on its card pulses the line's mark.
-        let asking = !open && model.conversations[thread]?.waitingAsks.contains(where: \.staged) == true
+        let asking = head != nil && !open && thread.flatMap { model.conversations[$0] }?.waitingAsks.contains(where: \.staged) == true
         let script = call.input["script"]?.string ?? ""
-        let name = head.run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
+        let run = head?.run ?? call.workflow
+        let name = run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
+        let rays = head?.rays ?? []
         Button {
-            model.stage.toggle(call.toolUseId, in: thread)
+            if let thread { model.stage.toggle(call.toolUseId, in: thread) }
         } label: {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    RaysMark(slots: Set(head.rays), turning: !head.rays.isEmpty, waiting: asking, colors: MarkPalette.colors(of: head))
+                    RaysMark(slots: Set(rays), turning: !rays.isEmpty, waiting: asking, colors: head.map(MarkPalette.colors(of:)) ?? [:])
                         .frame(width: 16, height: 16)
                     Text(name)
                         .font(Type.body)
@@ -982,16 +1016,27 @@ struct RunLine: View {
                 }
                 // Folded, they're here for the stage's head to grow out of; while it's up, its head has them.
                 .stageMatched(open ? "line:" + call.toolUseId : Self.matchID(call.toolUseId), in: space)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Ink.faint)
-                    .rotationEffect(.degrees(open ? -90 : 0))
+                if head == nil, let took = run?.took {
+                    Text(took)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.faint)
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
+                if thread != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Ink.faint)
+                        .rotationEffect(.degrees(open ? -90 : 0))
+                }
             }
             .frame(height: 22)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .disabled(thread == nil)
         .animation(Motion.move, value: open)
+        .animation(Motion.fade, value: head == nil)
     }
 }
 
@@ -1007,19 +1052,15 @@ extension View {
     }
 }
 
-/// A workflow call in the transcript: its line while it runs, which the stage grows out of and
-/// folds back into, and its card once it's over.
+/// A workflow call in the transcript, its line reading the thread's heads in a view of its own so
+/// the transcript never does.
 struct WorkflowRow: View {
     let call: ToolCall
     let thread: UUID?
     @Environment(Heads.self) private var heads: Heads?
 
     var body: some View {
-        if let thread, let head = heads?.list.first(where: { $0.call == call.toolUseId && $0.kind == .workflow && !$0.ending }) {
-            RunLine(call: call, head: head, thread: thread)
-        } else {
-            WorkflowCard(call: call)
-        }
+        RunLine(call: call, head: heads?.list.first { $0.call == call.toolUseId && $0.kind == .workflow && !$0.ending }, thread: thread)
     }
 }
 

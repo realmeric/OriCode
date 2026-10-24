@@ -597,7 +597,9 @@ export class Thread implements Session {
         break;
       }
       case "task_notification":
-        if (!this.running) this.ended = this.endedWhat(message.task_id, message.status, message.summary) ?? this.ended;
+        // A workflow's end is its line in the transcript, which the turn it wakes needs no word for,
+        // nor for the commands its agents ran before it.
+        if (!this.running) this.ended = this.workflows.has(message.task_id) ? undefined : (this.endedWhat(message.task_id, message.status, message.summary) ?? this.ended);
         if (this.resuming && !this.heads.has(message.task_id)) this.orphaned = true;
         this.commandEnded(message.task_id, message.tool_use_id, message.status, true);
         if (this.workflows.has(message.task_id)) void this.endWorkflow(message.task_id, message.status, message.summary, message.output_file || null);
@@ -633,8 +635,6 @@ export class Thread implements Session {
   /// "Sleep 90 failed · 1".
   private endedWhat(taskId: string, status: string, summary: string): string | undefined {
     const how = status === "completed" ? "done" : status === "failed" ? "failed" : "stopped";
-    const workflow = this.workflows.get(taskId);
-    if (workflow) return `${workflow.name} ${how}`;
     const subagent = this.subagents.get(taskId);
     if (subagent) return `${subagent.label} ${how}`;
     if (this.commandCalls.has(taskId)) return commandEnded(summary, how);
@@ -664,7 +664,8 @@ export class Thread implements Session {
     const workflow = this.workflows.get(taskId);
     if (!workflow) return;
     const progress = workflowProgress(workflow.shape, workflow.began, workflow.ends, Date.now() / 1000);
-    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, progress, summary: summary ?? null, transcriptDir: workflow.transcriptDir });
+    const startedAt = workflow.shape.startedAt ?? Math.round(workflow.began * 1000);
+    event("workflow", { threadId: this.id, taskId, toolUseId: workflow.toolUseId, name: workflow.name, state, ...workflow.shape, startedAt, progress, summary: summary ?? null, transcriptDir: workflow.transcriptDir });
   }
 
   /// A workflow's end, with what every agent returned: the snapshots are thinned out while it

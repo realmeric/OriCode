@@ -17,9 +17,9 @@ extension AppModel {
 
     /// With a thread's turn over, what it started that still runs, in the line above its composer
     /// and on ⌘⇧I: what it left running, or else the plan it runs while a task's thread works.
-    func goingOn(_ chat: Chat, leavingOut kind: Head.Kind? = nil) -> String? {
+    func goingOn(_ chat: Chat) -> String? {
         guard let conversation = conversations[chat.id], !conversation.running else { return nil }
-        if let line = conversation.goingOn(leavingOut: kind) { return line }
+        if let line = conversation.goingOn { return line }
         let tasks = runTasks(of: chat.id)
         guard tasks.contains(where: { $0.state == "working" }) else { return nil }
         return planLines[chat.id] ?? "\(tasks.count { $0.state == "done" })/\(tasks.count)"

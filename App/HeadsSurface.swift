@@ -248,6 +248,25 @@ private struct HeadRow: View {
         }
     }
 
+    /// How far it has got: the phase at work and the agents done, or how it ended.
+    private static func status(_ run: WorkflowRun?, groups: [(phase: String, agents: [WorkflowRun.Agent])]) -> String {
+        guard let run else { return "Starting…" }
+        let total = run.agents.count
+        let failed = run.count(.failed)
+        let tally = total == 0 ? nil : "\(run.count(.done)) of \(total) agents done" + (failed > 0 ? ", \(failed) failed" : "")
+        switch run.state {
+        case .running:
+            let phase = groups.last { $0.agents.contains { $0.state == .running } }?.phase
+            return [phase.flatMap { $0.isEmpty ? nil : $0 }, tally ?? "Running"].compactMap { $0 }.joined(separator: " · ")
+        case .completed:
+            return total == 0 ? "Done" : "Done · \(total) \(total == 1 ? "agent" : "agents")" + (failed > 0 ? ", \(failed) failed" : "")
+        case .failed:
+            return ["Failed", tally].compactMap { $0 }.joined(separator: " · ")
+        case .stopped:
+            return ["Stopped", tally].compactMap { $0 }.joined(separator: " · ")
+        }
+    }
+
     @ViewBuilder
     private var detail: some View {
         switch head.kind {
@@ -262,7 +281,7 @@ private struct HeadRow: View {
         case .workflow:
             if let run = head.run {
                 HStack(spacing: 10) {
-                    Text(WorkflowCard.status(run, groups: WorkflowRun.groups(run.agents, planned: [], reported: run.phases)))
+                    Text(Self.status(run, groups: WorkflowRun.groups(run.agents, planned: [], reported: run.phases)))
                         .font(Type.secondary)
                         .foregroundStyle(Ink.faint)
                         .lineLimit(1)

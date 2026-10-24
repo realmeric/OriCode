@@ -35,8 +35,8 @@ export type WorkflowAgent = {
   promptFramed: boolean;
 };
 
-/// `endedAt`, in ms, once the run is over.
-export type WorkflowShape = { phases: string[]; agents: WorkflowAgent[]; endedAt?: number };
+/// `startedAt` and, once the run is over, `endedAt`, in ms.
+export type WorkflowShape = { phases: string[]; agents: WorkflowAgent[]; startedAt?: number; endedAt?: number };
 
 type Entry = Record<string, unknown>;
 
@@ -80,6 +80,7 @@ export async function finalShape(outputFile: string | null, transcriptDir: strin
       const run = JSON.parse(await readFile(path, "utf8")) as { workflowProgress?: unknown; startTime?: unknown; durationMs?: unknown };
       if (!Array.isArray(run.workflowProgress)) continue;
       const shape = workflowShape(run.workflowProgress);
+      if (number(run.startTime)) shape.startedAt = number(run.startTime);
       if (number(run.startTime) && number(run.durationMs)) shape.endedAt = number(run.startTime) + number(run.durationMs);
       return shape;
     } catch {

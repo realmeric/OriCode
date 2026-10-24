@@ -887,7 +887,7 @@ private struct GoingOnLine: View {
     let chat: Chat
 
     var body: some View {
-        if let line = model.goingOn(chat, leavingOut: .workflow) {
+        if let line = model.goingOn(chat) {
             Text(line)
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)

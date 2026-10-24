@@ -91,6 +91,25 @@ struct WorkflowTests {
     }
 
     @MainActor
+    @Test func aStageFoldsAMomentAfterItsRunEnds() async throws {
+        let stage = StageModel()
+        let lead = UUID(), other = UUID()
+        stage.cue("run", in: lead, grow: true)
+        stage.ended("run", in: lead)
+        #expect(stage.shown[lead] == "run")
+        // Stepped into an agent, the stage stays for its transcript to be read.
+        stage.cue("second", in: other, grow: true)
+        stage.step(into: .init(agent: "a1", thread: UUID()), in: other)
+        stage.ended("second", in: other)
+        try await Task.sleep(for: StageModel.lingering + .milliseconds(200))
+        #expect(stage.shown[lead] == nil && stage.shown[other] == "second")
+        // Called up again once over, it stays until folded.
+        stage.toggle("run", in: lead)
+        try await Task.sleep(for: StageModel.lingering + .milliseconds(200))
+        #expect(stage.shown[lead] == "run")
+    }
+
+    @MainActor
     @Test func aStepKeepsItsPlaceAsNewerOnesPushItDown() {
         let stage = StageModel()
         let agent = UUID()
@@ -146,6 +165,25 @@ struct WorkflowTests {
         // Past the cap, cards drop calls before anything scrolls.
         let full = wide.height(steps: 4)
         #expect(wide.steps(within: full) == 4 && wide.steps(within: full - 1) == 3 && wide.steps(within: 0) == 0)
+    }
+
+    @Test func aFinishedRunSaysHowLongItTookAndReopensOnEqualShares() {
+        func agent(_ state: String) -> WorkflowRun.Agent {
+            WorkflowRun(["agents": [["label": "a", "phase": "P", "state": .string(state)]]]).agents[0]
+        }
+        let run = WorkflowRun(["state": "completed", "startedAt": 1_792_836_000_000, "endedAt": 1_792_836_361_000, "agents": []])
+        #expect(run.took == "6 min")
+        #expect(WorkflowRun.took(41.4) == "41s" && WorkflowRun.took(4_320) == "1 h 12 min")
+        // Stored before the engine said when a run started, it started with its first agent.
+        let older = WorkflowRun(["state": "stopped", "endedAt": 1_792_836_041_000, "agents": [["label": "a", "queuedAt": 1_792_836_000_000]]])
+        #expect(older.took == "41s")
+        #expect(WorkflowRun(["state": "running", "startedAt": 1_792_836_000_000, "agents": []]).took == nil)
+        // 08 at 1180pt: three finished phases share the width, Review's two stacked in its third.
+        let groups: [(phase: String, agents: [WorkflowRun.Agent])] = [("Review", [agent("done"), agent("done")]), ("Fix", [agent("done")]), ("Verify", [agent("done")])]
+        let reopened = StageLayout.fitted(groups: groups, width: 1116, narrow: false, equal: true, wide: [], wells: [:])
+        #expect(reopened.phases.map(\.width) == Array(repeating: (1116 - 68) / 3, count: 3))
+        #expect(!reopened.phases[0].sideBySide)
+        #expect(StageLayout(groups: groups, width: 1116, narrow: false).phases.map(\.width) == [250, 250, 250])
     }
 
     @MainActor

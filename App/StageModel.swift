@@ -41,6 +41,10 @@ final class StageModel {
     @ObservationIgnored private var handed: [String: Handoff.Runs] = [:]
     /// The agents a spark has travelled to, so it does once.
     @ObservationIgnored var sparked: Set<String> = []
+    /// Each stage whose run has ended and folds in a moment, by its thread.
+    @ObservationIgnored private var endings: [UUID: UUID] = [:]
+    /// How long a stage stays as its run ended before it folds.
+    static let lingering: Duration = .milliseconds(1200)
 
     /// An agent a stage is stepped into: Claude Code's id for it and its thread.
     struct Stepped: Equatable {
@@ -100,7 +104,23 @@ final class StageModel {
         withAnimation(Motion.move) { shown[thread] = run }
     }
 
+    /// A run whose stage is up has ended: the stage stays as the run ended for a moment, then folds
+    /// into its line, unless it's stepped into an agent, whose transcript is being read.
+    func ended(_ run: String, in thread: UUID) {
+        guard shown[thread] == run else { return }
+        let folding = UUID()
+        endings[thread] = folding
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.lingering)
+            guard let self, endings[thread] == folding else { return }
+            endings[thread] = nil
+            guard shown[thread] == run, stepped[thread] == nil else { return }
+            _ = fold(thread)
+        }
+    }
+
     func toggle(_ run: String, in thread: UUID) {
+        endings[thread] = nil
         let left = stepped[thread]
         withAnimation(Motion.move) {
             shown[thread] = shown[thread] == run ? nil : run
@@ -111,6 +131,7 @@ final class StageModel {
 
     /// Folds a thread's stage, saying whether one was up.
     func fold(_ thread: UUID) -> Bool {
+        endings[thread] = nil
         guard shown[thread] != nil else { return false }
         let left = stepped[thread]
         withAnimation(Motion.move) {

@@ -39,10 +39,9 @@ struct WorkflowRun: Hashable {
     let toolUseId: String?
     let phases: [String]
     let agents: [Agent]
-    /// How far it is and the time left, in the engine's words: "3/8 · 12 min".
-    let progress: String?
     let summary: String?
-    /// When it ended, which the store keeps with its last shape.
+    /// When it started, and when it ended, which the store keeps with its last shape.
+    let startedAt: Date?
     let endedAt: Date?
 
     init(_ body: JSON) {
@@ -68,9 +67,23 @@ struct WorkflowRun: Hashable {
                 promptPreview: agent["promptPreview"]?.string,
                 promptFramed: agent["promptFramed"]?.bool ?? false)
         }
-        progress = body["progress"]?.string
         summary = body["summary"]?.string
+        // A run stored before the engine said when it started began with its first agent.
+        startedAt = Self.date(body["startedAt"]) ?? agents.compactMap { $0.queuedAt ?? $0.startedAt }.min()
         endedAt = Self.date(body["endedAt"])
+    }
+
+    /// How long it took, once it's over: "41s", "6 min", "1 h 12 min".
+    var took: String? {
+        guard state != .running, let startedAt, let endedAt else { return nil }
+        return Self.took(endedAt.timeIntervalSince(startedAt))
+    }
+
+    static func took(_ interval: TimeInterval) -> String {
+        let seconds = max(Int(interval.rounded()), 0)
+        guard seconds >= 60 else { return "\(seconds)s" }
+        let minutes = Int((Double(seconds) / 60).rounded())
+        return minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
     }
 
     /// A time the engine gives in ms.

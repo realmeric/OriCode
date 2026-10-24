@@ -97,11 +97,6 @@ final class Head: Identifiable {
         }
     }
 
-    /// How far it is, where the work can tell: a workflow's "3/21 · 9 min".
-    var progress: String? {
-        kind == .workflow ? run?.progress : nil
-    }
-
     /// Its name, where it has one.
     var name: String? {
         run?.name.nonEmpty ?? label.nonEmpty
@@ -164,6 +159,10 @@ final class Heads {
     private(set) var rayAgents: [Int: String] = [:]
     /// Workflows' runs by task, which can come before their head does.
     @ObservationIgnored private var runs: [String: WorkflowRun] = [:]
+    /// The runs that ended in this launch, as each last was, by the call that started it: the
+    /// engine ends a workflow's head before it has read the run's last shape, which the stage
+    /// shows as the run ended for the moment before it folds.
+    private(set) var finished: [String: WorkflowRun] = [:]
     /// Tokens and tool calls change on screen at most once a second: the counts held back, and
     /// when they last changed.
     @ObservationIgnored private var heldCounts: [String: (tokens: Int?, tools: Int?)] = [:]
@@ -227,6 +226,7 @@ final class Heads {
         guard let taskId = body["taskId"]?.string else { return }
         let run = WorkflowRun(body)
         runs[taskId] = run.state == .running ? run : nil
+        if run.state != .running, let call = run.toolUseId { finished[call] = run }
         guard let head = list.first(where: { $0.id == taskId }), head.run != run else { return }
         head.run = run
         assignRays()
@@ -343,24 +343,14 @@ extension Conversation {
         running || !heads.isEmpty
     }
 
-    /// With its turn over, how far what the thread left running is, where the work can tell:
-    /// "Build 3/21 · 9 min", or "3/21 · 9 min" when other heads run beside it. Several with no
-    /// progress are a bare count, and one is nothing, since the rays show it runs and ⌘I names it.
-    /// Nil while a turn runs. It changes only as the engine's heads and workflow events come.
+    /// With its turn over, how many things the thread left running, when more than one: one is
+    /// nothing, since the rays show it runs and ⌘I names it. A workflow says it on its stage and
+    /// its line, and nothing is said while one runs, since the commands its agents run are heads of
+    /// their own. Nil while a turn runs. It changes only as the engine's heads and workflow events come.
     var goingOn: String? {
-        goingOn(leavingOut: nil)
-    }
-
-    /// The same, leaving out heads of a kind: the composer's line leaves a workflow to its stage,
-    /// and says nothing while one runs, since the commands its agents run are heads of their own.
-    func goingOn(leavingOut kind: Head.Kind?) -> String? {
-        guard !running, kind != .workflow || heads.liveWorkflow == nil else { return nil }
-        let live = heads.list.filter { !$0.ending && $0.kind != kind }
-        guard let far = live.first(where: { $0.progress != nil }), let progress = far.progress else {
-            return live.count > 1 ? "\(live.count)" : nil
-        }
-        guard live.count == 1, let name = far.name else { return progress }
-        return "\(name) \(progress)"
+        guard !running, heads.liveWorkflow == nil else { return nil }
+        let live = heads.list.count { !$0.ending }
+        return live > 1 ? "\(live)" : nil
     }
 
     /// The plan's item in progress while a turn runs, as Claude words it then: "Running the tests".

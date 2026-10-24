@@ -73,11 +73,14 @@ test("a run says how far it is by its agents, and the time left once one has end
   assert.equal(workflowProgress(workflowShape([]), 0, [], 0), null);
 });
 
-test("a turn nobody sent says what woke it", async () => {
+test("a turn a workflow's end wakes says nothing of it", async () => {
   const thread = new Thread("t", "/nowhere/claude") as any;
   thread.sessionId = "s";
   async function* cli() {
     yield { type: "system", subtype: "task_started", task_id: "w", tool_use_id: "call", description: "Review", task_type: "local_workflow", workflow_name: "review", session_id: "s", uuid: "u" };
+    // A command one of its agents ran ends first.
+    yield { type: "system", subtype: "task_started", task_id: "b", tool_use_id: "agent-call", description: "List tests", task_type: "local_bash", is_backgrounded: true, session_id: "s", uuid: "u" };
+    yield { type: "system", subtype: "task_notification", task_id: "b", tool_use_id: "agent-call", status: "completed", output_file: "", summary: 'Background command "List tests" completed (exit code 0)', session_id: "s", uuid: "u" };
     yield { type: "system", subtype: "task_notification", task_id: "w", status: "completed", output_file: "", summary: "", session_id: "s", uuid: "u" };
     yield { type: "assistant", parent_tool_use_id: null, message: { id: "m", content: [] }, session_id: "s", uuid: "u" };
   }
@@ -91,7 +94,8 @@ test("a turn nobody sent says what woke it", async () => {
     process.stdout.write = write;
   }
   const started = lines.map((line) => JSON.parse(line)).find((event) => event.event === "turn.started");
-  assert.equal(started?.woke, "review done");
+  assert.ok(started);
+  assert.equal(started.woke, undefined);
 });
 
 test("a background command that wakes the thread names itself, though the CLI said it ended first", async () => {

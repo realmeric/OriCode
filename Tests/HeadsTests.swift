@@ -136,14 +136,17 @@ struct HeadsTests {
         #expect(conversation.working)
     }
 
-    @Test func aWorkflowLeftRunningSaysHowFarItIsUntilATurnStarts() {
+    @Test func aWorkflowLeftRunningLeavesItsStageToSayIt() {
         let conversation = Conversation(chat: chat, context: context)
-        #expect(conversation.goingOn == nil)
-        receive("workflow", ["taskId": "w", "name": "review", "state": "running", "progress": "1/3 · 20 min",
+        receive("workflow", ["taskId": "w", "toolUseId": "call-w", "name": "review", "state": "running", "progress": "1/3 · 20 min",
                              "agents": [], "phases": []], in: conversation)
-        list(head("w", "workflow"), in: conversation)
-        #expect(conversation.goingOn == "review 1/3 · 20 min")
-        conversation.userSent("Go")
+        list(head("w", "workflow"), head("c", "command"), in: conversation)
         #expect(conversation.goingOn == nil)
+        #expect(conversation.heads.finished.isEmpty)
+        // The engine ends the head before it sends the run's last shape.
+        list(in: conversation)
+        receive("workflow", ["taskId": "w", "toolUseId": "call-w", "name": "review", "state": "completed", "agents": [], "phases": [], "endedAt": 1000],
+                in: conversation)
+        #expect(conversation.heads.finished["call-w"]?.state == .completed)
     }
 }
