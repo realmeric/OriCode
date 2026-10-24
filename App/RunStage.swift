@@ -104,7 +104,9 @@ struct RunStage: View {
         let groups = WorkflowRun.groups(run?.agents ?? [], planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
         let name = run?.name ?? call?.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         let inset: CGFloat = width < 900 ? 20 : 32
-        let layout = StageLayout(groups: groups, width: width - inset * 2, narrow: width < 560)
+        let hops = Self.hops(groups, stage: model.stage, chats: agentChats)
+        let layout = StageLayout(groups: groups, width: width - inset * 2, narrow: width < 560, wide: Set(hops.map(\.phase)),
+                                 wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) })
         let room = cap - top - Self.headHeight - Self.labelsGap
         let steps = layout.steps(within: room)
         // Past the cap with no call left to drop, the cards scroll.
@@ -131,7 +133,7 @@ struct RunStage: View {
                     .help("Stops every agent of this workflow")
             }
             .frame(height: Self.headHeight)
-            phases(layout, steps: steps, scrolls: scrolls)
+            phases(layout, steps: steps, scrolls: scrolls, hops: hops)
                 .frame(maxHeight: scrolls ? max(room, 0) : nil, alignment: .top)
                 .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
         }
@@ -150,12 +152,58 @@ struct RunStage: View {
         }
     }
 
+    /// An agent of a later phase whose task took words from what agents of the phase before it
+    /// returned, drawn from their first steps until its third: the script's own words into the
+    /// first phase never are.
+    struct Hop: Equatable {
+        /// The recipient's phase, from 0.
+        let phase: Int
+        let recipient: String
+        let sources: [String]
+        let task: String
+        let well: AttributedString
+    }
+
+    static func hops(_ groups: [(phase: String, agents: [WorkflowRun.Agent])], stage: StageModel, chats: [String: Chat]) -> [Hop] {
+        groups.indices.dropFirst().flatMap { index -> [Hop] in
+            let before = groups[index - 1].agents.filter { $0.state == .done }
+            guard !before.isEmpty else { return [] }
+            return groups[index].agents.compactMap { agent -> Hop? in
+                guard agent.state == .running, let id = agent.id, let chat = chats[id] else { return nil }
+                let trail = stage.trail(for: chat.id)
+                guard !trail.settled, let task = trail.task else { return nil }
+                var sources: [String] = []
+                var runs: [Range<String.Index>] = []
+                for source in before {
+                    guard let sourceID = source.id, let result = stage.results[sourceID] ?? chats[sourceID]?.agentResult else { continue }
+                    let found = stage.runs(id, task: task, source: sourceID, result: result)
+                    guard !found.isEmpty else { continue }
+                    sources.append(sourceID)
+                    runs += found.task
+                }
+                guard !sources.isEmpty else { return nil }
+                runs.sort { $0.lowerBound < $1.lowerBound }
+                return Hop(phase: index, recipient: id, sources: sources, task: task, well: Handoff.well(task, runs: runs))
+            }
+        }
+    }
+
     @ViewBuilder
-    private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool) -> some View {
+    private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop]) -> some View {
+        let wells = Dictionary(hops.map { ($0.recipient, $0.well) }) { first, _ in first }
+        let handed = hops.reduce(into: [String: String]()) { handed, hop in
+            for source in hop.sources { handed[source] = handed[source].map { $0 + "\n" + hop.task } ?? hop.task }
+        }
         let content = HStack(alignment: .top, spacing: 0) {
             ForEach(Array(layout.phases.enumerated()), id: \.element.name) { index, phase in
-                if index > 0 { Color.clear.frame(width: StageLayout.gutter, height: 1) }
-                PhaseColumn(phase: phase, steps: steps, head: head, agentChats: agentChats, cwd: chat.cwd)
+                if index > 0 { Color.clear.frame(width: layout.gutters[index], height: 1) }
+                PhaseColumn(phase: phase, steps: steps, head: head, agentChats: agentChats, cwd: chat.cwd,
+                            wells: wells, handed: handed)
+            }
+        }
+        .overlayPreferenceValue(CardBounds.self) { bounds in
+            GeometryReader { proxy in
+                HopsDrawing(hops: hops, frames: bounds.mapValues { proxy[$0] })
             }
         }
         .animation(Motion.move, value: layout.widths)
@@ -174,6 +222,10 @@ private struct PhaseColumn: View {
     let head: Head
     let agentChats: [String: Chat]
     let cwd: String
+    /// The task each recipient of a hop opens in its well.
+    let wells: [String: AttributedString]
+    /// The task each source of a hop handed its words to.
+    let handed: [String: String]
 
     var body: some View {
         VStack(alignment: .leading, spacing: StageLayout.labelGap) {
@@ -196,7 +248,8 @@ private struct PhaseColumn: View {
     private var cards: some View {
         ForEach(Array(phase.agents.enumerated()), id: \.offset) { _, agent in
             StageCard(agent: agent, chat: agent.id.flatMap { agentChats[$0] }, ray: agent.id.flatMap { head.agentRays[$0] },
-                      color: MarkPalette.color(for: head.agent), steps: steps, collapsed: phase.collapsed, cwd: cwd)
+                      color: MarkPalette.color(for: head.agent), steps: steps, collapsed: phase.collapsed, cwd: cwd,
+                      well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] })
         }
     }
 }
@@ -216,6 +269,10 @@ private struct StageCard: View {
     /// Its head row alone, in a finished phase of a narrow column.
     let collapsed: Bool
     let cwd: String
+    /// Its task, in a well under its head while it takes in what the phase before returned.
+    let well: AttributedString?
+    /// The task that took its words, while that hop is drawn.
+    let handed: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -227,6 +284,17 @@ private struct StageCard: View {
                     .lineLimit(1)
             }
             .frame(height: StageLayout.cardHead)
+            if !collapsed, let well {
+                Text(well)
+                    .font(Type.secondary)
+                    .lineLimit(StageLayout.wellLines)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, StageLayout.wellPadding.height)
+                    .padding(.horizontal, StageLayout.wellPadding.width)
+                    .background(Color.white.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
+                    .padding(.top, StageLayout.wellGap)
+                    .transition(.opacity)
+            }
             if !collapsed {
                 switch agent.state {
                 case .running where steps > 0:
@@ -246,16 +314,19 @@ private struct StageCard: View {
         .padding(.bottom, StageLayout.cardBottom)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(tint), in: .rect(cornerRadius: 14, style: .continuous))
+        .anchorPreference(key: CardBounds.self, value: .bounds) { bounds in agent.id.map { [$0: bounds] } ?? [:] }
         .help(agent.label)
         .animation(Motion.fade, value: agent.state)
+        .animation(Motion.fade, value: well == nil)
+        .animation(Motion.fade, value: handed == nil)
     }
 
     @ViewBuilder
     private func line(_ text: String?) -> some View {
         if let text {
-            Text(text)
+            Text(handed.map { Handoff.source(text, task: $0) } ?? AttributedString(text))
                 .font(Type.secondary)
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(Ink.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.top, StageLayout.resultGap)
@@ -351,6 +422,150 @@ private struct TrailLines: View {
     }
 }
 
+/// Each card's bounds, by its agent's id, for the wires of a hop.
+private struct CardBounds: PreferenceKey {
+    static let defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// A wire of a hop, a curve leaving and arriving level.
+struct Wire: Equatable {
+    let from: CGPoint
+    let to: CGPoint
+
+    var path: Path {
+        var path = Path()
+        path.move(to: from)
+        let (one, two) = controls
+        path.addCurve(to: to, control1: one, control2: two)
+        return path
+    }
+
+    func point(at t: CGFloat) -> CGPoint {
+        let (one, two) = controls
+        let u = 1 - t
+        let a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
+        return CGPoint(x: a * from.x + b * one.x + c * two.x + d * to.x, y: a * from.y + b * one.y + c * two.y + d * to.y)
+    }
+
+    private var controls: (CGPoint, CGPoint) {
+        let half = (to.x - from.x) / 2
+        return (CGPoint(x: from.x + half, y: from.y), CGPoint(x: to.x - half, y: to.y))
+    }
+}
+
+/// The hops of a stage, each phase's in its gutter: the script's node at the middle of its sources,
+/// a wire in from each and one out to each recipient, drawn under nothing and over no text.
+private struct HopsDrawing: View {
+    let hops: [RunStage.Hop]
+    let frames: [String: CGRect]
+
+    static let node: CGFloat = 26
+    /// Where a wire meets its recipient, under the top of its card.
+    static let landing: CGFloat = 26
+
+    struct Wiring: Identifiable {
+        let id: Int
+        let node: CGPoint
+        let ins: [Wire]
+        let outs: [(recipient: String, wire: Wire)]
+    }
+
+    var body: some View {
+        let wirings = Dictionary(grouping: hops, by: \.phase).keys.sorted().compactMap { wiring($0) }
+        ZStack(alignment: .topLeading) {
+            ForEach(wirings) { wiring in
+                ZStack(alignment: .topLeading) {
+                    Canvas { context, _ in
+                        for wire in wiring.ins {
+                            context.stroke(wire.path, with: .linearGradient(Gradient(colors: [.white.opacity(0.06), .white.opacity(0.34)]),
+                                                                            startPoint: wire.from, endPoint: wire.to), lineWidth: 1.5)
+                        }
+                        for out in wiring.outs {
+                            context.stroke(out.wire.path, with: .linearGradient(Gradient(colors: [.white.opacity(0.40), .white.opacity(0.14)]),
+                                                                                startPoint: out.wire.from, endPoint: out.wire.to), lineWidth: 1.5)
+                        }
+                    }
+                    Circle()
+                        .fill(Color.white.opacity(0.10))
+                        .overlay {
+                            Image(systemName: "curlybraces")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.white.opacity(0.7))
+                        }
+                        .frame(width: Self.node, height: Self.node)
+                        .position(wiring.node)
+                    ForEach(wiring.outs, id: \.recipient) { out in
+                        SparkRun(recipient: out.recipient, wire: out.wire)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
+        .animation(Motion.fade, value: wirings.map(\.id))
+    }
+
+    private func wiring(_ phase: Int) -> Wiring? {
+        let into = hops.filter { $0.phase == phase }
+        let sources = Set(into.flatMap(\.sources)).compactMap { frames[$0] }
+        let recipients = into.compactMap { hop in frames[hop.recipient].map { (hop.recipient, $0) } }
+        guard !sources.isEmpty, let edge = recipients.map(\.1.minX).min(), let out = sources.map(\.maxX).max() else { return nil }
+        let node = CGPoint(x: (out + edge) / 2, y: sources.map(\.midY).reduce(0, +) / CGFloat(sources.count))
+        let half = Self.node / 2
+        return Wiring(
+            id: phase, node: node,
+            ins: sources.map { Wire(from: CGPoint(x: $0.maxX, y: $0.midY), to: CGPoint(x: node.x - half, y: node.y)) },
+            // A recipient beside another in its phase would have its wire cross that card, so only
+            // those on the phase's leading edge take one.
+            outs: recipients.filter { $0.1.minX <= edge + 1 }.map { recipient, frame in
+                (recipient, Wire(from: CGPoint(x: node.x + half, y: node.y), to: CGPoint(x: frame.minX, y: frame.minY + Self.landing)))
+            })
+    }
+}
+
+/// The one thing on the stage that travels: a spark along a hop's wire to its recipient, once,
+/// as the hop lands. Reduce Motion leaves it out.
+private struct SparkRun: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let recipient: String
+    let wire: Wire
+    @State private var t: CGFloat = 0
+    @State private var shown = false
+
+    var body: some View {
+        Spark(wire: wire, t: t)
+            .opacity(shown ? 1 : 0)
+            .onAppear {
+                guard !reduceMotion, model.stage.sparked.insert(recipient).inserted else { return }
+                shown = true
+                // After the gutter has opened under it.
+                withAnimation(.easeOut(duration: 0.6).delay(0.28)) { t = 1 }
+            }
+    }
+}
+
+private struct Spark: View, Animatable {
+    let wire: Wire
+    var t: CGFloat
+
+    nonisolated var animatableData: CGFloat {
+        get { t }
+        set { t = newValue }
+    }
+
+    var body: some View {
+        RadialGradient(colors: [.white.opacity(0.9), .white.opacity(0)], center: .center, startRadius: 0, endRadius: 6)
+            .frame(width: 12, height: 12)
+            // Gone as it arrives.
+            .opacity(min(1, (1 - t) * 6))
+            .position(wire.point(at: t))
+    }
+}
+
 /// Where the stage's phases go across its width, and how tall it is: a live phase shares what the
 /// others leave, up to 400pt a card; a finished one is 250pt; one not reached is its label's width.
 struct StageLayout: Equatable {
@@ -368,6 +583,8 @@ struct StageLayout: Equatable {
     }
 
     static let gutter: CGFloat = 34
+    /// A gutter a hop is drawn in, wide enough for the script's node and its wires.
+    static let wideGutter: CGFloat = 72
     static let spacing: CGFloat = 10
     static let card: CGFloat = 400
     static let leastCard: CGFloat = 240
@@ -384,15 +601,25 @@ struct StageLayout: Equatable {
     static let trailGap: CGFloat = 11
     static let stepGap: CGFloat = 5
     static let resultGap: CGFloat = 10
+    static let wellGap: CGFloat = 11
+    static let wellPadding = CGSize(width: 12, height: 10)
+    static let wellLines = 8
     /// A line of body type and one of secondary, as Text lays them out.
     static let bodyLine = ceil(NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 14)))
     static let secondaryLine = ceil(NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 12.5)))
 
     let phases: [Phase]
+    /// The space before each phase, none before the first.
+    let gutters: [CGFloat]
+    /// How much each recipient's well adds to its card, by its agent's id.
+    let wells: [String: CGFloat]
 
-    var widths: [CGFloat] { phases.map(\.width) }
+    var widths: [CGFloat] { phases.map(\.width) + gutters }
 
-    init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool) {
+    /// `wide` names the phases a hop goes into, whose gutter widens; `wells` the tasks shown in wells.
+    init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool,
+         wide: Set<Int> = [], wells: [String: String] = [:]) {
+        gutters = groups.indices.map { $0 == 0 ? 0 : wide.contains($0) ? Self.wideGutter : Self.gutter }
         let states: [State] = groups.map { group in
             if group.agents.isEmpty { return .ahead }
             return group.agents.allSatisfy { $0.state == .done || $0.state == .failed } ? .finished : .live
@@ -405,7 +632,7 @@ struct StageLayout: Equatable {
             }
         }
         let live = states.count { $0 == .live }
-        let left = width - fixed.compactMap { $0 }.reduce(0, +) - Self.gutter * CGFloat(max(groups.count - 1, 0))
+        let left = width - fixed.compactMap { $0 }.reduce(0, +) - gutters.reduce(0, +)
         let share = live == 0 ? 0 : max(left / CGFloat(live), Self.leastCard)
         phases = zip(groups, zip(states, fixed)).map { group, entry in
             let (state, fixed) = entry
@@ -417,6 +644,20 @@ struct StageLayout: Equatable {
             return Phase(name: group.phase, agents: group.agents, state: state, width: width, sideBySide: sideBySide,
                          collapsed: narrow && state == .finished)
         }
+        var heights: [String: CGFloat] = [:]
+        for phase in phases where !phase.collapsed {
+            let count = CGFloat(phase.agents.count)
+            let card = phase.sideBySide ? (phase.width - (count - 1) * Self.spacing) / count : phase.width
+            let inside = card - Self.cardSide * 2 - Self.wellPadding.width * 2
+            for agent in phase.agents {
+                guard let id = agent.id, let task = wells[id] else { continue }
+                let text = (task as NSString).boundingRect(with: CGSize(width: inside, height: .greatestFiniteMagnitude),
+                                                           options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                                           attributes: [.font: NSFont.systemFont(ofSize: 12.5)]).height
+                heights[id] = Self.wellGap + Self.wellPadding.height * 2 + min(ceil(text), Self.secondaryLine * CGFloat(Self.wellLines))
+            }
+        }
+        self.wells = heights
     }
 
     static func labelWidth(_ label: String) -> CGFloat {
@@ -426,7 +667,9 @@ struct StageLayout: Equatable {
     /// The phases' height, labels and cards, with each running card showing `steps` calls.
     func height(steps: Int) -> CGFloat {
         phases.map { phase in
-            let cards = phase.agents.map { Self.cardHeight($0, steps: steps, collapsed: phase.collapsed) }
+            let cards = phase.agents.map { agent in
+                Self.cardHeight(agent, steps: steps, collapsed: phase.collapsed) + (agent.id.flatMap { wells[$0] } ?? 0)
+            }
             guard !cards.isEmpty else { return Self.labelHeight }
             let stacked = phase.sideBySide ? cards.max() ?? 0 : cards.reduce(0, +) + Self.spacing * CGFloat(cards.count - 1)
             return Self.labelHeight + Self.labelGap + stacked

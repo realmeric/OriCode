@@ -22,6 +22,8 @@ final class StageModel {
         /// The place of `steps`' first in all the agent has called here, so a step keeps who it is
         /// as newer ones push it down the card.
         fileprivate(set) var first = 0
+        /// Its third call has landed, which folds the well its task opened in.
+        fileprivate(set) var settled = false
     }
 
     @ObservationIgnored private var trails: [UUID: Trail] = [:]
@@ -35,6 +37,10 @@ final class StageModel {
     private(set) var results: [String: String] = [:]
     /// The agents' threads whose trails the engine reads.
     @ObservationIgnored var followed: Set<UUID> = []
+    /// What each task took from each result, found once for each pair.
+    @ObservationIgnored private var handed: [String: Handoff.Runs] = [:]
+    /// The agents a spark has travelled to, so it does once.
+    @ObservationIgnored var sparked: Set<String> = []
 
     func trail(for agent: UUID) -> Trail {
         if let trail = trails[agent] { return trail }
@@ -55,6 +61,7 @@ final class StageModel {
             let kept = (0...min(trail.steps.count, steps.count)).last { trail.steps.suffix($0).elementsEqual(steps.prefix($0)) } ?? 0
             trail.first += trail.steps.count - kept
             trail.steps = steps
+            if !trail.settled, trail.first + steps.count >= 3 { trail.settled = true }
         }
         if let task = body["task"]?.string { trail.task = task }
         if body["ended"]?.bool == true { followed.remove(agent) }
@@ -64,6 +71,15 @@ final class StageModel {
     func took(_ body: JSON) {
         guard let agent = body["agentId"]?.string, let result = body["result"]?.string else { return }
         results[agent] = result
+    }
+
+    /// The runs of words a recipient's task shares with a source's result.
+    func runs(_ recipient: String, task: String, source: String, result: String) -> Handoff.Runs {
+        let key = "\(recipient) \(source) \(task.utf8.count) \(result.utf8.count)"
+        if let runs = handed[key] { return runs }
+        let runs = Handoff.runs(task: task, result: result)
+        handed[key] = runs
+        return runs
     }
 
     /// A run on the glass for the first time: its stage grows, unless the transcript under it is
