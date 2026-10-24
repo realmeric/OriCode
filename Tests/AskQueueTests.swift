@@ -146,6 +146,43 @@ struct AskQueueTests {
         #expect(thread.id != build.id && thread.openedBy == build.id && thread.agentID == "sub-1")
     }
 
+    @Test func aWorkflowAgentsAskIsOnItsCardAndNotInItsLeadsTranscript() throws {
+        let (model, build, _, _, _, _) = try model()
+        let tests = Chat(project: try #require(build.project), title: "tests")
+        tests.started = true
+        tests.openedBy = build.id
+        tests.agentID = "a-tests"
+        tests.agentState = "running"
+        model.context.insert(tests)
+        model.route(EngineEvent(name: "ask", threadId: build.id.uuidString, body: [
+            "event": "ask", "requestId": "t", "kind": "permission", "tool": "Bash", "input": ["command": "swift test"],
+            "toolUseId": "call-t", "agentId": "a-tests",
+        ]))
+        let lead = model.conversation(for: build)
+        // Nothing in the lead's transcript; the card has it, and the queue lists it as ever.
+        #expect(lead.waitingAsks.map(\.staged) == [true])
+        #expect(!TranscriptEntry.fold(lead.items).contains { if case .item(.ask) = $0 { true } else { false } })
+        #expect(RunStage.asks(lead.waitingAsks).keys.sorted() == ["a-tests"])
+        #expect(model.waitingAsks.map(\.thread.id) == [tests.id])
+        // Answered, it leaves no line there either.
+        model.answer(try #require(lead.waitingAsk), in: build.id, allow: true)
+        #expect(lead.waitingAsks.isEmpty)
+        #expect(!TranscriptEntry.fold(lead.items).contains { if case .item(.ask) = $0 { true } else { false } })
+    }
+
+    @Test func aSubagentsAskStaysInItsHoldersTranscript() throws {
+        let (model, build, _, _, _, _) = try model()
+        model.route(EngineEvent(name: "agent.thread", threadId: build.id.uuidString, body: [
+            "agentId": "sub-1", "label": "Look around", "kind": "subagent", "state": "running",
+        ]))
+        model.route(EngineEvent(name: "ask", threadId: build.id.uuidString, body: [
+            "event": "ask", "requestId": "s", "kind": "permission", "tool": "Bash", "input": ["command": "ls"], "agentId": "sub-1",
+        ]))
+        let lead = model.conversation(for: build)
+        #expect(lead.waitingAsks.map(\.staged) == [false])
+        #expect(TranscriptEntry.fold(lead.items).contains { if case .item(.ask) = $0 { true } else { false } })
+    }
+
     @Test func anAskFromASubagentTheAppHasNoThreadForIsItsHoldersOwn() throws {
         let (model, build, _, _, _, _) = try model()
         model.route(EngineEvent(name: "ask", threadId: build.id.uuidString, body: [

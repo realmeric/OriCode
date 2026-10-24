@@ -74,6 +74,9 @@ struct AskForm: View {
     let thread: UUID?
     let listens: Bool
     var compact = false
+    /// Off on an agent's card, whose pulsing mark is the question: a command shows as its well
+    /// and its answers. A question keeps its words, and an edit the file its title names.
+    var titled = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -92,7 +95,7 @@ struct AskForm: View {
             if ask.kind == "question" {
                 QuestionForm(ask: ask, thread: thread, listens: listens)
             } else {
-                PermissionForm(ask: ask, cwd: cwd, thread: thread, listens: listens, compact: compact)
+                PermissionForm(ask: ask, cwd: cwd, thread: thread, listens: listens, compact: compact, titled: titled || ask.toolKind != .run)
             }
         }
     }
@@ -105,15 +108,33 @@ private struct PermissionForm: View {
     let thread: UUID?
     let listens: Bool
     let compact: Bool
+    let titled: Bool
     @State private var showDiff = false
     @AppStorage(ReviewDesign.key) private var design = ReviewDesign.witness
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(Type.body)
-                .foregroundStyle(Ink.primary)
-            detail
+            if titled {
+                Text(title)
+                    .font(Type.body)
+                    .foregroundStyle(Ink.primary)
+                detail
+            } else {
+                // All of it, scrolling past the card's room, so Allow is never under a command cut short.
+                ScrollView {
+                    Text(ask.call.shown("command") ?? "")
+                        .font(Type.mono)
+                        .foregroundStyle(Ink.primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                    .scrollIndicators(.never)
+                    .frame(maxHeight: StageLayout.askTallest)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, StageLayout.wellPadding.height)
+                    .padding(.horizontal, StageLayout.wellPadding.width)
+                    .background(Color.white.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
+            }
             HStack(spacing: 8) {
                 Spacer()
                 if ask.choices.isEmpty {

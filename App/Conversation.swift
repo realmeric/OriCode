@@ -109,6 +109,9 @@ struct PendingAsk: Hashable {
     /// The worker, subagent or workflow agent that asked, by the id its thread keeps in
     /// `agentID`; nil when the thread's own loop did.
     var agentID: String?
+    /// Asked by one of the thread's workflow agents, so it's on that agent's card on the stage and
+    /// draws nothing in the thread's own transcript.
+    var staged = false
     /// When it came, which orders the asks of every thread in the queue.
     var askedAt: Date = .distantPast
     /// The thread that answered it for the user, and why, when one did (K-296).
@@ -594,11 +597,11 @@ final class Conversation {
         endWorkflows(saving: false)
         // Asks and tool calls from an earlier launch will never finish; the engine that ran them is
         // gone. A quit in the middle of the last turn is the exception: what it was waiting on you
-        // for is still up, with the call it holds.
+        // for is still up, with the call it holds; not a workflow agent's, whose run went too.
         let lastSent = items.lastIndex(where: \.startsTurn) ?? -1
         for index in items.indices {
             guard case .ask(let id, var ask) = items[index], ask.state == .waiting else { continue }
-            if chat.quitMidTurn, index > lastSent {
+            if chat.quitMidTurn, index > lastSent, !ask.staged {
                 askedBeforeQuit.insert(ask.requestId)
             } else {
                 ask.state = .cancelled
@@ -1122,6 +1125,14 @@ final class Conversation {
     }
 
     /// `by` is the thread that answered for the user, with its reason.
+    /// Whether `id` is one of this thread's workflow agents: its thread under this one says so, and
+    /// one with no thread yet is while a workflow runs, since the engine tells of a subagent or a
+    /// worker before it can ask.
+    private func workflowAgent(_ id: String) -> Bool {
+        if let agent = chat.project?.chats.first(where: { $0.openedBy == chat.id && $0.agentID == id }) { return agent.agentKind == nil }
+        return heads.liveWorkflow != nil
+    }
+
     func answered(_ requestId: String, allow: Bool, by: (title: String, reason: String)? = nil) {
         var body: [String: JSON] = ["event": "answer", "requestId": .string(requestId), "allow": .bool(allow)]
         if let by {
@@ -1545,6 +1556,7 @@ final class Conversation {
                 },
                 worker: body["worker"]?["agent"]?.string.map { PendingAsk.Worker(agent: $0, label: body["worker"]?["label"]?.string ?? "") },
                 agentID: body["agentId"]?.string,
+                staged: body["worker"] == nil && body["agentId"]?.string.map(workflowAgent) == true,
                 askedAt: date)
             items.append(.ask(id: id, ask: ask))
         case "answer", "ask.cancelled":

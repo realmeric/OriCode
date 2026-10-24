@@ -55,7 +55,7 @@ private struct StageSlot: View {
         let up = head?.call.map { model.stage.shown[chat.id] == $0 } ?? false
         ZStack(alignment: .top) {
             if let head, up {
-                RunStage(head: head, call: call, chat: chat, width: size.width, top: RunStage.top(active: active),
+                RunStage(head: head, call: call, chat: chat, active: active, width: size.width, top: RunStage.top(active: active),
                          cap: size.height - RunStage.underneath, floor: size.height - RunStage.gap, foot: foot)
                     .transition(.opacity)
             }
@@ -80,6 +80,8 @@ struct RunStage: View {
     /// The Workflow call that started it, for the phases its script plans and its name.
     let call: ToolCall?
     let chat: Chat
+    /// The column has the keyboard, so the oldest ask's Allow takes Return.
+    let active: Bool
     /// The column's width.
     let width: CGFloat
     /// Where the head row starts.
@@ -117,8 +119,13 @@ struct RunStage: View {
         let name = run?.name ?? call?.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         let inset: CGFloat = width < 900 ? 20 : 32
         let hops = Self.hops(groups, stage: model.stage, chats: agentChats)
+        let lead = model.conversations[chat.id]
+        let asks = Self.asks(lead?.waitingAsks ?? [])
+        // Not while a block is open: Return typed there mustn't answer the card.
+        let listening = active && model.openShell == nil ? lead?.waitingAsk?.requestId : nil
         let layout = StageLayout.fitted(groups: groups, width: width - inset * 2, narrow: width < 560, wide: Set(hops.map(\.phase)),
-                                        wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) })
+                                        wells: hops.reduce(into: [:]) { $0[$1.recipient] = String($1.well.characters) },
+                                        asks: asks.mapValues { $0.call.shown("command") ?? "" })
         let room = cap - top - Self.headHeight - Self.labelsGap
         let steps = layout.steps(within: room)
         // Past the cap with no call left to drop, the cards scroll.
@@ -150,16 +157,16 @@ struct RunStage: View {
                         .transition(.opacity)
                 }
                 if let stepped {
-                    StepMarks(phases: layout.phases, stepped: stepped.agent, head: head, agentChats: agentChats, lead: chat.id)
+                    StepMarks(phases: layout.phases, stepped: stepped.agent, head: head, agentChats: agentChats, lead: chat.id, asking: Set(asks.keys))
                 }
             }
             .frame(height: Self.headHeight)
             if let stepped {
-                AgentSurface(stepped: stepped)
+                AgentSurface(stepped: stepped, ask: asks[stepped.agent], lead: chat, listens: asks[stepped.agent].map { $0.requestId == listening } ?? false)
                     .frame(height: max(floor - top - Self.headHeight - Self.labelsGap, 0))
                     .transition(.opacity)
             } else {
-                phases(layout, steps: steps, scrolls: scrolls, hops: hops)
+                phases(layout, steps: steps, scrolls: scrolls, hops: hops, asks: asks, listening: listening)
                     .frame(maxHeight: scrolls ? max(room, 0) : nil, alignment: .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
             }
@@ -192,6 +199,14 @@ struct RunStage: View {
         let well: AttributedString
     }
 
+    /// The oldest ask each workflow agent has waiting, by its id: the one its card shows.
+    static func asks(_ waiting: [PendingAsk]) -> [String: PendingAsk] {
+        waiting.reduce(into: [:]) { asks, ask in
+            guard ask.staged, let id = ask.agentID, asks[id] == nil else { return }
+            asks[id] = ask
+        }
+    }
+
     static func hops(_ groups: [(phase: String, agents: [WorkflowRun.Agent])], stage: StageModel, chats: [String: Chat]) -> [Hop] {
         groups.indices.dropFirst().flatMap { index -> [Hop] in
             let before = groups[index - 1].agents.filter { $0.state == .done }
@@ -217,7 +232,7 @@ struct RunStage: View {
     }
 
     @ViewBuilder
-    private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop]) -> some View {
+    private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop], asks: [String: PendingAsk], listening: String?) -> some View {
         let wells = Dictionary(hops.map { ($0.recipient, $0.well) }) { first, _ in first }
         let handed = hops.reduce(into: [String: String]()) { handed, hop in
             for source in hop.sources { handed[source] = handed[source].map { $0 + "\n" + hop.task } ?? hop.task }
@@ -226,7 +241,7 @@ struct RunStage: View {
             ForEach(Array(layout.phases.enumerated()), id: \.element.name) { index, phase in
                 if index > 0 { Color.clear.frame(width: layout.gutters[index], height: 1) }
                 PhaseColumn(phase: phase, steps: steps, head: head, agentChats: agentChats, cwd: chat.cwd,
-                            wells: wells, handed: handed, lead: chat.id)
+                            wells: wells, handed: handed, asks: asks, listening: listening, lead: chat.id)
             }
         }
         .overlayPreferenceValue(CardBounds.self) { bounds in
@@ -254,6 +269,10 @@ private struct PhaseColumn: View {
     let wells: [String: AttributedString]
     /// The task each source of a hop handed its words to.
     let handed: [String: String]
+    /// The ask each agent waits on, by its id.
+    let asks: [String: PendingAsk]
+    /// The ask Return answers.
+    let listening: String?
     /// The thread whose stage it is.
     let lead: UUID
 
@@ -279,7 +298,8 @@ private struct PhaseColumn: View {
         ForEach(Array(phase.agents.enumerated()), id: \.offset) { _, agent in
             StageCard(agent: agent, chat: agent.id.flatMap { agentChats[$0] }, ray: agent.id.flatMap { head.agentRays[$0] },
                       color: MarkPalette.color(for: head.agent), steps: steps, collapsed: phase.collapsed, cwd: cwd,
-                      well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] }, lead: lead)
+                      well: agent.id.flatMap { wells[$0] }, handed: agent.id.flatMap { handed[$0] },
+                      ask: agent.id.flatMap { asks[$0] }, listening: listening, lead: lead)
         }
     }
 }
@@ -303,6 +323,10 @@ private struct StageCard: View {
     let well: AttributedString?
     /// The task that took its words, while that hop is drawn.
     let handed: String?
+    /// What it waits on you for, under its trail.
+    let ask: PendingAsk?
+    /// The ask Return answers.
+    let listening: String?
     /// The thread whose stage it is.
     let lead: UUID
     @Environment(\.stageSpace) private var space
@@ -310,7 +334,7 @@ private struct StageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 9) {
-                StageMark(state: agent.state, ray: ray, color: color)
+                StageMark(state: agent.state, ray: ray, color: color, asking: ask != nil)
                     .frame(width: 14, height: 14)
                     .stageMatched(agent.id.map { StageMark.matchID($0) } ?? "", in: agent.id == nil ? nil : space)
                 Text(agent.label)
@@ -332,9 +356,17 @@ private struct StageCard: View {
             }
             if !collapsed {
                 switch agent.state {
-                case .running where steps > 0:
-                    TrailLines(trail: chat.map { model.stage.trail(for: $0.id) }, fallback: fallback, steps: steps, cwd: cwd)
-                        .padding(.top, StageLayout.trailGap)
+                case .running where steps > 0 || ask != nil:
+                    // An ask coming or answered changes the card under its head at once: what was
+                    // there goes before the rest comes, in the same place, so no line is read over another.
+                    ZStack(alignment: .topLeading) {
+                        working
+                            .id(ask?.requestId)
+                            .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)), removal: .opacity.animation(.easeOut(duration: 0.1))))
+                    }
+                    // What goes doesn't hang past the card as it closes up.
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
                 case .done:
                     line(chat?.agentResult)
                 case .failed:
@@ -365,6 +397,23 @@ private struct StageCard: View {
         .animation(Motion.fade, value: agent.state)
         .animation(Motion.fade, value: well == nil)
         .animation(Motion.fade, value: handed == nil)
+        .animation(Motion.fade, value: ask?.requestId)
+    }
+
+    /// A running agent's trail, and what it asks under it, faded, while it waits on you.
+    @ViewBuilder
+    private var working: some View {
+        let trail = chat.map { model.stage.trail(for: $0.id) }
+        VStack(alignment: .leading, spacing: 0) {
+            if steps > 0, ask == nil || !TrailLines.before(ask, in: trail?.steps ?? []).isEmpty {
+                TrailLines(trail: trail, fallback: ask == nil ? fallback : nil, steps: steps, cwd: cwd, asked: ask)
+                    .padding(.top, StageLayout.trailGap)
+            }
+            if let ask {
+                AskForm(ask: ask, cwd: cwd, thread: lead, listens: ask.requestId == listening, titled: false)
+                    .padding(.top, StageLayout.askGap)
+            }
+        }
     }
 
     @ViewBuilder
@@ -396,7 +445,7 @@ private struct StageCard: View {
 
     private var tint: Double {
         switch agent.state {
-        case .running: 0.05
+        case .running: ask == nil ? 0.05 : 0.07
         case .done, .failed: 0.035
         case .queued: 0.025
         }
@@ -411,13 +460,15 @@ private struct StageMark: View {
     /// The ray it holds on the run's mark while it works.
     let ray: Int?
     let color: Color
+    /// It waits on you, which its dot pulses for.
+    var asking = false
 
     static func matchID(_ agent: String) -> String { "mark:" + agent }
 
     var body: some View {
         switch state {
         case .running:
-            RaysMark(slots: ray.map { [$0] } ?? [], turning: ray != nil, restingOpacity: 0.16,
+            RaysMark(slots: ray.map { [$0] } ?? [], turning: ray != nil, waiting: asking, restingOpacity: 0.16,
                      colors: ray.map { [$0: color] } ?? [:])
         case .done:
             RaysMark(restingOpacity: 0.16, dotOpacity: 0.5)
@@ -440,6 +491,8 @@ private struct StepMarks: View {
     let head: Head
     let agentChats: [String: Chat]
     let lead: UUID
+    /// The agents waiting on you, whose marks pulse.
+    let asking: Set<String>
 
     var body: some View {
         HStack(spacing: 18) {
@@ -457,7 +510,8 @@ private struct StepMarks: View {
         let selected = agent.id == stepped
         let chat = agent.id.flatMap { agentChats[$0] }
         return HStack(spacing: 9) {
-            StageMark(state: agent.state, ray: agent.id.flatMap { head.agentRays[$0] }, color: MarkPalette.color(for: head.agent))
+            StageMark(state: agent.state, ray: agent.id.flatMap { head.agentRays[$0] }, color: MarkPalette.color(for: head.agent),
+                      asking: agent.id.map(asking.contains) ?? false)
                 .frame(width: 14, height: 14)
                 .stageMatched(agent.id.map { StageMark.matchID($0) } ?? "", in: agent.id == nil ? nil : space)
             if selected {
@@ -496,6 +550,11 @@ private struct AgentSurface: View {
     @Environment(AppModel.self) private var model
     @Environment(\.stageSpace) private var space
     let stepped: StageModel.Stepped
+    /// What the agent waits on you for, under its transcript.
+    let ask: PendingAsk?
+    /// The thread whose stage it is, which the ask is answered in.
+    let lead: Chat
+    let listens: Bool
 
     static func matchID(_ agent: String) -> String { "card:" + agent }
 
@@ -504,13 +563,23 @@ private struct AgentSurface: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.05))
                 .stageMatched(Self.matchID(stepped.agent), in: space)
-            // Across to another agent, one transcript goes before the next comes, so no line is
-            // read over another.
-            if let conversation = model.conversations[stepped.thread] {
-                TranscriptView(conversation: conversation, cwd: conversation.chat.cwd, active: false, stepped: true)
-                    .id(stepped.thread)
-                    .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)), removal: .opacity.animation(.easeOut(duration: 0.1))))
+            VStack(spacing: 0) {
+                // Across to another agent, one transcript goes before the next comes, so no line is
+                // read over another.
+                if let conversation = model.conversations[stepped.thread] {
+                    TranscriptView(conversation: conversation, cwd: conversation.chat.cwd, active: false, stepped: true)
+                        .id(stepped.thread)
+                        .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)), removal: .opacity.animation(.easeOut(duration: 0.1))))
+                }
+                if let ask {
+                    AskForm(ask: ask, cwd: lead.cwd, thread: lead.id, listens: listens, titled: false)
+                        .column()
+                        .padding(.vertical, StageLayout.cardSide)
+                        .id(ask.requestId)
+                        .transition(.opacity)
+                }
             }
+            .animation(Motion.fade, value: ask?.requestId)
         }
     }
 }
@@ -522,30 +591,41 @@ private struct TrailLines: View {
     let fallback: String?
     let steps: Int
     let cwd: String
+    /// What the agent waits on you for: the call it holds is the ask's to show, and the calls
+    /// before it fade under the question.
+    var asked: PendingAsk? = nil
 
     private static let inks: [Double] = [0.92, 0.55, 0.38, 0.24]
 
     var body: some View {
-        let all = trail?.steps ?? []
+        let all = Self.before(asked, in: trail?.steps ?? [])
         let first = trail?.first ?? 0
+        let inks = asked == nil ? Self.inks : Array(Self.inks.dropFirst())
         let shown: [(id: Int, words: AttributedString)] = all.isEmpty
             ? fallback.map { [(id: -1, words: AttributedString($0))] } ?? []
-            : all.enumerated().suffix(steps).reversed().map { index, step in
-                (first + index, Self.words(step, cwd: cwd, last: index == all.count - 1))
+            : all.enumerated().suffix(min(steps, inks.count)).reversed().map { index, step in
+                (first + index, Self.words(step, cwd: cwd, last: asked == nil && index == all.count - 1))
             }
         VStack(alignment: .leading, spacing: StageLayout.stepGap) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { place, step in
                 Text(step.words)
-                    .font(place == 0 ? Type.body : Type.secondary)
-                    .foregroundStyle(Color.white.opacity(Self.inks[min(place, Self.inks.count - 1)]))
+                    .font(place == 0 && asked == nil ? Type.body : Type.secondary)
+                    .foregroundStyle(Color.white.opacity(inks[min(place, inks.count - 1)]))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)), removal: .opacity))
+                    // In once the lines under it have moved down out of its way.
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)).animation(Motion.fade.delay(0.1)), removal: .opacity))
             }
         }
         // A fade's length and not the spring's: with four agents at work a call lands every
         // quarter second or so, and a spring still settling under the next kept frames coming.
         .animation(Motion.fade, value: shown.map(\.id))
+    }
+
+    /// The calls before the one an ask holds, which the agent's transcript has before it's answered.
+    static func before(_ ask: PendingAsk?, in steps: [StageModel.Step]) -> [StageModel.Step] {
+        guard let ask, let last = steps.last, last.tool == ask.tool, last.input == ask.input else { return steps }
+        return Array(steps.dropLast())
     }
 
     /// A call as the transcript says it, with a file's folder after its name in faint ink: "Read
@@ -748,6 +828,12 @@ struct StageLayout: Equatable {
     static let wellGap: CGFloat = 11
     static let wellPadding = CGSize(width: 12, height: 10)
     static let wellLines = 8
+    /// From an asking card's trail to its ask, and from the command's well to its answers.
+    static let askGap: CGFloat = 12
+    static let answersGap: CGFloat = 10
+    static let answersHeight: CGFloat = 30
+    /// The most of a command an ask's well shows before it scrolls: eight lines of mono.
+    static let askTallest = ceil(NSLayoutManager().defaultLineHeight(for: .monospacedSystemFont(ofSize: 12.5, weight: .regular))) * 8
     /// A line of body type and one of secondary, as Text lays them out.
     static let bodyLine = ceil(NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 14)))
     static let secondaryLine = ceil(NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 12.5)))
@@ -757,12 +843,15 @@ struct StageLayout: Equatable {
     let gutters: [CGFloat]
     /// How much each recipient's well adds to its card, by its agent's id.
     let wells: [String: CGFloat]
+    /// How much each asking agent's ask adds to its card, by its id.
+    let asks: [String: CGFloat]
 
     var widths: [CGFloat] { phases.map(\.width) + gutters }
 
-    /// `wide` names the phases a hop goes into, whose gutter widens; `wells` the tasks shown in wells.
+    /// `wide` names the phases a hop goes into, whose gutter widens; `wells` the tasks shown in
+    /// wells; `asks` the commands the agents asking wait on you to run.
     init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool,
-         wide: Set<Int> = [], wells: [String: String] = [:]) {
+         wide: Set<Int> = [], wells: [String: String] = [:], asks: [String: String] = [:]) {
         gutters = groups.indices.map { $0 == 0 ? 0 : wide.contains($0) ? Self.wideGutter : Self.gutter }
         let states: [State] = groups.map { group in
             if group.agents.isEmpty { return .ahead }
@@ -790,28 +879,37 @@ struct StageLayout: Equatable {
                          collapsed: narrow && state == .finished)
         }
         var heights: [String: CGFloat] = [:]
+        var asked: [String: CGFloat] = [:]
         for phase in phases where !phase.collapsed {
             let count = CGFloat(phase.agents.count)
             let card = phase.sideBySide ? (phase.width - (count - 1) * Self.spacing) / count : phase.width
             let inside = card - Self.cardSide * 2 - Self.wellPadding.width * 2
+            func tall(_ text: String, _ font: NSFont) -> CGFloat {
+                ceil((text as NSString).boundingRect(with: CGSize(width: inside, height: .greatestFiniteMagnitude),
+                                                     options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: font]).height)
+            }
             for agent in phase.agents {
-                guard let id = agent.id, let task = wells[id] else { continue }
-                let text = (task as NSString).boundingRect(with: CGSize(width: inside, height: .greatestFiniteMagnitude),
-                                                           options: [.usesLineFragmentOrigin, .usesFontLeading],
-                                                           attributes: [.font: NSFont.systemFont(ofSize: 12.5)]).height
-                heights[id] = Self.wellGap + Self.wellPadding.height * 2 + min(ceil(text), Self.secondaryLine * CGFloat(Self.wellLines))
+                guard let id = agent.id else { continue }
+                if let task = wells[id] {
+                    heights[id] = Self.wellGap + Self.wellPadding.height * 2 + min(tall(task, .systemFont(ofSize: 12.5)), Self.secondaryLine * CGFloat(Self.wellLines))
+                }
+                if let command = asks[id] {
+                    let well = min(tall(command, .monospacedSystemFont(ofSize: 12.5, weight: .regular)), Self.askTallest)
+                    asked[id] = Self.askGap + Self.wellPadding.height * 2 + well + Self.answersGap + Self.answersHeight
+                }
             }
         }
         self.wells = heights
+        self.asks = asked
     }
 
     /// The layout for `width`, narrow when the phases wouldn't fit across it otherwise: three phases
     /// in a column beside another thread don't at 250pt a finished one.
     static func fitted(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool,
-                       wide: Set<Int>, wells: [String: String]) -> StageLayout {
-        let layout = StageLayout(groups: groups, width: width, narrow: narrow, wide: wide, wells: wells)
+                       wide: Set<Int>, wells: [String: String], asks: [String: String] = [:]) -> StageLayout {
+        let layout = StageLayout(groups: groups, width: width, narrow: narrow, wide: wide, wells: wells, asks: asks)
         guard !narrow, layout.widths.reduce(0, +) > width else { return layout }
-        return StageLayout(groups: groups, width: width, narrow: true, wide: wide, wells: wells)
+        return StageLayout(groups: groups, width: width, narrow: true, wide: wide, wells: wells, asks: asks)
     }
 
     static func labelWidth(_ label: String) -> CGFloat {
@@ -822,7 +920,10 @@ struct StageLayout: Equatable {
     func height(steps: Int) -> CGFloat {
         phases.map { phase in
             let cards = phase.agents.map { agent in
-                Self.cardHeight(agent, steps: steps, collapsed: phase.collapsed) + (agent.id.flatMap { wells[$0] } ?? 0)
+                // An asking card's trail is the calls before the one it asks about, three at most.
+                let ask = phase.collapsed ? nil : agent.id.flatMap { asks[$0] }
+                return Self.cardHeight(agent, steps: ask == nil ? steps : min(steps, 3), collapsed: phase.collapsed)
+                    + (agent.id.flatMap { wells[$0] } ?? 0) + (ask ?? 0)
             }
             guard !cards.isEmpty else { return Self.labelHeight }
             let stacked = phase.sideBySide ? cards.max() ?? 0 : cards.reduce(0, +) + Self.spacing * CGFloat(cards.count - 1)
@@ -863,6 +964,8 @@ struct RunLine: View {
 
     var body: some View {
         let open = model.stage.shown[thread] == call.toolUseId
+        // Folded, an agent asking on its card pulses the line's mark.
+        let asking = !open && model.conversations[thread]?.waitingAsks.contains(where: \.staged) == true
         let script = call.input["script"]?.string ?? ""
         let name = head.run?.name ?? call.input["name"]?.string ?? WorkflowRun.plannedName(in: script) ?? "Workflow"
         Button {
@@ -870,7 +973,7 @@ struct RunLine: View {
         } label: {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    RaysMark(slots: Set(head.rays), turning: !head.rays.isEmpty, colors: MarkPalette.colors(of: head))
+                    RaysMark(slots: Set(head.rays), turning: !head.rays.isEmpty, waiting: asking, colors: MarkPalette.colors(of: head))
                         .frame(width: 16, height: 16)
                     Text(name)
                         .font(Type.body)

@@ -848,6 +848,9 @@ enum TranscriptEntry: Identifiable {
             // A turn OriCode started: its prompt is its own, and the reply follows what came before.
             case .woke:
                 continue
+            // A workflow agent's ask: it's on the agent's card, and kept in the agent's transcript.
+            case .ask(_, let ask) where ask.staged:
+                continue
             // Settings › Conversation leaves thinking out.
             case .thinking where !thinking:
                 continue

@@ -64,6 +64,20 @@ struct QuitTests {
         #expect(call("t1", in: conversation)?.isError == true)
     }
 
+    @Test mutating func aWorkflowAgentsAskWaitingAtQuitIsOver() throws {
+        let agent = Chat(project: try #require(chat.project), title: "tests")
+        agent.openedBy = chat.id
+        agent.agentID = "a-tests"
+        context.insert(agent)
+        add("user", ["text": "Run the workflow"])
+        add("ask", ["requestId": "w", "kind": "permission", "tool": "Bash", "input": ["command": "swift test"], "agentId": "a-tests"])
+        chat.quitMidTurn = true
+        let conversation = Conversation(chat: chat, context: context)
+        // Its run went with the quit, so nothing waits on you for it.
+        #expect(conversation.waitingAsk == nil)
+        #expect(!conversation.waitingAfterQuit)
+    }
+
     @Test mutating func onlyTheLastTurnsAsksComeBack() {
         add("user", ["text": "First"])
         add("ask", ["requestId": "old", "kind": "permission", "tool": "Bash", "input": ["command": "ls"]])
