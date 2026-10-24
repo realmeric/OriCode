@@ -385,7 +385,7 @@ extension AppModel {
         return OtherThreads.lastReply(of: thread.id, in: context)
     }
 
-    private static func lastText(in conversation: Conversation) -> String? {
+    static func lastText(in conversation: Conversation) -> String? {
         for item in conversation.items.reversed() {
             if item.startsTurn { return nil }
             if case .text = item { return item.text?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty }

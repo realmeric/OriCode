@@ -133,9 +133,13 @@ extension AppModel {
         }
     }
 
-    /// A task's or an opened thread's last reply, its first line, read once off the main thread.
+    /// A task's or an opened thread's last reply, its first line: from its conversation when it's
+    /// in memory, which has the reply before the store does, else read once off the main thread.
     func readReply(of thread: UUID) async {
-        guard stage.replies[thread] == nil else { return }
+        guard stage.replies[thread]?.nonEmpty == nil else { return }
+        if let conversation = conversations[thread], let text = Self.lastText(in: conversation) {
+            return stage.took(reply: Self.replyLine(text), of: thread)
+        }
         let container = context.container
         let reply = await Task.detached(priority: .utility) { OtherThreads.lastReply(of: thread, in: ModelContext(container)) }.value
         stage.took(reply: Self.replyLine(reply), of: thread)
@@ -258,6 +262,7 @@ private struct LaneCardView: View {
                     .foregroundStyle(state == .queued ? Ink.faint : state == .running ? Ink.primary : Ink.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: StageLayout.cardHead)
             switch state {
@@ -274,6 +279,7 @@ private struct LaneCardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .geometryGroup()
         .clipped()
         .padding(.top, StageLayout.cardTop)
         .padding(.horizontal, StageLayout.cardSide)
@@ -318,7 +324,10 @@ private struct LaneCardView: View {
         switch card.kind {
         case .subagent, .worker: chat?.agentResult
         case .command: lines.last
-        case .task, .opened: card.thread.flatMap { model.stage.replies[$0]?.nonEmpty }
+        // Its conversation has the reply as the turn ends, before the store does.
+        case .task, .opened: card.thread.flatMap { thread in
+            model.conversations[thread].flatMap(AppModel.lastText).flatMap(AppModel.replyLine) ?? model.stage.replies[thread]?.nonEmpty
+        }
         }
     }
 
@@ -330,6 +339,11 @@ private struct LaneCardView: View {
                 .foregroundStyle(Ink.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                // Laid out at the card's width from its leading edge as the card springs to a
+                // new one, never morphed from the old layout: that drew it centred, or cut
+                // mid-word with its ellipsis left at the card's edge.
+                .transaction { $0.animation = nil }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, StageLayout.resultGap)
                 .transition(Self.swap)
         }
@@ -363,7 +377,8 @@ private struct ThreadTrail: View {
                     .foregroundStyle(Color.white.opacity(TrailLines.inks[place]))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)).animation(Motion.fade.delay(0.1)), removal: .opacity))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)).animation(Motion.fade.delay(0.1)), removal: TrailLines.leaving))
             }
         }
         // As tall as the lines it shows: the oldest going leaves under the card's edge.
@@ -397,6 +412,7 @@ private struct CommandTrail: View {
                     .foregroundStyle(Color.white.opacity(TrailLines.inks[place]))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(height: StageLayout.trailHeight(shown.count, mono: true), alignment: .top)
@@ -427,7 +443,7 @@ struct StageCallsRow: View {
                 if !model.stage.fold(thread) { model.stage.toggle(StageModel.laneKey, in: thread) }
             } label: {
                 HStack(spacing: 6) {
-                    Text(Self.words(calls))
+                    Text(Self.words(calls.filter(\.startsCard)))
                         .lineLimit(1)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .semibold))

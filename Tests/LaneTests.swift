@@ -27,10 +27,25 @@ struct LaneTests {
             case .item(let item): item.startsCard ? "starting" : "item"
             }
         }
-        #expect(shape == ["run of 2", "run of 3 starting", "item"])
-        guard case .run(let starting) = entries[1] else { return }
+        // The reads just before them join their line, which says only what was set going.
+        #expect(shape == ["run of 5 starting", "item"])
+        guard case .run(let starting) = entries[0] else { return }
         let calls = starting.compactMap { item -> ToolCall? in if case .tool(_, let call) = item { call } else { nil } }
-        #expect(StageCallsRow.words(calls) == "Started 2 agents, ran a command")
+        #expect(StageCallsRow.words(calls.filter(\.startsCard)) == "Started 2 agents, ran a command")
+    }
+
+    @Test func aPlanThatTookTwoTriesIsPlannedOnce() {
+        let tasks: JSON = ["run": true, "tasks": [["title": "A"], ["title": "B"], ["title": "C"], ["title": "D"]]]
+        let items: [Item] = [
+            .tool(id: UUID(), call: ToolCall(toolUseId: "p1", name: "mcp__oricode__add_tasks", input: tasks, result: "No such model", isError: true)),
+            call("l", "mcp__oricode__list_agents", [:]),
+            call("p2", "mcp__oricode__add_tasks", tasks),
+        ]
+        let entries = TranscriptEntry.fold(items)
+        #expect(entries.count == 1)
+        guard case .run(let run) = entries.first else { return }
+        let calls = run.compactMap { item -> ToolCall? in if case .tool(_, let call) = item { call } else { nil } }
+        #expect(StageCallsRow.words(calls.filter(\.startsCard)) == "Planned 4 tasks")
     }
 
     @Test func aPlanAndAWorkerAreSaidInTheirOwnWords() {

@@ -74,12 +74,24 @@ struct TranscriptView: View {
     private static let fadeLength: CGFloat = 28
     /// Where a column's first row starts: half way into its fade.
     static func top(active: Bool) -> CGFloat { clear(active: active) + fadeLength / 2 }
-    /// Under a stage, the clear top reaches down so the first row starts 28pt under its lowest card.
+    /// Under a stage, the transcript's top is 28pt under its lowest card, and the fade from there
+    /// is 48pt: a shorter one under cards left the lines it crossed reading as cut.
+    private static let stageFade: CGFloat = 48
     private var clear: CGFloat { clear(under: stageFoot) }
+    private var fade: CGFloat { fade(under: stageFoot) }
 
     private func clear(under foot: CGFloat?) -> CGFloat {
         if stepped { return 0 }
-        return foot.map { $0 + 28 - Self.fadeLength / 2 } ?? Self.clear(active: active)
+        return foot.map { $0 + RunStage.gap } ?? Self.clear(active: active)
+    }
+
+    private func fade(under foot: CGFloat?) -> CGFloat {
+        foot != nil && !stepped ? Self.stageFade : Self.fadeLength
+    }
+
+    /// Where the first row starts: half way into the fade.
+    private func top(under foot: CGFloat?) -> CGFloat {
+        clear(under: foot) + fade(under: foot) / 2
     }
 
     private var shown: ArraySlice<Item> {
@@ -110,8 +122,10 @@ struct TranscriptView: View {
                 // The thread's water so far, under its latest turn, when Settings asks. The footer
                 // reads the meter itself, so a new figure draws that line and not the transcript.
                 let watered = showWater ? conversation.lastFooter : nil
-                // An agent's task, the script's words and not anyone's message, opens its thread.
-                let task = conversation.chat.agentID == nil ? nil : conversation.items.first { if case .user = $0 { true } else { false } }?.id
+                // An agent's task, the script's words, or what the thread that opened this one or
+                // whose plan it works told it: not the user's message, so not their bubble.
+                let task = conversation.chat.agentID == nil && conversation.chat.openedBy == nil ? nil
+                    : conversation.items.first { if case .user = $0 { true } else { false } }?.id
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     // One view a row, whatever the item draws: an item that can draw nothing, a footer
                     // with nothing to say, would have the lazy stack make every row to count them.
@@ -165,12 +179,12 @@ struct TranscriptView: View {
             }
             .column()
             // Under the toolbar's row, and under the title a column beside the open thread has.
-            .padding(.top, clear + Self.fadeLength / 2)
+            .padding(.top, top(under: stageFoot))
             .coordinateSpace(.named(Self.thread))
         }
         .scrollIndicators(.never)
         .environment(\.openURL, model.links(in: conversation.chat.id))
-        .environment(\.codeCopyLine, clear + Self.fadeLength - CodeCopy.inset)
+        .environment(\.codeCopyLine, clear + fade - CodeCopy.inset)
         // A workflow's card lights the rays its agents hold on the thread's mark.
         .environment(conversation.heads)
         .scrollPosition($position)
@@ -202,7 +216,7 @@ struct TranscriptView: View {
             if end.pinned, !end.heading {
                 DispatchQueue.main.async { position.scrollTo(edge: .bottom) }
             } else {
-                position.scrollTo(y: max(0, content.offset + clear(under: new) - clear(under: old)))
+                position.scrollTo(y: max(0, content.offset + top(under: new) - top(under: old)))
             }
         }
         .onScrollPhaseChange {
@@ -276,7 +290,7 @@ struct TranscriptView: View {
                 // starts that much lower.
                 Color.clear.frame(height: clear)
                 LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                    .frame(height: Self.fadeLength)
+                    .frame(height: fade)
                 Color.black
                 // Taller while the way to the end is up, so no line reads behind it: the pill
                 // sits in the fade's clear foot.
@@ -546,6 +560,8 @@ struct TranscriptView: View {
 
     fileprivate static func spacing(before item: Item, after previous: Item) -> CGFloat {
         switch (previous, item) {
+        // An ask that leaves no line takes no space either.
+        case (_, .ask(_, let ask)) where ask.shownElsewhere: 0
         case (.tool(_, let a), .tool(_, let b)) where a.isEdit || b.isEdit: 8
         case (.tool, .tool): 4
         case (_, .footer): 8
@@ -833,8 +849,8 @@ enum TranscriptEntry: Identifiable {
     static func fold(_ items: some Collection<Item>, thinking: Bool = true) -> [TranscriptEntry] {
         var entries: [TranscriptEntry] = []
         var run: [Item] = []
-        // Whether the run's calls set things going that have cards on the stage: those are a run
-        // of their own, the line that stands for the cards.
+        // Whether the run's calls set things going that have cards on the stage: those, with the
+        // calls just before them, are a run of their own, the line that stands for the cards.
         var starting: Bool?
         func close() {
             let calls = run.count { if case .tool = $0 { true } else { false } }
@@ -867,8 +883,10 @@ enum TranscriptEntry: Identifiable {
             case .thinking where !thinking:
                 continue
             case .tool(_, let call):
-                if let starting, starting != call.startsCard { close() }
-                starting = call.startsCard
+                // Calls just before the ones that set things going join their line, which says
+                // only what those set going while it stands for their cards.
+                if starting == true, !call.startsCard { close() }
+                starting = starting == true || call.startsCard
                 run.append(item)
             case .thinking:
                 run.append(item)

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { followSteps, stepsFollowed } from "../follow.ts";
+import { followSteps, stepsEnded, stepsFollowed } from "../follow.ts";
 import { Thread } from "../thread.ts";
 
 const ids = ["a1", "a2", "a3", "a4"];
@@ -125,6 +125,24 @@ test("the reply that ends an agent's turn ends its trail and is sent as what it 
   assert.equal(last.done, true);
   assert.equal(last.result, "Two findings.\nBoth in App/Stage.swift.");
   assert.equal(stepsFollowed(), 0);
+});
+
+test("a reply written just after the run says its agent is over still ends the trail as what it returned", async () => {
+  const { path } = run();
+  await told(() => followSteps("t-late", path("a2"), true), (events) => steps(events).length >= 1);
+  const reply = { type: "assistant", agentId: "a2", message: { content: [{ type: "text", text: "Late, but here." }], stop_reason: "end_turn" } };
+  const events = await told(
+    async () => {
+      stepsEnded(path("a2"));
+      await new Promise((done) => setTimeout(done, 300));
+      appendFileSync(path("a2"), JSON.stringify(reply) + "\n");
+    },
+    (events) => steps(events).some((event) => event.ended),
+  );
+  const last = steps(events).at(-1);
+  assert.equal(last.ended, true);
+  assert.equal(last.done, true);
+  assert.equal(last.result, "Late, but here.");
 });
 
 test("each agent's end ends its trail and sends its whole result from the journal, and the run's end ends the rest", async () => {

@@ -35,19 +35,40 @@ abstract class Watched {
 
   stop(): void {
     this.stopped = true;
+    clearTimeout(this.timer);
     this.watcher?.close();
     this.watcher = undefined;
   }
 
   /// The agent is over: what it wrote last is read, then the follow stops.
   end(): void {
+    if (this.ending) return;
     this.ending = true;
+    this.endedAt = Date.now();
+    const wait = this.lingering();
+    if (wait > 0) this.timer = setTimeout(() => void this.read(), wait);
     void this.read();
   }
 
   protected abstract pass(): Promise<void>;
   protected abstract gone(): void;
   protected ended(): void {}
+  /// How long a follow told its agent is over still watches for that agent's last line, which
+  /// the CLI can write after the run says the agent is done.
+  protected lingering(): number {
+    return 0;
+  }
+  /// Whether what the agent wrote last has been read, so an ending follow may stop.
+  protected finished(): boolean {
+    return true;
+  }
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private endedAt = 0;
+
+  private lingered(): boolean {
+    return Date.now() - this.endedAt >= this.lingering();
+  }
+
 
   private watchFile(): void {
     if (this.stopped) return;
@@ -70,6 +91,8 @@ abstract class Watched {
     this.watcher.on("error", () => {
       this.watcher?.close();
       this.watcher = undefined;
+      // Watched again, so a follow never goes deaf to the lines still to come.
+      this.watchFile();
     });
   }
 
@@ -87,7 +110,7 @@ abstract class Watched {
       if (this.again) {
         this.again = false;
         void this.read();
-      } else if (this.ending && !this.stopped) {
+      } else if (this.ending && !this.stopped && (this.finished() || this.lingered())) {
         this.stop();
         this.ended();
       }
@@ -151,6 +174,8 @@ export class Follow extends Watched {
 const trail = 4;
 /// How much of a transcript is read at a time, from its end back to its last calls.
 const piece = 64 * 1024;
+/// How long a trail whose agent is over waits for the reply that ended its turn, in ms.
+const lastLine = 2000;
 
 export type AgentStep = { tool: string; input: Record<string, unknown> };
 
@@ -169,6 +194,14 @@ export class Steps extends Watched {
 
   protected gone(): void {
     this.end();
+  }
+
+  protected lingering(): number {
+    return lastLine;
+  }
+
+  protected finished(): boolean {
+    return this.result !== undefined;
   }
 
   protected ended(): void {

@@ -19,6 +19,8 @@ final class StageModel {
     final class Trail {
         fileprivate(set) var steps: [Step] = []
         fileprivate(set) var task: String?
+        /// When its task came, which a hop is drawn from.
+        fileprivate var told: ContinuousClock.Instant?
         /// The place of `steps`' first in all the agent has called here, so a step keeps who it is
         /// as newer ones push it down the card.
         fileprivate(set) var first = 0
@@ -37,6 +39,9 @@ final class StageModel {
     /// A well folds in two steps a fade long each: its words fade, then its room closes. Only then
     /// does the hop's gutter close.
     static let folding: Duration = .milliseconds(180)
+    /// The least a hop is drawn for, from its task coming: its wires come about a spring and a
+    /// third of a second after that, and stay a little over two seconds.
+    static let handing: Duration = .milliseconds(3000)
 
     @ObservationIgnored private var trails: [UUID: Trail] = [:]
     /// The run each thread's stage is up for, by the thread.
@@ -69,6 +74,11 @@ final class StageModel {
 
     /// The agent each thread's stage is stepped into, by the thread.
     private(set) var stepped: [UUID: Stepped] = [:]
+    /// The stages stepping back out, whose agent's transcript fades before its surface folds into
+    /// its card, so it's never drawn over the cards coming back or the lead's transcript.
+    private(set) var leaving: Set<UUID> = []
+    /// How long the agent's transcript takes to fade before its surface folds.
+    static let unstepping: Duration = .milliseconds(100)
     /// Told of the agent's thread a stage stepped out of, or nil, each time one steps in or out.
     @ObservationIgnored var steppedMoved: ((UUID?) -> Void)?
 
@@ -116,7 +126,10 @@ final class StageModel {
                 }
             }
         }
-        if let task = body["task"]?.string { trail.task = task }
+        if let task = body["task"]?.string {
+            trail.task = task
+            trail.told = trail.told ?? .now
+        }
         if body["done"]?.bool == true {
             trail.result = body["result"]?.string
             trail.done = true
@@ -129,8 +142,10 @@ final class StageModel {
     private func fold(_ trail: Trail) {
         Task {
             // After the call that settled it has been laid out on its own, so its card grows
-            // under no animation of the fold's.
-            try? await Task.sleep(for: .milliseconds(50))
+            // under no animation of the fold's; and not before the hop has been up long enough
+            // to be read, however soon an agent making its calls at once gets to its third.
+            let shown = trail.told.map { ContinuousClock.now - $0 } ?? .zero
+            try? await Task.sleep(for: max(.milliseconds(50), Self.handing - shown))
             withAnimation(Motion.fade) { trail.settled = true }
             try? await Task.sleep(for: Self.folding)
             withAnimation(Motion.fade) { trail.folded = true }
@@ -284,7 +299,22 @@ final class StageModel {
     /// agent's gives way to another's with a fade.
     func step(into agent: Stepped?, in thread: UUID) {
         let left = stepped[thread]
+        if agent != nil, leaving.contains(thread) { withAnimation(.easeOut(duration: 0.1)) { _ = leaving.remove(thread) } }
         guard left != agent else { return }
+        if agent == nil {
+            guard !leaving.contains(thread) else { return }
+            withAnimation(.easeOut(duration: 0.1)) { _ = leaving.insert(thread) }
+            Task { [weak self] in
+                try? await Task.sleep(for: Self.unstepping)
+                guard let self, leaving.contains(thread), stepped[thread] == left else { return }
+                moveStep(nil, from: left, in: thread)
+            }
+            return
+        }
+        moveStep(agent, from: left, in: thread)
+    }
+
+    private func moveStep(_ agent: Stepped?, from left: Stepped?, in thread: UUID) {
         withAnimation(left == nil || agent == nil ? Motion.move : Motion.fade) { stepped[thread] = agent }
         steppedMoved?(left?.thread)
         // Back out of a run or a column whose work ended while it was stepped into: it folds now,

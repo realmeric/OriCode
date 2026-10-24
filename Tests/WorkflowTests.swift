@@ -73,7 +73,7 @@ struct WorkflowTests {
     }
 
     @MainActor
-    @Test func aStageStepsIntoAnAgentAcrossAndBackOut() {
+    @Test func aStageStepsIntoAnAgentAcrossAndBackOut() async throws {
         let stage = StageModel()
         let lead = UUID(), fix = UUID(), verify = UUID()
         var left: [UUID?] = []
@@ -83,7 +83,10 @@ struct WorkflowTests {
         stage.step(into: .init(agent: "a3", thread: fix), in: lead)
         stage.step(into: .init(agent: "a4", thread: verify), in: lead)
         #expect(stage.stepped[lead]?.thread == verify && left == [nil, fix])
+        // Out once the agent's transcript has faded.
         stage.step(into: nil, in: lead)
+        #expect(stage.stepped[lead]?.thread == verify)
+        try await Task.sleep(for: StageModel.unstepping + .milliseconds(100))
         #expect(stage.stepped[lead] == nil && stage.shown[lead] == "run" && left == [nil, fix, verify])
         // Folding a stage stepped into an agent steps out of it too.
         stage.step(into: .init(agent: "a3", thread: fix), in: lead)
@@ -162,6 +165,11 @@ struct WorkflowTests {
         let beside = StageLayout.fitted(groups: [("Review", [agent("done"), agent("done")]), ("Fix", [agent("done")]), ("Verify", [agent("running")])],
                                         width: 550, narrow: false, wide: [], wells: [:])
         #expect(beside.phases.map(\.collapsed) == [true, true, false] && beside.widths.reduce(0, +) <= 550)
+        // At 720pt the lone tester gives up its width down to a card's before Review and Fix
+        // lose their result lines.
+        let verify = StageLayout.fitted(groups: [("Review", [agent("done"), agent("done")]), ("Fix", [agent("done")]), ("Verify", [agent("running")])],
+                                        width: 680, narrow: false, wide: [], wells: [:])
+        #expect(verify.phases.map(\.collapsed) == [false, false, false] && verify.phases.map(\.width) == [186, 186, 240])
         // Past the cap, cards drop calls before anything scrolls.
         let full = wide.height(steps: 4)
         #expect(wide.steps(within: full) == 4 && wide.steps(within: full - 1) == 3 && wide.steps(within: 0) == 0)

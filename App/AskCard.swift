@@ -13,25 +13,51 @@ struct AskCard: View {
 
     static let skipMessage = "The user skipped the question. Carry on with your best judgement, and say what you assumed."
 
+    /// Answered, the card has faded and given up its room: until then it keeps its room while it
+    /// fades, so the rows under it never move into the space it still draws in.
+    @State private var settled: Bool
+
+    init(ask: PendingAsk, cwd: String, thread: UUID? = nil, listens: Bool) {
+        self.ask = ask
+        self.cwd = cwd
+        self.thread = thread
+        self.listens = listens
+        _settled = State(initialValue: ask.state != .waiting)
+    }
+
+    /// How long an answered card takes to fade before its room closes.
+    static let fading: Duration = .milliseconds(120)
+
     var body: some View {
-        if ask.state == .waiting {
-            VStack(alignment: .leading, spacing: 10) {
-                // A thread above this one answers first; the user can answer here all the same.
-                if let line = model.heldLine(of: ask) {
-                    HeldLine(text: line.text, hover: line.hover)
+        Group {
+            if !settled {
+                VStack(alignment: .leading, spacing: 10) {
+                    // A thread above this one answers first; the user can answer here all the same.
+                    if let line = model.heldLine(of: ask) {
+                        HeldLine(text: line.text, hover: line.hover)
+                    }
+                    AskForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
                 }
-                AskForm(ask: ask, cwd: cwd, thread: thread, listens: listens)
+                    .padding(14)
+                    .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
+                    .opacity(ask.state == .waiting ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: ask.state == .waiting)
+                    .transition(.identity)
+            } else if !ask.shownElsewhere {
+                Text(settledLine)
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.faint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(ask.state == .cancelled ? "" : ask.answerReason ?? "")
+                    .transition(.opacity.animation(Motion.fade.delay(0.08)))
             }
-                .padding(14)
-                .background(Surface.card, in: .rect(cornerRadius: 14, style: .continuous))
-                .transition(.opacity.animation(.easeOut(duration: 0.12)))
-        } else {
-            Text(settledLine)
-                .font(Type.secondary)
-                .foregroundStyle(Ink.faint)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .help(ask.state == .cancelled ? "" : ask.answerReason ?? "")
-                .transition(.opacity.animation(Motion.fade.delay(0.08)))
+        }
+        .onChange(of: ask.state == .waiting) { _, waiting in
+            guard !waiting else { return settled = false }
+            Task {
+                try? await Task.sleep(for: Self.fading)
+                withAnimation(Motion.move) { settled = true }
+            }
         }
     }
 
@@ -433,5 +459,15 @@ private struct OtherField: View {
             .onHover { hovering = $0 }
             .animation(Motion.fade, value: lit)
             .padding(.top, 4)
+    }
+}
+
+extension PendingAsk {
+    /// Allowed by the user, a call whose card on the stage or whose run's line already shows it,
+    /// so the ask leaves no line of its own.
+    var shownElsewhere: Bool {
+        guard state == .allowed, answeredBy == nil, kind != "question" else { return false }
+        let call = call
+        return call.kind == .workflow || call.startsCard
     }
 }

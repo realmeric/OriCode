@@ -235,14 +235,14 @@ struct RunStage: View {
                 }
                 .stageMatched(RunLine.matchID(call.toolUseId), in: space)
                 Spacer(minLength: 8)
-                // Stepped in, the marks keep the row's end and Stop comes in beside them.
-                if let head, stepped == nil || hovering {
+                // Stepped in, the row's end is the marks': Stop would sit where they spring to.
+                if let head, stepped == nil {
                     Button("Stop workflow") { model.stopWorkflow(head.id, of: chat.id) }
                         .buttonStyle(.action(small: true))
                         .opacity(hovering ? 1 : 0)
                         .allowsHitTesting(hovering)
                         .help("Stops every agent of this workflow")
-                        .transition(.opacity)
+                        .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.28)), removal: .opacity.animation(.easeOut(duration: 0.08))))
                 }
                 if let stepped {
                     StepMarks(phases: layout.phases, lane: lane, laneChats: laneChats, stepped: stepped.agent, rays: rays, color: color,
@@ -523,8 +523,10 @@ private struct StageCard: View {
                 }
             }
         }
-        // A card narrowing as its phase finishes keeps what's leaving inside it.
+        // A card narrowing as its phase finishes keeps what's leaving inside it, and its lines
+        // are laid out at its new width at once rather than morphed from the old one.
         .frame(maxWidth: .infinity, alignment: .leading)
+        .geometryGroup()
         .clipped()
         .padding(.top, StageLayout.cardTop)
         .padding(.horizontal, StageLayout.cardSide)
@@ -575,6 +577,11 @@ private struct StageCard: View {
                 .foregroundStyle(Ink.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                // Laid out at the card's width from its leading edge as the card springs to a
+                // new one, never morphed from the old layout: that drew it centred, or cut
+                // mid-word with its ellipsis left at the card's edge.
+                .transaction { $0.animation = nil }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, StageLayout.resultGap)
                 .transition(Self.swap)
         }
@@ -764,7 +771,12 @@ struct AgentSurface: View {
 
     static func matchID(_ agent: String) -> String { "card:" + agent }
 
+    /// The surface has grown into its place: what's on it comes only then, so nothing on it is
+    /// drawn over the lead's transcript or the cards while it springs.
+    @State private var grown = false
+
     var body: some View {
+        let shown = grown && !model.stage.leaving.contains(lead.id)
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.05))
@@ -786,6 +798,12 @@ struct AgentSurface: View {
                 }
             }
             .animation(Motion.fade, value: ask?.requestId)
+            .opacity(shown ? 1 : 0)
+            .animation(shown ? Motion.fade : .easeOut(duration: 0.1), value: shown)
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(280))
+            grown = true
         }
     }
 }
@@ -802,6 +820,9 @@ struct TrailLines: View {
     var asked: PendingAsk? = nil
 
     static let inks: [Double] = [0.92, 0.55, 0.38, 0.24]
+    /// The oldest goes down a line under the trail's foot as the line above takes its place, so
+    /// the two are never drawn over each other.
+    static let leaving = AnyTransition.offset(y: StageLayout.secondaryLine + StageLayout.stepGap).combined(with: .opacity)
 
     var body: some View {
         let all = Self.before(asked, in: trail?.steps ?? [])
@@ -819,8 +840,9 @@ struct TrailLines: View {
                     .foregroundStyle(Color.white.opacity(inks[min(place, inks.count - 1)]))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     // In once the lines under it have moved down out of its way.
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)).animation(Motion.fade.delay(0.1)), removal: .opacity))
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: -6)).animation(Motion.fade.delay(0.1)), removal: TrailLines.leaving))
             }
         }
         // As tall as the lines it shows, so the oldest going doesn't make the card taller for a
@@ -945,7 +967,9 @@ private struct HopsDrawing: View {
 
     private func wiring(_ phase: Int) -> Wiring? {
         let into = hops.filter { $0.phase == phase }
-        let sources = Set(into.flatMap(\.sources)).compactMap { frames[$0] }
+        // In one order every time: a set's order can differ from one draw to the next, which
+        // made the wires' points differ too, so they were never still long enough to be drawn.
+        let sources = Set(into.flatMap(\.sources)).sorted().compactMap { frames[$0] }
         let recipients = into.compactMap { hop in frames[hop.recipient].map { (hop.recipient, $0) } }
         guard !sources.isEmpty, let edge = recipients.map(\.1.minX).min(), let out = sources.map(\.maxX).max() else { return nil }
         let node = CGPoint(x: (out + edge) / 2, y: sources.map(\.midY).reduce(0, +) / CGFloat(sources.count))
@@ -1100,8 +1124,9 @@ struct StageLayout: Equatable {
     /// `equal` gives every phase reached an equal share, for a run called up again once over;
     /// `wide` names the phases a hop goes into, whose gutter widens; `wells` the tasks shown in
     /// wells; `asks` the commands the agents asking wait on you to run.
+    /// `squeezed` is the width a finished phase takes in place of 250pt, its result lines kept.
     init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
-         wide: Set<Int> = [], wells: [String: AttributedString] = [:], asks: [String: String] = [:]) {
+         wide: Set<Int> = [], wells: [String: AttributedString] = [:], asks: [String: String] = [:], squeezed: CGFloat? = nil) {
         gutters = groups.indices.map { $0 == 0 ? 0 : wide.contains($0) ? Self.wideGutter : Self.gutter }
         let states: [State] = groups.map { group in
             if group.agents.isEmpty { return .ahead }
@@ -1110,7 +1135,7 @@ struct StageLayout: Equatable {
         let fixed: [CGFloat?] = zip(groups, states).map { group, state in
             switch state {
             case .ahead: ceil(Self.labelWidth(group.phase)) + Self.labelInset
-            case .finished: equal ? nil : narrow ? Self.collapsedFinished : Self.finished
+            case .finished: equal ? nil : narrow ? Self.collapsedFinished : squeezed ?? Self.finished
             case .live: nil
             }
         }
@@ -1161,9 +1186,21 @@ struct StageLayout: Equatable {
                        wide: Set<Int>, wells: [String: AttributedString], asks: [String: String] = [:]) -> StageLayout {
         let layout = StageLayout(groups: groups, width: width, narrow: narrow, equal: equal, wide: wide, wells: wells, asks: asks)
         guard !narrow, layout.widths.reduce(0, +) > width else { return layout }
-        if !equal, !layout.phases.contains(where: { $0.state == .live }) {
+        let live = layout.phases.filter { $0.state == .live }
+        if !equal, live.isEmpty {
             let shared = StageLayout(groups: groups, width: width, narrow: false, equal: true, wide: wide, wells: wells, asks: asks)
             if shared.phases.allSatisfy({ $0.state != .finished || $0.width >= Self.leastNarrow }) { return shared }
+        }
+        // A live phase gives up its width down to a card's 240pt, and the finished ones theirs
+        // down to 160pt, before any finished card loses its result line.
+        let finished = layout.phases.count { $0.state == .finished }
+        if !equal, !live.isEmpty, finished > 0 {
+            let ahead = layout.phases.filter { $0.state == .ahead }.map(\.width).reduce(0, +)
+            let left = width - layout.gutters.reduce(0, +) - ahead - CGFloat(live.count) * Self.leastCard
+            let each = (left / CGFloat(finished)).rounded(.down)
+            if each >= Self.leastNarrow {
+                return StageLayout(groups: groups, width: width, narrow: false, wide: wide, wells: wells, asks: asks, squeezed: min(each, Self.finished))
+            }
         }
         return StageLayout(groups: groups, width: width, narrow: true, equal: equal, wide: wide, wells: wells, asks: asks)
     }
@@ -1251,10 +1288,13 @@ struct RunLine: View {
                 HStack(spacing: 8) {
                     RaysMark(slots: Set(rays), turning: !rays.isEmpty, waiting: asking, colors: head.map(MarkPalette.colors(of:)) ?? [:])
                         .frame(width: 16, height: 16)
+                    // Named from the run once it starts: the name changes at once, not by
+                    // fading one over the other.
                     Text(name)
                         .font(Type.body)
                         .foregroundStyle(Ink.primary)
                         .lineLimit(1)
+                        .contentTransition(.identity)
                 }
                 // Folded, they're here for the stage's head to grow out of; while it's up, its head has them.
                 .stageMatched(open ? "line:" + call.toolUseId : Self.matchID(call.toolUseId), in: space)
