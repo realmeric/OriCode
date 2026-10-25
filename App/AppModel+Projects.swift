@@ -292,6 +292,15 @@ extension AppModel {
             composers[draft.id] = nil
             context.delete(draft)
         }
+        let chat = makeChat(in: project)
+        if let typed { composers[chat.id] = typed }
+        selectedChatID = chat.id
+        return chat
+    }
+
+    /// A thread in `project` on what new threads start with, Settings › New threads' defaults or
+    /// the last picks, stored and not opened: ⌘N's, and the one the phone starts.
+    func makeChat(in project: Project) -> Chat {
         let chat = Chat(project: project, permissionMode: startingPermissionMode)
         chat.provider = startingProvider
         chat.model = startingModel
@@ -300,8 +309,6 @@ extension AppModel {
         chat.fastMode = startingFast
         context.insert(chat)
         save()
-        if let typed { composers[chat.id] = typed }
-        selectedChatID = chat.id
         return chat
     }
 

@@ -21,6 +21,18 @@ extension PhoneLink {
         notify_register_dispatch("com.realmeric.oricode.bridge.fetch", &token, .main) { _ in
             MainActor.assumeIsolated { self.fetchNow() }
         }
+        // A thread started in /tmp/oricode-phone-test with what /tmp/oricode-bridge-start.txt
+        // says, as typing it into a new thread there would.
+        notify_register_dispatch("com.realmeric.oricode.bridge.start", &token, .main) { _ in
+            MainActor.assumeIsolated {
+                guard let model = self.model, let text = try? String(contentsOfFile: "/tmp/oricode-bridge-start.txt", encoding: .utf8) else { return }
+                let folder = URL(filePath: "/tmp/oricode-phone-test", directoryHint: .isDirectory)
+                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                model.addProject(at: folder)
+                guard let project = model.projects.first(where: { $0.path == folder.standardizedFileURL.path }) else { return }
+                _ = model.send(text, images: [], in: model.makeChat(in: project))
+            }
+        }
         notify_register_dispatch("com.realmeric.oricode.bridge.unpair", &token, .main) { _ in
             MainActor.assumeIsolated {
                 for phone in self.phones { self.unpair(phone) }
