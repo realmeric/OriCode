@@ -6,12 +6,10 @@ BUILD := $(HOME)/Library/Developer/OriCode
 DERIVED := $(BUILD)/DerivedData
 # The Debug build is OriCode Bridge, which runs beside the installed OriCode and main's Molten.
 DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Bridge.app
-RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
+# Exported for Developer ID by scripts/export.sh.
+RELEASE_APP := $(BUILD)/export/OriCode.app
 # OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
 PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
-# Signed with the OriCode certificate where this Mac has it, so every release keeps the same
-# designated requirement and macOS knows it for the same app; ad hoc where it doesn't.
-SIGN := $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"OriCode"' && echo OriCode || echo -)
 # Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
@@ -28,7 +26,7 @@ project:
 	xcodegen generate --quiet
 
 run: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet build
 	-pkill -x "OriCode Bridge"; $(call gone,OriCode Bridge)
 	open "$(DEBUG_APP)"
 
@@ -51,12 +49,12 @@ $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 
 test: project engine
 	cd engine && node --test test/*.test.ts
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet test
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet test
 
+# Signed as make release signs it, so what Meriç grants this build holds for the release's, and
+# not notarized, since it installs on this Mac alone.
 app: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
-	scripts/prune.sh $(RELEASE_APP)
-	codesign --force --deep --sign $(SIGN) $(RELEASE_APP)
+	DERIVED=$(DERIVED) OUT=$(BUILD)/export scripts/export.sh $(BUILD_NUMBER)
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
@@ -75,7 +73,7 @@ perf-build: project
 	codesign --force --deep --sign - "$(PERF_APP)"
 
 perf: perf-build
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -quiet build
 	BUILD=$(BUILD) scripts/perf/perf.sh full
 
 # The parts a card can run while it works: keys, one stream, ⌘K and the early J, three runs each.

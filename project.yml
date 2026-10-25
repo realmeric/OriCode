@@ -88,10 +88,18 @@ targetTemplates:
         # The build you work on is an app of its own beside the OriCode you work in: its own
         # bundle id, folders and icon, so running it quits only it. On the phone-0.4 branch it is
         # OriCode Bridge, so it never shares a store or a window with main's OriCode Molten.
+        # Signed for development by Xcode, with a profile that lets it reach CloudKit's
+        # Development environment, which debug phone builds talk to (KANBAN-phone.md).
         Debug:
           PRODUCT_NAME: OriCode Bridge
           PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.bridge
           INFOPLIST_KEY_CFBundleDisplayName: OriCode Bridge
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: Apple Development
+          DEVELOPMENT_TEAM: 422F85XX9Z
+          CODE_SIGN_ENTITLEMENTS: App/OriCode.entitlements
+          ORICODE_APS_ENVIRONMENT: development
+          ORICODE_CLOUDKIT_ENVIRONMENT: Development
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIconMolten
           # Molten has no feed, so it never updates itself into OriCode.
           ORICODE_FEED_URL: ""
@@ -120,6 +128,19 @@ targetTemplates:
 targets:
   OriCode:
     templates: [App]
+    # Release reaches CloudKit's Production environment, which TestFlight and App Store phone
+    # builds talk to. It's archived signed for development, and scripts/export.sh signs it again
+    # with Developer ID and the Developer ID profile that allows these entitlements.
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: Apple Development
+          DEVELOPMENT_TEAM: 422F85XX9Z
+          ENABLE_HARDENED_RUNTIME: YES
+          CODE_SIGN_ENTITLEMENTS: App/OriCode.entitlements
+          ORICODE_APS_ENVIRONMENT: production
+          ORICODE_CLOUDKIT_ENVIRONMENT: Production
   # OriCode with the bench in it (Perf/), for make perf: an app of its own beside the other two,
   # with its own bundle id, folders and store. PERF is what compiles its two hooks into the
   # app's sources; no other target sets it, so OriCode never carries the bench.
