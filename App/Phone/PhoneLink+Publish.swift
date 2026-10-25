@@ -72,6 +72,7 @@ extension PhoneLink {
         for (name, info) in snapshot.threads { written(RecordType.thread, name, info) }
         for (name, info) in snapshot.asks { written(RecordType.ask, name, info) }
         nudge(snapshot.asks, threads: snapshot.threads)
+        nudgeEnds(snapshot.threads)
         // What left the set, and what an earlier launch wrote that nothing holds now.
         let current = Set(snapshot.projects.keys).union(snapshot.threads.keys).union(snapshot.asks.keys)
         let held = Set(sentBoxes.keys).union(known.values.filter { Self.ours.contains($0.recordType) }.map(\.recordID.recordName))

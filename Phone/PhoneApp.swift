@@ -125,6 +125,10 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
         case NotifyCategory.allow, NotifyCategory.deny:
             guard let ask else { return }
             command = .answer(ask: ask, thread: thread, allow: action == NotifyCategory.allow, choice: nil, answers: nil, message: nil)
+        case NotifyCategory.answer:
+            // Reply, typed on the lock screen: into the thread, as its composer would send it.
+            guard let text = typed?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
+            command = .send(thread: thread, text: text)
         case let option where option.hasPrefix(NotifyCategory.optionPrefix):
             guard let ask, let question = info["question"], let index = Int(option.dropFirst(NotifyCategory.optionPrefix.count)),
                   let label = info["option\(index)"]

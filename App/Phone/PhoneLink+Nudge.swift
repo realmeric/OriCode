@@ -49,7 +49,8 @@ extension PhoneLink {
             delete(CKRecord.ID(recordName: RecordName.nudge(id), zoneID: keys.zone))
         }
         // An earlier launch's, for asks it took with it.
-        for record in known.values where record.recordType == RecordType.nudge && !nudged.contains(RecordName.id(in: record.recordID.recordName)) {
+        for record in known.values where record.recordType == RecordType.nudge && !nudged.contains(RecordName.id(in: record.recordID.recordName))
+            && !endNudges.contains(record.recordID) {
             delete(record.recordID)
         }
         let fresh = asks.values.filter { !nudged.contains($0.id) && !passed.contains($0.id) }
@@ -78,5 +79,26 @@ extension PhoneLink {
         let snapshot = snapshot()
         passed = []
         nudge(snapshot.asks, threads: snapshot.threads, locked: true)
+    }
+
+    /// A turn's end in a thread the phone wrote to, its failure or a limit stopping it included,
+    /// since that's the end the phone waits for: its reply's first line, with Reply on it. A turn
+    /// ending in a thread written to from the Mac alone doesn't buzz the phone.
+    func nudgeEnds(_ threads: [String: ThreadInfo]) {
+        guard let keys else { return }
+        for thread in threads.values where messaged.contains(thread.id) {
+            let before = statuses[thread.id]
+            statuses[thread.id] = thread.status
+            guard before == .working || before == .asking, thread.status != .working, thread.status != .asking, Notify.current != .never else { continue }
+            let line = thread.reply?.split(whereSeparator: \.isNewline).first.map(String.init) ?? (thread.status == .failed ? "Failed" : "Stopped")
+            let info = NudgeInfo(kind: .reply, title: thread.title, body: line, thread: thread.id, ask: nil, options: [])
+            guard let record = record(RecordType.nudge, RecordName.nudge("reply-\(UUID().uuidString)")),
+                  (try? record.seal(info, key: keys.state)) != nil
+            else { continue }
+            put(record)
+            // Once the phone has had it, it has done its work; the last few are kept.
+            endNudges.append(record.recordID)
+            while endNudges.count > 5 { delete(endNudges.removeFirst()) }
+        }
     }
 }

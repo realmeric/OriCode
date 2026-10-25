@@ -46,6 +46,7 @@ extension PhoneLink {
             // Into the running turn as the Mac's composer sends it, or a turn of its own.
             guard model.send(text, in: chat, takingAttachments: false) else { return .refused("The Mac didn't take it") }
             messaged.insert(thread)
+            statuses[thread] = .working
             return Link.Outcome(ok: true, thread: thread)
         case .open(let id, let text):
             // In the project named, or the one ⌘N would start in, on what new threads start with.
@@ -59,6 +60,7 @@ extension PhoneLink {
                 return .refused("The Mac didn't take it")
             }
             messaged.insert(chat.id)
+            statuses[chat.id] = .working
             return Link.Outcome(ok: true, thread: chat.id)
         }
     }
