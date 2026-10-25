@@ -4,8 +4,8 @@ export PATH := /opt/homebrew/bin:/usr/local/bin:$(PATH)
 # FinderInfo xattrs make codesign refuse the bundle.
 BUILD := $(HOME)/Library/Developer/OriCode
 DERIVED := $(BUILD)/DerivedData
-# The Debug build is OriCode Molten, which runs beside the installed OriCode.
-DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
+# The Debug build is OriCode Bridge, which runs beside the installed OriCode and main's Molten.
+DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Bridge.app
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
 # OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
 PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
@@ -29,7 +29,7 @@ project:
 
 run: project
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
-	-pkill -x "OriCode Molten"; $(call gone,OriCode Molten)
+	-pkill -x "OriCode Bridge"; $(call gone,OriCode Bridge)
 	open "$(DEBUG_APP)"
 
 engine: $(BUILD)/engine/.stamp
