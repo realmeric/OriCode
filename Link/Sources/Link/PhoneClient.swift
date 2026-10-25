@@ -59,6 +59,22 @@ public final class PhoneClient {
 
     var container: CKContainer { CKContainer(identifier: Container.identifier) }
     private var tokenFile: URL { folder.appending(path: "Token") }
+    private var cacheFile: URL { folder.appending(path: "Cache.json") }
+
+    /// What the phone last saw, kept so a launch shows it at once and reads behind it.
+    public struct Cache: Codable, Sendable {
+        public var mac: MacInfo?
+        public var projects: [ProjectInfo]
+        public var threads: [ThreadInfo]
+        public var asks: [AskInfo]
+
+        public init(mac: MacInfo?, projects: [ProjectInfo], threads: [ThreadInfo], asks: [AskInfo]) {
+            self.mac = mac
+            self.projects = projects
+            self.threads = threads
+            self.asks = asks
+        }
+    }
 
     public init(keychain: PhoneKeychain, deviceName: String, folder: URL, registerForPushes: @escaping () -> Void) {
         self.keychain = keychain
@@ -66,7 +82,38 @@ public final class PhoneClient {
         self.folder = folder
         self.registerForPushes = registerForPushes
         paired = keychain.read()
-        if paired != nil { start() }
+        if paired != nil {
+            readCache()
+            start()
+        }
+    }
+
+    private func readCache() {
+        guard let data = try? Data(contentsOf: cacheFile), let cache = try? JSONDecoder().decode(Cache.self, from: data) else { return }
+        show(cache)
+    }
+
+    private func writeCache() {
+        let cache = Cache(mac: mac, projects: Array(projects.values), threads: Array(threads.values), asks: Array(asks.values))
+        guard let data = try? JSONEncoder().encode(cache) else { return }
+#if os(iOS)
+        try? data.write(to: cacheFile, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+#else
+        try? data.write(to: cacheFile, options: .atomic)
+#endif
+    }
+
+    private func show(_ cache: Cache) {
+        mac = cache.mac
+        projects = Dictionary(cache.projects.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+        threads = Dictionary(cache.threads.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+        asks = Dictionary(cache.asks.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+    }
+
+    /// A made-up Mac for screenshots of the screens, with nothing paired and nothing in CloudKit.
+    public func showForScreenshots(_ cache: Cache) {
+        paired = Paired(mac: UUID(), phone: "phone-screenshots", privateKey: Data(), pairingKey: Data(count: 32), stateKey: Data(count: 32))
+        show(cache)
     }
 
     // MARK: Pairing
@@ -140,6 +187,7 @@ public final class PhoneClient {
         asks = [:]
         sent = [:]
         try? FileManager.default.removeItem(at: tokenFile)
+        try? FileManager.default.removeItem(at: cacheFile)
     }
 
     // MARK: Commands
@@ -205,6 +253,7 @@ public final class PhoneClient {
                 for record in changes.changed { fetched(record) }
                 for (id, type) in changes.deleted { gone(id, type: type) }
                 try? sync.tokenData?.write(to: tokenFile, options: .atomic)
+                if !changes.changed.isEmpty || !changes.deleted.isEmpty { writeCache() }
             } catch ZoneSync.Gone.zone {
                 Self.logger.notice("the Mac's zone is gone")
                 forget()

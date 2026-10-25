@@ -25,10 +25,15 @@ struct PhoneApp: App {
         }
     }
 
-    /// A script's pairing, for a phone build with no camera to scan with (PhoneLink+Test.swift).
+    /// A script's pairing, for a phone build with no camera to scan with (PhoneLink+Test.swift),
+    /// or a made-up Mac for screenshots (Screens.swift).
     private func pairForTestIfAsked() {
 #if DEBUG
         let arguments = CommandLine.arguments
+        if let at = arguments.firstIndex(of: "-Screens"), at + 1 < arguments.count, let cache = Screens.cache(arguments[at + 1]) {
+            delegate.store.showForScreenshots(cache)
+            return
+        }
         guard delegate.store.paired == nil, let at = arguments.firstIndex(of: "-PairCode"), at + 1 < arguments.count,
               let code = PairingCode(string: arguments[at + 1])
         else { return }
