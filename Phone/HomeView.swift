@@ -7,6 +7,8 @@ struct HomeView: View {
     @Environment(PhoneClient.self) private var store
     @Environment(Router.self) private var router
     @State private var stops = 0
+    /// A new thread asked for, until the Mac names it and it's pushed.
+    @State private var opening: String?
 
     private var awake: Bool { store.mac?.state ?? .awake == .awake }
 
@@ -100,6 +102,16 @@ struct HomeView: View {
             .navigationDestination(for: UUID.self) { ThreadView(id: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { macMenu }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("New thread", systemImage: "square.and.pencil") { router.composing = true }
+                        .disabled(store.projects.isEmpty)
+                }
+            }
+            .sheet(isPresented: $router.composing) { NewThreadSheet(sent: $opening) }
+            .onChange(of: opening.flatMap { store.sent[$0]?.thread }) { _, thread in
+                guard let thread else { return }
+                opening = nil
+                router.path.append(thread)
             }
             .refreshable { await store.fetch() }
             .onAppear { Launch.listShown() }

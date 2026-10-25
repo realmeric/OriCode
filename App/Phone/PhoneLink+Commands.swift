@@ -47,8 +47,19 @@ extension PhoneLink {
             guard model.send(text, in: chat, takingAttachments: false) else { return .refused("The Mac didn't take it") }
             messaged.insert(thread)
             return Link.Outcome(ok: true, thread: thread)
-        case .open:
-            return .refused("Not on this Mac yet")
+        case .open(let id, let text):
+            // In the project named, or the one ⌘N would start in, on what new threads start with.
+            guard let project = id.flatMap({ id in model.projects.first { $0.id == id } }) ?? model.project ?? model.projects.first else {
+                return .refused("No such project")
+            }
+            let chat = model.makeChat(in: project)
+            guard model.send(text, in: chat, takingAttachments: false) else {
+                model.context.delete(chat)
+                model.save()
+                return .refused("The Mac didn't take it")
+            }
+            messaged.insert(chat.id)
+            return Link.Outcome(ok: true, thread: chat.id)
         }
     }
 

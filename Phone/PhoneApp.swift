@@ -40,6 +40,8 @@ struct PhoneApp: App {
             .environment(delegate.store)
             .environment(delegate.router)
             .preferredColorScheme(.dark)
+            // The brief has no accent colour: the system's blue stays out of the cursor and links.
+            .tint(Ink.primary)
             .onChange(of: phase) { _, phase in
                 if phase == .active { Task { await delegate.store.fetch() } }
             }
@@ -59,6 +61,7 @@ struct PhoneApp: App {
             delegate.store.showForScreenshots(cache)
             // The thread screen: the asking thread, pushed.
             if arguments[at + 1] == "thread", let asking = cache.threads.first(where: { $0.status == .asking }) { delegate.router.path = [asking.id] }
+            if arguments[at + 1] == "compose" { delegate.router.composing = true }
             if arguments[at + 1] == "reply", let done = cache.threads.first(where: { $0.reply != nil }) { delegate.router.path = [done.id] }
             return
         }
@@ -149,4 +152,6 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
 @Observable
 final class Router {
     var path: [UUID] = []
+    /// The new thread's sheet is up.
+    var composing = false
 }
