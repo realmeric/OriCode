@@ -189,9 +189,10 @@ struct WorkflowTests {
         #expect(WorkflowRun(["state": "running", "startedAt": 1_792_836_000_000, "agents": []]).took == nil)
         // 08 at 1180pt: three finished phases share the width, Review's two stacked in its third.
         let groups: [(phase: String, agents: [WorkflowRun.Agent])] = [("Review", [agent("done"), agent("done")]), ("Fix", [agent("done")]), ("Verify", [agent("done")])]
-        let reopened = StageLayout.fitted(groups: groups, width: 1116, narrow: false, equal: true, wide: [], wells: [:])
+        let reopened = StageLayout.fitted(groups: groups, width: 1116, narrow: false, equal: true, wide: [], wells: [:], names: true)
         #expect(reopened.phases.map(\.width) == Array(repeating: (1116 - 68) / 3, count: 3))
-        #expect(!reopened.phases[0].sideBySide)
+        // Called up again, its cards are their names alone.
+        #expect(reopened.phases.allSatisfy { $0.collapsed })
         // Finished while it's up, they spread over the width too, 250pt each at least.
         #expect(StageLayout(groups: groups, width: 1116, narrow: false).phases.map(\.width) == Array(repeating: (1116 - 68) / 3, count: 3))
         // At 720pt three finished phases don't fit at 250pt: they share the width before any goes

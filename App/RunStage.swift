@@ -67,7 +67,7 @@ private struct StageSlot: View {
         ZStack(alignment: .top) {
             if up {
                 RunStage(head: head, run: run, call: workflow ? call : nil, lane: lane, heads: conversation.heads, equal: reopened, chat: chat, active: active,
-                         width: size.width, top: RunStage.top(active: active), cap: size.height - RunStage.underneath, floor: size.height - RunStage.gap, foot: foot)
+                         width: size.width, top: RunStage.top(active: active), cap: min(size.height - RunStage.underneath, (size.height * RunStage.most).rounded()), floor: size.height - RunStage.gap, foot: foot)
                     .transition(.opacity)
             }
         }
@@ -135,6 +135,9 @@ struct RunStage: View {
     static let gap: CGFloat = 28
     /// What the stage leaves the lead under it: 180pt of transcript and the gap between.
     static let underneath: CGFloat = 180 + gap
+    /// The most of the window the stage takes, so the conversation under it stays in view: past
+    /// it, cards drop their older calls, then scroll (Meriç, 2026-10-25: "ekranın tamamını kaplıyor").
+    static let most: CGFloat = 0.42
     static let headHeight: CGFloat = 28
     /// From the head row's foot to the phases' labels.
     static let labelsGap: CGFloat = 14
@@ -204,8 +207,8 @@ struct RunStage: View {
             guard let id = agent.id else { return }
             let chat = agentChats[id]
             switch agent.state {
-            case .done: found[id] = chat?.agentResult ?? chat.flatMap { model.stage.trail(for: $0.id).result }.flatMap(AppModel.replyLine)
-            case .failed: found[id] = agent.error ?? chat?.agentResult
+            case .done: found[id] = (chat?.agentResult?.nonEmpty ?? chat.flatMap { model.stage.trail(for: $0.id).result }.flatMap(AppModel.replyLine))?.nonEmpty
+            case .failed: found[id] = (agent.error ?? chat?.agentResult)?.nonEmpty
             default: break
             }
         }
@@ -230,7 +233,7 @@ struct RunStage: View {
         // A hop's gutter stays open until its well has folded; the well's room goes as it folds.
         let layout = StageLayout.fitted(groups: groups, width: across - (lane.isEmpty ? 0 : StageLayout.gutter + laneWidth), narrow: width < 560, equal: equal,
                                         wide: Set(hops.map(\.phase)), wells: hops.filter { !$0.folded }.reduce(into: [:]) { $0[$1.recipient] = $1.well },
-                                        asks: asks.mapValues { $0.call.shown("command") ?? "" }, results: results(groups))
+                                        asks: asks.mapValues { $0.call.shown("command") ?? "" }, results: results(groups), names: equal)
         let room = cap - top - Self.headHeight - Self.labelsGap
         let beside = lane.isEmpty ? { (_: Int) in CGFloat(0) } : { StageLayout.labelHeight + StageLayout.labelGap + LaneLayout.height(lane, steps: $0) }
         let steps = (0...4).reversed().first { max(layout.height(steps: $0), beside($0)) <= room } ?? 0
@@ -584,11 +587,12 @@ private struct StageCard: View {
 
     @ViewBuilder
     private func line(_ text: String?) -> some View {
-        if let text {
+        // An empty result draws nothing: an empty Text still takes a line.
+        if let text = text?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
             Text(handed.map { Handoff.source(text, task: $0) } ?? AttributedString(text))
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
-                .lineLimit(2)
+                .lineLimit(1)
                 .truncationMode(.tail)
                 // Laid out at the card's width from its leading edge as the card springs to a
                 // new one, never morphed from the old layout: that drew it centred, or cut
@@ -1141,7 +1145,7 @@ struct StageLayout: Equatable {
     /// wells; `asks` the commands the agents asking wait on you to run.
     /// `squeezed` is the width a finished phase takes in place of 250pt, its result lines kept.
     init(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
-         wide: Set<Int> = [], wells: [String: AttributedString] = [:], asks: [String: String] = [:], results: [String: String] = [:], squeezed: CGFloat? = nil) {
+         wide: Set<Int> = [], wells: [String: AttributedString] = [:], asks: [String: String] = [:], results: [String: String] = [:], names: Bool = false, squeezed: CGFloat? = nil) {
         gutters = groups.indices.map { $0 == 0 ? 0 : wide.contains($0) ? Self.wideGutter : Self.gutter }
         let states: [State] = groups.map { group in
             if group.agents.isEmpty { return .ahead }
@@ -1176,7 +1180,9 @@ struct StageLayout: Equatable {
             let sideBySide = (state == .live || equal && state == .finished) && (width - (count - 1) * Self.spacing) / count >= Self.leastCard
             if state == .live, !sideBySide, !equal { width = min(width, Self.card) }
             return Phase(name: group.phase, agents: group.agents, state: state, width: width, sideBySide: sideBySide,
-                         collapsed: narrow && state == .finished)
+                         // Called up again once over, a run is its agents' names: what they returned is
+                         // in each one's thread and in the lead's reply (Meriç, 2026-10-25: "ekranın tamamını kaplıyor").
+                         collapsed: (narrow || names) && state == .finished)
         }
         var heights: [String: CGFloat] = [:]
         var asked: [String: CGFloat] = [:]
@@ -1191,12 +1197,8 @@ struct StageLayout: Equatable {
             }
             for agent in phase.agents {
                 guard let id = agent.id else { continue }
-                if let result = results[id], agent.state == .done || agent.state == .failed {
-                    let text = card - Self.cardSide * 2
-                    let high = ceil((result as NSString).boundingRect(with: CGSize(width: text, height: .greatestFiniteMagnitude),
-                                                                    options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: NSFont.systemFont(ofSize: 12.5)]).height)
-                    lines[id] = high > Self.secondaryLine * 1.5 ? 2 : 1
-                }
+                // One line, as at first: two made a finished run fill the window (Meriç, 2026-10-25).
+                if results[id] != nil, agent.state == .done || agent.state == .failed { lines[id] = 1 }
                 if let task = wells[id] {
                     heights[id] = Self.wellGap + Self.wellPadding.height * 2 + WellText.height(task, width: inside, lines: Self.wellLines)
                 }
@@ -1215,8 +1217,8 @@ struct StageLayout: Equatable {
     /// in a column beside another thread don't at 250pt a finished one. A run whose every phase
     /// is over takes equal shares first, which keep each card's result line.
     static func fitted(groups: [(phase: String, agents: [WorkflowRun.Agent])], width: CGFloat, narrow: Bool, equal: Bool = false,
-                       wide: Set<Int>, wells: [String: AttributedString], asks: [String: String] = [:], results: [String: String] = [:]) -> StageLayout {
-        let layout = StageLayout(groups: groups, width: width, narrow: narrow, equal: equal, wide: wide, wells: wells, asks: asks, results: results)
+                       wide: Set<Int>, wells: [String: AttributedString], asks: [String: String] = [:], results: [String: String] = [:], names: Bool = false) -> StageLayout {
+        let layout = StageLayout(groups: groups, width: width, narrow: narrow, equal: equal, wide: wide, wells: wells, asks: asks, results: results, names: names)
         guard !narrow, layout.widths.reduce(0, +) > width else { return layout }
         let live = layout.phases.filter { $0.state == .live }
         if !equal, live.isEmpty {
@@ -1247,7 +1249,7 @@ struct StageLayout: Equatable {
             let cards = phase.agents.map { agent in
                 // An asking card's trail is the calls before the one it asks about, three at most.
                 let ask = phase.collapsed ? nil : agent.id.flatMap { asks[$0] }
-                return Self.cardHeight(agent, steps: ask == nil ? steps : min(steps, 3), collapsed: phase.collapsed, lines: agent.id.flatMap { resultLines[$0] } ?? 1)
+                return Self.cardHeight(agent, steps: ask == nil ? steps : min(steps, 3), collapsed: phase.collapsed, lines: agent.id.flatMap { resultLines[$0] } ?? 0)
                     + (agent.id.flatMap { wells[$0] } ?? 0) + (ask ?? 0)
             }
             guard !cards.isEmpty else { return Self.labelHeight }
@@ -1276,8 +1278,9 @@ struct StageLayout: Equatable {
         switch agent.state {
         case .running where steps > 0:
             return head + trailGap + bodyLine + CGFloat(steps - 1) * (stepGap + secondaryLine)
+        // A finished card with nothing to say is its head row alone, never an empty line under it.
         case .done, .failed:
-            return head + resultGap + secondaryLine * CGFloat(lines)
+            return lines == 0 ? head : head + resultGap + secondaryLine * CGFloat(lines)
         default:
             return head
         }

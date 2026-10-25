@@ -54,6 +54,8 @@ enum HomeLayout {
     static let capsuleHeight: CGFloat = 34
     static let kidHeight: CGFloat = 26
     static let titleColumn: CGFloat = 180
+    /// Where a capsule's title starts, and an ask on it.
+    static let titleStart: CGFloat = 36
     /// Under a capsule's mark, where its bracket leaves from: 14 + half a 14pt mark.
     static let markCentre: CGFloat = 21
     /// A capsule's title starts 36pt in (14 + a 14pt mark + 8), a child's label 29 past its
@@ -71,37 +73,50 @@ private struct HomeCapsule: View {
     var body: some View {
         let status = model.status(of: chat)
         let done = status.state == .done || status.state == .idle
-        Button {
-            model.open(chatID: chat.id)
-        } label: {
-            HStack(spacing: 8) {
-                HomeMark(chat: chat, size: 14)
-                Text(chat.title)
-                    .font(.system(size: 13))
-                    .foregroundStyle(done ? Ink.secondary : Ink.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: HomeLayout.titleColumn, alignment: .leading)
-                Text(line(status) ?? "")
-                    .font(.system(size: 12))
-                    .foregroundStyle(done ? Ink.secondary.opacity(0.8) : Ink.faint)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let phases = model.homePhases(of: chat) {
-                    HomePhases(phases: phases)
+        // What waits on Meriç in this thread or under it, answered right here (Meriç, 2026-10-25:
+        // "izin vermem gerekip gerekmediği homeda yazmıyor, içine girince fark ediyosun").
+        let asks = model.homeAsks(of: chat)
+        let shape = RoundedRectangle(cornerRadius: HomeLayout.capsuleHeight / 2, style: .continuous)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                model.open(chatID: chat.id)
+            } label: {
+                HStack(spacing: 8) {
+                    HomeMark(chat: chat, size: 14)
+                    Text(chat.title)
+                        .font(.system(size: 13))
+                        .foregroundStyle(done ? Ink.secondary : Ink.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: HomeLayout.titleColumn, alignment: .leading)
+                    Text(asks.isEmpty ? line(status) ?? "" : "")
+                        .font(.system(size: 12))
+                        .foregroundStyle(done ? Ink.secondary.opacity(0.8) : Ink.faint)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let phases = model.homePhases(of: chat) {
+                        HomePhases(phases: phases)
+                    }
                 }
+                .padding(.leading, 14)
+                .padding(.trailing, 14)
+                .frame(height: HomeLayout.capsuleHeight)
+                .contentShape(Rectangle())
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 14)
-            .frame(height: HomeLayout.capsuleHeight)
-            .background(Capsule().fill(Color.white.opacity(hovered ? 0.08 : done ? 0.035 : 0.05)))
-            .contentShape(Capsule())
+            .buttonStyle(.plain)
+            .accessibilityLabel(chat.title)
+            .accessibilityValue(line(status) ?? status.word)
+            ForEach(asks) { waiting in
+                AskForm(ask: waiting.ask, cwd: waiting.holder.cwd, thread: waiting.holder.id, listens: false, compact: true)
+                    .padding(.leading, HomeLayout.titleStart)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 12)
+            }
         }
-        .buttonStyle(.plain)
+        .background(shape.fill(Color.white.opacity(hovered ? 0.08 : !asks.isEmpty ? 0.07 : done ? 0.035 : 0.05)))
         .onHover { hovered = $0 }
-        .accessibilityLabel(chat.title)
-        .accessibilityValue(line(status) ?? status.word)
+        .animation(Motion.fade, value: asks.map(\.id))
     }
 
     /// What the capsule says after its title: the step at work, or once over its reply's first line.
@@ -229,6 +244,12 @@ extension AppModel {
             return today.isDateInToday(chat.updatedAt)
         }
         .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// The asks waiting on Meriç in a thread on home or in the work under it, oldest first.
+    func homeAsks(of chat: Chat) -> [WaitingAsk] {
+        let tops = topThreads
+        return waitingAsks.filter { (tops[$0.holder.id] ?? $0.holder.id) == chat.id || $0.holder.openedBy.map { tops[$0] == chat.id } == true }
     }
 
     /// The threads under one on home that are at work now, in the order they started. Done, they
