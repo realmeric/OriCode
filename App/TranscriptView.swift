@@ -901,6 +901,7 @@ enum TranscriptEntry: Identifiable {
 }
 
 struct ItemView: View {
+    @Environment(AppModel.self) private var model
     let item: Item
     let cwd: String
     /// The thread the item is in: where a message's pictures are kept, and whose ask, limit or
@@ -970,11 +971,19 @@ struct ItemView: View {
                 }
                 MessageText(text: text, waiting: waiting)
                 if waiting {
-                    Text("Waiting for the next step")
-                        .font(Type.secondary)
-                        .foregroundStyle(Ink.faint)
-                        .padding(.trailing, 6)
-                        .transition(.opacity)
+                    HStack(spacing: 10) {
+                        Text("Waiting for the next step")
+                            .foregroundStyle(Ink.faint)
+                        // Stops the step under way and sends this now.
+                        Button("Send now") {
+                            if let chat = thread.flatMap(model.chat(withID:)) ?? model.chat { model.sendNow(item.id, in: chat) }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Ink.secondary)
+                    }
+                    .font(Type.secondary)
+                    .padding(.trailing, 6)
+                    .transition(.opacity)
                 }
             }
             .frame(maxWidth: 560, alignment: .trailing)

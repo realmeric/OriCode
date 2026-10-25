@@ -55,12 +55,12 @@ enum HomeLayout {
     static let kidHeight: CGFloat = 26
     static let titleColumn: CGFloat = 180
     /// Where a capsule's title starts, and an ask on it.
-    static let titleStart: CGFloat = 36
+    static let titleStart: CGFloat = 66
     /// Under a capsule's mark, where its bracket leaves from: 14 + half a 14pt mark.
     static let markCentre: CGFloat = 21
-    /// A capsule's title starts 36pt in (14 + a 14pt mark + 8), a child's label 29 past its
-    /// indent (10 + a 12pt mark + 7), so this takes off what the child's start adds.
-    static var kidColumn: CGFloat { titleColumn - indent + 7 }
+    /// A capsule's title starts 66pt in (14 + a 14pt mark + 8 + its project's 22pt badge + 8), a
+    /// child's label 29 past its indent (10 + a 12pt mark + 7), so this takes off what the child's start adds.
+    static var kidColumn: CGFloat { titleColumn - indent + 37 }
 }
 
 /// One thread on home: its mark, its few words, the step it's on in faint ink, a workflow's
@@ -83,6 +83,8 @@ private struct HomeCapsule: View {
             } label: {
                 HStack(spacing: 8) {
                     HomeMark(chat: chat, size: 14)
+                    // The drawer's badge, so the project reads at a glance (Meriç, 2026-10-25).
+                    if let project = chat.project { ProjectBadge(project: project) }
                     Text(chat.title)
                         .font(.system(size: 13))
                         .foregroundStyle(done ? Ink.secondary : Ink.primary)
@@ -116,6 +118,13 @@ private struct HomeCapsule: View {
         }
         .background(shape.fill(Color.white.opacity(hovered ? 0.08 : !asks.isEmpty ? 0.07 : done ? 0.035 : 0.05)))
         .onHover { hovered = $0 }
+        // What the drawer's row offers, here too.
+        .contextMenu {
+            Button("Open Beside") { model.openBeside(chat) }
+            Button("Rename") { model.open(chatID: chat.id); model.startRename(chat) }
+            Button("Archive") { withAnimation(Motion.move) { model.archive(chat) } }
+            Button("Delete…") { model.askToDelete(chat) }
+        }
         .animation(Motion.fade, value: asks.map(\.id))
     }
 
@@ -232,18 +241,25 @@ private struct HomePhases: View {
 }
 
 extension AppModel {
-    /// The threads home shows: every project's top threads at work, or worked on today, the
-    /// newest first (Meriç, 2026-10-25: "yeni threadler her zaman üstte olmalı").
+    /// The threads home shows: every project's top threads at work, or worked on today, a
+    /// project's together, the project with the newest first and its newest first (Meriç,
+    /// 2026-10-25: "yeni threadler her zaman üstte olmalı", "aynı proje threadleri yan yana").
     var homeCapsules: [Chat] {
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
         let tops = topThreads
         let today = Calendar.current
-        return all.filter { chat in
+        let shown = all.filter { chat in
             guard tops[chat.id] == chat.id else { return false }
             if conversations[chat.id]?.working == true || chat.agentWorking { return true }
             return today.isDateInToday(chat.updatedAt)
         }
         .sorted { $0.createdAt > $1.createdAt }
+        var order: [UUID] = []
+        for chat in shown { if let id = chat.project?.id, !order.contains(id) { order.append(id) } }
+        return shown.sorted { a, b in
+            let pa = a.project.flatMap { order.firstIndex(of: $0.id) } ?? 0, pb = b.project.flatMap { order.firstIndex(of: $0.id) } ?? 0
+            return pa == pb ? a.createdAt > b.createdAt : pa < pb
+        }
     }
 
     /// The asks waiting on Meriç in a thread on home or in the work under it, oldest first.

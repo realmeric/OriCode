@@ -270,6 +270,21 @@ extension AppModel {
         return text.isEmpty ? nil : text
     }
 
+    /// Send now: a message waiting for the next step stops the turn and goes as the next one
+    /// (Meriç, 2026-10-25: "direkt göndermesini sağlayan bir şey ekleyelim, isteyen kullanır").
+    func sendNow(_ id: UUID, in chat: Chat) {
+        let conversation = conversation(for: chat)
+        guard conversation.waiting.contains(where: { $0.id == id }) else { return }
+        conversation.forced = id
+        stop(in: chat)
+    }
+
+    /// The message sent now goes once the turn it stopped has ended and the stop has handed it back.
+    func sendForced(_ chat: Chat) {
+        guard let message = conversations[chat.id]?.takeForced() else { return }
+        _ = send(message.text, images: message.images, in: chat)
+    }
+
     /// A message for the running turn, which Claude takes up at its next step. The engine sends
     /// it with the thread's settings, which only the next turn takes.
     func sendIntoTurn(_ message: WaitingMessage, in chat: Chat, from sender: Chat? = nil) {
@@ -569,6 +584,7 @@ extension AppModel {
         if event.name == "turn.done" || event.name == "message.cancelled" {
             conversation(for: chat).sendNext { send($0.text, images: $0.images, in: chat) }
             turnEnded(chat.id)
+            sendForced(chat)
         }
         holdWhileWorking()
         tellIfAway(event, chat: chat)

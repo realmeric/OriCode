@@ -96,7 +96,8 @@ struct RootView: View {
                     } else if home {
                         HomeBoard()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.opacity)
+                            // Gone at once as a thread opens, so it never draws under its transcript.
+                            .transition(.asymmetric(insertion: .opacity, removal: .identity))
                     } else {
                         Spacer(minLength: 0)
                         EmptyStateView(

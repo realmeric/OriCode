@@ -507,6 +507,10 @@ final class Conversation {
     private(set) var queue: [QueuedMessage] = []
     /// Messages that won't go out after all, queued or sent into the turn, oldest first.
     private(set) var handedBack: [QueuedMessage] = []
+    /// A waiting message to send now rather than at the next step: the turn is stopped, and the
+    /// message, handed back by the stop, is kept out of the composer to go as the next turn.
+    var forced: UUID?
+    private(set) var forcedMessage: QueuedMessage?
     /// The turn ended with messages still waiting, and the next one, theirs, starts at once.
     private var nextFollows = false
     /// Whether an error came in since the turn started, which makes it one that failed.
@@ -796,6 +800,11 @@ final class Conversation {
 
     private func handBack(_ messages: [QueuedMessage]) {
         for message in messages {
+            if message.id == forced {
+                forced = nil
+                forcedMessage = message
+                continue
+            }
             handedBack.insert(message, at: handedBack.firstIndex { $0.written > message.written } ?? handedBack.endIndex)
         }
     }
@@ -805,6 +814,13 @@ final class Conversation {
     /// written.
     var returning: [QueuedMessage] {
         waiting.isEmpty ? handedBack : []
+    }
+
+    /// The message sent now, once the turn it stopped is over.
+    func takeForced() -> QueuedMessage? {
+        guard !running, let message = forcedMessage else { return nil }
+        forcedMessage = nil
+        return message
     }
 
     /// The composer showing this thread takes what was handed back.
