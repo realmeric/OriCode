@@ -309,7 +309,7 @@ struct ProjectPlanTests {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let writer: UUID
         do {
-            let container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: url))
+            let container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
             container.mainContext.autosaveEnabled = false
             let project = Project(name: "gamma", path: "/tmp/gamma")
             container.mainContext.insert(project)
@@ -325,7 +325,7 @@ struct ProjectPlanTests {
             _ = try ask(model, "plan.update", ["task": "T1", "state": "working", "note": "Half way."], from: lead)
             _ = try ask(model, "plan.update", ["task": "T2", "state": "done"], from: lead)
         }
-        let again = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: url))
+        let again = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
         let project = try #require(try again.mainContext.fetch(FetchDescriptor<Project>()).first)
         let plan = ProjectPlan(project)
         #expect(plan.tasks.map(\.waitsOn) == [[], [], [1], [1, 2, 3]])

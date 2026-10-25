@@ -11,8 +11,9 @@ DERIVED := $(BUILD)/DerivedData
 DEBUG_NAME := OriCode Molten
 DEBUG_ID := com.realmeric.oricode.molten
 DEBUG_APP := $(DERIVED)/Build/Products/Debug/$(DEBUG_NAME).app
-XCODE := xcodebuild -project OriCode.xcodeproj -derivedDataPath $(DERIVED) -skipPackagePluginValidation ORICODE_DEBUG_NAME="$(DEBUG_NAME)" ORICODE_DEBUG_ID=$(DEBUG_ID) ORICODE_BUILD=$(BUILD)
-RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
+XCODE := xcodebuild -project OriCode.xcodeproj -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -allowProvisioningDeviceRegistration ORICODE_DEBUG_NAME="$(DEBUG_NAME)" ORICODE_DEBUG_ID=$(DEBUG_ID) ORICODE_BUILD=$(BUILD)
+# Exported for Developer ID by scripts/export.sh.
+RELEASE_APP := $(BUILD)/export/OriCode.app
 # OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
 PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
 # Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
@@ -62,9 +63,7 @@ test: project engine
 # Signed as make release signs it, so what Meriç grants this build holds for the release's, and
 # not notarized, since it installs on this Mac alone.
 app: project
-	$(XCODE) -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
-	scripts/prune.sh $(RELEASE_APP)
-	scripts/sign.sh $(RELEASE_APP)
+	DERIVED=$(DERIVED) OUT=$(BUILD)/export scripts/export.sh $(BUILD_NUMBER)
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
