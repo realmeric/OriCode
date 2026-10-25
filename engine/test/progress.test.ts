@@ -44,6 +44,14 @@ test("the line", () => {
   assert.equal(progressLine(steps("keys", 15, 2), 0, [20, 3700], 3700), null);
 });
 
+test("a step that runs past what it should take leaves no time, and one under way counts what it has run", () => {
+  const plan = steps("keys", 15, 3);
+  assert.equal(progressLine(plan, 0, [20], 30), "1/3 · <1 min");
+  assert.equal(secondsLeft(plan, [20], 10), 10 + 20);
+  assert.equal(progressLine(plan, 0, [20], 20 + 3600), "1/3");
+  assert.equal(spokenLine(plan, 0, [20], 20 + 3600), "1 of 3 done · time left: can't tell yet");
+});
+
 test("the line in words, for a terminal", () => {
   const idle = steps("idle", 250, 15);
   assert.equal(spokenLine(idle, 0, [250, 500], 500), "2 of 15 done · about 54 min left");

@@ -7,7 +7,6 @@
 
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { progressLine } from "./progress.ts";
 
 export type WorkflowAgent = {
   /// Claude Code's id for it, from the moment it starts; a queued agent has none yet.
@@ -90,15 +89,14 @@ export async function finalShape(outputFile: string | null, transcriptDir: strin
   return undefined;
 }
 
-/// How far a run has got by its agents, as engine/progress.ts gives it: "3/8 · 12 min". `ended` holds when each agent that is over was first seen over, in seconds, and
-/// agents of a phase seen ending before are expected to take what that phase's took. Agents work
-/// side by side, so the time between two endings stands for a step, which is the pace the rest
-/// will come at. Null before the run has any agents and once every one is over.
+/// How far a run has got by its agents: "3/8". No time left: a script starts its agents as it
+/// goes, so the snapshot never holds the agents still to come, and a number made from the ones
+/// it does hold said "<1 min" for an hour while the script's last agent ran (Meriç, 2026-10-25).
+/// Null before the run has any agents and once every one is over.
 export function workflowProgress(shape: WorkflowShape, began: number, ended: number[], now: number): string | null {
   if (shape.agents.length === 0) return null;
-  const over = shape.agents.filter(ends);
-  const order = [...over, ...shape.agents.filter((agent) => !ends(agent))];
-  return progressLine(order.map((agent) => ({ kind: agent.phase || "agent", guess: 1 })), began, ended.slice(0, over.length), now);
+  const over = shape.agents.filter(ends).length;
+  return over >= shape.agents.length ? null : `${over}/${shape.agents.length}`;
 }
 
 /// The snapshot's agents that are over and weren't before are stamped `now`.

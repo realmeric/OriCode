@@ -61,7 +61,7 @@ test("a CLI that exits by itself stops the workflows and heads it had out", asyn
   assert.equal(thread.heads.size, 0);
 });
 
-test("a run says how far it is by its agents, and the time left once one has ended", () => {
+test("a run says how far it is by its agents and never a time, since its script starts agents as it goes", () => {
   const agent = (phase: string, state: string) => ({ type: "workflow_agent", phaseTitle: phase, state, startedAt: 1 });
   const ends: number[] = [];
   let shape = workflowShape([agent("Build", "progress"), agent("Build", "progress"), agent("Review", "start")]);
@@ -69,7 +69,7 @@ test("a run says how far it is by its agents, and the time left once one has end
   assert.equal(workflowProgress(shape, 0, ends, 100), "0/3");
   shape = workflowShape([agent("Build", "done"), agent("Build", "progress"), agent("Review", "start")]);
   stampEnds(shape, ends, 600);
-  assert.equal(workflowProgress(shape, 0, ends, 600), "1/3 · 20 min");
+  assert.equal(workflowProgress(shape, 0, ends, 600), "1/3");
   assert.equal(workflowProgress(workflowShape([]), 0, [], 0), null);
 });
 
