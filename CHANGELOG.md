@@ -8,6 +8,10 @@ Before 0.1.0, the first public release, a version was 0.0.N, where N was the num
 
 - OriCode is signed with Developer ID and notarized by Apple, so it opens without Gatekeeper's warning, and it comes as a DMG you open and drag onto Applications. Updates keep coming through Sparkle as before. A permission macOS tied to the old signature, a folder's access say, may be asked once more.
 
+### OriCode on the iPhone
+
+- OriCode Phone shows what's running on your Mac across projects, brings each permission or question to the phone as a notification you answer from the lock screen, and lets you stop a thread, read it, reply to it and start a new one. The work stays on the Mac: the phone pairs once by a code shown in Settings › Phone and talks to it through your own iCloud, sealed with a key only the two of them hold, and no agent's login ever leaves the Mac. With no phone paired, the Mac does nothing new.
+
 ### Agents see and use the Mac
 
 - A thread can take a picture of an app's window and click, type and scroll in it, each app allowed once per thread, so it can check a change in the app it's building. It needs Screen Recording and Accessibility: OriCode asks once, at the first launch of 0.5.0, and the answer stays in Settings › Agents › The Mac. With it off, no agent is offered the tools. OriCode's own window is never seen or touched.
