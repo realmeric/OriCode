@@ -5,6 +5,7 @@ import SwiftUI
 struct PhonePane: View {
     @Environment(AppModel.self) private var model
     @State private var pairing = false
+    @AppStorage(PhoneLink.Notify.key) private var notify = PhoneLink.Notify.away.rawValue
 
     var body: some View {
         let link = model.phone
@@ -23,6 +24,13 @@ struct PhonePane: View {
                 SettingsRow(title: "Pair a phone", detail: "Open OriCode on your iPhone and scan the code.") {
                     Button("Pair…") { pairing = true }
                         .disabled(link.problem != nil)
+                }
+                SettingsRow(title: "Notify the phone", detail: "When a thread waits on you. Away is the screen locked, or no key or click for five minutes.") {
+                    Picker("Notify the phone", selection: $notify) {
+                        ForEach(PhoneLink.Notify.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
                 ForEach(link.phones) { phone in
                     SettingsRow(title: phone.name) {

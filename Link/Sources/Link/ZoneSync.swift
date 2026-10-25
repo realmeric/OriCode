@@ -109,6 +109,21 @@ public final class ZoneSync {
         _ = try await database.modifySubscriptions(saving: [subscription], deleting: [])
     }
 
+    /// The one visible push: a Nudge made in the zone. Its words are CloudKit's fallback, "Waiting
+    /// on you"; the phone's notification extension opens the Nudge and writes the real ones.
+    public func subscribeToNudges() async throws {
+        let subscription = CKQuerySubscription(recordType: RecordType.nudge, predicate: NSPredicate(value: true),
+                                               subscriptionID: "nudges-\(zone.zoneName)", options: [.firesOnRecordCreation])
+        subscription.zoneID = zone
+        let info = CKSubscription.NotificationInfo()
+        info.alertBody = "Waiting on you"
+        info.soundName = "default"
+        info.shouldSendMutableContent = true
+        subscription.notificationInfo = info
+        requests += 1
+        _ = try await database.modifySubscriptions(saving: [subscription], deleting: [])
+    }
+
     public func save(subscription: CKSubscription) async throws {
         requests += 1
         _ = try await database.modifySubscriptions(saving: [subscription], deleting: [])

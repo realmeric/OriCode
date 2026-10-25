@@ -239,6 +239,7 @@ targets:
     platform: iOS
     sources:
       - PhoneNotify
+      - Phone/Shared
     dependencies:
       - package: Link
     info:

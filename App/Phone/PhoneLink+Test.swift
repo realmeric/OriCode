@@ -45,6 +45,7 @@ extension PhoneLink {
         // Up at once, or once a zone that was going has gone.
         Task {
             for _ in 0..<100 {
+                await making?.value
                 if let code {
                     try? code.string.write(toFile: "/tmp/oricode-phone-code.txt", atomically: true, encoding: .utf8)
                     return

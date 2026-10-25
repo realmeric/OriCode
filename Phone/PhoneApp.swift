@@ -2,6 +2,7 @@ import Link
 import os
 import SwiftUI
 import UIKit
+import UserNotifications
 
 /// Launch to the list on screen, for Instruments: the interval starts as the app does and ends at
 /// home's first appearance, the cached list in it.
@@ -41,6 +42,9 @@ struct PhoneApp: App {
             .onChange(of: phase) { _, phase in
                 if phase == .active { Task { await delegate.store.fetch() } }
             }
+            .onChange(of: delegate.store.paired != nil) { _, paired in
+                if paired { delegate.askToNotify() }
+            }
             .task { pairForTestIfAsked() }
         }
     }
@@ -62,9 +66,10 @@ struct PhoneApp: App {
     }
 }
 
-/// Holds the store, and takes CloudKit's pushes to it, in the background too.
+/// Holds the store, takes CloudKit's pushes to it, in the background too, and the notifications'
+/// buttons.
 @MainActor
-final class PhoneDelegate: NSObject, UIApplicationDelegate {
+final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     let store = PhoneClient(keychain: PhoneDelegate.keychain, deviceName: UIDevice.current.model, folder: .applicationSupportDirectory) {
         UIApplication.shared.registerForRemoteNotifications()
     }
@@ -72,6 +77,25 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate {
     /// The keychain group the app shares with its notification extension.
     nonisolated static var keychain: PhoneKeychain {
         PhoneKeychain(group: (Bundle.main.object(forInfoDictionaryKey: "AppIdentifierPrefix") as? String).map { $0 + "com.realmeric.oricode.phone" })
+    }
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.setNotificationCategories(NotifyCategory.all)
+        if store.paired != nil { askToNotify() }
+        return true
+    }
+
+    /// Once paired. Home works without notifications, and says everything they would.
+    func askToNotify() {
+        guard store.paired?.phone != "phone-screenshots" else { return }
+        Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
+    }
+
+    /// In front, the asks are on home already: the notification goes to the list alone.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.list]
     }
 
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {

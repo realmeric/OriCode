@@ -8,6 +8,11 @@ struct HomeView: View {
 
     private var awake: Bool { store.mac?.state ?? .awake == .awake }
 
+    /// Every ask, oldest first, as the Mac's queue orders them.
+    private var asks: [AskInfo] {
+        store.asks.values.sorted { ($0.asked, $0.id) < ($1.asked, $1.id) }
+    }
+
     /// Projects with threads, in the Mac's order; in each, a thread asking first, then those at
     /// work, then the latest.
     private var sections: [(project: ProjectInfo?, threads: [ThreadInfo])] {
@@ -30,6 +35,21 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             List {
+                if !asks.isEmpty {
+                    Section {
+                        ForEach(asks) { ask in
+                            AskCard(ask: ask)
+                                .listRowBackground(Color.black)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        }
+                    } header: {
+                        Text("\(asks.count) waiting on you")
+                            .font(.subheadline)
+                            .foregroundStyle(Ink.secondary)
+                            .textCase(nil)
+                    }
+                }
                 ForEach(sections, id: \.project?.id) { section in
                     Section {
                         ForEach(section.threads) { thread in
@@ -50,7 +70,7 @@ struct HomeView: View {
             .scrollContentBackground(.hidden)
             .background(Color.black)
             .overlay {
-                if store.threads.isEmpty {
+                if store.threads.isEmpty && store.asks.isEmpty {
                     VStack(spacing: 14) {
                         Mark(restingOpacity: awake ? 0.3 : 0.15)
                             .opacity(awake ? 1 : 0.3)

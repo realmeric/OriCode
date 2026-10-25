@@ -48,6 +48,12 @@ final class PhoneLink {
     @ObservationIgnored var replies: [UUID: String?] = [:]
     /// When each ask was first seen waiting.
     @ObservationIgnored var askedAt: [String: Date] = [:]
+    /// Asks the phone was buzzed for, and asks seen while Meriç was at the Mac, which aren't.
+    @ObservationIgnored var nudged: Set<String> = []
+    @ObservationIgnored var passed: Set<String> = []
+    @ObservationIgnored private var lockWatch: NSObjectProtocol?
+    /// The zone being made and subscribed to, which every read and write waits for.
+    @ObservationIgnored var making: Task<Void, Never>?
     @ObservationIgnored private var flushing = false
     @ObservationIgnored private var fetching = false
     @ObservationIgnored private var fetchAgain = false
@@ -97,13 +103,15 @@ final class PhoneLink {
         NSApp.registerForRemoteNotifications()
         watchSleep()
         Self.logger.notice("link started")
-        Task {
+        making = Task {
             do {
                 try await sync.makeZone()
                 try await sync.subscribe()
             } catch {
                 Self.logger.error("couldn't make the zone: \(error.localizedDescription, privacy: .public)")
             }
+        }
+        Task {
             await fetch()
             published()
         }
@@ -111,6 +119,7 @@ final class PhoneLink {
 
     func stop() {
         sync = nil
+        making = nil
         writing?.cancel()
         writing = nil
         outbox = [:]
@@ -122,6 +131,10 @@ final class PhoneLink {
         sleepWatch = []
         activeWatch.map(NotificationCenter.default.removeObserver)
         activeWatch = nil
+        lockWatch.map(DistributedNotificationCenter.default().removeObserver)
+        lockWatch = nil
+        nudged = []
+        passed = []
         pacing?.task.cancel()
         pacing = nil
         Self.logger.notice("link stopped")
@@ -181,6 +194,7 @@ final class PhoneLink {
         outbox = [:]
         doomed = []
         Task {
+            await making?.value
             do {
                 let failed = try await sync.write(saving: saving, deleting: deleting)
                 for (id, error) in failed { Self.logger.error("couldn't write \(id.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)") }
@@ -205,6 +219,7 @@ final class PhoneLink {
         guard !fetching else { return fetchAgain = true }
         fetching = true
         defer { fetching = false }
+        await making?.value
         repeat {
             fetchAgain = false
             do {
@@ -362,8 +377,11 @@ final class PhoneLink {
         keys.phones.removeAll { $0.id == phone }
         phones = keys.phones
         if keys.phones.isEmpty {
+            keys.write()
             self.keys = keys
-            tearDownSoon(forgetting: false)
+            UserDefaults.standard.set(false, forKey: Self.pairedKey)
+            // A code on screen keeps the zone for the phone about to read it.
+            if code == nil { tearDownSoon(forgetting: false) }
             return
         }
         keys.stateKey = SymmetricKey(size: .bits256).data
@@ -395,6 +413,9 @@ final class PhoneLink {
         // Back at the Mac: whatever the phone did meanwhile is read now.
         activeWatch = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.fetchNow() }
+        }
+        lockWatch = DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.screenLocked() }
         }
         let center = NSWorkspace.shared.notificationCenter
         sleepWatch = [

@@ -52,6 +52,7 @@ final class Probe: NSObject, NSApplicationDelegate {
             let projects: [ProjectInfo]
             let threads: [ThreadInfo]
             let asks: [AskInfo]
+            let nudges: [NudgeInfo]
             let sent: [String]
             let written: Date
         }
@@ -60,6 +61,7 @@ final class Probe: NSObject, NSApplicationDelegate {
             projects: client.projects.values.sorted { $0.order < $1.order },
             threads: client.threads.values.sorted { $0.updated > $1.updated },
             asks: Array(client.asks.values),
+            nudges: Array(client.nudges.values),
             sent: client.sent.values.map { "\($0.id) \($0.state) \($0.thread?.uuidString ?? "")" },
             written: .now)
         let coder = JSONEncoder()

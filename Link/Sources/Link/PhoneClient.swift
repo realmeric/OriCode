@@ -46,12 +46,17 @@ public final class PhoneClient {
     public private(set) var threads: [UUID: ThreadInfo] = [:]
     public private(set) var asks: [String: AskInfo] = [:]
     public private(set) var sent: [String: Sent] = [:]
+    /// The nudges the Mac wrote, by ask or reply; the notification extension shows them.
+    public private(set) var nudges: [String: NudgeInfo] = [:]
 
     @ObservationIgnored var sync: ZoneSync?
     /// Every record of the Mac's zone as fetched, so a new state key can open them again.
     @ObservationIgnored var records: [CKRecord.ID: CKRecord] = [:]
     @ObservationIgnored private var fetching = false
     @ObservationIgnored private var fetchAgain = false
+    /// Whether the Nudge subscription is saved: it can't be until the Mac has written a first
+    /// Nudge, which makes the record type, so it's tried again after each read until it is.
+    @ObservationIgnored private var nudgesAsked = false
     @ObservationIgnored let keychain: PhoneKeychain
     @ObservationIgnored let deviceName: String
     @ObservationIgnored let folder: URL
@@ -140,7 +145,15 @@ public final class PhoneClient {
             record.encryptedValues[Field.key] = own.publicKey.rawRepresentation
             record.encryptedValues[Field.proof] = Pairing.proof(phoneKey: own.publicKey.rawRepresentation, secret: code.secret)
             try record.seal(PhoneInfo(name: deviceName), key: pairingKey)
-            _ = try await database.save(record)
+            // A code read the moment it went up can beat the Mac's new zone to iCloud by a second.
+            for attempt in 1...3 {
+                do {
+                    _ = try await database.save(record)
+                    break
+                } catch let error as CKError where (error.code == .zoneNotFound || error.code == .userDeletedZone) && attempt < 3 {
+                    try await Task.sleep(for: .seconds(2))
+                }
+            }
             Self.logger.notice("pairing: the phone's record is saved")
             // The Mac looks every few seconds while its code is up.
             for _ in 0..<40 {
@@ -186,6 +199,8 @@ public final class PhoneClient {
         threads = [:]
         asks = [:]
         sent = [:]
+        nudges = [:]
+        nudgesAsked = false
         try? FileManager.default.removeItem(at: tokenFile)
         try? FileManager.default.removeItem(at: cacheFile)
     }
@@ -238,6 +253,18 @@ public final class PhoneClient {
         }
     }
 
+    private func askForNudges() {
+        guard !nudgesAsked, let sync else { return }
+        nudgesAsked = true
+        Task {
+            do {
+                try await sync.subscribeToNudges()
+            } catch {
+                nudgesAsked = false
+            }
+        }
+    }
+
     /// What the Mac wrote since the last read; one at a time, and asked again meanwhile it reads
     /// again after. A zone that's gone is the Mac having turned the phone off.
     public func fetch() async {
@@ -254,6 +281,7 @@ public final class PhoneClient {
                 for (id, type) in changes.deleted { gone(id, type: type) }
                 try? sync.tokenData?.write(to: tokenFile, options: .atomic)
                 if !changes.changed.isEmpty || !changes.deleted.isEmpty { writeCache() }
+                askForNudges()
             } catch ZoneSync.Gone.zone {
                 Self.logger.notice("the Mac's zone is gone")
                 forget()
@@ -329,6 +357,8 @@ public final class PhoneClient {
             if let info = try? record.open(ThreadInfo.self, key: key) { threads[info.id] = info }
         case RecordType.ask:
             if let info = try? record.open(AskInfo.self, key: key) { asks[info.id] = info }
+        case RecordType.nudge:
+            if let info = try? record.open(NudgeInfo.self, key: key) { nudges[RecordName.id(in: record.recordID.recordName)] = info }
         default:
             break
         }
@@ -347,6 +377,8 @@ public final class PhoneClient {
             if let thread = UUID(uuidString: named) { threads[thread] = nil }
         case RecordType.ask:
             asks[named] = nil
+        case RecordType.nudge:
+            nudges[named] = nil
         default:
             break
         }
