@@ -39,7 +39,9 @@ struct RootView: View {
                 // composer's left end draws back out from under it while it's out. Its right end,
                 // with the picker and Send, doesn't move, and nor does a composer in the right half.
                 let covered = model.reviewShown || model.openFile != nil || model.openShell != nil
-                    || model.commandCenterShown || model.overviewShown || model.headsShown || model.fileFinderShown
+                // ⌘K, ⌘P, ⌘I and ⌘⇧I are small and float over the thread: it stays, quieter, under them
+                // (Meriç, 2026-10-25: "threaddeki yazılar tamamen kaldırılıyor, bu olmamalı").
+                let floating = model.commandCenterShown || model.overviewShown || model.headsShown || model.fileFinderShown
                 let passing = model.drawerShown && !model.drawerDocked
                 let clear = passing ? Self.clearing(width: beside == nil ? window.size.width : half) : 0
                 // What the drawer still lies over at the left: the left composer's start, and the
@@ -85,8 +87,9 @@ struct RootView: View {
                         // The review, a file, a full terminal, ⌘K, ⌘I, ⌘⇧I or ⌘P over the
                         // conversation has the glass to itself, with no line cut short beside it.
                         // Out before what covers it has grown, and back once it has folded away.
-                        .opacity(covered ? 0 : 1)
+                        .opacity(covered ? 0 : floating ? 0.3 : 1)
                         .animation(covered ? .easeOut(duration: 0.1) : Motion.fade.delay(0.16), value: covered)
+                        .animation(Motion.fade, value: floating)
                         // Faded out it takes no clicks, and a click there still puts what's
                         // over it away.
                         .background {
