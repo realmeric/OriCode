@@ -14,7 +14,13 @@ PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
-.PHONY: run engine test app release project icon perf perf-quick perf-build
+.PHONY: run engine test app release project icon perf perf-quick perf-build phone phone-device
+# The phone (KANBAN-phone.md). Debug talks to CloudKit's Development environment, as Bridge does;
+# CONFIG=Release talks to Production, as the installed OriCode does.
+CONFIG := Debug
+PHONE_SIM := OriCode iPhone 17
+PHONE_SIM_APP := $(DERIVED)/Build/Products/$(CONFIG)-iphonesimulator/OriCodePhone.app
+PHONE_DEVICE_APP := $(DERIVED)/Build/Products/$(CONFIG)-iphoneos/OriCodePhone.app
 
 # A SIGTERM quits OriCode the way ⌘Q does, marking the threads still working, which takes a
 # moment; `open` before it has gone would only bring the quitting app forward. Five seconds at most.
@@ -31,6 +37,24 @@ run: project
 	open "$(DEBUG_APP)"
 
 engine: $(BUILD)/engine/.stamp
+
+# Builds the phone for the simulator, an iPhone 17 made the first time, and opens it there.
+phone: project
+	xcrun simctl list devices | grep -q "$(PHONE_SIM) (" || xcrun simctl create "$(PHONE_SIM)" com.apple.CoreSimulator.SimDeviceType.iPhone-17
+	xcodebuild -project OriCode.xcodeproj -scheme "OriCode Phone" -configuration $(CONFIG) -destination "platform=iOS Simulator,name=$(PHONE_SIM)" -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	-xcrun simctl boot "$(PHONE_SIM)"
+	xcrun simctl install "$(PHONE_SIM)" "$(PHONE_SIM_APP)"
+	xcrun simctl launch "$(PHONE_SIM)" com.realmeric.oricode.phone
+
+# Builds the phone for Meriç's iPhone, signed by Xcode, and installs it on the first iPhone
+# devicectl sees, connected or on the same network once paired with Xcode.
+phone-device: project
+	xcodebuild -project OriCode.xcodeproj -scheme "OriCode Phone" -configuration $(CONFIG) -destination generic/platform=iOS -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet build
+	xcrun devicectl list devices -q -j $(BUILD)/devices.json
+	device=$$(python3 -c 'import json, sys; print(next((d["identifier"] for d in json.load(open(sys.argv[1]))["result"]["devices"] if d["hardwareProperties"].get("deviceType") == "iPhone" and d["hardwareProperties"].get("reality") == "physical"), ""))' $(BUILD)/devices.json); \
+	[ -n "$$device" ] || { echo "No iPhone: connect it, or pair it with Xcode in Window > Devices and Simulators." >&2; exit 1; }; \
+	xcrun devicectl device install app --device $$device "$(PHONE_DEVICE_APP)" && \
+	xcrun devicectl device process launch --device $$device com.realmeric.oricode.phone
 
 # Staged for the app: no dev tools, no platform binaries (the app runs the user's own claude),
 # no peer dependencies, which sdk.mjs never imports, and none of the SDK's files but sdk.mjs
@@ -49,6 +73,7 @@ $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 
 test: project engine
 	cd engine && node --test test/*.test.ts
+	swift test --package-path Link --scratch-path $(BUILD)/link -q
 	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet test
 
 # Signed as make release signs it, so what Meriç grants this build holds for the release's, and
@@ -91,3 +116,4 @@ icon:
 	swiftc -O -o $(BUILD)/icon/render scripts/icon/main.swift App/RaysMark.swift
 	$(BUILD)/icon/render App/Assets.xcassets/AppIcon.appiconset
 	$(BUILD)/icon/render App/Assets.xcassets/AppIconMolten.appiconset molten
+	$(BUILD)/icon/render Phone/Assets.xcassets/AppIcon.appiconset phone

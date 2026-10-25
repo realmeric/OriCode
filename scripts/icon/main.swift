@@ -70,10 +70,50 @@ try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .
 print("wrote \(images.count) icons to \(folder.path)")
 }
 
+/// The phone's icon: the same glass and mark filling the square, which iOS rounds itself, at the
+/// one size iOS asks for, with its dark appearance the same and its tinted one the mark alone.
+struct PhoneIconArt: View {
+    var tinted = false
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(tinted ? AnyShapeStyle(Color.black) : AnyShapeStyle(Self.glass))
+            RaysMark(lit: RaysMark.rays, litOpacity: tinted ? 1 : 0.62, dotOpacity: 1)
+                .frame(width: 560, height: 560)
+        }
+        .frame(width: 1024, height: 1024)
+    }
+
+    private static let glass = LinearGradient(
+        colors: [Color(red: 0.21, green: 0.18, blue: 0.29), Color(red: 0.09, green: 0.08, blue: 0.13)],
+        startPoint: .topLeading, endPoint: .bottomTrailing)
+}
+
+@MainActor
+func renderPhone(into folder: URL) throws {
+    var images: [[String: Any]] = []
+    for (name, tinted, appearance) in [("icon.png", false, nil), ("icon-dark.png", false, "dark"), ("icon-tinted.png", true, "tinted")] {
+        let renderer = ImageRenderer(content: PhoneIconArt(tinted: tinted))
+        renderer.scale = 1
+        guard let cgImage = renderer.cgImage else { fatalError("couldn't render \(name)") }
+        try NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])!.write(to: folder.appending(path: name))
+        var image: [String: Any] = ["idiom": "universal", "platform": "ios", "size": "1024x1024", "filename": name]
+        if let appearance { image["appearances"] = [["appearance": "luminosity", "value": appearance]] }
+        images.append(image)
+    }
+    let contents: [String: Any] = ["images": images, "info": ["author": "xcode", "version": 1]]
+    try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
+        .write(to: folder.appending(path: "Contents.json"))
+    print("wrote the phone's icon to \(folder.path)")
+}
+
 // Top-level code runs on the main thread; ImageRenderer insists on being told so. A second
-// argument, molten, renders OriCode Molten's icon.
+// argument, molten, renders OriCode Molten's icon, and phone the phone's.
 try MainActor.assumeIsolated {
     let folder = URL(filePath: CommandLine.arguments[1], directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-    try render(into: folder, molten: CommandLine.arguments.dropFirst(2).first == "molten")
+    switch CommandLine.arguments.dropFirst(2).first {
+    case "phone": try renderPhone(into: folder)
+    case let kind: try render(into: folder, molten: kind == "molten")
+    }
 }

@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.realmeric
   deploymentTarget:
     macOS: "26.0"
+    iOS: "26.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -32,6 +33,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.10.0
+  # What the Mac and the phone share (KANBAN-phone.md): records, sealing, pairing, commands.
+  Link:
+    path: Link
 # What OriCode and its measuring build share: the app's sources, packages, Info.plist and engine.
 targetTemplates:
   App:
@@ -48,6 +52,7 @@ targetTemplates:
       - package: Highlightr
       - package: SwiftTerm
       - package: Sparkle
+      - package: Link
     info:
       path: App/Info.plist
       properties:
@@ -176,7 +181,89 @@ targets:
         BUNDLE_LOADER: $(TEST_HOST)
         # Tests run in Debug, which builds OriCode Bridge.
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/OriCode Bridge.app/Contents/MacOS/OriCode Bridge
+  # OriCode on the phone (KANBAN-phone.md): a window onto the OriCode on the Mac, meeting it in
+  # CloudKit. Debug talks to CloudKit's Development environment, which Bridge does, and Release
+  # to Production, which the installed OriCode does.
+  OriCode Phone:
+    type: application
+    platform: iOS
+    sources:
+      - Phone
+    dependencies:
+      - package: Link
+      - target: OriCode Notify
+    info:
+      path: Phone/Info.plist
+      properties:
+        CFBundleDisplayName: OriCode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ""
+        UIUserInterfaceStyle: Dark
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [remote-notification]
+        NSCameraUsageDescription: To scan the pairing code on your Mac.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_NAME: OriCodePhone
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.phone
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        CODE_SIGN_ENTITLEMENTS: Phone/OriCodePhone.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+      configs:
+        Debug:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Development
+        Release:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Production
+  # Opens a notification's sealed Nudge and writes its words on the phone.
+  OriCode Notify:
+    type: app-extension
+    platform: iOS
+    sources:
+      - PhoneNotify
+    dependencies:
+      - package: Link
+    info:
+      path: PhoneNotify/Info.plist
+      properties:
+        CFBundleDisplayName: OriCode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_NAME: OriCodeNotify
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.phone.notify
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        CODE_SIGN_ENTITLEMENTS: PhoneNotify/OriCodeNotify.entitlements
+      configs:
+        Debug:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Development
+        Release:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Production
 schemes:
+  OriCode Phone:
+    build:
+      targets:
+        OriCode Phone: all
+    run:
+      config: Debug
   OriCode:
     build:
       targets:
