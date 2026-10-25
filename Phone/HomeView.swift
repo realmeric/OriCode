@@ -5,6 +5,8 @@ import SwiftUI
 /// in the toolbar holds the Mac's name and Unpair; asleep or closed, every mark rests.
 struct HomeView: View {
     @Environment(PhoneClient.self) private var store
+    @Environment(Router.self) private var router
+    @State private var stops = 0
 
     private var awake: Bool { store.mac?.state ?? .awake == .awake }
 
@@ -33,7 +35,8 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        @Bindable var router = router
+        NavigationStack(path: $router.path) {
             List {
                 if !asks.isEmpty {
                     Section {
@@ -53,7 +56,19 @@ struct HomeView: View {
                 ForEach(sections, id: \.project?.id) { section in
                     Section {
                         ForEach(section.threads) { thread in
-                            ThreadRow(thread: thread, awake: awake)
+                            ThreadRow(thread: thread, awake: awake, undelivered: store.stopSent(for: thread.id)?.undelivered() == true)
+                                .contentShape(.rect)
+                                .onTapGesture { router.path.append(thread.id) }
+                                .swipeActions(edge: .trailing) {
+                                    if thread.status == .working || thread.status == .asking {
+                                        Button("Stop", role: .destructive) { stop(thread) }
+                                    }
+                                }
+                                .contextMenu {
+                                    if thread.status == .working || thread.status == .asking {
+                                        Button("Stop", systemImage: "stop.fill", role: .destructive) { stop(thread) }
+                                    }
+                                }
                         }
                     } header: {
                         HStack(spacing: 8) {
@@ -82,12 +97,20 @@ struct HomeView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: UUID.self) { ThreadView(id: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { macMenu }
             }
             .refreshable { await store.fetch() }
             .onAppear { Launch.listShown() }
+            .sensoryFeedback(.impact(weight: .light), trigger: stops)
         }
+    }
+
+    private func stop(_ thread: ThreadInfo) {
+        if let old = store.stopSent(for: thread.id) { store.clear(old.id) }
+        store.send(.stop(thread: thread.id))
+        stops += 1
     }
 
     private var macMenu: some View {
@@ -117,6 +140,8 @@ struct HomeView: View {
 struct ThreadRow: View {
     let thread: ThreadInfo
     let awake: Bool
+    /// A Stop the Mac refused or never took.
+    var undelivered = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -136,7 +161,10 @@ struct ThreadRow: View {
                 }
             }
             Spacer(minLength: 8)
-            if let end {
+            if undelivered {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(Ink.red)
+            } else if let end {
                 Text(end)
                     .font(.footnote)
                     .foregroundStyle(Ink.secondary)

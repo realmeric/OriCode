@@ -3,7 +3,7 @@ import Foundation
 import Link
 
 /// Made-up Macs for screenshots of the screens in the simulator, which has no iCloud account to
-/// pair with: launched with `-Screens home`, `asleep`, `empty`, `asks` or `thread`.
+/// pair with: launched with `-Screens home`, `asleep`, `empty`, `asks`, `thread` or `reply`.
 enum Screens {
     static func cache(_ name: String) -> PhoneClient.Cache? {
         let oricode = ProjectInfo(id: UUID(), name: "OriCode", initials: "OE", color: 1, starts: true, order: 0)
@@ -48,6 +48,8 @@ enum Screens {
             return .init(mac: mac, projects: projects, threads: [], asks: [])
         case "thread":
             return .init(mac: mac, projects: projects, threads: threads, asks: [run])
+        case "reply":
+            return .init(mac: mac, projects: projects, threads: threads, asks: [])
         default:
             return nil
         }

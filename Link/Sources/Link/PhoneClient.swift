@@ -211,18 +211,35 @@ public final class PhoneClient {
     /// write as it; the Mac answers into the same record.
     @discardableResult
     public func send(_ action: Command.Action) -> String? {
+        guard let record = command(action) else { return nil }
+        write(saving: [record])
+        return record.recordID.recordName
+    }
+
+    /// The same, for a notification's button, which has the app only until the command is in
+    /// iCloud: it returns once it is, or once it couldn't be.
+    public func sendNow(_ action: Command.Action) async -> Bool {
+        guard let record = command(action), let sync else { return false }
+        do {
+            return try await sync.write(saving: [record], deleting: []).isEmpty
+        } catch {
+            return false
+        }
+    }
+
+    private func command(_ action: Command.Action) -> CKRecord? {
         guard let paired else { return nil }
         let name = "command-\(UUID().uuidString)"
         let record = CKRecord(recordType: RecordType.command, recordID: CKRecord.ID(recordName: name, zoneID: paired.zone))
         record.encryptedValues[Field.phone] = paired.phone
-        do {
-            try record.seal(Command(action), key: paired.pairing)
-        } catch {
-            return nil
-        }
+        guard (try? record.seal(Command(action), key: paired.pairing)) != nil else { return nil }
         sent[name] = Sent(id: name, action: action, state: .waiting, at: .now)
-        write(saving: [record])
-        return name
+        return record
+    }
+
+    /// The latest stop sent for a thread, while it matters.
+    public func stopSent(for thread: UUID) -> Sent? {
+        sent.values.filter { if case .stop(thread) = $0.action { true } else { false } }.max { $0.at < $1.at }
     }
 
     /// An undelivered command, sent again as a new one.

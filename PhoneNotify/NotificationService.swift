@@ -29,6 +29,9 @@ final class NotificationService: UNNotificationServiceExtension {
             content.threadIdentifier = nudge.thread.uuidString
             content.userInfo["thread"] = nudge.thread.uuidString
             content.userInfo["ask"] = nudge.ask
+            // What a question's buttons answer, so the app needn't read it again.
+            content.userInfo["question"] = nudge.body
+            for (index, option) in nudge.options.enumerated() { content.userInfo["option\(index)"] = option }
             content.categoryIdentifier = await Self.category(for: nudge)
             delivery.handler(content)
         }
