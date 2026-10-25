@@ -1,11 +1,31 @@
 import Link
+import os
 import SwiftUI
 import UIKit
+
+/// Launch to the list on screen, for Instruments: the interval starts as the app does and ends at
+/// home's first appearance, the cached list in it.
+@MainActor
+enum Launch {
+    static let signposter = OSSignposter(subsystem: "com.realmeric.oricode.phone", category: .pointsOfInterest)
+    static let state = signposter.beginInterval("launch")
+    static var shown = false
+
+    static func listShown() {
+        guard !shown else { return }
+        shown = true
+        signposter.endInterval("launch", state)
+    }
+}
 
 @main
 struct PhoneApp: App {
     @UIApplicationDelegateAdaptor private var delegate: PhoneDelegate
     @Environment(\.scenePhase) private var phase
+
+    init() {
+        _ = Launch.state
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -25,10 +45,15 @@ struct PhoneApp: App {
         }
     }
 
-    /// A script's pairing, for a phone build with no camera to scan with (PhoneLink+Test.swift).
+    /// A script's pairing, for a phone build with no camera to scan with (PhoneLink+Test.swift),
+    /// or a made-up Mac for screenshots (Screens.swift).
     private func pairForTestIfAsked() {
 #if DEBUG
         let arguments = CommandLine.arguments
+        if let at = arguments.firstIndex(of: "-Screens"), at + 1 < arguments.count, let cache = Screens.cache(arguments[at + 1]) {
+            delegate.store.showForScreenshots(cache)
+            return
+        }
         guard delegate.store.paired == nil, let at = arguments.firstIndex(of: "-PairCode"), at + 1 < arguments.count,
               let code = PairingCode(string: arguments[at + 1])
         else { return }
