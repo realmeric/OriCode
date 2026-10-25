@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.realmeric
   deploymentTarget:
     macOS: "26.0"
+    iOS: "26.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -12,6 +13,12 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
+    # The Debug build's name and bundle id, and the folder the engine is staged in, which make
+    # passes on: OriCode Molten in ~/Library/Developer/OriCode.noindex unless a branch's builds
+    # need their own, so two branches built at once never share a store or an engine.
+    ORICODE_DEBUG_NAME: OriCode Molten
+    ORICODE_DEBUG_ID: com.realmeric.oricode.molten
+    ORICODE_BUILD: $(HOME)/Library/Developer/OriCode.noindex
 packages:
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
@@ -32,6 +39,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.10.0
+  # What the Mac and the phone share (KANBAN-phone.md): records, sealing, pairing, commands.
+  Link:
+    path: Link
 # What OriCode and its measuring build share: the app's sources, packages, Info.plist and engine.
 targetTemplates:
   App:
@@ -48,6 +58,7 @@ targetTemplates:
       - package: Highlightr
       - package: SwiftTerm
       - package: Sparkle
+      - package: Link
     info:
       path: App/Info.plist
       properties:
@@ -87,10 +98,18 @@ targetTemplates:
       configs:
         # The build you work on is an app of its own, OriCode Molten, beside the OriCode you
         # work in: its own bundle id, folders and icon, so running it quits only it.
+        # Signed for development by Xcode, with a profile that lets it reach CloudKit's
+        # Development environment, which debug phone builds talk to (KANBAN-phone.md).
         Debug:
-          PRODUCT_NAME: OriCode Molten
-          PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.molten
-          INFOPLIST_KEY_CFBundleDisplayName: OriCode Molten
+          PRODUCT_NAME: $(ORICODE_DEBUG_NAME)
+          PRODUCT_BUNDLE_IDENTIFIER: $(ORICODE_DEBUG_ID)
+          INFOPLIST_KEY_CFBundleDisplayName: $(ORICODE_DEBUG_NAME)
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: Apple Development
+          DEVELOPMENT_TEAM: 422F85XX9Z
+          CODE_SIGN_ENTITLEMENTS: App/OriCode.entitlements
+          ORICODE_APS_ENVIRONMENT: development
+          ORICODE_CLOUDKIT_ENVIRONMENT: Development
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIconMolten
           # Molten has no feed, so it never updates itself into OriCode.
           ORICODE_FEED_URL: ""
@@ -106,19 +125,32 @@ targetTemplates:
       - name: Engine
         script: |
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          make -C "$SRCROOT" engine
+          make -C "$SRCROOT" engine BUILD="$ORICODE_BUILD"
         basedOnDependencyAnalysis: false
     postCompileScripts:
       - name: Bundle engine
         script: |
-          if [ -d "$HOME/Library/Developer/OriCode.noindex/engine" ]; then
+          if [ -d "$ORICODE_BUILD/engine" ]; then
             mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-            rsync -a --delete --exclude .stamp "$HOME/Library/Developer/OriCode.noindex/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
+            rsync -a --delete --exclude .stamp "$ORICODE_BUILD/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
           fi
         basedOnDependencyAnalysis: false
 targets:
   OriCode:
     templates: [App]
+    # Release reaches CloudKit's Production environment, which TestFlight and App Store phone
+    # builds talk to. It's archived signed for development, and scripts/export.sh signs it again
+    # with Developer ID and the Developer ID profile that allows these entitlements.
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_IDENTITY: Apple Development
+          DEVELOPMENT_TEAM: 422F85XX9Z
+          ENABLE_HARDENED_RUNTIME: YES
+          CODE_SIGN_ENTITLEMENTS: App/OriCode.entitlements
+          ORICODE_APS_ENVIRONMENT: production
+          ORICODE_CLOUDKIT_ENVIRONMENT: Production
   # OriCode with the bench in it (Perf/), for make perf: an app of its own beside the other two,
   # with its own bundle id, folders and store. PERF is what compiles its two hooks into the
   # app's sources; no other target sets it, so OriCode never carries the bench.
@@ -153,8 +185,123 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         BUNDLE_LOADER: $(TEST_HOST)
         # Tests run in Debug, which builds OriCode Molten.
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/OriCode Molten.app/Contents/MacOS/OriCode Molten
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/$(ORICODE_DEBUG_NAME).app/Contents/MacOS/$(ORICODE_DEBUG_NAME)
+  # OriCode on the phone (KANBAN-phone.md): a window onto the OriCode on the Mac, meeting it in
+  # CloudKit. Debug talks to CloudKit's Development environment, which Bridge does, and Release
+  # to Production, which the installed OriCode does.
+  OriCode Phone:
+    type: application
+    platform: iOS
+    sources:
+      - Phone
+    dependencies:
+      - package: Link
+      - target: OriCode Notify
+    info:
+      path: Phone/Info.plist
+      properties:
+        CFBundleDisplayName: OriCode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ""
+        UIUserInterfaceStyle: Dark
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [remote-notification]
+        NSCameraUsageDescription: To scan the pairing code on your Mac.
+        # The keychain group the app and its extension share, by its full name.
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_NAME: OriCodePhone
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.phone
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        CODE_SIGN_ENTITLEMENTS: Phone/OriCodePhone.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        # One executable, so a Debug build launched outside Xcode, on this Mac say, runs as it is.
+        ENABLE_DEBUG_DYLIB: NO
+      configs:
+        Debug:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Development
+        Release:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Production
+  # Opens a notification's sealed Nudge and writes its words on the phone.
+  OriCode Notify:
+    type: app-extension
+    platform: iOS
+    sources:
+      - PhoneNotify
+      - Phone/Shared
+    dependencies:
+      - package: Link
+    info:
+      path: PhoneNotify/Info.plist
+      properties:
+        CFBundleDisplayName: OriCode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_NAME: OriCodeNotify
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.phone.notify
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        CODE_SIGN_ENTITLEMENTS: PhoneNotify/OriCodeNotify.entitlements
+        ENABLE_DEBUG_DYLIB: NO
+      configs:
+        Debug:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Development
+        Release:
+          ORICODE_CLOUDKIT_ENVIRONMENT: Production
+  # The phone's client running headless on this Mac, for checking the link end to end from a
+  # script when no iPhone is at hand (Probe/main.swift). Debug only, never shipped.
+  OriCode Probe:
+    type: application
+    platform: macOS
+    sources:
+      - Probe
+    dependencies:
+      - package: Link
+    info:
+      path: Probe/Info.plist
+      properties:
+        LSUIElement: true
+    settings:
+      base:
+        PRODUCT_NAME: OriCode Probe
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.probe
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        CODE_SIGN_ENTITLEMENTS: Probe/Probe.entitlements
 schemes:
+  OriCode Probe:
+    build:
+      targets:
+        OriCode Probe: all
+  OriCode Phone:
+    build:
+      targets:
+        OriCode Phone: all
+    run:
+      config: Debug
   OriCode:
     build:
       targets:

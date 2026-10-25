@@ -234,7 +234,9 @@ enum Store {
         let folder = Build.support
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil { claim(folder) }
-        let configuration = ModelConfiguration(url: folder.appending(path: "OriCode.store"))
+        // Never synced: with the iCloud entitlement the phone needs, SwiftData would otherwise
+        // try to mirror the store to CloudKit, and refuse to open it.
+        let configuration = ModelConfiguration(url: folder.appending(path: "OriCode.store"), cloudKitDatabase: .none)
         do {
             return try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: configuration)
         } catch {

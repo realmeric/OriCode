@@ -5,16 +5,28 @@ export PATH := /opt/homebrew/bin:/usr/local/bin:$(PATH)
 # Spotlight out, or every build wakes mdworker and appstoreagent to scan the new apps.
 BUILD := $(HOME)/Library/Developer/OriCode.noindex
 DERIVED := $(BUILD)/DerivedData
-# The Debug build is OriCode Molten, which runs beside the installed OriCode.
-DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
-RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
+# The Debug build is OriCode Molten, which runs beside the installed OriCode. A branch built
+# beside main names its own, `make run DEBUG_NAME="OriCode Bridge" DEBUG_ID=com.realmeric.oricode.bridge
+# BUILD=~/Library/Developer/OriCode.noindex/phone`, so the two never share a store or an engine.
+DEBUG_NAME := OriCode Molten
+DEBUG_ID := com.realmeric.oricode.molten
+DEBUG_APP := $(DERIVED)/Build/Products/Debug/$(DEBUG_NAME).app
+XCODE := xcodebuild -project OriCode.xcodeproj -derivedDataPath $(DERIVED) -skipPackagePluginValidation -allowProvisioningUpdates -allowProvisioningDeviceRegistration ORICODE_DEBUG_NAME="$(DEBUG_NAME)" ORICODE_DEBUG_ID=$(DEBUG_ID) ORICODE_BUILD=$(BUILD)
+# Exported for Developer ID by scripts/export.sh.
+RELEASE_APP := $(BUILD)/export/OriCode.app
 # OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
 PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
 # Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
-.PHONY: run engine test app release project icon perf perf-quick perf-build
+.PHONY: run engine test app release project icon perf perf-quick perf-build phone phone-device phone-beta
+# The phone (KANBAN-phone.md). Debug talks to CloudKit's Development environment, as Bridge does;
+# CONFIG=Release talks to Production, as the installed OriCode does.
+CONFIG := Debug
+PHONE_SIM := OriCode iPhone 17
+PHONE_SIM_APP := $(DERIVED)/Build/Products/$(CONFIG)-iphonesimulator/OriCodePhone.app
+PHONE_DEVICE_APP := $(DERIVED)/Build/Products/$(CONFIG)-iphoneos/OriCodePhone.app
 
 # A SIGTERM quits OriCode the way ⌘Q does, marking the threads still working, which takes a
 # moment; `open` before it has gone would only bring the quitting app forward. Five seconds at most.
@@ -28,12 +40,30 @@ project:
 # A thread in Molten that ran it would quit the Molten it runs in and end its own turn, so from
 # there it builds and stops, saying so.
 run: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
-	@if scripts/under.sh "OriCode Molten"; then echo "Built, not opened: this runs inside OriCode Molten, which make run would quit, ending this thread. Check the change in the test host, as a card's live check does, or leave make run to the user." >&2; exit 2; fi
-	-pkill -x "OriCode Molten"; $(call gone,OriCode Molten)
+	$(XCODE) -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -quiet build
+	@if scripts/under.sh "$(DEBUG_NAME)"; then echo "Built, not opened: this runs inside $(DEBUG_NAME), which make run would quit, ending this thread. Check the change in the test host, as a card's live check does, or leave make run to the user." >&2; exit 2; fi
+	-pkill -x "$(DEBUG_NAME)"; $(call gone,$(DEBUG_NAME))
 	open "$(DEBUG_APP)"
 
 engine: $(BUILD)/engine/.stamp
+
+# Builds the phone for the simulator, an iPhone 17 made the first time, and opens it there.
+phone: project
+	xcrun simctl list devices | grep -q "$(PHONE_SIM) (" || xcrun simctl create "$(PHONE_SIM)" com.apple.CoreSimulator.SimDeviceType.iPhone-17
+	$(XCODE) -scheme "OriCode Phone" -configuration $(CONFIG) -destination "platform=iOS Simulator,name=$(PHONE_SIM)" -quiet build
+	-xcrun simctl boot "$(PHONE_SIM)"
+	xcrun simctl install "$(PHONE_SIM)" "$(PHONE_SIM_APP)"
+	xcrun simctl launch "$(PHONE_SIM)" com.realmeric.oricode.phone
+
+# Builds the phone for Meriç's iPhone, signed by Xcode, and installs it on the first iPhone
+# devicectl sees, connected or on the same network once paired with Xcode.
+phone-device: project
+	$(XCODE) -scheme "OriCode Phone" -configuration $(CONFIG) -destination generic/platform=iOS -quiet build
+	xcrun devicectl list devices -q -j $(BUILD)/devices.json
+	device=$$(python3 -c 'import json, sys; print(next((d["identifier"] for d in json.load(open(sys.argv[1]))["result"]["devices"] if d["hardwareProperties"].get("deviceType") == "iPhone" and d["hardwareProperties"].get("reality") == "physical"), ""))' $(BUILD)/devices.json); \
+	[ -n "$$device" ] || { echo "No iPhone: connect it, or pair it with Xcode in Window > Devices and Simulators." >&2; exit 1; }; \
+	xcrun devicectl device install app --device $$device "$(PHONE_DEVICE_APP)" && \
+	xcrun devicectl device process launch --device $$device com.realmeric.oricode.phone
 
 # Staged for the app: no dev tools, no platform binaries (the app runs the user's own claude),
 # no peer dependencies, which sdk.mjs never imports, and none of the SDK's files but sdk.mjs
@@ -52,17 +82,21 @@ $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 
 test: project engine
 	cd engine && node --test test/*.test.ts
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet test
+	swift test --package-path Link --scratch-path $(BUILD)/link -q
+	$(XCODE) -scheme OriCode -destination platform=macOS,arch=arm64 -quiet test
 
 # Signed as make release signs it, so what Meriç grants this build holds for the release's, and
 # not notarized, since it installs on this Mac alone.
 app: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
-	scripts/prune.sh $(RELEASE_APP)
-	scripts/sign.sh $(RELEASE_APP)
+	BUILD=$(BUILD) DERIVED=$(DERIVED) OUT=$(BUILD)/export scripts/export.sh $(BUILD_NUMBER)
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
+
+# The phone's Release build to App Store Connect for TestFlight (scripts/phone-beta.sh). Meriç runs
+# it, in Terminal, once the app's record is in App Store Connect.
+phone-beta: project
+	DERIVED=$(DERIVED) scripts/phone-beta.sh
 
 # The budget (rule 6). OriCode Perf is built as make app builds OriCode, with the bench in it, and
 # scripts/perf/perf.sh drives it in a window in front: every measure three times, the launch ten,
@@ -73,12 +107,12 @@ app: project
 # beside it, for its size on disk and to see the bench isn't in it. Not in make test: it needs
 # a window in front, a 60 Hz display and a Mac nobody is using.
 perf-build: project
-	xcodebuild -project OriCode.xcodeproj -scheme "OriCode Perf" -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	$(XCODE) -scheme "OriCode Perf" -configuration Release -destination platform=macOS,arch=arm64 -quiet build
 	scripts/prune.sh "$(PERF_APP)"
 	codesign --force --deep --sign - "$(PERF_APP)"
 
 perf: perf-build
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	$(XCODE) -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -quiet build
 	BUILD=$(BUILD) scripts/perf/perf.sh full
 
 # The parts a card can run while it works: keys, one stream, ⌘K and the early J, three runs each.
@@ -96,3 +130,4 @@ icon:
 	swiftc -O -o $(BUILD)/icon/render scripts/icon/main.swift App/RaysMark.swift
 	$(BUILD)/icon/render App/Assets.xcassets/AppIcon.appiconset
 	$(BUILD)/icon/render App/Assets.xcassets/AppIconMolten.appiconset molten
+	$(BUILD)/icon/render Phone/Assets.xcassets/AppIcon.appiconset phone

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # scripts/dmg.sh <app> <dmg>: the disk image a download opens, OriCode beside a link to
 # Applications over dmg/background.tiff, laid out by dmg/settings.py, and signed as
-# scripts/sign.sh signs the app. make release notarizes and staples it after. dmgbuild runs from
+# scripts/export.sh signs the app. make release notarizes and staples it after. dmgbuild runs from
 # a venv of its own in ~/Library/Developer/OriCode.noindex/dmgbuild, made here the first time.
 set -euo pipefail
 app=${1:A}

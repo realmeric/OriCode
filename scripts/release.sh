@@ -12,7 +12,7 @@ tag="v$version"
 # Numbered by the commits on main, which only goes up, so Sparkle can tell which build is newer.
 build=$(git rev-list --count HEAD)
 derived="$HOME/Library/Developer/OriCode.noindex/DerivedData"
-app="$derived/Build/Products/Release/OriCode.app"
+app="$HOME/Library/Developer/OriCode.noindex/export/OriCode.app"
 sparkle="$derived/SourcePackages/artifacts/sparkle/Sparkle/bin"
 out="$HOME/Library/Developer/OriCode.noindex/release"
 zip="$out/OriCode-$version.zip"
@@ -35,10 +35,7 @@ heading=$(awk -v h="## $tag " 'index($0, h) == 1 { sub(/^## /, ""); print; exit 
 notes=$(awk -v h="## $tag " 'index($0, h) == 1 { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md | sed '/./,$!d')
 [[ -n "$heading" && -n "$notes" ]] || fail "CHANGELOG.md has no entry for $tag."
 
-xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 \
-  -derivedDataPath "$derived" -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION="$build" build
-scripts/prune.sh "$app"
-scripts/sign.sh "$app"
+DERIVED="$derived" scripts/export.sh "$build"
 scripts/notarize.sh "$app"
 rm -rf "$out" && mkdir -p "$out"
 ditto -c -k --keepParent "$app" "$zip"

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# scripts/notarize.sh <app or dmg>: sends a build scripts/sign.sh signed with Developer ID, or
+# scripts/notarize.sh <app or dmg>: sends a build scripts/export.sh signed with Developer ID, or
 # the disk image scripts/dmg.sh made of it, to Apple's notary service through notarytool's
 # keychain profile OriCode, waits for it, and staples the ticket to it, so it opens without
 # Gatekeeper's warning even offline. make release runs it on the app before zipping for Sparkle,

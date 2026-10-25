@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var markCutOffTurns: (() -> Void)?
     /// Takes down the sheets SwiftUI puts up, which it would put back if AppKit ended them alone.
     var dismissSheets: (() -> Void)?
+    /// Tells a paired phone OriCode closed.
+    var closePhone: (() -> Void)?
+    /// A silent push from CloudKit: the phone wrote.
+    var phonePushed: (([String: Any]) -> Void)?
     private var early: [URL] = []
     private var terminationSignal: DispatchSourceSignal?
     private var quittingOnSignal = false
@@ -65,7 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // started with it.
     func applicationWillTerminate(_ notification: Notification) {
         markCutOffTurns?()
+        closePhone?()
         endCommands?()
+    }
+
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        phonePushed?(userInfo)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
