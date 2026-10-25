@@ -88,7 +88,7 @@ test: project engine
 # Signed as make release signs it, so what Meriç grants this build holds for the release's, and
 # not notarized, since it installs on this Mac alone.
 app: project
-	DERIVED=$(DERIVED) OUT=$(BUILD)/export scripts/export.sh $(BUILD_NUMBER)
+	BUILD=$(BUILD) DERIVED=$(DERIVED) OUT=$(BUILD)/export scripts/export.sh $(BUILD_NUMBER)
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app

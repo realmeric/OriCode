@@ -6,13 +6,14 @@
 # makes or renews that profile itself, from the team signed into it. Prints the app's path.
 set -euo pipefail
 cd "${0:A:h}/.."
-derived=${DERIVED:-$HOME/Library/Developer/OriCode.noindex/DerivedData}
+build=${BUILD:-$HOME/Library/Developer/OriCode.noindex}
+derived=${DERIVED:-$build/DerivedData}
 out=${OUT:-$HOME/Library/Developer/OriCode.noindex/export}
 archive=$out/OriCode.xcarchive
 
 rm -rf "$out"
 xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination generic/platform=macOS \
-  -derivedDataPath "$derived" -skipPackagePluginValidation -allowProvisioningUpdates -quiet \
+  -derivedDataPath "$derived" -skipPackagePluginValidation -allowProvisioningUpdates -quiet ORICODE_BUILD="$build" \
   CURRENT_PROJECT_VERSION="$1" archive -archivePath "$archive"
 scripts/prune.sh "$archive/Products/Applications/OriCode.app"
 xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist scripts/developer-id.plist \
