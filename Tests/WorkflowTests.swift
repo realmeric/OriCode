@@ -149,10 +149,11 @@ struct WorkflowTests {
         func agent(_ state: String) -> WorkflowRun.Agent {
             WorkflowRun(["agents": [["label": "a", "phase": "P", "state": .string(state)]]]).agents[0]
         }
-        // 03 at 1180pt: Review's two at work share what Fix's and Verify's labels leave, 400pt a card at most.
+        // 03 at 1180pt: Review's two at work take what Fix's and Verify's labels leave, so the stage
+        // spans the window.
         let wide = StageLayout(groups: [("Review", [agent("running"), agent("running")]), ("Fix", []), ("Verify", [])], width: 1116, narrow: false)
         #expect(wide.phases.map(\.state) == [.live, .ahead, .ahead])
-        #expect(wide.phases[0].width == 810 && wide.phases[0].sideBySide)
+        #expect(wide.widths.reduce(0, +) == 1116 && wide.phases[0].width > 810 && wide.phases[0].sideBySide)
         #expect(wide.phases[1].width < 40 && wide.phases[2].width < 60)
         // 12 at 720pt: still side by side, each over 240pt.
         let narrow = StageLayout(groups: [("Review", [agent("running"), agent("running")]), ("Fix", []), ("Verify", [])], width: 680, narrow: false)
@@ -191,7 +192,8 @@ struct WorkflowTests {
         let reopened = StageLayout.fitted(groups: groups, width: 1116, narrow: false, equal: true, wide: [], wells: [:])
         #expect(reopened.phases.map(\.width) == Array(repeating: (1116 - 68) / 3, count: 3))
         #expect(!reopened.phases[0].sideBySide)
-        #expect(StageLayout(groups: groups, width: 1116, narrow: false).phases.map(\.width) == [250, 250, 250])
+        // Finished while it's up, they spread over the width too, 250pt each at least.
+        #expect(StageLayout(groups: groups, width: 1116, narrow: false).phases.map(\.width) == Array(repeating: (1116 - 68) / 3, count: 3))
         // At 720pt three finished phases don't fit at 250pt: they share the width before any goes
         // to its head rows, which would lose every result line.
         let over = StageLayout.fitted(groups: groups, width: 680, narrow: false, wide: [], wells: [:])
