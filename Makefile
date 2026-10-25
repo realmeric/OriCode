@@ -20,7 +20,7 @@ PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
 BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 ENGINE_SOURCES := $(wildcard engine/*.ts engine/package.json engine/package-lock.json)
 
-.PHONY: run engine test app release project icon perf perf-quick perf-build phone phone-device
+.PHONY: run engine test app release project icon perf perf-quick perf-build phone phone-device phone-beta
 # The phone (KANBAN-phone.md). Debug talks to CloudKit's Development environment, as Bridge does;
 # CONFIG=Release talks to Production, as the installed OriCode does.
 CONFIG := Debug
@@ -92,6 +92,11 @@ app: project
 	-pkill -x OriCode; $(call gone,OriCode)
 	rm -rf /Applications/OriCode.app
 	cp -R $(RELEASE_APP) /Applications/OriCode.app
+
+# The phone's Release build to App Store Connect for TestFlight (scripts/phone-beta.sh). Meriç runs
+# it, in Terminal, once the app's record is in App Store Connect.
+phone-beta: project
+	DERIVED=$(DERIVED) scripts/phone-beta.sh
 
 # The budget (rule 6). OriCode Perf is built as make app builds OriCode, with the bench in it, and
 # scripts/perf/perf.sh drives it in a window in front: every measure three times, the launch ten,

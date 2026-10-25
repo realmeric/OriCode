@@ -276,7 +276,9 @@ public final class PhoneClient {
         Task {
             do {
                 try await sync.subscribeToNudges()
+                Self.logger.notice("subscribed to nudges")
             } catch {
+                Self.logger.notice("couldn't subscribe to nudges yet: \(error.localizedDescription, privacy: .public)")
                 nudgesAsked = false
             }
         }
