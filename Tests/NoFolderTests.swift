@@ -134,7 +134,9 @@ struct NoFolderTests {
         #expect(model.project == nil && model.chat == nil)
         #expect(model.send("What's using the disk on this Mac?"))
         let project = try #require(model.project)
-        let chat = try #require(model.chat)
+        // Sent from home, it stays on home: the thread is its newest capsule.
+        #expect(model.chat == nil)
+        let chat = try #require(model.homeCapsules.first)
         #expect(project.isNoFolder && model.projects.count == 1)
         #expect(chat.project?.id == project.id && chat.started && chat.cwd == folder)
         #expect(chat.title == "What's using the disk on this Mac?")
@@ -187,18 +189,21 @@ struct NoFolderTests {
         let draft = try #require(model.chat)
         draft.started = true
         model.save()
+        // ⌘N is home, which starts a thread in No folder's folder, never on a branch.
         model.openNewThread()
-        let next = try #require(model.chat)
+        #expect(model.chat == nil && model.project?.isNoFolder == true)
+        #expect(model.send("Next"))
+        let next = try #require(model.homeCapsules.first)
         #expect(next.id != draft.id && next.project?.isNoFolder == true && next.worktreeBranch == nil && next.cwd == folder)
         model.openOtherThread()
-        #expect(model.chat?.id == next.id)
+        #expect(model.chat == nil)
     }
 
     @Test func aFolderRemovedByHandIsBackWhenATurnStarts() throws {
         defer { clean() }
         let model = model()
         #expect(model.send("First"))
-        let chat = try #require(model.chat)
+        let chat = try #require(model.homeCapsules.first)
         try FileManager.default.removeItem(atPath: folder)
         #expect(!FileManager.default.fileExists(atPath: folder))
 
@@ -269,7 +274,10 @@ struct NoFolderTests {
         defaults.set(NewThreads.worktree, forKey: NewThreads.workspace)
         model.runPaletteCommand("thread.new")
         #expect(model.note == nil)
-        let draft = try #require(model.chat)
-        #expect(model.project?.isNoFolder == true && draft.cwd == folder && !draft.started && model.inNoFolder)
+        // It's home, and with no project, what's sent there starts a thread in No folder.
+        #expect(model.chat == nil)
+        #expect(model.send("Read the report"))
+        let started = try #require(model.homeCapsules.first)
+        #expect(started.project?.isNoFolder == true && started.cwd == folder)
     }
 }

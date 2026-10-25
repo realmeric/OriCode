@@ -15,6 +15,8 @@ struct RootView: View {
                 // so the composer doesn't move for the moment it takes, and a thread with messages
                 // never shows the empty state.
                 let started = conversation?.started == true || model.chat?.started == true
+                // With no thread open, today's work on home, the composer under it at the bottom.
+                let home = model.chat == nil && !model.homeCapsules.isEmpty
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
                 let pinned = model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0
                 // Two threads take equal halves when each gets a column's least width. Under that
@@ -91,6 +93,10 @@ struct RootView: View {
                             if covered { Color.clear.contentShape(.rect) }
                         }
                         .transition(.asymmetric(insertion: Self.rise, removal: Self.leave))
+                    } else if home {
+                        HomeBoard()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.opacity)
                     } else {
                         Spacer(minLength: 0)
                         EmptyStateView(
@@ -144,7 +150,7 @@ struct RootView: View {
                     // Under the half with the keyboard at once: nothing crosses with it.
                     .padding(right ? .leading : .trailing, beside == nil ? 0 : half)
                     .animation(Motion.glide, value: beside == nil)
-                    if !started {
+                    if !started && !home {
                         // Equal room under the composer and its notes and over the mark, and the
                         // mark's own height again, so it's the composer that sits in the middle.
                         Spacer(minLength: 0)

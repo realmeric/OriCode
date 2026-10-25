@@ -93,6 +93,11 @@ extension AppModel {
             answer(ask, allow: false, message: ask.kind == "question" ? AskCard.skipMessage : nil)
             return true
         }
+        // Last, the open thread gives the window back to home; a pair is put away by its cross.
+        if chat != nil, besideChatID == nil {
+            goHome()
+            return true
+        }
         return false
     }
 

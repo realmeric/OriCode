@@ -254,7 +254,7 @@ extension AppModel {
     func openThreadWithoutFolder() {
         selectedProjectID = noFolderProject().id
         drawerProjectID = selectedProjectID
-        openLocalThread()
+        openLocalThread(home: false)
     }
 
     func select(_ project: Project) {
@@ -346,8 +346,13 @@ extension AppModel {
 
     /// A thread in the project's folder: the project's draft when it has one, so pressing it again and again
     /// doesn't pile up empty threads.
-    func openLocalThread() {
-        if let draft = project?.chats.first(where: { !$0.started }) {
+    /// ⌘N: home, with the keyboard in its composer. What's sent there starts the thread and stays
+    /// on home (Meriç, 2026-10-25: "cmd n ile bir şey yazdım o thread'e attı, home'da kalmalı").
+    /// `home: false` opens the project's draft instead, for New Thread Without a Folder.
+    func openLocalThread(home: Bool = true) {
+        if home {
+            selectedChatID = nil
+        } else if let draft = project?.chats.first(where: { !$0.started }) {
             selectedChatID = draft.id
         } else {
             newChat()
@@ -359,7 +364,8 @@ extension AppModel {
     /// most: an older one is empty, and goes. With no project open it's a thread without a
     /// folder, so the first message needs no folder picked.
     @discardableResult
-    func newChat() -> Chat? {
+    /// `open` puts the thread on the glass; a send from home starts one and stays on home.
+    func newChat(open: Bool = true) -> Chat? {
         // What's in the composer where no thread has begun, with none open or in the draft this
         // one takes the place of, is for the thread it starts: text typed, a picture dropped or
         // a prompt opened before the first message, or before a model pick, stays in the field.
@@ -385,7 +391,7 @@ extension AppModel {
         context.insert(chat)
         save()
         if let typed { composers[chat.id] = typed }
-        selectedChatID = chat.id
+        if open { selectedChatID = chat.id }
         return chat
     }
 
