@@ -197,6 +197,8 @@ final class AppModel {
     var modeNote: String?
     let engine = Engine()
     let notifier = Notifier()
+    /// The phone's link, idle unless the phone is on and paired (KANBAN-phone.md).
+    let phone = PhoneLink()
     /// The build's Application Support folder, which the No folder project's own folder is in.
     @ObservationIgnored var support = Build.support
     let context: ModelContext
@@ -607,6 +609,7 @@ final class AppModel {
         carryUltracode()
         if let selectedChatID { openRead = loadConversation(selectedChatID) }
         restorePair()
+        phone.model = self
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         stage.steppedMoved = { [weak self] left in self?.steppedMoved(left: left) }
         notifier.openAsk = { [weak self] id, ask in self?.showAsk(ask, holder: id) }
@@ -762,6 +765,10 @@ final class AppModel {
         installActionKeys()
         Task { await listen() }
         await startEngine()
+        phone.resume()
+#if DEBUG
+        phone.pairForTestIfAsked()
+#endif
     }
 
     /// Claude Code's titles for the threads that still go by their first message, asked for once

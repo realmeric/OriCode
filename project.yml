@@ -210,6 +210,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [remote-notification]
         NSCameraUsageDescription: To scan the pairing code on your Mac.
+        # The keychain group the app and its extension share, by its full name.
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
@@ -224,6 +226,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Phone/OriCodePhone.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        # One executable, so a Debug build launched outside Xcode, on this Mac say, runs as it is.
+        ENABLE_DEBUG_DYLIB: NO
       configs:
         Debug:
           ORICODE_CLOUDKIT_ENVIRONMENT: Development
@@ -243,6 +247,7 @@ targets:
         CFBundleDisplayName: OriCode
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AppIdentifierPrefix: $(AppIdentifierPrefix)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
@@ -257,12 +262,39 @@ targets:
         CODE_SIGN_IDENTITY: Apple Development
         DEVELOPMENT_TEAM: 422F85XX9Z
         CODE_SIGN_ENTITLEMENTS: PhoneNotify/OriCodeNotify.entitlements
+        ENABLE_DEBUG_DYLIB: NO
       configs:
         Debug:
           ORICODE_CLOUDKIT_ENVIRONMENT: Development
         Release:
           ORICODE_CLOUDKIT_ENVIRONMENT: Production
+  # The phone's client running headless on this Mac, for checking the link end to end from a
+  # script when no iPhone is at hand (Probe/main.swift). Debug only, never shipped.
+  OriCode Probe:
+    type: application
+    platform: macOS
+    sources:
+      - Probe
+    dependencies:
+      - package: Link
+    info:
+      path: Probe/Info.plist
+      properties:
+        LSUIElement: true
+    settings:
+      base:
+        PRODUCT_NAME: OriCode Probe
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.probe
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        CODE_SIGN_ENTITLEMENTS: Probe/Probe.entitlements
 schemes:
+  OriCode Probe:
+    build:
+      targets:
+        OriCode Probe: all
   OriCode Phone:
     build:
       targets:
