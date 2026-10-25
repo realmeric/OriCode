@@ -185,6 +185,8 @@ final class AppModel {
     var modeNote: String?
     let engine = Engine()
     let notifier = Notifier()
+    /// The phone's link, idle unless the phone is on and paired (KANBAN-phone.md).
+    let phone = PhoneLink()
     /// The build's Application Support folder, which the No folder project's own folder is in.
     @ObservationIgnored var support = Build.support
     let context: ModelContext
@@ -537,6 +539,7 @@ final class AppModel {
         carryUltracode()
         if let selectedChatID { openRead = loadConversation(selectedChatID) }
         restorePair()
+        phone.model = self
         notifier.open = { [weak self] id in self?.open(chatID: id) }
         colourProjects()
         startingSeen = startingValues
@@ -645,6 +648,10 @@ final class AppModel {
         installActionKeys()
         Task { await listen() }
         await startEngine()
+        phone.resume()
+#if DEBUG
+        phone.pairForTestIfAsked()
+#endif
     }
 
     func startEngine() async {

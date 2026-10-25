@@ -50,6 +50,7 @@ struct SettingsView: View {
                         case .archive: ArchivePane()
                         case .activity: ActivityPane()
                         case .notifications: NotificationsPane()
+                        case .phone: PhonePane()
                         case .actions: ActionsPane()
                         case .shortcuts: ShortcutsPane()
                         case .about: AboutPane()
@@ -83,7 +84,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, agents, mcp, conversation, sourceControl, archive, activity, notifications, actions, shortcuts, about
+    case general, agents, mcp, conversation, sourceControl, archive, activity, notifications, phone, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -99,6 +100,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .archive: "Archive"
         case .activity: "Activity"
         case .notifications: "Notifications"
+        case .phone: "Phone"
         case .actions: "Actions"
         case .shortcuts: "Shortcuts"
         case .about: "About"
@@ -115,6 +117,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .archive: "archivebox"
         case .activity: "chart.bar"
         case .notifications: "bell"
+        case .phone: "iphone"
         case .actions: "bolt"
         case .shortcuts: "command"
         case .about: "info.circle"
@@ -132,6 +135,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .archive: ["archived", "threads", "restore", "delete"]
         case .sourceControl: ["git", "branch", "prefix", "worktree", "commit"]
         case .notifications: ["notify", "notification", "dock", "badge", "finished", "waiting"]
+        case .phone: ["phone", "iphone", "pair", "unpair", "icloud", "mobile", "remote", "away"]
         case .actions: ["action", "custom", "command", "script", "placeholder", "terminal", "stash", "branch", "pull request", "tests"]
         case .shortcuts: ["keyboard", "shortcut", "keys"] + ShortcutList.groups().flatMap { $0.rows.map(\.title) }
         case .about: ["version", "source", "oricode"]

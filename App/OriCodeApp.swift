@@ -32,6 +32,8 @@ struct OriCodeApp: App {
                     delegate.runningCommands = { [model] in model.runningCommands }
                     delegate.endCommands = { [model] in model.endShells() }
                     delegate.markCutOffTurns = { [model] in model.markCutOffTurns() }
+                    delegate.closePhone = { [model] in model.phone.closing(as: .closed) }
+                    delegate.phonePushed = { [model] info in model.phone.pushed(info) }
                     updates.say = { [model] line in model.say(line) }
                     // SwiftUI gives the window's first focus to the thread list as it shows the
                     // window, after the composer has taken the keyboard, so it's handed back.
