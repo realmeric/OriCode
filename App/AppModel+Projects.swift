@@ -42,15 +42,23 @@ extension AppModel {
         }
     }
 
-    /// Each started thread not archived, by the top thread it sits under: itself when no such
-    /// thread opened it, else its opener's top.
+    /// Each started thread not archived, by the top thread it sits under: itself unless it's part
+    /// of another thread's work, else that thread's top.
     var topThreads: [UUID: UUID] {
-        Self.tops(of: projects.flatMap(\.chats).filter { $0.started && !$0.archived })
+        Self.tops(of: projects.flatMap(\.chats).filter { $0.started && !$0.archived }, work: workThreads)
+    }
+
+    /// The threads that are a piece of another's work and have no row of their own: a workflow's
+    /// agents, subagents, workers and the threads a plan runs. A thread an agent opened with
+    /// open_thread is a thread like the user's own and keeps its row: Meriç asked for one on
+    /// 2026-10-25 and couldn't find it in the drawer.
+    private var workThreads: Set<UUID> {
+        Set(projects.flatMap(\.chats).filter { $0.agentID != nil }.map(\.id) + projects.flatMap(\.tasks).compactMap(\.thread))
     }
 
     /// `topThreads` of threads already gathered, which the drawer's list has in hand.
-    private static func tops(of threads: [Chat]) -> [UUID: UUID] {
-        let openers = Dictionary(threads.map { ($0.id, $0.openedBy) }, uniquingKeysWith: { first, _ in first })
+    private static func tops(of threads: [Chat], work: Set<UUID>) -> [UUID: UUID] {
+        let openers = Dictionary(threads.map { ($0.id, work.contains($0.id) ? $0.openedBy : nil) }, uniquingKeysWith: { first, _ in first })
         var tops: [UUID: UUID] = [:]
         for id in openers.keys {
             var top = id
@@ -68,7 +76,7 @@ extension AppModel {
         // A thread archived with the one that opened it comes back with it, so it has no row.
         guard drawerFilter != .archived else { return archivedChats.filter { $0.archivedWith == nil } }
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
-        let tops = Self.tops(of: all)
+        let tops = Self.tops(of: all, work: workThreads)
         let top = all.filter { tops[$0.id] == $0.id }
         switch drawerFilter {
         case .project(let id): return top.filter { $0.project?.id == id }

@@ -94,10 +94,10 @@ struct OpenedThreadsTests {
         }
         #expect(text == "Rename sum.txt to total.txt." && !midTurn)
         #expect(conversation.running)
-        // Under its parent from its first message, with no row of its own in the drawer, and the
-        // parent stays the thread on screen.
-        #expect(model.chats.map(\.id) == [parent.id])
-        #expect(model.topThreads[chat.id] == parent.id)
+        // A row of its own in the drawer from its first message, like a thread the user opened,
+        // and the parent stays the thread on screen.
+        #expect(Set(model.chats.map(\.id)) == [parent.id, chat.id])
+        #expect(model.topThreads[chat.id] == chat.id)
         #expect(model.selectedChatID == parent.id)
         // The tool's answer names it.
         #expect(AppModel.made(chat, on: .claude) == ["thread": "Rename sum.txt", "id": .string(chat.id.uuidString), "agent": "claude", "mode": "acceptEdits", "folder": "/tmp/alpha", "model": "opus"])

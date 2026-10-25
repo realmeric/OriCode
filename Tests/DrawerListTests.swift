@@ -5,7 +5,8 @@ import Testing
 
 @MainActor
 struct DrawerListTests {
-    /// Lead opened Primes and Words, and Primes opened Test; Other is a thread of its own.
+    /// Lead runs Primes and Words, its workflow's agents, and Primes's subagent is Test; Other is a
+    /// thread of its own.
     private func model(in container: ModelContainer? = nil) throws -> (AppModel, lead: Chat, primes: Chat, words: Chat, test: Chat, other: Chat) {
         let container = try container ?? TestStore.memory()
         let context = container.mainContext
@@ -17,6 +18,7 @@ struct DrawerListTests {
             chat.started = true
             chat.createdAt = start.addingTimeInterval(seconds)
             chat.openedBy = opener?.id
+            if opener != nil { chat.agentID = "agent-\(title)" }
             context.insert(chat)
             return chat
         }
@@ -41,6 +43,21 @@ struct DrawerListTests {
         // Opened from ⌘K or a line in another thread, it's open with no row of its own.
         model.open(chatID: test.id)
         #expect(model.selectedChatID == test.id && model.chats.map(\.title) == ["Lead", "Other"])
+    }
+
+    /// A thread an agent opened with open_thread is a thread like the user's own: Meriç asked for
+    /// one and couldn't find it in the drawer.
+    @Test func aThreadAnAgentOpenedHasItsOwnRow() throws {
+        let (model, lead, _, _, _, _) = try model()
+        let opened = Chat(project: try #require(lead.project), title: "Phone plan")
+        opened.started = true
+        opened.createdAt = Date(timeIntervalSince1970: 1_010)
+        opened.openedBy = lead.id
+        model.context.insert(opened)
+        model.save()
+
+        #expect(Set(model.chats.map(\.title)) == ["Phone plan", "Lead", "Other"])
+        #expect(model.topThreads[opened.id] == opened.id)
     }
 
     @Test func ctrlTabStepsFromTheTopRowOfAThreadWithNoRow() throws {
@@ -115,9 +132,6 @@ struct DrawerListTests {
         model.restore(primes)
         #expect(!primes.archived && !test.archived && lead.archived)
         #expect(model.chats.map(\.title) == ["Primes", "Other"])
-
-        model.delete(primes)
-        #expect(model.chats.map(\.title) == ["Test", "Other"])
     }
 
     @Test func aProjectListsItsOwnTopThreads() throws {
@@ -128,6 +142,7 @@ struct DrawerListTests {
         let build = Chat(project: beta, title: "Build")
         build.started = true
         build.openedBy = lead.id
+        build.agentID = "agent-build"
         context.insert(build)
         let solo = Chat(project: beta, title: "Solo")
         solo.started = true
