@@ -189,6 +189,10 @@ struct RaysTests {
     }
 
     @Test func aHeadThatChoosesIsSentEveryModelTheMenuShowsLessTheOnesKeptOffWithTheBudget() {
+        // Heads choose is off unless turned on, since 0.5.0.
+        let chose = UserDefaults.standard.object(forKey: Rays.chooseKey)
+        UserDefaults.standard.set(true, forKey: Rays.chooseKey)
+        defer { UserDefaults.standard.set(chose, forKey: Rays.chooseKey) }
         model.models = [Self.option("opus", "Opus"), Self.option("sonnet", "Sonnet")]
         model.modelsByAgent["codex"] = [Self.option("gpt-6-luna", "GPT-6-Luna")]
         chat.model = "opus"

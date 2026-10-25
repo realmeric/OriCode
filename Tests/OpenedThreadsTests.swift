@@ -463,6 +463,10 @@ struct OpenedThreadsTests {
 
     @Test func aHeadThatChoosesOpensNoThreadOnAModelHeadsKeepOff() throws {
         let (model, parent) = try model()
+        // Heads choose is off unless turned on, since 0.5.0.
+        let chose = UserDefaults.standard.object(forKey: Rays.chooseKey)
+        UserDefaults.standard.set(true, forKey: Rays.chooseKey)
+        defer { UserDefaults.standard.set(chose, forKey: Rays.chooseKey) }
         model.headsKeepOff = ["claude/haiku", "codex/gpt-large"]
         defer { model.headsKeepOff = [] }
         #expect(refusal(model, request(parent) { $0.model = "haiku" }) == "The user keeps heads off haiku in Settings › Agents. Claude Code has: opus.")

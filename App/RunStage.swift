@@ -1392,7 +1392,8 @@ struct StageCue: View {
 
     var body: some View {
         Color.clear.onChange(of: heads.liveWorkflow?.call, initial: true) { _, run in
-            if let run { model.stage.cue(run, in: thread, grow: following) }
+            // The stage grows by itself only in the preview; its line still opens it on a click.
+            if let run { model.stage.cue(run, in: thread, grow: following && AppModel.preview) }
         }
     }
 }

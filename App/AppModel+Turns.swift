@@ -80,7 +80,7 @@ extension AppModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let composer = composer(for: thread ?? chat)
         let images = composer.attachments
-        guard !trimmed.isEmpty || !images.isEmpty, !tooLong(trimmed, for: thread ?? chat), let chat = thread ?? chat ?? newChat(open: false) else { return false }
+        guard !trimmed.isEmpty || !images.isEmpty, !tooLong(trimmed, for: thread ?? chat), let chat = thread ?? chat ?? newChat(open: !Self.preview) else { return false }
         let conversation = conversation(for: chat)
         // Waiting on you from before a quit, the thread has no CLI to send into.
         guard !conversation.waitingAfterQuit else { return false }

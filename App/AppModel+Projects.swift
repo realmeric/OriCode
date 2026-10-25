@@ -350,7 +350,7 @@ extension AppModel {
     /// on home (Meriç, 2026-10-25: "cmd n ile bir şey yazdım o thread'e attı, home'da kalmalı").
     /// `home: false` opens the project's draft instead, for New Thread Without a Folder.
     func openLocalThread(home: Bool = true) {
-        if home {
+        if home && Self.preview {
             selectedChatID = nil
         } else if let draft = project?.chats.first(where: { !$0.started }) {
             selectedChatID = draft.id

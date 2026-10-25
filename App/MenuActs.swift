@@ -246,10 +246,10 @@ struct MenuSetting {
 
     static let all: [MenuSetting] = [
         MenuSetting(name: "heads_may_start_workers", key: Rays.allowKey, kind: .toggle(true)),
-        MenuSetting(name: "heads_choose", key: Rays.chooseKey, kind: .toggle(true)),
+        MenuSetting(name: "heads_choose", key: Rays.chooseKey, kind: .toggle(false)),
         MenuSetting(name: "spend_per_thread", key: Rays.budgetKey, kind: .number(0, 0...(Rays.budgets.max() ?? 0))),
         MenuSetting(name: "threads_working_at_once", key: AppModel.ceilingKey, kind: .whole(AppModel.defaultCeiling, 1...20)),
-        MenuSetting(name: "threads_answer_first", key: AppModel.openersAnswerKey, kind: .toggle(true)),
+        MenuSetting(name: "threads_answer_first", key: AppModel.openersAnswerKey, kind: .toggle(false)),
         MenuSetting(name: "show_thinking", key: TranscriptSettings.showThinking, kind: .toggle(true)),
         MenuSetting(name: "concise_replies", key: TranscriptSettings.concise, kind: .toggle(false)),
         MenuSetting(name: "how_long_it_took", key: TranscriptSettings.showTime, kind: .toggle(false)),

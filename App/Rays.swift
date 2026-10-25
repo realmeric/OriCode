@@ -22,7 +22,7 @@ enum Rays {
     static let budgets: [Double] = [0, 0.5, 1, 2, 5, 10, 20]
 
     static var choose: Bool {
-        allowed && UserDefaults.standard.object(forKey: chooseKey) as? Bool ?? true
+        allowed && UserDefaults.standard.object(forKey: chooseKey) as? Bool ?? false
     }
 
     static var budget: Double {

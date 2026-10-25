@@ -309,9 +309,16 @@ private struct GeneralPane: View {
     @AppStorage("lastEffort") private var lastEffort = ""
     @AppStorage("lastFast") private var lastFast = false
     @AppStorage("lastPermissionMode") private var lastMode = "default"
+    @AppStorage(AppModel.previewKey) private var preview = false
 
     var body: some View {
         PaneTitle(text: "General")
+        SectionHeading("Preview")
+        SettingsCard {
+            SettingsRow(title: "Home and the stage", detail: "With no thread open, today's work as capsules over the composer, and a workflow's agents on a stage while it runs. Still taking shape.") {
+                Toggle("Home and the stage", isOn: $preview).labelsHidden().toggleStyle(.switch)
+            }
+        }
         SectionHeading("Window")
         SettingsCard {
             SliderRow(title: "Glass", detail: "At System it's your Mac's own Liquid Glass. Slide right to darken it.",

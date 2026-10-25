@@ -241,6 +241,11 @@ private struct HomePhases: View {
 }
 
 extension AppModel {
+    /// Home and the stage are a preview in 0.5.0, off unless turned on in Settings › General
+    /// (Meriç, 2026-10-25: 0.5.0 ships what's certain; these go on in 0.6.0).
+    nonisolated static let previewKey = "previewHome"
+    nonisolated static var preview: Bool { UserDefaults.standard.bool(forKey: previewKey) }
+
     /// The threads home shows: every project's top threads at work, or worked on today, a
     /// project's together, the project with the newest first and its newest first (Meriç,
     /// 2026-10-25: "yeni threadler her zaman üstte olmalı", "aynı proje threadleri yan yana").

@@ -94,7 +94,7 @@ extension AppModel {
             return true
         }
         // Last, the open thread gives the window back to home; a pair is put away by its cross.
-        if chat != nil, besideChatID == nil {
+        if Self.preview, chat != nil, besideChatID == nil {
             goHome()
             return true
         }

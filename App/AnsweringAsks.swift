@@ -12,7 +12,7 @@ extension AppModel {
     nonisolated static let openersAnswerKey = "openersAnswer"
 
     static var openersAnswer: Bool {
-        UserDefaults.standard.object(forKey: openersAnswerKey) as? Bool ?? true
+        UserDefaults.standard.object(forKey: openersAnswerKey) as? Bool ?? false
     }
 
     /// The thread that answers an ask of `chat`'s before the user: the one that set its turn going,

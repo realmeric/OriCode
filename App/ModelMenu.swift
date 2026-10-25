@@ -52,7 +52,7 @@ struct ModelMenu: View {
     @State private var hovering = false
     /// Settings › Agents' switches, read here so the button follows them as they change.
     @AppStorage(Rays.allowKey) private var workersAllowed = true
-    @AppStorage(Rays.chooseKey) private var headsChoose = true
+    @AppStorage(Rays.chooseKey) private var headsChoose = false
     /// Where the button is in the window, kept for the next thread this composer shows, which
     /// comes without the button moving.
     @State private var frame = CGRect.zero

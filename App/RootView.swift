@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(AppModel.previewKey) private var preview = false
     @Environment(Updates.self) private var updates
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
 
@@ -16,7 +17,7 @@ struct RootView: View {
                 // never shows the empty state.
                 let started = conversation?.started == true || model.chat?.started == true
                 // With no thread open, today's work on home, the composer under it at the bottom.
-                let home = model.chat == nil && !model.homeCapsules.isEmpty
+                let home = preview && model.chat == nil && !model.homeCapsules.isEmpty
                 // A pinned drawer is a list you keep open, so the conversation moves over for it.
                 let pinned = model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0
                 // Two threads take equal halves when each gets a column's least width. Under that

@@ -6,10 +6,10 @@ import SwiftUI
 struct AgentsPane: View {
     @Environment(AppModel.self) private var model
     @AppStorage(Rays.allowKey) private var workers = true
-    @AppStorage(Rays.chooseKey) private var choose = true
+    @AppStorage(Rays.chooseKey) private var choose = false
     @AppStorage(Rays.budgetKey) private var budget = 0.0
     @AppStorage(AppModel.ceilingKey) private var ceiling = AppModel.defaultCeiling
-    @AppStorage(AppModel.openersAnswerKey) private var openersAnswer = true
+    @AppStorage(AppModel.openersAnswerKey) private var openersAnswer = false
 
     var body: some View {
         PaneTitle(text: "Agents")

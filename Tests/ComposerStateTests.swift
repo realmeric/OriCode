@@ -182,8 +182,7 @@ struct ComposerStateTests {
         model.shellPrompt = true
         #expect(model.escape())
         #expect(!model.shellPrompt)
-        // With nothing over it, the open thread gives the window back to home.
-        #expect(model.escape() && model.chat == nil)
+        #expect(!model.escape())
         #expect(model.composer(for: second).menu && model.composer(for: second).shellPrompt)
 
         model.selectedChatID = second.id
