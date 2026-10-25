@@ -12,6 +12,12 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
+    # The Debug build's name and bundle id, and the folder the engine is staged in, which make
+    # passes on: OriCode Molten in ~/Library/Developer/OriCode.noindex unless a branch's builds
+    # need their own, so two branches built at once never share a store or an engine.
+    ORICODE_DEBUG_NAME: OriCode Molten
+    ORICODE_DEBUG_ID: com.realmeric.oricode.molten
+    ORICODE_BUILD: $(HOME)/Library/Developer/OriCode.noindex
 packages:
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
@@ -88,9 +94,9 @@ targetTemplates:
         # The build you work on is an app of its own, OriCode Molten, beside the OriCode you
         # work in: its own bundle id, folders and icon, so running it quits only it.
         Debug:
-          PRODUCT_NAME: OriCode Molten
-          PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.molten
-          INFOPLIST_KEY_CFBundleDisplayName: OriCode Molten
+          PRODUCT_NAME: $(ORICODE_DEBUG_NAME)
+          PRODUCT_BUNDLE_IDENTIFIER: $(ORICODE_DEBUG_ID)
+          INFOPLIST_KEY_CFBundleDisplayName: $(ORICODE_DEBUG_NAME)
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIconMolten
           # Molten has no feed, so it never updates itself into OriCode.
           ORICODE_FEED_URL: ""
@@ -106,14 +112,14 @@ targetTemplates:
       - name: Engine
         script: |
           export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-          make -C "$SRCROOT" engine
+          make -C "$SRCROOT" engine BUILD="$ORICODE_BUILD"
         basedOnDependencyAnalysis: false
     postCompileScripts:
       - name: Bundle engine
         script: |
-          if [ -d "$HOME/Library/Developer/OriCode.noindex/engine" ]; then
+          if [ -d "$ORICODE_BUILD/engine" ]; then
             mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
-            rsync -a --delete --exclude .stamp "$HOME/Library/Developer/OriCode.noindex/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
+            rsync -a --delete --exclude .stamp "$ORICODE_BUILD/engine/" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/engine/"
           fi
         basedOnDependencyAnalysis: false
 targets:
@@ -153,7 +159,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         BUNDLE_LOADER: $(TEST_HOST)
         # Tests run in Debug, which builds OriCode Molten.
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/OriCode Molten.app/Contents/MacOS/OriCode Molten
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/$(ORICODE_DEBUG_NAME).app/Contents/MacOS/$(ORICODE_DEBUG_NAME)
 schemes:
   OriCode:
     build:

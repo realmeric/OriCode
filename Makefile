@@ -5,8 +5,13 @@ export PATH := /opt/homebrew/bin:/usr/local/bin:$(PATH)
 # Spotlight out, or every build wakes mdworker and appstoreagent to scan the new apps.
 BUILD := $(HOME)/Library/Developer/OriCode.noindex
 DERIVED := $(BUILD)/DerivedData
-# The Debug build is OriCode Molten, which runs beside the installed OriCode.
-DEBUG_APP := $(DERIVED)/Build/Products/Debug/OriCode Molten.app
+# The Debug build is OriCode Molten, which runs beside the installed OriCode. A branch built
+# beside main names its own, `make run DEBUG_NAME="OriCode Bridge" DEBUG_ID=com.realmeric.oricode.bridge
+# BUILD=~/Library/Developer/OriCode.noindex/phone`, so the two never share a store or an engine.
+DEBUG_NAME := OriCode Molten
+DEBUG_ID := com.realmeric.oricode.molten
+DEBUG_APP := $(DERIVED)/Build/Products/Debug/$(DEBUG_NAME).app
+XCODE := xcodebuild -project OriCode.xcodeproj -derivedDataPath $(DERIVED) -skipPackagePluginValidation ORICODE_DEBUG_NAME="$(DEBUG_NAME)" ORICODE_DEBUG_ID=$(DEBUG_ID) ORICODE_BUILD=$(BUILD)
 RELEASE_APP := $(DERIVED)/Build/Products/Release/OriCode.app
 # OriCode with the bench compiled in (Perf/), which make perf measures; never installed.
 PERF_APP := $(DERIVED)/Build/Products/Release/OriCode Perf.app
@@ -28,9 +33,9 @@ project:
 # A thread in Molten that ran it would quit the Molten it runs in and end its own turn, so from
 # there it builds and stops, saying so.
 run: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
-	@if scripts/under.sh "OriCode Molten"; then echo "Built, not opened: this runs inside OriCode Molten, which make run would quit, ending this thread. Check the change in the test host, as a card's live check does, or leave make run to the user." >&2; exit 2; fi
-	-pkill -x "OriCode Molten"; $(call gone,OriCode Molten)
+	$(XCODE) -scheme OriCode -configuration Debug -destination platform=macOS,arch=arm64 -quiet build
+	@if scripts/under.sh "$(DEBUG_NAME)"; then echo "Built, not opened: this runs inside $(DEBUG_NAME), which make run would quit, ending this thread. Check the change in the test host, as a card's live check does, or leave make run to the user." >&2; exit 2; fi
+	-pkill -x "$(DEBUG_NAME)"; $(call gone,$(DEBUG_NAME))
 	open "$(DEBUG_APP)"
 
 engine: $(BUILD)/engine/.stamp
@@ -52,12 +57,12 @@ $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 
 test: project engine
 	cd engine && node --test test/*.test.ts
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet test
+	$(XCODE) -scheme OriCode -destination platform=macOS,arch=arm64 -quiet test
 
 # Signed as make release signs it, so what Meriç grants this build holds for the release's, and
 # not notarized, since it installs on this Mac alone.
 app: project
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
+	$(XCODE) -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -quiet CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build
 	scripts/prune.sh $(RELEASE_APP)
 	scripts/sign.sh $(RELEASE_APP)
 	-pkill -x OriCode; $(call gone,OriCode)
@@ -73,12 +78,12 @@ app: project
 # beside it, for its size on disk and to see the bench isn't in it. Not in make test: it needs
 # a window in front, a 60 Hz display and a Mac nobody is using.
 perf-build: project
-	xcodebuild -project OriCode.xcodeproj -scheme "OriCode Perf" -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	$(XCODE) -scheme "OriCode Perf" -configuration Release -destination platform=macOS,arch=arm64 -quiet build
 	scripts/prune.sh "$(PERF_APP)"
 	codesign --force --deep --sign - "$(PERF_APP)"
 
 perf: perf-build
-	xcodebuild -project OriCode.xcodeproj -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -derivedDataPath $(DERIVED) -skipPackagePluginValidation -quiet build
+	$(XCODE) -scheme OriCode -configuration Release -destination platform=macOS,arch=arm64 -quiet build
 	BUILD=$(BUILD) scripts/perf/perf.sh full
 
 # The parts a card can run while it works: keys, one stream, ⌘K and the early J, three runs each.
