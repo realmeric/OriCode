@@ -74,11 +74,11 @@ extension AppModel {
 
     /// Starts a turn with what's typed, or sends it into the one running; false when it did
     /// neither, so the composer keeps the text. In the open thread when none is named, and with
-    /// none open in a new one.
+    /// none open in a new one. A message from the phone leaves the composer's pictures where they are.
     @discardableResult
-    func send(_ text: String, in thread: Chat? = nil) -> Bool {
+    func send(_ text: String, in thread: Chat? = nil, takingAttachments: Bool = true) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let composer = composer(for: thread ?? chat)
+        let composer = takingAttachments ? composer(for: thread ?? chat) : ComposerState()
         let images = composer.attachments
         guard !trimmed.isEmpty || !images.isEmpty, !tooLong(trimmed, for: thread ?? chat), let chat = thread ?? chat ?? newChat(open: false) else { return false }
         let conversation = conversation(for: chat)

@@ -41,7 +41,13 @@ extension PhoneLink {
             guard model.conversations[thread]?.working == true else { return .refused("Not working") }
             model.stop(in: chat)
             return Link.Outcome(ok: true)
-        case .send, .open:
+        case .send(let thread, let text):
+            guard let chat = model.chat(withID: thread), chat.agentID == nil else { return .refused("No such thread") }
+            // Into the running turn as the Mac's composer sends it, or a turn of its own.
+            guard model.send(text, in: chat, takingAttachments: false) else { return .refused("The Mac didn't take it") }
+            messaged.insert(thread)
+            return Link.Outcome(ok: true, thread: thread)
+        case .open:
             return .refused("Not on this Mac yet")
         }
     }

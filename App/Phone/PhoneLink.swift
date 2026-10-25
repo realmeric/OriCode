@@ -48,6 +48,8 @@ final class PhoneLink {
     @ObservationIgnored var replies: [UUID: String?] = [:]
     /// When each ask was first seen waiting.
     @ObservationIgnored var askedAt: [String: Date] = [:]
+    /// Threads the phone wrote to, whose turn's end the phone hears about (P-14).
+    @ObservationIgnored var messaged: Set<UUID> = []
     /// Asks the phone was buzzed for, and asks seen while Meriç was at the Mac, which aren't.
     @ObservationIgnored var nudged: Set<String> = []
     @ObservationIgnored var passed: Set<String> = []
