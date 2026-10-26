@@ -255,8 +255,10 @@ final class PhoneLink {
 
     /// A silent push from the zone's subscription: the phone wrote.
     func pushed(_ userInfo: [AnyHashable: Any]) {
-        guard let keys, ZoneSync.isPush(userInfo, for: keys.zone) else { return }
-        fetchNow()
+        guard let keys else { return }
+        let ours = ZoneSync.isPush(userInfo, for: keys.zone)
+        Self.logger.notice("a push, \(ours ? "the zone's" : "not the zone's", privacy: .public)")
+        if ours { fetchNow() }
     }
 
     /// A push is how the phone's commands reach the Mac, but CloudKit's silent pushes come late or

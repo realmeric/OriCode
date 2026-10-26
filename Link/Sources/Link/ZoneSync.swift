@@ -144,11 +144,13 @@ public final class ZoneSync {
         "mac-changes-\(zone.zoneName)"
     }
 
-    /// Whether a push is one of this zone's.
+    /// Whether a push is one of this zone's, by the zone's name: a push names the zone's owner by
+    /// the account's record name where the link holds CKCurrentUserDefaultName, so comparing whole
+    /// ids turned every push away and each side waited on its timed read (2026-10-26).
     public nonisolated static func isPush(_ userInfo: [AnyHashable: Any], for zone: CKRecordZone.ID) -> Bool {
         guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) else { return false }
-        if let zoneNotification = notification as? CKRecordZoneNotification { return zoneNotification.recordZoneID == zone }
-        if let query = notification as? CKQueryNotification { return query.recordID?.zoneID == zone }
+        if let zoneNotification = notification as? CKRecordZoneNotification { return zoneNotification.recordZoneID?.zoneName == zone.zoneName }
+        if let query = notification as? CKQueryNotification { return query.recordID?.zoneID.zoneName == zone.zoneName }
         return notification.subscriptionID == subscriptionID(zone) || notification.subscriptionID == macSubscriptionID(zone)
     }
 }
