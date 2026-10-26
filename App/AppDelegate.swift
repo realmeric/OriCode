@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// Folders dropped on the Dock icon, or `open -a OriCode <folder>`, become projects; images
 /// opened the same way go into the composer. Quitting asks first while a command runs in a
@@ -75,6 +76,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
         phonePushed?(userInfo)
+    }
+
+    // Whether the phone's pushes can reach this Mac at all, in the log for when they don't.
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Logger(subsystem: "com.realmeric.oricode", category: "phone").notice("registered for pushes")
+    }
+
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Logger(subsystem: "com.realmeric.oricode", category: "phone").error("couldn't register for pushes: \(error.localizedDescription, privacy: .public)")
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

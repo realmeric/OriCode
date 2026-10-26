@@ -250,22 +250,21 @@ final class PhoneLink {
     }
 
     /// A push is how the phone's commands reach the Mac, but CloudKit's silent pushes come late or
-    /// not at all when they're many, so while an ask waits on an answer the Mac also looks every
-    /// five seconds, and while a thread works every fifteen. With nothing working or waiting it
-    /// never looks: the Mac is idle, and rule 6 holds.
+    /// not at all, so while an ask waits on an answer the Mac also looks every five seconds, while
+    /// a thread works every fifteen, and with a phone paired and nothing working every twenty: on
+    /// Meriç's Mac no push came, and a message from the phone waited until something on the Mac
+    /// started working (2026-10-26). Without a phone paired the Mac never looks (rule 6).
     func pace(asking: Bool, working: Bool) {
-        let every: Duration? = asking ? .seconds(5) : working ? .seconds(15) : nil
+        let every: Duration = asking ? .seconds(5) : working ? .seconds(15) : .seconds(20)
         guard every != pacing?.every else { return }
         pacing?.task.cancel()
-        pacing = every.map { every in
-            (every, Task { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: every)
-                    guard !Task.isCancelled else { return }
-                    await self?.fetch()
-                }
-            })
-        }
+        pacing = (every, Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: every)
+                guard !Task.isCancelled else { return }
+                await self?.fetch()
+            }
+        })
     }
 
     private func fetched(_ record: CKRecord) {
