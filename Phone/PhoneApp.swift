@@ -42,7 +42,8 @@ struct PhoneApp: App {
             .preferredColorScheme(.dark)
             // The brief has no accent colour: the system's blue stays out of the cursor and links.
             .tint(Ink.primary)
-            .onChange(of: phase) { _, phase in
+            .onChange(of: phase, initial: true) { _, phase in
+                delegate.store.inFront(phase == .active)
                 if phase == .active { Task { await delegate.store.fetch() } }
             }
             .onChange(of: delegate.store.paired != nil) { _, paired in

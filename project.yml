@@ -68,6 +68,9 @@ targetTemplates:
         OriCodeFolder: $(PRODUCT_NAME)
         # From the build settings, so make app and make release can number a build.
         CFBundleShortVersionString: $(MARKETING_VERSION)
+        # Where the phone finds the Mac on the same Wi-Fi (Link/Sources/Link/Near.swift).
+        NSLocalNetworkUsageDescription: To reach your iPhone at once on the same Wi-Fi.
+        NSBonjourServices: [_oricode._tcp]
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Updates (Updates.swift): the appcast on main, checked daily without asking, and the
         # public half of the EdDSA key whose private half signs each release in Meriç's keychain.
@@ -210,6 +213,9 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [remote-notification]
         NSCameraUsageDescription: To scan the pairing code on your Mac.
+        # The same Wi-Fi's way to the Mac (Link/Sources/Link/Near.swift).
+        NSLocalNetworkUsageDescription: To reach your Mac at once on the same Wi-Fi.
+        NSBonjourServices: [_oricode._tcp]
         # The keychain group the app and its extension share, by its full name.
         AppIdentifierPrefix: $(AppIdentifierPrefix)
         ITSAppUsesNonExemptEncryption: false

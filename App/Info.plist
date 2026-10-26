@@ -18,6 +18,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_oricode._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>To reach your iPhone at once on the same Wi-Fi.</string>
 	<key>OriCodeFolder</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>OriCodeSource</key>

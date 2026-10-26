@@ -99,9 +99,11 @@ public final class ZoneSync {
         return failed
     }
 
-    /// The silent push that says the zone changed, sent to every device but the one that wrote.
-    public func subscribe() async throws {
-        let subscription = CKRecordZoneSubscription(zoneID: zone, subscriptionID: Self.subscriptionID(zone))
+    /// The silent push that says the zone changed, sent to every device but the one that wrote. The
+    /// Mac's has an id of its own: saved under the phone's, the phone's save replaced it, and the
+    /// Mac never heard a push (2026-10-26).
+    public func subscribe(mac: Bool = false) async throws {
+        let subscription = CKRecordZoneSubscription(zoneID: zone, subscriptionID: mac ? Self.macSubscriptionID(zone) : Self.subscriptionID(zone))
         let info = CKSubscription.NotificationInfo()
         info.shouldSendContentAvailable = true
         subscription.notificationInfo = info
@@ -138,11 +140,15 @@ public final class ZoneSync {
         "changes-\(zone.zoneName)"
     }
 
+    public nonisolated static func macSubscriptionID(_ zone: CKRecordZone.ID) -> String {
+        "mac-changes-\(zone.zoneName)"
+    }
+
     /// Whether a push is one of this zone's.
     public nonisolated static func isPush(_ userInfo: [AnyHashable: Any], for zone: CKRecordZone.ID) -> Bool {
         guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) else { return false }
         if let zoneNotification = notification as? CKRecordZoneNotification { return zoneNotification.recordZoneID == zone }
         if let query = notification as? CKQueryNotification { return query.recordID?.zoneID == zone }
-        return notification.subscriptionID == subscriptionID(zone)
+        return notification.subscriptionID == subscriptionID(zone) || notification.subscriptionID == macSubscriptionID(zone)
     }
 }

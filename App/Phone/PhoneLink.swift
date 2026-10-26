@@ -32,6 +32,8 @@ final class PhoneLink {
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored var keys: PhoneKeys?
     @ObservationIgnored var sync: ZoneSync?
+    /// The phone on the same Wi-Fi, told the moment the Mac wrote, and telling it the same.
+    @ObservationIgnored var near: NearHost?
     /// What's to be saved and deleted at the next write.
     @ObservationIgnored var outbox: [CKRecord.ID: CKRecord] = [:]
     @ObservationIgnored var doomed: Set<CKRecord.ID> = []
@@ -106,12 +108,17 @@ final class PhoneLink {
         let sync = ZoneSync(zone: keys.zone)
         self.sync = sync
         NSApp.registerForRemoteNotifications()
+        let near = NearHost(mac: keys.mac, key: { [weak self] name in self?.keys?.phones.first { $0.id == name }?.pairingKey }) { [weak self] in
+            self?.fetchNow()
+        }
+        near.start()
+        self.near = near
         watchSleep()
         Self.logger.notice("link started")
         making = Task {
             do {
                 try await sync.makeZone()
-                try await sync.subscribe()
+                try await sync.subscribe(mac: true)
             } catch {
                 Self.logger.error("couldn't make the zone: \(error.localizedDescription, privacy: .public)")
             }
@@ -124,6 +131,8 @@ final class PhoneLink {
 
     func stop() {
         sync = nil
+        near?.stop()
+        near = nil
         making = nil
         writing?.cancel()
         writing = nil
@@ -202,6 +211,7 @@ final class PhoneLink {
             await making?.value
             do {
                 let failed = try await sync.write(saving: saving, deleting: deleting)
+                near?.tell()
                 for (id, error) in failed { Self.logger.error("couldn't write \(id.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)") }
             } catch {
                 // The zone is gone from under the link, an iCloud reset say: made again, and
@@ -209,7 +219,7 @@ final class PhoneLink {
                 Self.logger.error("couldn't write: \(error.localizedDescription, privacy: .public)")
                 if sync === self.sync, error is ZoneSync.Gone {
                     try? await sync.makeZone()
-                    try? await sync.subscribe()
+                    try? await sync.subscribe(mac: true)
                     published(again: true)
                 }
             }

@@ -5,8 +5,8 @@ import Observation
 import os
 
 /// The phone's side of the link: its pairing, the latest records its Mac wrote, opened with the
-/// Mac's state key, and the commands it sends back. It reads on every push CloudKit sends and
-/// whenever it's asked to; it never polls on its own.
+/// Mac's state key, and the commands it sends back. It reads on every push CloudKit sends, on the
+/// Mac's word across the same Wi-Fi while it's in front, and whenever it's asked to; it never polls.
 @MainActor
 @Observable
 public final class PhoneClient {
@@ -50,6 +50,8 @@ public final class PhoneClient {
     public private(set) var nudges: [String: NudgeInfo] = [:]
 
     @ObservationIgnored var sync: ZoneSync?
+    @ObservationIgnored var near: NearClient?
+    @ObservationIgnored private var inFront = false
     /// Every record of the Mac's zone as fetched, so a new state key can open them again.
     @ObservationIgnored var records: [CKRecord.ID: CKRecord] = [:]
     @ObservationIgnored private var fetching = false
@@ -192,6 +194,8 @@ public final class PhoneClient {
     public func forget() {
         keychain.remove()
         sync = nil
+        near?.stop()
+        near = nil
         records = [:]
         paired = nil
         mac = nil
@@ -221,7 +225,9 @@ public final class PhoneClient {
     public func sendNow(_ action: Command.Action) async -> Bool {
         guard let record = command(action), let sync else { return false }
         do {
-            return try await sync.write(saving: [record], deleting: []).isEmpty
+            let failed = try await sync.write(saving: [record], deleting: [])
+            near?.tell()
+            return failed.isEmpty
         } catch {
             return false
         }
@@ -263,6 +269,10 @@ public final class PhoneClient {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let sync = ZoneSync(zone: paired.zone, token: try? Data(contentsOf: tokenFile))
         self.sync = sync
+        near = NearClient(paired: paired) { [weak self] in
+            Task { await self?.fetch() }
+        }
+        if inFront { near?.start() }
         registerForPushes()
         Task {
             try? await sync.subscribe()
@@ -311,6 +321,12 @@ public final class PhoneClient {
         } while fetchAgain
     }
 
+    /// In front, the phone stays connected to its Mac on the same Wi-Fi; behind, it lets go.
+    public func inFront(_ front: Bool) {
+        inFront = front
+        if front { near?.start() } else { near?.stop() }
+    }
+
     /// A push from the Mac's zone.
     public func pushed(_ userInfo: [AnyHashable: Any]) async {
         guard let zone = paired?.zone, ZoneSync.isPush(userInfo, for: zone) else { return }
@@ -322,6 +338,7 @@ public final class PhoneClient {
         Task {
             do {
                 let failed = try await sync.write(saving: saving, deleting: deleting)
+                near?.tell()
                 for (id, error) in failed {
                     Self.logger.error("couldn't write \(id.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
                     if sent[id.recordName] != nil { sent[id.recordName]?.state = .refused(error.localizedDescription) }
