@@ -57,7 +57,7 @@ struct ThreadView: View {
         }
         .defaultScrollAnchor(.bottom)
         .scrollDismissesKeyboard(.interactively)
-        .background(Color.black)
+        .background { Ground() }
         .safeAreaInset(edge: .bottom) { composer }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -74,32 +74,10 @@ struct ThreadView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: sentAt)
     }
 
-    /// The field, growing to six lines, and send: an arrow, Stop while a turn runs and nothing is typed.
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("", text: $draft, axis: .vertical)
-                .lineLimit(1...6)
-                .focused($typing)
-                .foregroundStyle(Ink.primary)
-                .padding(.vertical, 10)
-                .padding(.leading, 16)
-            let empty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            Button {
-                if empty { stop() } else { send() }
-            } label: {
-                Image(systemName: empty && working ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(empty && !working ? 0.4 : 0.92), in: .circle)
-            }
-            .disabled(empty && !working)
-            .accessibilityLabel(empty && working ? "Stop" : "Send")
-            .padding(6)
-        }
-        .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 6)
+        Composer(text: $draft, working: working, typing: $typing, send: send, stop: stop)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
     }
 
     private func send() {

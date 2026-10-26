@@ -21,47 +21,30 @@ struct NewThreadSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             Menu {
-                ForEach(projects) { option in
-                    Button(option.name) { project = option.id }
+                Picker("", selection: Binding(get: { picked?.id }, set: { project = $0 })) {
+                    ForEach(projects) { option in
+                        Text(option.name).tag(Optional(option.id))
+                    }
                 }
             } label: {
                 HStack(spacing: 8) {
                     Badge(project: picked)
                     Text(picked?.name ?? "")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Ink.secondary)
+                        .foregroundStyle(Ink.primary)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(Ink.faint)
                 }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("", text: $text, axis: .vertical)
-                    .lineLimit(1...8)
-                    .focused($typing)
-                    .foregroundStyle(Ink.primary)
-                    .padding(.vertical, 10)
-                    .padding(.leading, 16)
-                let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(empty ? 0.4 : 0.92), in: .circle)
-                }
-                .disabled(empty)
-                .accessibilityLabel("Send")
-                .padding(6)
-            }
-            .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+            .buttonStyle(.glass)
+            Composer(text: $text, lines: 8, typing: $typing, send: send)
             Spacer()
         }
         .padding(20)
         .presentationDetents([.medium])
-        .presentationBackground(.black)
         .onAppear { typing = true }
     }
 

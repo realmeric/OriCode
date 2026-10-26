@@ -44,9 +44,9 @@ struct HomeView: View {
                     Section {
                         ForEach(asks) { ask in
                             AskCard(ask: ask)
-                                .listRowBackground(Color.black)
+                                .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
                         }
                     } header: {
                         Text("\(asks.count) waiting on you")
@@ -83,9 +83,10 @@ struct HomeView: View {
                     }
                 }
             }
-            .listStyle(.plain)
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(20)
             .scrollContentBackground(.hidden)
-            .background(Color.black)
+            .background { Ground() }
             .overlay {
                 if store.threads.isEmpty && store.asks.isEmpty {
                     VStack(spacing: 14) {
@@ -182,8 +183,8 @@ struct ThreadRow: View {
                     .foregroundStyle(Ink.secondary)
             }
         }
-        .padding(.vertical, 2)
-        .listRowBackground(Color.black)
+        .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
+        .listRowBackground(Ink.card)
         .listRowSeparator(.hidden)
     }
 

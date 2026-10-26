@@ -10,23 +10,29 @@ struct PairingView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            Mark().frame(width: 44, height: 44)
-            VStack(spacing: 14) {
+            Ground()
+            // The icon's mark, at the icon's ink.
+            Mark(dotOpacity: 1, restingOpacity: 0.62)
+                .frame(width: 88, height: 88)
+            VStack(spacing: 16) {
                 Spacer()
                 if let problem = store.problem {
                     Text(problem)
                         .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(Ink.secondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
+                        .padding(.horizontal, 8)
                 }
                 if store.pairing {
-                    ProgressView().controlSize(.large).frame(height: 50)
-                } else if Scanner.available {
-                    Button("Scan") { scanning = true }
-                        .buttonStyle(.glassProminent)
-                        .controlSize(.large)
+                    ProgressView().controlSize(.large).frame(height: 56)
+                } else if canScan {
+                    Button { scanning = true } label: {
+                        Label("Scan", systemImage: "qrcode.viewfinder")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .lit()
+                    .controlSize(.extraLarge)
                 } else {
                     // No camera to scan with, in the simulator or on a Mac: the code copied from the Mac's sheet.
                     PasteButton(payloadType: String.self) { strings in
@@ -34,10 +40,11 @@ struct PairingView: View {
                         Task { await pair(code) }
                     }
                     .buttonBorderShape(.capsule)
-                    .controlSize(.large)
+                    .controlSize(.extraLarge)
                 }
             }
-            .padding(.bottom, 48)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 24)
         }
         .sheet(isPresented: $scanning) {
             Scanner { code in
@@ -47,6 +54,14 @@ struct PairingView: View {
             .ignoresSafeArea()
         }
         .sensoryFeedback(.error, trigger: failed)
+    }
+
+    /// Scan where there's a camera to scan with; `-Screens pairing` shows it in the simulator too.
+    private var canScan: Bool {
+#if DEBUG
+        if CommandLine.arguments.contains("pairing") { return true }
+#endif
+        return Scanner.available
     }
 
     private func pair(_ code: PairingCode) async {
