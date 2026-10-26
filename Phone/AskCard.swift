@@ -92,9 +92,7 @@ struct AskCard: View {
                     Button("Deny") { send(allow: false) }
                         .buttonStyle(.glass)
                     Button("Allow") { send(allow: true) }
-                        .buttonStyle(.glassProminent)
-                        .tint(.white.opacity(0.85))
-                        .foregroundStyle(.black)
+                        .lit()
                 } else {
                     let main = ask.choices.first { $0.allows }
                     ForEach(ask.choices.filter { $0 != main }, id: \.id) { choice in
@@ -103,9 +101,7 @@ struct AskCard: View {
                     }
                     if let main {
                         Button(main.name) { send(allow: true, choice: main.id) }
-                            .buttonStyle(.glassProminent)
-                            .tint(.white.opacity(0.85))
-                            .foregroundStyle(.black)
+                            .lit()
                     }
                 }
             }
@@ -118,11 +114,11 @@ struct AskCard: View {
     private var questions: some View {
         VStack(alignment: .leading, spacing: 16) {
             ForEach(Array(ask.questions.enumerated()), id: \.offset) { _, question in
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(question.text)
                         .font(.body)
                         .foregroundStyle(Ink.primary)
-                    VStack(alignment: .leading, spacing: 6) {
+                        .padding(.bottom, 2)
                     ForEach(Array(question.options.enumerated()), id: \.offset) { _, option in
                         let lit = picked[question.text]?.contains(option.label) == true
                         Button {
@@ -139,8 +135,8 @@ struct AskCard: View {
                                 if lit { Image(systemName: "checkmark").foregroundStyle(Ink.primary) }
                             }
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(lit ? Color.white.opacity(0.10) : .clear, in: .rect(cornerRadius: 10, style: .continuous))
+                            .padding(.vertical, 10)
+                            .background(lit ? Color.white.opacity(0.12) : Ink.card, in: .rect(cornerRadius: 10, style: .continuous))
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
@@ -151,13 +147,10 @@ struct AskCard: View {
                         if !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { picked[question.text] = nil }
                     }))
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 10)
                     .background(Ink.card, in: .rect(cornerRadius: 10, style: .continuous))
                     .submitLabel(.send)
                     .onSubmit(submit)
-                    }
-                    // The rows' light reaches past the column, so their words line up with the question's.
-                    .padding(.horizontal, -12)
                 }
             }
             HStack(spacing: 8) {
@@ -166,9 +159,7 @@ struct AskCard: View {
                     .buttonStyle(.glass)
                 if needsAnswerButton {
                     Button("Answer", action: submit)
-                        .buttonStyle(.glassProminent)
-                        .tint(.white.opacity(0.85))
-                        .foregroundStyle(.black)
+                        .lit()
                         .disabled(!complete)
                 }
             }

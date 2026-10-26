@@ -13,6 +13,24 @@ enum Ink {
     static let red = Color(red: 1, green: 0.42, blue: 0.4)
 }
 
+/// What every screen stands on: black, with the icon's violet coming down from the top, so the
+/// system's glass on the bars, the composer and the sheets has a colour to bend, as the Mac's
+/// has the desktop's.
+struct Ground: View {
+    var body: some View {
+        LinearGradient(colors: [Palette.color(0x2A2540), Palette.color(0x110F18), .black], startPoint: .top, endPoint: .center)
+            .ignoresSafeArea()
+    }
+}
+
+extension View {
+    /// The light capsule, as the Mac's Allow and send: the system's prominent glass lit white, its
+    /// label black, since the app's white tint would leave a white label on it.
+    func lit() -> some View {
+        buttonStyle(.glassProminent).tint(.white.opacity(0.9)).foregroundStyle(.black)
+    }
+}
+
 /// ProjectBadge's eight colours and MarkPalette's makers, as the Mac has them (App/ProjectBadge.swift,
 /// App/MarkPalette.swift).
 enum Palette {
@@ -40,6 +58,8 @@ enum Palette {
 /// A project's two letters on its colour, or No folder's laptop, as the Mac draws it.
 struct Badge: View {
     let project: ProjectInfo?
+    /// Grows with Dynamic Type beside the name it heads.
+    @ScaledMetric(relativeTo: .subheadline) private var scale = 1.0
 
     var body: some View {
         let color = Palette.project(project)
@@ -50,10 +70,10 @@ struct Badge: View {
                 Image(systemName: "laptopcomputer")
             }
         }
-        .font(.system(size: 10.5, weight: .bold, design: .rounded))
+        .font(.system(size: 10.5 * scale, weight: .bold, design: .rounded))
         .foregroundStyle(color)
-        .frame(width: 24, height: 17)
-        .background(color.opacity(0.18), in: .rect(cornerRadius: 5, style: .continuous))
+        .frame(width: 24 * scale, height: 17 * scale)
+        .background(color.opacity(0.18), in: .rect(cornerRadius: 5 * scale, style: .continuous))
         .accessibilityLabel(project?.name ?? "")
     }
 }

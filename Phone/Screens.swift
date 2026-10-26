@@ -3,7 +3,8 @@ import Foundation
 import Link
 
 /// Made-up Macs for screenshots of the screens in the simulator, which has no iCloud account to
-/// pair with: launched with `-Screens home`, `asleep`, `empty`, `asks`, `thread`, `reply` or `compose`.
+/// pair with: launched with `-Screens home`, `asleep`, `empty`, `asks`, `thread`, `reply` or `compose`,
+/// or `pairing` for the first launch with Scan, which the simulator has no camera for.
 enum Screens {
     static func cache(_ name: String) -> PhoneClient.Cache? {
         let oricode = ProjectInfo(id: UUID(), name: "OriCode", initials: "OE", color: 1, starts: true, order: 0)
