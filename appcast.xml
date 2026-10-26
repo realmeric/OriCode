@@ -3,18 +3,45 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.4.2</title>
-      <pubDate>Fri, 16 Oct 2026 01:04:43 +0300</pubDate>
-      <sparkle:version>405</sparkle:version>
-      <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
+      <title>0.5.0</title>
+      <pubDate>Mon, 26 Oct 2026 16:41:56 +0300</pubDate>
+      <sparkle:version>493</sparkle:version>
+      <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[• The Anthropic API is an agent of its own in Settings › Agents, on a key from the Claude Console, billed to that key's organization and never to your Claude subscription. It runs in Claude Code with the key as `ANTHROPIC_API_KEY`, which outranks your Claude login, and no other Anthropic credential reaches it. Its threads have Claude Code's models, levels and fast mode where your organization has it, and show what each turn cost, but no plan usage or limits and no Continue in Terminal, where `claude` would run on your subscription. Its models are drawn under Anthropic's mark; Claude Code's keep Claude's.
-• ⌘K's Open a Claude Code session is Import sessions…: the project's sessions from Claude Code, Codex, T3 Code, OpenCode, Copilot and Cursor, each with its tool's name and its agent's mark, and Import all for every one that isn't a thread yet. A session comes in on the agent that ran it and goes on in the same session where that agent is on and can pick one up by its id, a T3 Code thread in the Claude, Codex or Cursor session under it. Cursor's chats, and a Claude Code session begun under another path to the folder, through a symlink, come in with their transcript, which your next message hands over to the agent a new thread starts on. Codex's and OpenCode's are listed only while those agents are on. Nothing is written into the other tools' files.
-• Auto and Don't ask do what they say on the agents besides Claude Code. On Codex, Auto has Codex's own reviewer judge each request's risk instead of asking you, and a project added through a symlink no longer fails every command in Codex's sandbox and asks to run it outside. On every agent that asks, Don't ask answers its asks for you, those already waiting included, and switching to it mid-turn works from that moment. Cursor and Antigravity have Don't ask now. OpenCode no longer offers Auto, which there was only your own OpenCode settings.
-• A pasted megabyte no longer freezes the window, as it was pasted, as it was sent, or every time its thread opened after. A message longer than 20,000 characters shows its first twelve lines, its size, Show more and Copy, which copies all of it; the agent still gets all of it. Codex takes up to 1,048,576 characters, and a longer message says so and stays in the message bar instead of going out to Codex's error.
-• Water, in Settings › Conversation, turns the usage glass left of Send into a glass of water on Claude Code's threads, and says nothing of the plan there. It fills with today's water against a usual day, the average of the 30 days before today, and brims past one. Its card is the water of the thread, today, this week and this month, every Claude Code session on this Mac counted once, and the rate and its source are under the pointer on "estimated". The thread's figure still ends its latest turn's footer.
-• The thread beside has a capsule of its own over its column, in the title capsule's glass, its cross at the right end where a tab's is, away from its working mark. A click there no longer looks like stopping it: the capsule draws itself into a drop, runs up to the window's capsule and flows into its end, and the thread you leave buds out of the other end as a drop, pinches off and falls into the other column's capsule. With Reduce Motion the titles only fade.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.4.2/OriCode-0.4.2.zip" sparkle:edSignature="oQx3jme8YpRAjRF1+BmAz1FKsLc7LXU9R4PSDRQ4MKQdIckawiLByD29H6/O20Hm1yXapM3hoUGsWrXhv0THBg==" length="6462384" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[### Installed like any Mac app
+
+• OriCode is signed with Developer ID and notarized by Apple, so it opens without Gatekeeper's warning, and it comes as a DMG you open and drag onto Applications. Updates keep coming through Sparkle as before. A permission macOS tied to the old signature, a folder's access say, may be asked once more.
+
+### OriCode on the iPhone
+
+• OriCode Phone shows what's running on your Mac across projects, brings each permission or question to the phone as a notification you answer from the lock screen, and lets you stop a thread, read it, reply to it and start a new one. The work stays on the Mac: the phone pairs once by a code shown in Settings › Phone and talks to it through your own iCloud, sealed with a key only the two of them hold, and no agent's login ever leaves the Mac. With no phone paired, the Mac does nothing new.
+
+### Agents see and use the Mac
+
+• A thread can take a picture of an app's window and click, type and scroll in it, each app allowed once per thread, so it can check a change in the app it's building. It needs Screen Recording and Accessibility: OriCode asks once, at the first launch of 0.5.0, and the answer stays in Settings › Agents › The Mac. With it off, no agent is offered the tools. OriCode's own window is never seen or touched.
+
+### Agents use OriCode
+
+• An agent can open threads when the work wants them, send any thread a message, wait for one to finish and read its last reply, and stop it. Each of these leaves a short line in both threads. A thread an agent opened has its own row in the drawer.
+• An agent can do what OriCode's menus and Settings do: rename, archive, put a thread beside, open the review on a file, change a thread's model or mode. Anything that loosens what guards you, a looser permission mode, a higher budget, more threads at once, is asked of you first.
+• Threads working on the same files in worktrees bring their work back with a merge, and two threads editing one file are each told.
+• Every permission and question waiting on you, in any thread, collects at the top of ⌘⇧I, answered there without opening the thread, with a notification when OriCode is in the background.
+• Threads working at once, in Settings › Agents, caps how many an agent can set going.
+
+### Smoother
+
+• A very long message no longer freezes the window, and one too long for its model stays in the message bar with a line saying so instead of breaking the thread.
+• The drawer opens, closes and switches threads up to twice as fast with hundreds of threads, and it's one plain list again with each row's project badge.
+• Two threads streaming side by side keep their frames, a long reply's end stays in view, Show earlier keeps the row you were reading, and an edit card wraps a long line instead of cutting it.
+• A message sent while a turn runs has Send now beside "Waiting for the next step": the step stops and the message goes as the next turn.
+• ⌘K, ⌘P, ⌘I and ⌘⇧I leave the thread dimmed under them instead of hiding it.
+• Stop ends what a thread left running, its background commands and the threads it set going, and a thread a usage limit paused says it waits and goes on at the reset.
+• A second copy of OriCode no longer opens the same threads; it brings the first to the front.
+
+### Preview
+
+• Home and the stage, in Settings › General › Preview: with no thread open, today's work as capsules over the composer, asks answered on them, and a workflow's agents on a stage while it runs. They're still taking shape and are off unless you turn them on. Heads choosing their own models and workers, and threads answering their children's asks first, are in Settings › Agents, off by default.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.0/OriCode-0.5.0.zip" sparkle:edSignature="YqYwPWReOG9Cv06/CtM40+gSBPB2MCQ764dccq8z2+lQKQ8fx5dwXO3IRojrQBnKFZ5GMRHR3s4JWrfwkjEGDg==" length="7732239" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
