@@ -105,14 +105,20 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
 
     /// A button on a notification: Allow, Deny or a question's option, sealed and in iCloud before
     /// the system takes the app back. Allow and an option have had Face ID already. A tap on the
-    /// notification itself opens the app.
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    /// notification itself opens the app. UIKit takes the end of it on the main thread only: the
+    /// async form ended it from a background one, and a tap on a notification crashed the app
+    /// (2026-10-27).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
         let action = response.actionIdentifier
         let typed = (response as? UNTextInputNotificationResponse)?.userText
         var strings: [String: String] = [:]
         for (key, value) in info { if let key = key as? String, let value = value as? String { strings[key] = value } }
-        await answered(action: action, info: strings, typed: typed)
+        nonisolated(unsafe) let done = completionHandler
+        Task { @MainActor in
+            await answered(action: action, info: strings, typed: typed)
+            done()
+        }
     }
 
     private func answered(action: String, info: [String: String], typed: String?) async {
