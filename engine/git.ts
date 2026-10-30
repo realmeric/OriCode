@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { run } from "./child.ts";
+import { sshAgent } from "./sshagent.ts";
 
 /// What can wait on the network or on the user's hooks, a pre-commit running its tests.
 const slow = new Set(["commit", "pull", "push", "merge", "switch", "worktree"]);
@@ -14,7 +15,7 @@ export function gitDeadline(args: string[]): number {
 /// Git for the app, which has no shell of its own. Every call runs in the thread's cwd.
 export async function git(cwd: string, args: string[]): Promise<string> {
   try {
-    const { stdout } = await run("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, timeout: gitDeadline(args) });
+    const { stdout } = await run("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, ...sshAgent(), GIT_TERMINAL_PROMPT: "0" }, timeout: gitDeadline(args) });
     return stdout;
   } catch (error) {
     const stderr = (error as { stderr?: string }).stderr?.trim();

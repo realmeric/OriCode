@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { runSettled } from "./child.ts";
 import { baseRef, gitDeadline } from "./git.ts";
 import { gitRun, top } from "./review.ts";
+import { sshAgent } from "./sshagent.ts";
 
 // A branch's work brought into a folder: a thread's worktree, or an isolated worker's, into the
 // folder of the thread that started it. git merges three ways against the folder as it is, its
@@ -97,7 +98,7 @@ export async function begin(folder: string, branch: string, label: string): Prom
   const base = from || (await gitRun(root, ["merge-base", "HEAD", tip])).trim();
   const ours = await snapshot(root);
   const args = ["merge-tree", "--write-tree", "--name-only", "-z", `--merge-base=${base}`, ours, tip];
-  const { stdout, stderr, error } = await runSettled("git", args, { cwd: root, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, timeout: gitDeadline(args), maxBuffer: 32 * 1024 * 1024 });
+  const { stdout, stderr, error } = await runSettled("git", args, { cwd: root, env: { ...process.env, ...sshAgent(), GIT_TERMINAL_PROMPT: "0" }, timeout: gitDeadline(args), maxBuffer: 32 * 1024 * 1024 });
   // 1 is a merge with conflicts; anything else is git failing.
   if (error && error.code !== 1) throw new Error(stderr.trim() || error.message);
   const [merged, ...rest] = stdout.split("\0");

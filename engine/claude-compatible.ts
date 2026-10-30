@@ -148,6 +148,7 @@ export function claudeCompatible(maker: Maker, { security, launch }: { security?
     id: entry.id,
     name: entry.name,
     agent: entry.agent,
+    prompted: true,
     capabilities: {
       steer: true,
       resume: true,

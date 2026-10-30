@@ -168,6 +168,9 @@ export type Provider = {
   /// Its turns say what they cost, so a thread's budget can count what it spends. The engine's
   /// own business, which the app isn't told.
   costs?: boolean;
+  /// It takes `instructions` as a system prompt of its own. An agent that doesn't hears what it
+  /// must not miss ahead of each message that starts a turn.
+  prompted?: boolean;
   levels: string[];
   modes: string[];
   /// What the engine answers when found() finds no CLI.

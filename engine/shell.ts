@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { constants } from "node:os";
+import { sshAgent } from "./sshagent.ts";
 
 /// A custom action run quietly: one command line in the user's shell, in the thread's folder,
 /// with no terminal. The app builds the line, quoting every value it puts in; nothing here
@@ -55,7 +56,7 @@ function environment(): NodeJS.ProcessEnv {
   }
   // Nothing can answer a prompt, so a git that wants a password fails instead of waiting.
   kept.GIT_TERMINAL_PROMPT = "0";
-  return kept;
+  return { ...kept, ...sshAgent() };
 }
 
 /// Runs `command` with the user's shell in `cwd`, stdin closed, and stops it and everything it

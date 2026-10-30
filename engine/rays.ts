@@ -15,6 +15,7 @@ import { planTools } from "./plan.ts";
 import { begin, cameIn, conflictsOf, ignoredLeft, keep, marked, snapshot, summary, undo, type Counted, type Merge } from "./merge.ts";
 import { answerAsk, askApp, finishMerge, listThreads, longestTurnWait, menuToolNames, menuTools, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, UserAsks, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
+import { signingNow } from "./sshagent.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
 
 // Rays: a thread's head and the workers it sends out. The head is the thread's own session, and a
@@ -1181,11 +1182,13 @@ export class Rays {
   }
 
   private params(worker: Worker, text: string, id?: string): SendParams {
+    const signs = signingNow();
     return {
       threadId: worker.threadId,
       sessionId: worker.sessionId,
       cwd: worker.cwd,
-      text,
+      text: signs && !worker.agent.prompted ? `${signs}\n\n${text}` : text,
+      instructions: signs,
       model: worker.model ?? undefined,
       effort: (worker.effort ?? undefined) as SendParams["effort"],
       permissionMode: worker.mode as SendParams["permissionMode"],

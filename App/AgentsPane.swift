@@ -79,6 +79,7 @@ struct AgentsPane: View {
             }
         }
         MacAccessCard()
+        SSHAgentCard()
     }
 
     private func cards(_ agents: [AgentInfo]) -> some View {

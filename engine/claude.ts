@@ -8,6 +8,7 @@ import { run, within } from "./child.ts";
 import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
 import { fallback, helloList, withDefaults, type Model } from "./models.ts";
 import { told, type Availability, type ModelsEvent, type Provider } from "./provider.ts";
+import { sshAgent } from "./sshagent.ts";
 import { describe, Thread } from "./thread.ts";
 import { usage } from "./usage.ts";
 import { version } from "./version.ts";
@@ -54,6 +55,7 @@ export function cleanEnvironment(): Record<string, string | undefined> {
     if ((key.startsWith("CLAUDE") && key !== "CLAUDE_CONFIG_DIR") || key === "AI_AGENT" || key === "PWD" || key === "OLDPWD") continue;
     environment[key] = value;
   }
+  Object.assign(environment, sshAgent());
   environment.CLAUDE_AGENT_SDK_CLIENT_APP = `oricode/${version}`;
   // Without it the first turn waits for every MCP server in the user's settings to connect,
   // and one started with `npm exec …@latest` can take minutes. The desktop app sets it too.
@@ -379,6 +381,7 @@ export const claude: Provider = {
     aside: true,
   },
   costs: true,
+  prompted: true,
   levels: ["low", "medium", "high", "xhigh", "max", "ultracode"],
   modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
   missing,

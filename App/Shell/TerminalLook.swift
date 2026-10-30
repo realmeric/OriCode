@@ -80,7 +80,8 @@ enum TerminalEnvironment {
         return named.compactMap { $0 }.first { !$0.isEmpty && FileManager.default.isExecutableFile(atPath: $0) } ?? "/bin/zsh"
     }
 
-    static func make() -> [String] {
+    /// `agent` is SSH_AUTH_SOCK where OriCode has one to give.
+    static func make(agent: String? = SSHAgent.path()) -> [String] {
         // What an app opened from the Dock is given, and nothing a terminal or a Claude Code
         // session that opened this one left behind (GIT_EDITOR=true, TMUX, CLAUDECODE): the login
         // shell builds the rest from the user's own profile.
@@ -88,6 +89,7 @@ enum TerminalEnvironment {
         var environment = ProcessInfo.processInfo.environment.filter { key, _ in
             kept.contains(key) || key.hasPrefix("LC_")
         }
+        if let agent { environment["SSH_AUTH_SOCK"] = agent }
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
         environment["TERM_PROGRAM"] = "OriCode"

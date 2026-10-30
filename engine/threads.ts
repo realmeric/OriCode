@@ -351,7 +351,7 @@ export const menuTools = [
     name: "change_setting",
     description:
       "Change one of OriCode's Settings, by the name read_oricode lists it under. One that loosens what guards the user, a higher Spend per thread or none, more Threads working at once, Threads answer first on, a looser permission mode for new threads, is theirs: OriCode asks them in this thread and the call waits for their answer. Tightening one is yours. " +
-      "Logins, API keys, an agent's CLI, MCP servers, shortcuts, actions and seeing and using the Mac aren't here: those the user changes in Settings.",
+      "Logins, API keys, an agent's CLI, MCP servers, shortcuts, actions, the SSH agent and seeing and using the Mac aren't here: those the user changes in Settings.",
     inputSchema: {
       type: "object",
       properties: {

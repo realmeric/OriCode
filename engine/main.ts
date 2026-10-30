@@ -32,6 +32,7 @@ import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
 import { t3Code } from "./t3code.ts";
 import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
+import { signingNow, useSshAgent } from "./sshagent.ts";
 import { version } from "./version.ts";
 import { emit, event, log, type Request } from "./wire.ts";
 
@@ -144,7 +145,7 @@ type Choose = { models?: string[]; unread?: string[]; keepOff?: string[]; budget
 /// has no rays; the tools for the user's threads, which every such thread has, a thread another
 /// opened included; and suggest_thread, which it is told when to call. A thread with no rays left
 /// keeps the workers it has, and can't start more.
-async function threadTools(params: SendParams & { rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions"> & { choice?: Choice }> {
+async function threadTools(params: SendParams & { rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean; signs?: string }, agent: Provider, fans?: Model): Promise<Pick<SendParams, "tools" | "instructions"> & { choice?: Choice }> {
   const takes = agent.capabilities.workers === true;
   const picked = takes ? (params.rays ?? []).map(rayOf).filter((ray) => providers.has(ray.agent)) : [];
   // Workflows, Claude Code's own, Codex's or OriCode's, hand the parts out on the rays picked, or
@@ -171,7 +172,7 @@ async function threadTools(params: SendParams & { rays?: string[]; choose?: Choo
   const told = choice ? choosing(choice.picked, choice.budget) : rays.length ? (fans ? fanning(rays) : brief(rays)) : undefined;
   // Seeing and using the Mac, while Settings › Agents has it on, is offered with the thread tools.
   const mac = takes && params.mac === true;
-  const instructions = [told, takes ? (choice ? reach : opening) : undefined, takes ? suggesting : undefined, mac ? seeing : undefined].filter(Boolean).join("\n\n") || undefined;
+  const instructions = [told, takes ? (choice ? reach : opening) : undefined, takes ? suggesting : undefined, mac ? seeing : undefined, params.signs].filter(Boolean).join("\n\n") || undefined;
   const head = takes ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
   head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort, choice, mac);
   // A worker a limit stopped goes on at the reset unless Settings says threads don't.
@@ -296,8 +297,10 @@ async function confirmed(): Promise<void> {
 
 const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// `agents` are the ones turned on in Settings › Agents beside Claude Code, all looked for in
-  /// one login shell; none of their CLIs is asked anything until a check.
-  async hello({ agents: on }: { agents?: Record<string, Setting> }) {
+  /// one login shell; none of their CLIs is asked anything until a check. `sshAgent` is the socket
+  /// its switch points at while it's on.
+  async hello({ agents: on, sshAgent }: { agents?: Record<string, Setting>; sshAgent?: string | null }) {
+    useSshAgent(sshAgent);
     turnOn(on);
     const others = turnedOn().filter((entry) => entry.id !== claude.id);
     lookUp([claude.id, ...others.map((entry) => entry.id)]);
@@ -313,6 +316,13 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     if (known) setImmediate(() => void confirmed());
     const providers = [described(claude.id, found), ...others.map((entry, index) => described(entry.id, theirs[index]))];
     return { version, models, claude: found.cli, loggedIn: found.state === "ready", providers };
+  },
+
+  /// Settings › Agents' switch moved. What's running keeps the environment it started with; what
+  /// starts next takes this.
+  async "sshAgent.set"({ socket }: { socket?: string | null }) {
+    useSshAgent(socket);
+    return { ok: true };
   },
 
   /// One agent asked again, after a login in Terminal, without a restart that would end every
@@ -363,7 +373,8 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const model = params.workflows ? await workflowsModel(agent, path, params.model) : undefined;
     const own = agent.id === claude.id ? params.workflows === true : model !== undefined && !model.ultraRays && params.effort === "max";
     const fans = own ? undefined : model;
-    const { choice, ...head } = await threadTools({ ...params, rays, choose, mac, goOn }, agent, fans);
+    const signs = signingNow();
+    const { choice, ...head } = await threadTools({ ...params, rays, choose, mac, goOn, signs }, agent, fans);
     const told = agent.id === claude.id && own && params.effort !== "xhigh" ? claudeLead : fans ? lead : undefined;
     // A message into a running turn joins one that was told already.
     const running = sessions.get(params.threadId)?.isRunning;
@@ -376,7 +387,9 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const parts = head.tools && !running && !told ? (choice ? `${choosingLead(params.model, params.effort, choice.budget !== null)}\n\n` : agent.id !== claude.id ? `${leading}\n\n` : "") : "";
     // A thread working a task of the plan hears it ahead of each message that starts a turn.
     const held = task?.id && !running ? `${taskLead(task)}\n\n` : "";
-    const text = `${opening}${told && !running ? `${told}\n\n` : ""}${parts}${held}${sender}${params.text}`;
+    // An agent with no system prompt of its own hears about signing here, in time for each turn.
+    const signed = signs && !agent.prompted && !running ? `${signs}\n\n` : "";
+    const text = `${opening}${signed}${told && !running ? `${told}\n\n` : ""}${parts}${held}${sender}${params.text}`;
     // Concise replies, asked for in Settings, go where a head's rays do, ahead of them, and after
     // what a thread without a folder is told of where it is.
     const instructions = [noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;

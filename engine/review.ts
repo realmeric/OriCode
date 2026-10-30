@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run, type RunError } from "./child.ts";
 import { gitDeadline, notARepository } from "./git.ts";
+import { sshAgent } from "./sshagent.ts";
 
 // Review: what the working tree changes against HEAD, as hunks, and the git the Review surface
 // does with them. Every path is from the repository's top, whichever folder the thread is in.
@@ -52,7 +53,7 @@ type Options = { input?: string; env?: Record<string, string> };
 /// git with what git.ts's helper can't do: standard input, and an index of its own.
 export async function gitRun(cwd: string, args: string[], options: Options = {}): Promise<string> {
   try {
-    const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", ...options.env };
+    const env = { ...process.env, ...sshAgent(), GIT_TERMINAL_PROMPT: "0", ...options.env };
     return (await run("git", args, { cwd, env, input: options.input, timeout: gitDeadline(args), maxBuffer: 96 * 1024 * 1024 })).stdout;
   } catch (error) {
     const { code, stderr, message } = error as RunError;

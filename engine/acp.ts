@@ -7,6 +7,7 @@ import { diffHunks, diffOf, exitCode, resultText, stopReason, todos, todosIn, to
 import { within } from "./child.ts";
 import { byMode, asks as registry, client, toolsServer } from "./provider.ts";
 import { lastLine } from "./shell.ts";
+import { sshAgent } from "./sshagent.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
 
@@ -205,7 +206,7 @@ export function agentEnvironment(extra: Record<string, string> = {}): NodeJS.Pro
     if (key.startsWith("CLAUDE") || key.startsWith("ANTHROPIC") || key === "AI_AGENT" || key === "PWD" || key === "OLDPWD") continue;
     kept[key] = value;
   }
-  return { ...kept, ...extra };
+  return { ...kept, ...sshAgent(), ...extra };
 }
 
 /// The session a thread on an ACP agent talks to, one agent process per thread: provider.ts's
@@ -909,9 +910,10 @@ function values(option: ConfigOption): ConfigValue[] {
   return (option.options ?? []).flatMap((entry) => ("group" in entry ? entry.options : [entry]));
 }
 
-/// What a mode starts the agent's process with, which tells whether another mode needs another process.
+/// What a mode starts the agent's process with, which tells whether another mode needs another
+/// process. The SSH agent counts: a process told it can sign has to have the socket.
 function launch(reach: Reach): string {
-  return JSON.stringify([reach.env ?? {}, reach.args ?? []]);
+  return JSON.stringify([reach.env ?? {}, reach.args ?? [], sshAgent().SSH_AUTH_SOCK ?? null]);
 }
 
 function describe(error: unknown): string {

@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { run } from "./child.ts";
 import { push } from "./git.ts";
+import { sshAgent } from "./sshagent.ts";
 
 /// A branch's pull request and its checks, as the thread's line shows them.
 export type Pull = {
@@ -50,7 +51,7 @@ function gh(): Promise<string> {
 async function call(cwd: string, args: string[], timeout = 60_000): Promise<string> {
   const path = await gh();
   try {
-    return (await run(path, args, { cwd, timeout, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } })).stdout;
+    return (await run(path, args, { cwd, timeout, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, ...sshAgent(), GH_PROMPT_DISABLED: "1", NO_COLOR: "1" } })).stdout;
   } catch (error) {
     const said = (error as { stderr?: string }).stderr?.trim();
     throw new Error(said || (error as Error).message);

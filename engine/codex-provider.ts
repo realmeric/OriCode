@@ -35,6 +35,7 @@ export const codex: Provider = {
   id: entry.id,
   name: entry.name,
   agent: entry.agent,
+  prompted: true,
   capabilities: {
     steer: true,
     resume: true,

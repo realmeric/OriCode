@@ -75,9 +75,9 @@ final class ShellBlock {
     var terminal: Terminal? { view?.getTerminal() }
 
     /// False when the shell couldn't start: no pty left, no fork.
-    func start() -> Bool {
+    func start(agent: String? = SSHAgent.path()) -> Bool {
         let process = LocalProcess(delegate: link)
-        var environment = TerminalEnvironment.make()
+        var environment = TerminalEnvironment.make(agent: agent)
         // What a command prints goes into the thread, not through a pager nobody can page.
         environment += ["PAGER=cat", "GIT_PAGER=cat"]
         TerminalEnvironment.closeOnExec()

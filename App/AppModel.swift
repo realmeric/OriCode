@@ -752,6 +752,12 @@ final class AppModel {
         Task { _ = try? await engine.request("macOff", [:]) }
     }
 
+    /// Settings › Agents' switch moved. An engine not up yet hears it in hello.
+    func tellSSHAgent() {
+        guard engineState == .ready else { return }
+        Task { _ = try? await engine.request("sshAgent.set", ["socket": SSHAgent.forEngine]) }
+    }
+
     var nodeOverride: String? {
         UserDefaults.standard.string(forKey: "nodePath")
     }
@@ -797,7 +803,7 @@ final class AppModel {
         engineState = .starting
         do {
             try await engine.start(nodeOverride: nodeOverride)
-            let reply = try await engine.request("hello", ["agents": agentsForHello])
+            let reply = try await engine.request("hello", ["agents": agentsForHello, "sshAgent": SSHAgent.forEngine])
             Engine.logger.notice("hello \(String(decoding: (try? reply.data()) ?? Data(), as: UTF8.self), privacy: .public)")
             let hello = try reply.decode(Hello.self)
             // Which models run workflows comes a moment later, in the models event.
