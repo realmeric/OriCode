@@ -18,13 +18,6 @@ struct OverviewRow: Identifiable {
     var id: UUID { chat.id }
 }
 
-/// What a thread set going, as the line its stage folds into: a workflow's run, or the calls that
-/// started the cards of its column, "Started 2 agents, ran a command" or "Planned 4 tasks".
-enum StageLine: Equatable {
-    case run(ToolCall)
-    case calls(String)
-}
-
 /// One project's plan and rows, under its badge and name.
 struct OverviewSection: Identifiable {
     let project: Project
@@ -246,29 +239,12 @@ private struct OverviewLine: View {
 private struct OverviewStageLine: View {
     @Environment(AppModel.self) private var model
     let chat: Chat
-    let line: StageLine
+    let line: ToolCall
 
     var body: some View {
-        let open = { model.openStage(of: chat, line: line, beside: NSEvent.modifierFlags.contains(.option)) }
-        switch line {
-        case .run(let call):
-            let head = model.conversations[chat.id]?.heads.list.first { $0.call == call.toolUseId && $0.kind == .workflow && !$0.ending }
-            RunLine(call: call, head: head, thread: chat.id, opens: open)
-        case .calls(let words):
-            Button(action: open) {
-                HStack(spacing: 6) {
-                    Text(words)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Ink.faint)
-                }
-                .font(Type.secondary)
-                .foregroundStyle(Ink.secondary)
-                .frame(height: 22)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
+        let head = model.conversations[chat.id]?.heads.list.first { $0.call == line.toolUseId && $0.kind == .workflow && !$0.ending }
+        RunLine(call: line, head: head, thread: chat.id) {
+            model.openStage(of: chat, line: line, beside: NSEvent.modifierFlags.contains(.option))
         }
     }
 }
@@ -306,13 +282,10 @@ extension AppModel {
         closeOverview()
     }
 
-    /// A line's click: that thread opens with its stage up for what the line stands for.
-    func openStage(of chat: Chat, line: StageLine, beside: Bool) {
+    /// A line's click: that thread opens with its stage up for the run.
+    func openStage(of chat: Chat, line: ToolCall, beside: Bool) {
         openFromOverview(chat, beside: beside)
-        switch line {
-        case .run(let call): stage.show(call.toolUseId, in: chat.id)
-        case .calls: stage.show(StageModel.laneKey, in: chat.id)
-        }
+        stage.show(line.toolUseId, in: chat.id)
     }
 
     /// Each project's plan while a task of it isn't done or has changed since OriCode opened, and
@@ -338,33 +311,17 @@ extension AppModel {
         return conversation.working || conversation.waitingAsk != nil || conversation.waitingAfterQuit
     }
 
-    /// The line a thread's stage folds into, read from its transcript as the store keeps it: the
-    /// run at work, or the calls that started what else it has at work, or, with nothing at work,
-    /// the latest run since its last message, which a click calls up again from the store. Nil
-    /// when it set nothing going, and when what it set going besides a run has ended, whose cards
-    /// have gone.
-    func stageLine(of chat: Chat) -> StageLine? {
+    /// The workflow a thread's line stands for, read from its transcript as the store keeps it: the
+    /// run at work, or with none the latest since its last message, which a click calls up again
+    /// from the store.
+    func stageLine(of chat: Chat) -> ToolCall? {
         guard let conversation = conversations[chat.id] else { return nil }
-        if let call = conversation.heads.liveWorkflow?.call.flatMap(conversation.call) { return .run(call) }
-        let cards = liveLane(of: conversation)
-        if !cards.isEmpty {
-            var calls: [ToolCall] = []
-            var planned = false
-            for case .tool(_, let call) in conversation.items.reversed() where call.startsCard && cards.contains(where: { $0.started(by: call) }) {
-                // A plan's cards are its latest add_tasks call's.
-                if call.oricodeTool == "add_tasks" {
-                    if planned { continue }
-                    planned = true
-                }
-                calls.insert(call, at: 0)
-            }
-            if !calls.isEmpty { return .calls(StageCallsRow.words(calls)) }
-        }
+        if let call = conversation.heads.liveWorkflow?.call.flatMap(conversation.call) { return call }
         for item in conversation.items.reversed() {
             switch item {
             // The line a quit leaves isn't a message of the user's: the run before it is still the thread's latest.
             case .user(_, let text, _, false) where text != Self.quitLine: return nil
-            case .tool(_, let call) where call.kind == .workflow && !call.isError: return .run(call)
+            case .tool(_, let call) where call.kind == .workflow && !call.isError: return call
             default: continue
             }
         }

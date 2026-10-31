@@ -438,7 +438,7 @@ extension AppModel {
     /// The engine tells what each head is doing only while its thread's surface is open, or its
     /// stage shows a command's card.
     func watchHeads() {
-        let wanted = laneHeads.union(headsShown ? [chat?.id].compactMap { $0 } : [])
+        let wanted = Set(headsShown ? [chat?.id].compactMap { $0 } : [])
         guard wanted != headsWatched else { return }
         for old in headsWatched.subtracting(wanted) {
             Task { _ = try? await engine.request("heads.watch", ["threadId": .string(old.uuidString), "on": false]) }

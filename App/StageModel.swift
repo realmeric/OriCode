@@ -46,8 +46,6 @@ final class StageModel {
     @ObservationIgnored private var trails: [UUID: Trail] = [:]
     /// The run each thread's stage is up for, by the thread.
     private(set) var shown: [UUID: String] = [:]
-    /// The runs a stage was called up for, or left folded, as each first came on the glass.
-    @ObservationIgnored private var cued: Set<String> = []
     /// Each stage on the glass's running agents, whose trails the engine reads.
     @ObservationIgnored var watched: [UUID: Set<UUID>] = [:]
     /// What each agent returned, by Claude Code's id for it.
@@ -81,19 +79,6 @@ final class StageModel {
     static let unstepping: Duration = .milliseconds(100)
     /// Told of the agent's thread a stage stepped out of, or nil, each time one steps in or out.
     @ObservationIgnored var steppedMoved: ((UUID?) -> Void)?
-
-    /// What `shown` holds for a stage called up by the line of what its thread set going besides a
-    /// workflow, rather than by a run's line.
-    static let laneKey = "lane"
-    /// Each thread's column: what it set going that still works, and what of it ended since the
-    /// first of those began, in the order they started.
-    private(set) var lanes: [UUID: [LaneCard]] = [:]
-    /// The cards that ended since the column's work began, by their id, kept until it's all over.
-    @ObservationIgnored private var departed: [UUID: [String: LaneCard]] = [:]
-    /// Each column whose work is over and folds in a moment, by its thread.
-    @ObservationIgnored private var laneEndings: [UUID: UUID] = [:]
-    /// The last reply of each task's or opened thread's that ended, read once for its card.
-    private(set) var replies: [UUID: String] = [:]
 
     func trail(for agent: UUID) -> Trail {
         if let trail = trails[agent] { return trail }
@@ -169,66 +154,6 @@ final class StageModel {
         return runs
     }
 
-    /// What a thread set going that's at work now, as its column's cards: one gone since last time
-    /// stays, ended, until nothing of the column works. The column's first card coming grows the
-    /// stage while the transcript is followed to its end; its last ending folds it a moment later.
-    func lane(_ live: [LaneCard], in thread: UUID, grow: Bool) {
-        let before = lanes[thread] ?? []
-        let ids = Set(live.map(\.id))
-        var gone = departed[thread] ?? [:]
-        for card in before where !ids.contains(card.id) && gone[card.id] == nil {
-            var ended = card
-            if ended.working { ended.state = .done }
-            gone[card.id] = ended
-        }
-        for id in ids { gone[id] = nil }
-        let working = live.contains(where: \.working)
-        let worked = before.contains(where: \.working)
-        departed[thread] = gone.isEmpty ? nil : gone
-        let cards = (live + gone.values).sorted { ($0.startedAt, $0.id) < ($1.startedAt, $1.id) }
-        if cards != before { lanes[thread] = cards.isEmpty ? nil : cards }
-        if working {
-            laneEndings[thread] = nil
-            if !worked, grow, shown[thread] == nil { withAnimation(Motion.move) { shown[thread] = Self.laneKey } }
-        } else if worked {
-            laneEnded(in: thread)
-        }
-    }
-
-    /// The column's work is over: it stays as it ended for a moment, then folds and goes, unless the
-    /// stage is stepped into one of its cards, which keeps it until the stage folds.
-    private func laneEnded(in thread: UUID) {
-        let ending = UUID()
-        laneEndings[thread] = ending
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.lingering)
-            guard let self, laneEndings[thread] == ending else { return }
-            laneEndings[thread] = nil
-            guard stepped[thread] == nil else { return }
-            if shown[thread] == Self.laneKey { _ = fold(thread) }
-            clearLane(thread)
-        }
-    }
-
-    /// Lets the cards of a column whose work is over go.
-    private func clearLane(_ thread: UUID) {
-        guard lanes[thread]?.contains(where: \.working) != true else { return }
-        departed[thread] = nil
-        lanes[thread] = nil
-    }
-
-    /// A task's or an opened thread's last reply, for its card once it has ended.
-    func took(reply: String?, of thread: UUID) {
-        replies[thread] = reply ?? ""
-    }
-
-    /// A run on the glass for the first time: its stage grows, unless the transcript under it is
-    /// being read further up, when its line stays folded until clicked.
-    func cue(_ run: String, in thread: UUID, grow: Bool) {
-        guard cued.insert(run).inserted, grow else { return }
-        withAnimation(Motion.move) { shown[thread] = run }
-    }
-
     /// A run whose stage is up has ended: the stage stays as the run ended for a moment, then folds
     /// into its line, unless it's stepped into an agent, whose transcript is being read: then it
     /// does once it steps back out.
@@ -245,12 +170,7 @@ final class StageModel {
                 overWhileStepped[thread] = run
                 return
             }
-            // What else the thread set going keeps the stage up while it works.
-            if lanes[thread]?.contains(where: \.working) == true {
-                withAnimation(Motion.move) { shown[thread] = Self.laneKey }
-            } else {
-                _ = fold(thread)
-            }
+            _ = fold(thread)
         }
     }
 
@@ -263,10 +183,9 @@ final class StageModel {
             stepped[thread] = nil
         }
         if let left { steppedMoved?(left.thread) }
-        if shown[thread] == nil { clearLane(thread) }
     }
 
-    /// Calls a thread's stage up for a run, or with `laneKey` for its column, as ⌘⇧I's line does.
+    /// Calls a thread's stage up for a run, as ⌘⇧I's line does.
     func show(_ run: String, in thread: UUID) {
         endings[thread] = nil
         overWhileStepped[thread] = nil
@@ -290,12 +209,11 @@ final class StageModel {
             stepped[thread] = nil
         }
         if let left { steppedMoved?(left.thread) }
-        clearLane(thread)
         return true
     }
 
-    /// Steps a thread's stage into an agent, from the columns or across from another, or with nil
-    /// back out to the columns. The card grows into the agent's transcript with the spring; one
+    /// Steps a thread's stage into an agent, from the phases or across from another, or with nil
+    /// back out to the phases. The card grows into the agent's transcript with the spring; one
     /// agent's gives way to another's with a fade.
     func step(into agent: Stepped?, in thread: UUID) {
         let left = stepped[thread]
@@ -317,10 +235,9 @@ final class StageModel {
     private func moveStep(_ agent: Stepped?, from left: Stepped?, in thread: UUID) {
         withAnimation(left == nil || agent == nil ? Motion.move : Motion.fade) { stepped[thread] = agent }
         steppedMoved?(left?.thread)
-        // Back out of a run or a column whose work ended while it was stepped into: it folds now,
-        // after the moment it would have stayed as it ended.
+        // Back out of a run whose work ended while it was stepped into: it folds now, after the
+        // moment it would have stayed as it ended.
         if agent == nil, let run = overWhileStepped.removeValue(forKey: thread) { ended(run, in: thread) }
-        if agent == nil, let lane = lanes[thread], !lane.contains(where: \.working) { laneEnded(in: thread) }
     }
 
     /// Its engine went, and every follow with it.

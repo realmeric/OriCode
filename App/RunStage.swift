@@ -7,8 +7,8 @@ extension EnvironmentValues {
     @Entry var stageSpace: Namespace.ID?
 }
 
-/// A conversation column: its thread's transcript, and over its top the stage of the run the
-/// thread has out, while that's up. The transcript is bounded under the stage's lowest card.
+/// A conversation column: its thread's transcript, and over its top the stage of a workflow its
+/// line called up, while that's up. The transcript is bounded under the stage's lowest card.
 struct ConversationColumn: View {
     @Environment(AppModel.self) private var model
     let conversation: Conversation
@@ -53,20 +53,17 @@ private struct StageSlot: View {
     @State private var reopened = false
 
     var body: some View {
-        let shown = model.stage.shown[chat.id]
-        let lane = model.stage.lanes[chat.id] ?? []
+        let key = model.stage.shown[chat.id]
         let live = conversation.heads.liveWorkflow
-        // Called up by the column's line, the stage still has the run at work's phases first.
-        let key = shown == StageModel.laneKey ? live?.call : shown
         let head = live.flatMap { $0.call == key ? $0 : nil }
         // Over, the run is as it last was: in this launch, as the engine last told of it, which
         // can come after its head has gone; before, as the store has it.
         let run = head?.run ?? key.flatMap { conversation.heads.finished[$0] } ?? call?.workflow
-        let workflow = key != nil && key == call?.toolUseId && (head != nil || run != nil)
-        let up = shown != nil && (workflow || !lane.isEmpty)
+        let shown = key != nil && key == call?.toolUseId && (head != nil || run != nil) ? call : nil
+        let up = shown != nil
         ZStack(alignment: .top) {
-            if up {
-                RunStage(head: head, run: run, call: workflow ? call : nil, lane: lane, heads: conversation.heads, equal: reopened, chat: chat, active: active,
+            if let shown {
+                RunStage(head: head, run: run, call: shown, equal: reopened, chat: chat, active: active,
                          width: size.width, top: RunStage.top(active: active), cap: min(size.height - RunStage.underneath, (size.height * RunStage.most).rounded()), floor: size.height - RunStage.gap, foot: foot)
                     .transition(.opacity)
             }
@@ -84,24 +81,17 @@ private struct StageSlot: View {
     }
 }
 
-/// A workflow at work, on the column's glass above the lead's transcript: the run's mark and name,
-/// then its phases left to right, each with its agents' cards, which say by their tint and their
-/// mark how each agent is and show what it's doing now. What the thread set going besides a
-/// workflow is one column of the same cards after the phases, or alone on the transcript's column.
-/// It has no surface of its own.
+/// A workflow, on the column's glass above the lead's transcript: the run's mark and name, then
+/// its phases left to right, each with its agents' cards, which say by their tint and their mark
+/// how each agent is and show what it's doing now. It has no surface of its own.
 struct RunStage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.stageSpace) private var space
     /// The run's head while it works, nil once it's over.
     let head: Head?
     let run: WorkflowRun?
-    /// The Workflow call that started it, for the phases its script plans and its name; nil for a
-    /// stage of what the thread set going besides a workflow.
-    let call: ToolCall?
-    /// What the thread set going besides a workflow, in the order it started.
-    let lane: [LaneCard]
-    /// The thread's heads, whose commands' last lines their cards show.
-    let heads: Heads
+    /// The Workflow call that started it, for the phases its script plans and its name.
+    let call: ToolCall
     /// Every phase on an equal share, for a run called up again after it was over.
     let equal: Bool
     let chat: Chat
@@ -120,8 +110,6 @@ struct RunStage: View {
     /// The agents' threads, looked up as agents come rather than on every draw, which would have
     /// the stage drawn again for any change to any thread of the project.
     @State private var agentChats: [String: Chat] = [:]
-    /// The column's threads, looked up as its cards come.
-    @State private var laneChats: [UUID: Chat] = [:]
     /// Whose trails this stage asks for: its own, so a stage made again for the same thread, which
     /// can appear before the old one has gone, never has its trails stopped by the old one going.
     @State private var watcher = UUID()
@@ -142,26 +130,16 @@ struct RunStage: View {
     /// From the head row's foot to the phases' labels.
     static let labelsGap: CGFloat = 14
     /// The column alone starts its cards this far under the head row's top, at y 64.
-    static let laneDrop: CGFloat = 2
 
     var body: some View {
-        let script = call?.input["script"]?.string ?? ""
+        let script = call.input["script"]?.string ?? ""
         let agents = Self.told(run?.agents ?? [], stage: model.stage, chats: agentChats)
-        let groups = call == nil ? [] : WorkflowRun.groups(agents, planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
+        let groups = WorkflowRun.groups(agents, planned: WorkflowRun.plannedPhases(in: script), reported: run?.phases ?? [])
         let agentIDs = (run?.agents ?? []).compactMap(\.id)
         let stepped = model.stage.stepped[chat.id]
         // Stepped into an agent, no card shows a trail.
         let watched = stepped != nil ? [] : followed(groups)
-        // A command's last lines come from the engine only while a card shows them.
-        let commands = stepped == nil && lane.contains { $0.kind == .command && $0.working }
-        let laneThreads = lane.compactMap(\.thread)
-        Group {
-            if let call {
-                workflow(call, groups: groups, stepped: stepped)
-            } else {
-                column(stepped: stepped)
-            }
-        }
+        workflow(call, groups: groups, stepped: stepped)
         .padding(.top, top)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { hovering = $0 }
@@ -169,16 +147,11 @@ struct RunStage: View {
         // Stepped into an agent, the lead's transcript under it keeps the top it had.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .local).maxY } action: { if model.stage.stepped[chat.id] == nil { foot($0) } }
         .onChange(of: agentIDs, initial: true) { agentChats = model.agentChats(of: chat) }
-        .onChange(of: laneThreads, initial: true) {
-            laneChats = laneThreads.reduce(into: [:]) { chats, id in chats[id] = laneChats[id] ?? model.chat(withID: id) }
-        }
         // The trails of the agents at work are read while the stage is up, and no longer.
         .onChange(of: watched, initial: true) { model.watchSteps(watched, for: watcher) }
-        .onChange(of: commands, initial: true) { model.watchLaneHeads(chat.id, commands) }
         .onDisappear {
             foot(nil)
             model.watchSteps([], for: watcher)
-            model.watchLaneHeads(chat.id, false)
         }
     }
 
@@ -193,12 +166,11 @@ struct RunStage: View {
         }
     }
 
-    /// The agents at work whose transcripts their trails are read from: the run's, and the column's subagents.
+    /// The agents at work whose transcripts their trails are read from.
     private func followed(_ groups: [(phase: String, agents: [WorkflowRun.Agent])]) -> Set<UUID> {
         let running = groups.flatMap(\.agents).filter { $0.state == .running }
         let agents: [Chat] = running.compactMap { agent in agent.id.flatMap { agentChats[$0] } }
-        let subagents: [Chat] = lane.filter { $0.kind == .subagent && $0.working }.compactMap { card in card.thread.flatMap { laneChats[$0] } }
-        return Set((agents + subagents).filter { $0.agentTranscript != nil }.map(\.id))
+        return Set(agents.filter { $0.agentTranscript != nil }.map(\.id))
     }
 
     /// What each done or failed card says, as its line does, for the layout to give it its lines.
@@ -228,17 +200,14 @@ struct RunStage: View {
         // Not while a block is open: Return typed there mustn't answer the card.
         let listening = active && model.openShell == nil ? lead?.waitingAsk?.requestId : nil
         let across = width - inset * 2
-        // The column beside the phases, a gutter after them.
-        let laneWidth = lane.isEmpty ? 0 : min(StageLayout.card, (across * 0.34).rounded(.down))
         // A hop's gutter stays open until its well has folded; the well's room goes as it folds.
-        let layout = StageLayout.fitted(groups: groups, width: across - (lane.isEmpty ? 0 : StageLayout.gutter + laneWidth), narrow: width < 560, equal: equal,
+        let layout = StageLayout.fitted(groups: groups, width: across, narrow: width < 560, equal: equal,
                                         wide: Set(hops.map(\.phase)), wells: hops.filter { !$0.folded }.reduce(into: [:]) { $0[$1.recipient] = $1.well },
                                         asks: asks.mapValues { $0.call.shown("command") ?? "" }, results: results(groups), names: equal)
         let room = cap - top - Self.headHeight - Self.labelsGap
-        let beside = lane.isEmpty ? { (_: Int) in CGFloat(0) } : { StageLayout.labelHeight + StageLayout.labelGap + LaneLayout.height(lane, steps: $0) }
-        let steps = (0...4).reversed().first { max(layout.height(steps: $0), beside($0)) <= room } ?? 0
+        let steps = (0...4).reversed().first { layout.height(steps: $0) <= room } ?? 0
         // Past the cap with no call left to drop, the cards scroll.
-        let scrolls = max(layout.height(steps: 0), beside(0)) > room
+        let scrolls = layout.height(steps: 0) > room
         VStack(alignment: .leading, spacing: Self.labelsGap) {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
@@ -261,7 +230,7 @@ struct RunStage: View {
                         .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.28)), removal: .opacity.animation(.easeOut(duration: 0.08))))
                 }
                 if let stepped {
-                    StepMarks(phases: layout.phases, lane: lane, laneChats: laneChats, stepped: stepped.agent, rays: rays, color: color,
+                    StepMarks(phases: layout.phases, stepped: stepped.agent, rays: rays, color: color,
                               agentChats: agentChats, lead: chat.id, asking: Set(asks.keys))
                 }
             }
@@ -271,52 +240,12 @@ struct RunStage: View {
                     .frame(height: max(floor - top - Self.headHeight - Self.labelsGap, 0))
                     .transition(.opacity)
             } else {
-                phases(layout, steps: steps, scrolls: scrolls, hops: hops, asks: asks, listening: listening, rays: rays, color: color, laneWidth: laneWidth)
+                phases(layout, steps: steps, scrolls: scrolls, hops: hops, asks: asks, listening: listening, rays: rays, color: color)
                     .frame(maxHeight: scrolls ? max(room, 0) : nil, alignment: .top)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
             }
         }
         .padding(.horizontal, inset)
-    }
-
-    /// The column alone on the transcript's column from y 64, with no label and no head row; the
-    /// head row comes only while it's stepped into a card, its marks alone.
-    @ViewBuilder
-    private func column(stepped: StageModel.Stepped?) -> some View {
-        let inset: CGFloat = width < 900 ? 20 : 32
-        if let stepped {
-            VStack(alignment: .leading, spacing: Self.labelsGap) {
-                HStack(spacing: 8) {
-                    Spacer(minLength: 8)
-                    StepMarks(phases: [], lane: lane, laneChats: laneChats, stepped: stepped.agent, rays: [:], color: Ink.primary,
-                              agentChats: [:], lead: chat.id, asking: [])
-                }
-                .frame(height: Self.headHeight)
-                AgentSurface(stepped: stepped, ask: nil, lead: chat, listens: false)
-                    .frame(height: max(floor - top - Self.headHeight - Self.labelsGap, 0))
-                    .transition(.asymmetric(insertion: .opacity, removal: .opacity.animation(.easeOut(duration: 0.1))))
-            }
-            .padding(.horizontal, inset)
-        } else {
-            let room = cap - top - Self.laneDrop
-            let steps = (0...4).reversed().first { LaneLayout.height(lane, steps: $0) <= room } ?? 0
-            let scrolls = LaneLayout.height(lane, steps: 0) > room
-            let cards = LaneColumn(cards: lane, steps: steps, lead: chat, chats: laneChats, heads: heads)
-                .frame(width: min(Column.width, width - Column.margin * 2))
-            Group {
-                if scrolls {
-                    ScrollView { cards }
-                        .scrollIndicators(.never)
-                        .frame(height: max(room, 0))
-                } else {
-                    cards
-                }
-            }
-            .padding(.top, Self.laneDrop)
-            .frame(maxWidth: .infinity)
-            // Back from a card stepped into, the cards come once its surface has gone, so no line is read over another.
-            .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.12)), removal: .opacity.animation(.easeOut(duration: 0.1))))
-        }
     }
 
     /// An agent of a later phase whose task took words from what agents of the phase before it
@@ -372,7 +301,7 @@ struct RunStage: View {
 
     @ViewBuilder
     private func phases(_ layout: StageLayout, steps: Int, scrolls: Bool, hops: [Hop], asks: [String: PendingAsk], listening: String?,
-                        rays: [String: Int], color: Color, laneWidth: CGFloat) -> some View {
+                        rays: [String: Int], color: Color) -> some View {
         let wells = Dictionary(hops.map { ($0.recipient, $0.well) }) { first, _ in first }
         let faded = Set(hops.filter(\.settled).map(\.recipient))
         let folded = Set(hops.filter(\.folded).map(\.recipient))
@@ -384,13 +313,6 @@ struct RunStage: View {
                 if index > 0 { Color.clear.frame(width: layout.gutters[index], height: 1) }
                 PhaseColumn(phase: phase, steps: steps, rays: rays, color: color, agentChats: agentChats, cwd: chat.cwd,
                             wells: wells, faded: faded, folded: folded, handed: handed, asks: asks, listening: listening, lead: chat.id)
-            }
-            // What the thread set going besides the run, unlabelled, its cards level with the phases'.
-            if !lane.isEmpty {
-                Color.clear.frame(width: StageLayout.gutter, height: 1)
-                LaneColumn(cards: lane, steps: steps, lead: chat, chats: laneChats, heads: heads)
-                    .padding(.top, StageLayout.labelHeight + StageLayout.labelGap)
-                    .frame(width: laneWidth, alignment: .leading)
             }
         }
         .overlayPreferenceValue(CardBounds.self) { bounds in
@@ -671,9 +593,6 @@ private struct StepMarks: View {
     @Environment(AppModel.self) private var model
     @Environment(\.stageSpace) private var space
     let phases: [StageLayout.Phase]
-    /// What the thread set going besides the run, one group after the phases'.
-    var lane: [LaneCard] = []
-    var laneChats: [UUID: Chat] = [:]
     let stepped: String
     let rays: [String: Int]
     let color: Color
@@ -691,49 +610,7 @@ private struct StepMarks: View {
                     }
                 }
             }
-            if !lane.isEmpty {
-                HStack(spacing: 2) {
-                    ForEach(lane) { card in
-                        capsule(card)
-                    }
-                }
-            }
         }
-    }
-
-    private func capsule(_ card: LaneCard) -> some View {
-        let chat = card.thread.flatMap { laneChats[$0] }
-        let key = card.key(chat)
-        let selected = key != nil && key == stepped
-        return HStack(spacing: 9) {
-            LaneMark(card: card, state: card.shown(chat))
-                .frame(width: 14, height: 14)
-                .stageMatched(key.map { StageMark.matchID($0) } ?? "", in: key == nil ? nil : space)
-            if selected {
-                Text(card.label)
-                    .font(card.kind == .command ? Type.mono : LaneCard.labelFont)
-                    .foregroundStyle(Ink.primary)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.1)), removal: .identity))
-            }
-        }
-        .padding(.leading, 7)
-        .padding(.trailing, selected ? 11 : 7)
-        .frame(height: 28)
-        .background {
-            if selected { Capsule().fill(Surface.selected) }
-        }
-        .contentShape(Capsule())
-        .onTapGesture {
-            guard let chat else { return }
-            if NSEvent.modifierFlags.contains(.option) {
-                model.openBeside(chat)
-            } else {
-                model.step(into: selected ? nil : chat, of: lead)
-            }
-        }
-        .help(card.label)
     }
 
     private func capsule(_ agent: WorkflowRun.Agent) -> some View {
@@ -1258,11 +1135,10 @@ struct StageLayout: Equatable {
         }.max() ?? 0
     }
 
-    /// The height of a trail of `lines`, its first in body type when `first`, or of a command's in mono.
-    static func trailHeight(_ lines: Int, first: Bool = true, mono: Bool = false) -> CGFloat {
+    /// The height of a trail of `lines`, its first in body type when `first`.
+    static func trailHeight(_ lines: Int, first: Bool = true) -> CGFloat {
         guard lines > 0 else { return 0 }
         let gaps = CGFloat(lines - 1) * stepGap
-        if mono { return CGFloat(lines) * LaneLayout.monoLine + gaps }
         return (first ? bodyLine : secondaryLine) + CGFloat(lines - 1) * secondaryLine + gaps
     }
 
@@ -1378,22 +1254,5 @@ struct WorkflowRow: View {
 
     var body: some View {
         RunLine(call: call, head: heads?.list.first { $0.call == call.toolUseId && $0.kind == .workflow && !$0.ending }, thread: thread)
-    }
-}
-
-/// Tells the stage of a run as it comes on the glass, from a view of its own, so the transcript
-/// never reads the thread's heads.
-struct StageCue: View {
-    @Environment(AppModel.self) private var model
-    let heads: Heads
-    let thread: UUID
-    /// The transcript is followed to its end.
-    let following: Bool
-
-    var body: some View {
-        Color.clear.onChange(of: heads.liveWorkflow?.call, initial: true) { _, run in
-            // The stage grows by itself only in the preview; its line still opens it on a click.
-            if let run { model.stage.cue(run, in: thread, grow: following && AppModel.preview) }
-        }
     }
 }

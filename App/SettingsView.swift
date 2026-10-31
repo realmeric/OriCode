@@ -319,8 +319,8 @@ private struct GeneralPane: View {
         PaneTitle(text: "General")
         SectionHeading("Preview")
         SettingsCard {
-            SettingsRow(title: "Home and the stage", detail: "With no thread open, today's work as capsules over the composer, and a workflow's agents on a stage while it runs. Still taking shape.") {
-                Toggle("Home and the stage", isOn: $preview).labelsHidden().toggleStyle(.switch)
+            SettingsRow(title: "Home", detail: "With no thread open, today's work as capsules over the composer. Still taking shape.") {
+                Toggle("Home", isOn: $preview).labelsHidden().toggleStyle(.switch)
             }
         }
         SectionHeading("Window")

@@ -463,11 +463,10 @@ private struct OtherField: View {
 }
 
 extension PendingAsk {
-    /// Allowed by the user, a call whose card on the stage or whose run's line already shows it,
-    /// so the ask leaves no line of its own.
+    /// Allowed by the user, a call whose run's line already shows it, so the ask leaves no line of
+    /// its own.
     var shownElsewhere: Bool {
         guard state == .allowed, answeredBy == nil, kind != "question" else { return false }
-        let call = call
-        return call.kind == .workflow || call.startsCard
+        return call.kind == .workflow
     }
 }

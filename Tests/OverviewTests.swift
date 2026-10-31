@@ -116,11 +116,7 @@ struct OverviewTests {
         ]]))
         #expect(model.agents(under: lead).count == 2)
         #expect(titles(model) == [["alpha", lead.title]])
-        guard case .run(let call) = model.stageLine(of: lead) else {
-            Issue.record("no run line")
-            return
-        }
-        #expect(call.toolUseId == "call")
+        #expect(model.stageLine(of: lead)?.toolUseId == "call")
 
         // Quit and relaunched, the thread cut off is sent on with the quit's line, and its run,
         // read from the store, is still its line; a click opens it with the run's stage up.
@@ -131,11 +127,7 @@ struct OverviewTests {
         again.route(EngineEvent(name: "turn.started", threadId: id, body: ["event": "turn.started"]))
         #expect(titles(again) == [["alpha", lead.title]])
         let line = try #require(again.stageLine(of: lead))
-        guard case .run(let stored) = line else {
-            Issue.record("no run line after the relaunch")
-            return
-        }
-        #expect(stored.toolUseId == "call")
+        #expect(line.toolUseId == "call")
         again.toggleOverview()
         again.openStage(of: lead, line: line, beside: false)
         #expect(again.selectedChatID == lead.id && !again.overviewShown)

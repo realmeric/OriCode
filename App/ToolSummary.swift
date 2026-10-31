@@ -149,9 +149,7 @@ enum ToolSummary {
     /// read or edited, and a thread once, only when the call reached it; waiting on threads is
     /// said only when the run did nothing else. OriCode's own tools are said in words, "changed
     /// a setting", and the harness's, a ToolSearch loading tools, aren't counted at all.
-    /// `starting` is a run of calls that set agents, commands and threads going, which says one of
-    /// them as "a": "Started 2 agents, ran a command".
-    static func run(_ calls: [ToolCall], starting: Bool = false) -> String {
+    static func run(_ calls: [ToolCall]) -> String {
         var kinds: [RunKind] = []
         var seen: [RunKind: Set<String>] = [:]
         for call in calls where !harness.contains(call.name) {
@@ -161,7 +159,7 @@ enum ToolSummary {
             seen[kind, default: []].insert(key(for: call, kind))
         }
         if kinds.count > 1 { kinds.removeAll { $0 == .waited } }
-        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count, [], starting: false).capitalizedFirst }
+        guard !kinds.isEmpty else { return RunKind.other.phrase(calls.count, []).capitalizedFirst }
         if kinds == [.waited], calls.contains(where: { RunKind($0) == .waited && $0.result == nil && !$0.isError }) {
             let count = seen[.waited]?.count ?? 0
             return "Waiting on \(count) \(count == 1 ? "thread" : "threads")"
@@ -169,7 +167,7 @@ enum ToolSummary {
         // Waits on the plan are one wait, said as it is while one of them is still open.
         let planOpen = calls.contains { $0.oricodeTool == "wait_plan" && $0.result == nil && !$0.isError }
         return kinds.map { kind in
-            kind == .waitedPlan ? planOpen ? "waiting on the plan" : "waited on the plan" : kind.phrase(seen[kind]?.count ?? 0, seen[kind] ?? [], starting: starting)
+            kind == .waitedPlan ? planOpen ? "waiting on the plan" : "waited on the plan" : kind.phrase(seen[kind]?.count ?? 0, seen[kind] ?? [])
         }.joined(separator: ", ").capitalizedFirst
     }
 
@@ -230,15 +228,8 @@ enum ToolSummary {
             }
         }
 
-        func phrase(_ count: Int, _ keys: Set<String>, starting: Bool) -> String {
+        func phrase(_ count: Int, _ keys: Set<String>) -> String {
             let one = count == 1
-            if starting, one {
-                switch self {
-                case .command: return "ran a command"
-                case .opened: return "opened a thread"
-                default: break
-                }
-            }
             return switch self {
             case .read: "read \(count) \(one ? "file" : "files")"
             case .edit: "edited \(count) \(one ? "file" : "files")"
@@ -328,17 +319,6 @@ extension ToolCall {
 }
 
 extension ToolCall {
-    /// Whether it set something going that has a card on the thread's stage: a Task subagent, a
-    /// command sent to the background, a worker, a thread opened, or a plan's tasks to run.
-    var startsCard: Bool {
-        guard !isError else { return false }
-        switch oricodeTool {
-        case "start_worker", "open_thread": return true
-        case "add_tasks": return input["run"]?.bool == true
-        case .some: return false
-        case nil: return kind == .agent || kind == .run && (background || input["run_in_background"]?.bool == true)
-        }
-    }
 
     /// The worker a start_worker call started, by the id its answer gives.
     var startedWorker: String? {

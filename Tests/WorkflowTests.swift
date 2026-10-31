@@ -78,7 +78,7 @@ struct WorkflowTests {
         let lead = UUID(), fix = UUID(), verify = UUID()
         var left: [UUID?] = []
         stage.steppedMoved = { left.append($0) }
-        stage.cue("run", in: lead, grow: true)
+        stage.show("run", in: lead)
         stage.step(into: .init(agent: "a3", thread: fix), in: lead)
         stage.step(into: .init(agent: "a3", thread: fix), in: lead)
         stage.step(into: .init(agent: "a4", thread: verify), in: lead)
@@ -97,11 +97,11 @@ struct WorkflowTests {
     @Test func aStageFoldsAMomentAfterItsRunEnds() async throws {
         let stage = StageModel()
         let lead = UUID(), other = UUID()
-        stage.cue("run", in: lead, grow: true)
+        stage.show("run", in: lead)
         stage.ended("run", in: lead)
         #expect(stage.shown[lead] == "run")
         // Stepped into an agent, the stage stays for its transcript to be read.
-        stage.cue("second", in: other, grow: true)
+        stage.show("second", in: other)
         stage.step(into: .init(agent: "a1", thread: UUID()), in: other)
         stage.ended("second", in: other)
         try await Task.sleep(for: StageModel.lingering + .milliseconds(200))

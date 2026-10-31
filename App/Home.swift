@@ -241,7 +241,7 @@ private struct HomePhases: View {
 }
 
 extension AppModel {
-    /// Home and the stage are a preview in 0.5.0, off unless turned on in Settings › General
+    /// Home is a preview since 0.5.0, off unless turned on in Settings › General
     /// (Meriç, 2026-10-25: 0.5.0 ships what's certain; these go on in 0.6.0).
     nonisolated static let previewKey = "previewHome"
     /// Off under test, whatever the test host's own defaults say: the test host is Molten, whose
