@@ -60,7 +60,9 @@ extension AppModel {
             if let folder, let editor { Self.open([URL(filePath: folder)], in: editor) }
         })
         if let file = openFile, let folder, let editor {
-            let url = file.path.hasPrefix("/") ? URL(filePath: file.path) : URL(filePath: folder).appending(path: file.path)
+            // Outside the project the viewer names a file in full or from ~.
+            let path = (file.path as NSString).expandingTildeInPath
+            let url = path.hasPrefix("/") ? URL(filePath: path) : URL(filePath: folder).appending(path: path)
             items.append(command("file.editor", "Open \(url.lastPathComponent) in \(editor.name)", icon: "doc.text", keywords: ["editor"]) {
                 Self.open([url], in: editor)
             })

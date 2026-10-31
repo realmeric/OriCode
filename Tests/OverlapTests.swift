@@ -72,6 +72,22 @@ struct OverlapTests {
         #expect(after.frame.minX == alone.frame.minX && after.frame.width == alone.frame.width)
     }
 
+    /// The viewer stands in the middle of the window, or of what a pinned drawer leaves of it, as
+    /// wide as it can be up to its 900pt, where it once stayed at the left of a wide window.
+    @Test func aFileStandsInTheMiddle() async throws {
+        let stage = try OverlapStage()
+        defer { stage.close() }
+        for width in OverlapStage.widths {
+            for pinned in [false, true] {
+                _ = try await stage.show(width: width, pinned: pinned, threads: .titled, over: .file)
+                let file = try #require(stage.read().surfaces.first { $0.name.hasSuffix("WitnessReview.swift") })
+                let drawer = pinned ? Drawer.width + Drawer.inset * 2 : 0
+                #expect(abs(file.frame.midX - (drawer + width) / 2) < 1, "\(width)pt, pinned \(pinned): \(file.frame)")
+                #expect(abs(file.frame.width - min(900, width - drawer - 80)) < 1, "\(width)pt, pinned \(pinned): \(file.frame)")
+            }
+        }
+    }
+
     /// Everything running over a thread not begun, in the least window, with a draft of nine lines
     /// that grows the centred composer up into the screen's room and a dozen threads on it: the
     /// screen's glass ends 12pt above the composer, and the model's picker opening puts it away.

@@ -325,6 +325,9 @@ struct RootView: View {
                         .over(named: file.path)
                         .frame(height: max(120, bottom - top))
                         .padding(.top, inset)
+                        // The reader sets what it's given at its top left: this keeps the panel
+                        // in the middle of what it's given, as a terminal's is.
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, 40)
                         // A pinned drawer covers the left of the window; the file sits beside it.
                         .padding(.leading, model.drawerDocked ? Drawer.width + Drawer.inset * 2 : 0)

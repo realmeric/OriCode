@@ -30,7 +30,7 @@ import { failureLog, mergePull, openPull, pullOf } from "./pr.ts";
 import { Follow, followSteps } from "./follow.ts";
 import { claudeCode, sessionEvents, sessionsIn } from "./sessions.ts";
 import { t3Code } from "./t3code.ts";
-import { listFiles, readProjectFile, writeProjectFile } from "./files.ts";
+import { listFiles, viewFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
 import { signingNow, useSshAgent } from "./sshagent.ts";
 import { version } from "./version.ts";
@@ -647,7 +647,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   },
 
   async "files.read"({ cwd, path }: { cwd: string; path: string }) {
-    return readProjectFile(cwd, path);
+    return viewFile(cwd, path);
   },
 
   async "files.write"({ cwd, path, content, stamp }: { cwd: string; path: string; content: string; stamp: string }) {

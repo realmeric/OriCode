@@ -504,7 +504,7 @@ extension AppModel {
             if file.editing {
                 items.append(command("file.save", "Save \((file.path as NSString).lastPathComponent)", icon: "square.and.arrow.down", shortcut: "⌘S",
                                      unavailable: file.dirty ? nil : "Nothing to save") { [weak self] in self?.saveFile() })
-            } else {
+            } else if file.stamp != nil {
                 items.append(command("file.edit", "Edit \((file.path as NSString).lastPathComponent)", icon: "pencil.line",
                                      unavailable: file.truncated ? "Too large to edit here" : nil) { [weak self] in self?.editFile() })
             }

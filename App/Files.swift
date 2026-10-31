@@ -1,6 +1,8 @@
+import ImageIO
 import SwiftUI
 
-/// A file open over the transcript, to read and, once Edit is pressed, to edit.
+/// A file open over the transcript, to read and, once Edit is pressed, to edit. One outside the
+/// project comes with no stamp, so it's only read.
 struct OpenFile: Identifiable {
     let id = UUID()
     let path: String
@@ -15,6 +17,8 @@ struct OpenFile: Identifiable {
     /// The line a link pointed at, scrolled to and lit once the file is in.
     var line: Int?
     var code: AttributedString?
+    /// What's up in place of the lines when the file is a picture.
+    var picture: NSImage?
     var lines = 0
     var truncated = false
     var problem: String?
@@ -60,6 +64,12 @@ extension AppModel {
         Task {
             do {
                 let reply = try await engine.request("files.read", ["cwd": .string(cwd), "path": .string(path)])
+                if reply["binary"]?.bool == true {
+                    let picture = await Self.picture(at: reply["full"]?.string ?? path)
+                    guard openFile?.id == id else { return }
+                    if let picture { openFile?.picture = picture } else { openFile?.problem = "That file isn't text or a picture." }
+                    return
+                }
                 let content = reply["content"]?.string ?? ""
                 let code = await CodeHighlighter.shared.highlight(content, language: CodeHighlighter.language(forPath: relative))
                 guard openFile?.id == id else { return }
@@ -73,6 +83,25 @@ extension AppModel {
             }
         }
     }
+
+    /// The picture a file holds, turned as it was taken and no larger than the viewer can show,
+    /// decoded away from the main thread. Nil for a file that isn't one.
+    nonisolated static func picture(at path: String) async -> NSImage? {
+        await Task.detached(priority: .userInitiated) {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: pictureEdge,
+            ]
+            guard let source = CGImageSourceCreateWithURL(URL(filePath: path) as CFURL, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+            else { return nil }
+            return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        }.value
+    }
+
+    /// The panel's greatest height on a large display, in pixels.
+    private nonisolated static let pictureEdge = 3200
 
     func closeFile() {
         guard settleFile() else { return }
@@ -340,6 +369,15 @@ struct FileViewer: View {
                     .padding(.bottom, 8)
             } else if let code = file.code {
                 FileCode(code: code, lines: file.lines, line: file.line)
+            } else if let picture = file.picture {
+                // Fitted to the panel, and never larger than its pixels.
+                Image(nsImage: picture)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: picture.size.width, maxHeight: picture.size.height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding([.horizontal, .bottom], 16)
+                    .accessibilityLabel("Picture")
             } else {
                 ProgressView().controlSize(.small).padding(16)
             }
