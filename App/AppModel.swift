@@ -335,6 +335,8 @@ final class AppModel {
     @ObservationIgnored var pullLooks: [String: Int] = [:]
     /// Which threads the drawer lists; not kept, so a launch shows them all.
     var drawerFilter: DrawerFilter = .all
+    /// When old threads were last looked for.
+    @ObservationIgnored var swept: Date?
     var sideShown = false
     var pullShown = false
     var pullMerging = false
@@ -632,6 +634,7 @@ final class AppModel {
             MainActor.assumeIsolated {
                 self?.readReview()
                 self?.refreshPull(for: self?.chat)
+                self?.sweepOldThreads()
             }
         }
         // What's typed and not sent is kept as the app is left, since a crash or a kill asks nobody.
@@ -823,6 +826,7 @@ final class AppModel {
             watchHeads()
             followAgents()
             titleOldThreads()
+            sweepOldThreads()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

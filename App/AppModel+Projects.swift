@@ -2,6 +2,17 @@ import AppKit
 import Foundation
 import SwiftData
 
+/// How long a main thread is left alone before it goes to the archive by itself, in days as
+/// Settings › Archive stores them, 0 for never. Nothing is lost: a thread keeps its transcript, its
+/// session and its worktree, and Restore brings it back.
+enum AutoArchive {
+    static let key = "archiveOldThreads"
+    static let standard = "14"
+    static let choices = [(word: "two_weeks", stored: standard), (word: "a_week", stored: "7"), (word: "a_month", stored: "30"), (word: "never", stored: "0")]
+
+    static var days: Int { Int(UserDefaults.standard.string(forKey: key) ?? standard) ?? 0 }
+}
+
 extension AppModel {
     /// Fetched again only after a save that could have added or removed one: the composer asks
     /// for the open thread on every key, and a fetch each time was most of a keystroke's cost.
@@ -20,13 +31,13 @@ extension AppModel {
         return projects.first { $0.id == selectedProjectID }
     }
 
-    /// Every project's top threads in one list, in the drawer's order: the drawer, ⌘1–9, ⌃Tab
-    /// and the Thread menu. A draft isn't one of them until its first message, and a thread
-    /// another opened, a workflow's agent, a subagent or a worker isn't one at all: ⌘⇧I, ⌘K and
-    /// the lines in transcripts reach those. Under the drawer's filter, when it has one.
+    /// Every project's top threads in one list, a project's together, in the drawer's order: the
+    /// drawer, ⌘1–9, ⌃Tab and the Thread menu. A draft isn't one of them until its first message,
+    /// and a thread under another isn't one at all: ⌘⇧I, ⌘K and the lines in transcripts reach
+    /// those. Under the drawer's filter, when it has one.
     var chats: [Chat] {
         // The archived ones, when they're what's asked for, the latest worked on first.
-        drawerFilter == .archived ? listedChats : Chat.inDrawerOrder(listedChats)
+        Chat.byProject(drawerFilter == .archived ? listedChats : Chat.inDrawerOrder(listedChats)).flatMap(\.self)
     }
 
     /// Every thread under this one, at any depth, whatever the drawer's filter.
@@ -42,23 +53,23 @@ extension AppModel {
         }
     }
 
-    /// Each started thread not archived, by the top thread it sits under: itself unless it's part
-    /// of another thread's work, else that thread's top.
+    /// Each started thread not archived, by the top thread it sits under: itself when it's a
+    /// main thread, else the main thread above it.
     var topThreads: [UUID: UUID] {
-        Self.tops(of: projects.flatMap(\.chats).filter { $0.started && !$0.archived }, work: workThreads)
+        Self.tops(of: projects.flatMap(\.chats).filter { $0.started && !$0.archived })
     }
 
-    /// The threads that are a piece of another's work and have no row of their own: a workflow's
-    /// agents, subagents, workers and the threads a plan runs. A thread an agent opened with
-    /// open_thread is a thread like the user's own and keeps its row: Meriç asked for one on
-    /// 2026-10-25 and couldn't find it in the drawer.
-    private var workThreads: Set<UUID> {
-        Set(projects.flatMap(\.chats).filter { $0.agentID != nil }.map(\.id) + projects.flatMap(\.tasks).compactMap(\.thread))
-    }
-
-    /// `topThreads` of threads already gathered, which the drawer's list has in hand.
-    private static func tops(of threads: [Chat], work: Set<UUID>) -> [UUID: UUID] {
-        let openers = Dictionary(threads.map { ($0.id, work.contains($0.id) ? $0.openedBy : nil) }, uniquingKeysWith: { first, _ in first })
+    /// `topThreads` of threads already gathered, which the drawer's list has in hand. A thread sits
+    /// under the one that opened it in the same project, and an agent under its opener wherever it
+    /// runs. One opened in another project is that project's main thread: Meriç, 2026-10-31, of a
+    /// thread a No folder thread opened to run all of blackjack. Holding a task of a plan changes
+    /// none of this: a lead that claims one is still the thread being written to.
+    private static func tops(of threads: [Chat]) -> [UUID: UUID] {
+        let places = Dictionary(threads.map { ($0.id, $0.project?.id) }, uniquingKeysWith: { first, _ in first })
+        let openers = Dictionary(threads.map { chat -> (UUID, UUID?) in
+            let under = chat.agentID != nil || chat.openedBy.flatMap { places[$0] } == chat.project?.id
+            return (chat.id, under ? chat.openedBy : nil)
+        }, uniquingKeysWith: { first, _ in first })
         var tops: [UUID: UUID] = [:]
         for id in openers.keys {
             var top = id
@@ -76,7 +87,7 @@ extension AppModel {
         // A thread archived with the one that opened it comes back with it, so it has no row.
         guard drawerFilter != .archived else { return archivedChats.filter { $0.archivedWith == nil } }
         let all = projects.flatMap(\.chats).filter { $0.started && !$0.archived }
-        let tops = Self.tops(of: all, work: workThreads)
+        let tops = Self.tops(of: all)
         let top = all.filter { tops[$0.id] == $0.id }
         switch drawerFilter {
         case .project(let id): return top.filter { $0.project?.id == id }
@@ -116,6 +127,40 @@ extension AppModel {
         put(away: chat, with: nil)
     }
 
+    /// The main threads left alone since `cutoff`, with everything under them. A thread stays while
+    /// it's open, pinned, at work, waiting on someone, holding a draft or a task not done.
+    func oldThreads(before cutoff: Date) -> [Chat] {
+        let tops = topThreads
+        let held = Set(projects.flatMap(\.tasks).filter { $0.state != "done" }.compactMap(\.thread))
+        func kept(_ chat: Chat) -> Bool {
+            chat.updatedAt >= cutoff || held.contains(chat.id) || chat.resumeAt != nil || chat.quitMidTurn || chat.agentWorking || workflowRuns(in: chat)
+                || conversations[chat.id].map { $0.working || $0.waitingAsk != nil || $0.waitingAfterQuit } == true
+        }
+        return projects.flatMap(\.chats).filter { chat in
+            guard chat.started, !chat.archived, tops[chat.id] == chat.id, !chat.pinned,
+                  chat.id != selectedChatID, chat.id != besideChatID, !hasDraft(chat.id), !kept(chat)
+            else { return false }
+            return !threads(under: chat).contains { !$0.archived && kept($0) }
+        }
+    }
+
+    /// Settings › Archive's sweep, as the app starts and comes to the front at most every six hours,
+    /// so nothing wakes for it. A row at a time, so a first sweep of many doesn't hold a frame up.
+    func sweepOldThreads() {
+        guard engineState == .ready, swept.map({ Date.now.timeIntervalSince($0) > 6 * 3600 }) ?? true else { return }
+        swept = .now
+        guard AutoArchive.days > 0, let cutoff = Calendar.current.date(byAdding: .day, value: -AutoArchive.days, to: .now) else { return }
+        let old = oldThreads(before: cutoff)
+        guard !old.isEmpty else { return }
+        Task {
+            for chat in old {
+                archive(chat)
+                await Task.yield()
+            }
+            say(old.count == 1 ? "Archived an old thread" : "Archived \(old.count) old threads")
+        }
+    }
+
     private func put(away chat: Chat, with opener: Chat?) {
         let archived = chat.id
         let wasSelected = archived == selectedChatID
@@ -145,6 +190,8 @@ extension AppModel {
             thread.archived = false
             thread.archivedWith = nil
         }
+        // Brought back on purpose, so the next sweep doesn't take it straight away again.
+        chat.updatedAt = .now
         save()
         drawerFilter = .all
         select(chat)
@@ -162,11 +209,11 @@ extension AppModel {
         save()
     }
 
-    /// A drag in the drawer. A row moves within the pinned threads or within the rest; one dropped
-    /// above a pinned thread is pinned there, and a pinned one dropped below the rest's first row
-    /// isn't pinned any more. Both groups then keep the order the drag left.
-    func moveThreads(from source: IndexSet, to destination: Int) {
-        var list = chats
+    /// A drag in the drawer, within a project's threads. A row moves within the pinned threads or
+    /// within the rest; one dropped above a pinned thread is pinned there, and a pinned one dropped
+    /// below the rest's first row isn't pinned any more. Both groups then keep the order the drag left.
+    func moveThreads(in project: Project, from source: IndexSet, to destination: Int) {
+        var list = chats.filter { $0.project?.id == project.id }
         // A filtered list shows some of the threads, and an order among those isn't one among all.
         guard drawerFilter == .all else { return }
         guard let first = source.first, list.indices.contains(first) else { return }

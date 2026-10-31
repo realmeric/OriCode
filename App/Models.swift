@@ -259,6 +259,24 @@ enum Store {
 }
 
 extension Chat {
+    /// Threads in a project's groups, each in the order it came, the projects by their first
+    /// thread: in the drawer's order that puts a project with a pin first, then the one where a
+    /// thread started last, and a turn ending moves nothing (Meriç, 2026-10-31: "proje proje").
+    static func byProject(_ chats: [Chat]) -> [[Chat]] {
+        var groups: [[Chat]] = []
+        var places: [UUID?: Int] = [:]
+        for chat in chats {
+            let project = chat.project?.id
+            if let place = places[project] {
+                groups[place].append(chat)
+            } else {
+                places[project] = groups.count
+                groups.append([chat])
+            }
+        }
+        return groups
+    }
+
     /// The drawer's order: pinned threads first, as they were put, then the rest, a thread never
     /// placed on top and newest first, the others as they were dragged. Each thread's three
     /// values are read once: a stored value read through SwiftData costs a microsecond or more,

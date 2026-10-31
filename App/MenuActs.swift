@@ -263,6 +263,7 @@ struct MenuSetting {
         MenuSetting(name: "new_threads_fast_mode", key: NewThreads.fast, kind: .choice([("last_picked", ""), ("on", NewThreads.on), ("off", NewThreads.off)])),
         MenuSetting(name: "new_threads_workspace", key: NewThreads.workspace, kind: .choice([("projects_folder", ""), ("its_own_branch", NewThreads.worktree)])),
         MenuSetting(name: "review", key: ReviewDesign.key, kind: .choice(ReviewDesign.allCases.map { (word: $0.rawValue, stored: $0.rawValue) })),
+        MenuSetting(name: "archive_old_threads", key: AutoArchive.key, kind: .choice(AutoArchive.choices)),
         MenuSetting(name: "branch_prefix", key: NewThreads.branchPrefix, kind: .text(NewThreads.defaultBranchPrefix)),
         MenuSetting(name: "write_message_with", key: NewThreads.messageModel, kind: .choice([("a_small_model", ""), ("the_threads_model", NewThreads.threadModel)])),
     ]

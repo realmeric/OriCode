@@ -73,6 +73,11 @@ extension AppModel {
         for thread in composers.keys { keepDraft(of: thread) }
     }
 
+    /// Whether a thread holds something typed and not sent, which archiving it would take.
+    func hasDraft(_ thread: UUID) -> Bool {
+        composers[thread]?.draft.blank == false || keptDrafts[thread.uuidString] != nil
+    }
+
     /// A thread archived or deleted takes what its composer held, and what was kept of it.
     func forgetComposer(of thread: UUID) {
         composers[thread] = nil

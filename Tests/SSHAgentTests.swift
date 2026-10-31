@@ -78,7 +78,8 @@ struct SSHAgentTests {
 
         let block = ShellBlock(id: UUID(), chatID: UUID(), command: "ssh-add -l", folder: folder.path)
         #expect(block.start(agent: socket))
-        for _ in 0..<100 where block.running { try await Task.sleep(for: .milliseconds(50)) }
+        // A login shell, whose profile can take seconds on a busy Mac.
+        for _ in 0..<600 where block.running { try await Task.sleep(for: .milliseconds(50)) }
         #expect(block.exitCode == 0)
         #expect(block.text.contains("throwaway"))
     }

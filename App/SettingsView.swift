@@ -482,9 +482,26 @@ private struct ArchivePane: View {
     @Environment(AppModel.self) private var model
     /// The thread Delete was pressed on, asked about here rather than in the main window behind.
     @State private var deleting: Chat?
+    @AppStorage(AutoArchive.key) private var after = AutoArchive.standard
 
     var body: some View {
         PaneTitle(text: "Archive")
+        SettingsCard {
+            SettingsRow(title: "Archive old threads", detail: "Pinned threads and threads at work stay.") {
+                Picker("Archive old threads", selection: $after) {
+                    Text("After a week").tag("7")
+                    Text("After two weeks").tag("14")
+                    Text("After a month").tag("30")
+                    Text("Never").tag("0")
+                }
+                .menuRow()
+                .onChange(of: after) {
+                    model.swept = nil
+                    model.sweepOldThreads()
+                }
+            }
+        }
+        .padding(.top, 14)
         let archived = model.archivedChats
         if archived.isEmpty {
             Text("Nothing archived. Archive a thread from its row in the thread list, or from ⌘K, and it waits here with its transcript and its session.")

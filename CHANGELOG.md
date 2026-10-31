@@ -5,6 +5,8 @@ Before 0.1.0, the first public release, a version was 0.0.N, where N was the num
 ## v0.5.1 "Watching over" - 2026-10-31
 
 - Agents and terminals sign with OriPass. While its SSH agent's socket is at `~/.oripass/agent.sock`, everything OriCode starts gets `SSH_AUTH_SOCK` pointing there, on every agent, terminal, action and git, and every agent is told to use ssh, scp and git over ssh plainly and to wait when a finger is asked for on the Mac. With no socket nothing changes, and Settings › Agents has a switch to turn it off. Cursor's allowlist can still refuse `ssh`, and Codex's sandbox can still block the network in Accept edits and Auto.
+- The thread list shows the threads you write to, each project's together under its name. A thread an agent opened in the same project sits under its opener, a click away on ⌘⇧I or ⌘K. One opened in another project is that project's main thread, and a thread that takes a task of a plan no longer loses its row.
+- A thread left alone for two weeks goes to the archive by itself, with the threads under it. The open thread, pinned threads, threads at work and threads holding a draft or an open task stay. Settings › Archive sets how long, or Never, and Restore brings any of them back.
 
 ## v0.5.0 "Watching over" - 2026-10-26
 

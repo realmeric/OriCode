@@ -17,7 +17,7 @@ export const openThread = {
   name: "open_thread",
   description:
     "Open another thread in OriCode and send it its first message. Open one when you judge the work wants it: when a task has two or more parts that don't depend on each other, open one for each part as your first step, however small, and collect them with wait_thread; or for work in another of the user's projects, or something to look into while you carry on. " +
-    "It is an ordinary thread of the user's, in their list, on your agent and model unless you name others and in a permission mode no looser than yours, and it can open threads of its own. " +
+    "It is an ordinary thread of the user's, on your agent and model unless you name others and in a permission mode no looser than yours, and it can open threads of its own. " +
     "It works on its own while you go on: wait_thread gives you its reply when its turn ends, message_thread sends it more, stop_thread stops it. " +
     "Returns its name, which you tell the user, and its id. OriCode refuses it when as many threads are working as the user allows at once, and says so.",
   inputSchema: {

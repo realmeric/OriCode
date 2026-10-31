@@ -45,19 +45,135 @@ struct DrawerListTests {
         #expect(model.selectedChatID == test.id && model.chats.map(\.title) == ["Lead", "Other"])
     }
 
-    /// A thread an agent opened with open_thread is a thread like the user's own: Meriç asked for
-    /// one and couldn't find it in the drawer.
-    @Test func aThreadAnAgentOpenedHasItsOwnRow() throws {
+    /// A thread an agent opened in the same project sits under it, and ⌘⇧I and ⌘K reach it: the
+    /// drawer shows the threads the user writes to (Meriç, 2026-10-31).
+    @Test func aThreadOpenedInTheSameProjectHasNoRow() throws {
         let (model, lead, _, _, _, _) = try model()
         let opened = Chat(project: try #require(lead.project), title: "Phone plan")
         opened.started = true
-        opened.createdAt = Date(timeIntervalSince1970: 1_010)
         opened.openedBy = lead.id
         model.context.insert(opened)
         model.save()
 
-        #expect(Set(model.chats.map(\.title)) == ["Phone plan", "Lead", "Other"])
-        #expect(model.topThreads[opened.id] == opened.id)
+        #expect(model.chats.map(\.title) == ["Lead", "Other"])
+        #expect(model.topThreads[opened.id] == lead.id)
+    }
+
+    /// As blackjack went: a No folder thread opened "Araştırma ve Kanban planı" there, which ran
+    /// the project, claimed tasks of its plan and opened everything else, and had no row at all.
+    @Test func aThreadOpenedInAnotherProjectIsThatProjectsMainThread() throws {
+        let (model, lead, _, _, _, _) = try model()
+        let beta = Project(name: "beta", path: "/tmp/beta")
+        model.context.insert(beta)
+        func thread(_ title: String, openedBy opener: Chat) -> Chat {
+            let chat = Chat(project: beta, title: title)
+            chat.started = true
+            chat.openedBy = opener.id
+            model.context.insert(chat)
+            return chat
+        }
+        let main = thread("Plan", openedBy: lead)
+        let part = thread("Part", openedBy: main)
+        let task = PlanTask(number: 1, title: "Claimed", doneWhen: "")
+        task.project = beta
+        task.thread = main.id
+        model.context.insert(task)
+        model.save()
+
+        #expect(model.topThreads[main.id] == main.id && model.topThreads[part.id] == main.id)
+        #expect(model.chats.map(\.title).contains("Plan") && !model.chats.map(\.title).contains("Part"))
+        model.drawerFilter = .project(beta.id)
+        #expect(model.chats.map(\.title) == ["Plan"])
+        // It's still work under the thread that opened it when that one goes to the archive.
+        model.drawerFilter = .all
+        model.archive(lead)
+        #expect(main.archived && part.archived)
+    }
+
+    /// Every thread at work on ⌘⇧I has a row to find it by, itself or the main thread above it.
+    @Test func everyThreadLeadsToARow() throws {
+        let (model, lead, primes, words, test, other) = try model()
+        let rows = Set(model.chats.map(\.id))
+        for chat in [lead, primes, words, test, other] {
+            #expect(model.topThreads[chat.id].map(rows.contains) == true)
+        }
+    }
+
+    @Test func threadsSitByProjectWithTheNewestProjectFirst() throws {
+        let (model, lead, _, _, _, other) = try model()
+        let beta = Project(name: "beta", path: "/tmp/beta")
+        model.context.insert(beta)
+        let build = Chat(project: beta, title: "Build")
+        build.started = true
+        build.createdAt = Date(timeIntervalSince1970: 1_500)
+        model.context.insert(build)
+        let solo = Chat(project: beta, title: "Solo")
+        solo.started = true
+        solo.createdAt = Date(timeIntervalSince1970: 500)
+        model.context.insert(solo)
+        model.save()
+
+        #expect(model.chats.map(\.title) == ["Build", "Solo", "Lead", "Other"])
+        #expect(Chat.byProject(model.chats).map { $0.map(\.title) } == [["Build", "Solo"], ["Lead", "Other"]])
+        // A pin takes its project to the top, and a turn ending moves nothing.
+        model.togglePin(other)
+        #expect(model.chats.map(\.title) == ["Other", "Lead", "Build", "Solo"])
+        lead.updatedAt = .now
+        #expect(model.chats.map(\.title) == ["Other", "Lead", "Build", "Solo"])
+    }
+
+    /// A week and more old, from the fixture's dates, with the cutoff well after them.
+    private let cutoff = Date(timeIntervalSince1970: 100_000)
+
+    private func aged(_ chats: Chat...) {
+        for chat in chats { chat.updatedAt = Date(timeIntervalSince1970: 2_000) }
+    }
+
+    @Test func aMainThreadLeftAloneIsOldAndTakesWhatIsUnderIt() throws {
+        let (model, lead, primes, words, test, other) = try model()
+        model.selectedChatID = nil
+        aged(lead, primes, words, test, other)
+
+        #expect(Set(model.oldThreads(before: cutoff).map(\.title)) == ["Lead", "Other"])
+        for chat in model.oldThreads(before: cutoff) { model.archive(chat) }
+        #expect([lead, primes, words, test, other].allSatisfy { $0.archived })
+        // Brought back, it isn't taken again by the next sweep.
+        model.restore(lead)
+        #expect(!model.oldThreads(before: cutoff).contains { $0.id == lead.id })
+    }
+
+    @Test func aThreadInUseIsNeverOld() throws {
+        let (model, lead, primes, words, test, other) = try model()
+        aged(lead, primes, words, test, other)
+
+        // Open.
+        #expect(model.oldThreads(before: cutoff).map(\.title) == ["Lead"])
+        model.selectedChatID = nil
+        // Pinned.
+        model.togglePin(other)
+        #expect(model.oldThreads(before: cutoff).map(\.title) == ["Lead"])
+        // A thread under it worked lately.
+        test.updatedAt = cutoff.addingTimeInterval(60)
+        #expect(model.oldThreads(before: cutoff).isEmpty)
+        aged(test)
+        // A thread under it works.
+        model.conversation(for: test).userSent("Run the test")
+        #expect(model.oldThreads(before: cutoff).isEmpty)
+        model.conversations[test.id] = nil
+        aged(test)
+        // Something typed and not sent.
+        model.composer(for: lead).draft.text = "half a thought"
+        #expect(model.oldThreads(before: cutoff).isEmpty)
+        model.forgetComposer(of: lead.id)
+        // A task of a plan not done.
+        let task = PlanTask(number: 1, title: "Open", doneWhen: "")
+        task.project = lead.project
+        task.thread = primes.id
+        model.context.insert(task)
+        model.save()
+        #expect(model.oldThreads(before: cutoff).isEmpty)
+        task.state = "done"
+        #expect(model.oldThreads(before: cutoff).map(\.title) == ["Lead"])
     }
 
     @Test func ctrlTabStepsFromTheTopRowOfAThreadWithNoRow() throws {
@@ -86,7 +202,7 @@ struct DrawerListTests {
 
         model.pick(threadAt: 1)
         #expect(model.selectedChatID == other.id)
-        model.moveThreads(from: [1], to: 0)
+        model.moveThreads(in: try #require(other.project), from: [1], to: 0)
         #expect(model.chats.map(\.title) == ["Other", "Lead"])
     }
 

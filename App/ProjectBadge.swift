@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// A project's two letters on its colour, at the start of each of its threads, so threads from
-/// different projects can share one list. No folder has no colour and no letters: a laptop, in
-/// the ink the rest of the row is in.
+/// A project's two letters on its colour, beside its name over its threads in the drawer and at
+/// the start of each capsule on home. No folder has no colour and no letters: a laptop, in the ink
+/// the rest of the row is in.
 struct ProjectBadge: View {
     @Environment(AppModel.self) private var model
     let project: Project

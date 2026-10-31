@@ -36,24 +36,38 @@ struct Drawer: View {
             .padding(.top, 2)
             List {
                 let chats = model.chats
-                let pinned = chats.filter(\.pinned).count
                 let under = workUnder()
                 // What each row is told, read once here, so a row whose own values hold isn't
                 // made again when another thread is picked, peeked or hovered (K-318).
                 let open = model.chat?.id, beside = model.besideChatID, peeked = model.peekedChatID
-                ForEach(Array(chats.enumerated()), id: \.element.id) { index, chat in
-                    DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
-                              working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
-                              selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked,
-                              digit: command && index < 9)
-                        // Space, not a line, parts the pinned threads from the rest.
-                        .padding(.bottom, index == pinned - 1 && pinned < chats.count ? 10 : 0)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                let groups = Chat.byProject(chats)
+                ForEach(Array(groups.enumerated()), id: \.element[0].project?.id) { place, group in
+                    let pinned = group.filter(\.pinned).count
+                    // Each row's place in the whole list, which ⌘1–9 goes by.
+                    let before = groups[..<place].reduce(0) { $0 + $1.count }
+                    Section {
+                        ForEach(Array(group.enumerated()), id: \.element.id) { offset, chat in
+                            let index = before + offset
+                            DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
+                                      working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
+                                      selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked,
+                                      digit: command && index < 9)
+                                // Space, not a line, parts the pinned threads from the rest.
+                                .padding(.bottom, offset == pinned - 1 && pinned < group.count ? 10 : 0)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                        }
+                        .onMove { source, destination in
+                            if let project = group[0].project { model.moveThreads(in: project, from: source, to: destination) }
+                        }
+                        .moveDisabled(model.drawerFilter != .all)
+                    } header: {
+                        if let project = group[0].project {
+                            DrawerHeading(project: project)
+                        }
+                    }
                 }
-                .onMove { model.moveThreads(from: $0, to: $1) }
-                .moveDisabled(model.drawerFilter != .all)
                 if chats.isEmpty, model.drawerFilter != .all {
                     Button("No threads here. Show all") { model.drawerFilter = .all }
                         .buttonStyle(.plain)
@@ -224,6 +238,23 @@ struct Drawer: View {
     }
 }
 
+/// A project's name over its threads.
+private struct DrawerHeading: View {
+    let project: Project
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProjectBadge(project: project)
+            Text(project.isNoFolder ? Project.noFolderName : project.name)
+                .font(Type.secondary.weight(.medium))
+                .foregroundStyle(Ink.faint)
+                .lineLimit(1)
+        }
+        .padding(.leading, 10)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
 /// One thread's row. Told what it needs by the drawer, and holding its own hover and rename, so
 /// a change to one thread makes its row again and not every row in the list.
 private struct DrawerRow: View {
@@ -252,10 +283,6 @@ private struct DrawerRow: View {
         // A row of the list's own rather than a button, which would keep the mouse and leave the
         // list no drag to reorder with.
         HStack(spacing: 10) {
-            // On every row, the header's project's too, so every title starts at the same x.
-            if let project = chat.project {
-                ProjectBadge(project: project)
-            }
             if model.renamingChatID == chat.id {
                 TextField("Title", text: $draft)
                     .textFieldStyle(.plain)
@@ -390,6 +417,8 @@ private struct KeyLoopGate: NSViewRepresentable {
             while let view = queue.popLast() {
                 if let table = view as? NSTableView, abs(table.bounds.width - Drawer.width) < 40 {
                     table.refusesFirstResponder = !open
+                    // A project's heading scrolls with its threads: floating, it draws a line.
+                    table.floatsGroupRows = false
                     return
                 }
                 queue += view.subviews
