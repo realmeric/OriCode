@@ -3,15 +3,14 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.5.1</title>
-      <pubDate>Sat, 31 Oct 2026 10:18:52 +0300</pubDate>
-      <sparkle:version>498</sparkle:version>
-      <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
+      <title>0.5.2</title>
+      <pubDate>Sat, 31 Oct 2026 16:12:02 +0300</pubDate>
+      <sparkle:version>502</sparkle:version>
+      <sparkle:shortVersionString>0.5.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[• Agents and terminals sign with OriPass. While its SSH agent's socket is at `~/.oripass/agent.sock`, everything OriCode starts gets `SSH_AUTH_SOCK` pointing there, on every agent, terminal, action and git, and every agent is told to use ssh, scp and git over ssh plainly and to wait when a finger is asked for on the Mac. With no socket nothing changes, and Settings › Agents has a switch to turn it off. Cursor's allowlist can still refuse `ssh`, and Codex's sandbox can still block the network in Accept edits and Auto.
-• The thread list shows the threads you write to, each project's together under its name. A thread an agent opened in the same project sits under its opener, a click away on ⌘⇧I or ⌘K. One opened in another project is that project's main thread, and a thread that takes a task of a plan no longer loses its row.
-• A thread left alone for two weeks goes to the archive by itself, with the threads under it. The open thread, pinned threads, threads at work and threads holding a draft or an open task stay. Settings › Archive sets how long, or Never, and Restore brings any of them back.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.1/OriCode-0.5.1.zip" sparkle:edSignature="Yn06s1tShfTliZo1WzA/rkVYLO4A/JPTV8teGvKs9S1UTUaL07N5D5cy+ymteFii+js02spG5o8c9U5KJbG3DA==" length="7759104" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• Nothing grows over a thread's transcript any more. What a thread sets going is on ⌘⇧I and ⌘I, and a workflow's stage opens only from its line.
+• The file viewer opens in the middle of the window, and it shows a file an agent read outside the project, read-only, a picture as a picture. Login and key files outside a project stay shut.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.2/OriCode-0.5.2.zip" sparkle:edSignature="Ty6c4YbOYONrRGLnZ35z5iyCgh4uuuAKfkP6SedectKDyMjjC79sVk6dLdpa0naGhbIc2DbisqK+9sdSwv9UBA==" length="7677757" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
