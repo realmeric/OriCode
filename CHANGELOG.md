@@ -2,6 +2,10 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.5.1 "Watching over" - 2026-10-31
+
+- Agents and terminals sign with OriPass. While its SSH agent's socket is at `~/.oripass/agent.sock`, everything OriCode starts gets `SSH_AUTH_SOCK` pointing there, on every agent, terminal, action and git, and every agent is told to use ssh, scp and git over ssh plainly and to wait when a finger is asked for on the Mac. With no socket nothing changes, and Settings › Agents has a switch to turn it off. Cursor's allowlist can still refuse `ssh`, and Codex's sandbox can still block the network in Accept edits and Auto.
+
 ## v0.5.0 "Watching over" - 2026-10-26
 
 ### Installed like any Mac app
