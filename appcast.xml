@@ -3,45 +3,15 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.5.0</title>
-      <pubDate>Mon, 26 Oct 2026 16:41:56 +0300</pubDate>
-      <sparkle:version>493</sparkle:version>
-      <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
+      <title>0.5.1</title>
+      <pubDate>Sat, 31 Oct 2026 10:18:52 +0300</pubDate>
+      <sparkle:version>498</sparkle:version>
+      <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[### Installed like any Mac app
-
-• OriCode is signed with Developer ID and notarized by Apple, so it opens without Gatekeeper's warning, and it comes as a DMG you open and drag onto Applications. Updates keep coming through Sparkle as before. A permission macOS tied to the old signature, a folder's access say, may be asked once more.
-
-### OriCode on the iPhone
-
-• OriCode Phone shows what's running on your Mac across projects, brings each permission or question to the phone as a notification you answer from the lock screen, and lets you stop a thread, read it, reply to it and start a new one. The work stays on the Mac: the phone pairs once by a code shown in Settings › Phone and talks to it through your own iCloud, sealed with a key only the two of them hold, and no agent's login ever leaves the Mac. With no phone paired, the Mac does nothing new.
-
-### Agents see and use the Mac
-
-• A thread can take a picture of an app's window and click, type and scroll in it, each app allowed once per thread, so it can check a change in the app it's building. It needs Screen Recording and Accessibility: OriCode asks once, at the first launch of 0.5.0, and the answer stays in Settings › Agents › The Mac. With it off, no agent is offered the tools. OriCode's own window is never seen or touched.
-
-### Agents use OriCode
-
-• An agent can open threads when the work wants them, send any thread a message, wait for one to finish and read its last reply, and stop it. Each of these leaves a short line in both threads. A thread an agent opened has its own row in the drawer.
-• An agent can do what OriCode's menus and Settings do: rename, archive, put a thread beside, open the review on a file, change a thread's model or mode. Anything that loosens what guards you, a looser permission mode, a higher budget, more threads at once, is asked of you first.
-• Threads working on the same files in worktrees bring their work back with a merge, and two threads editing one file are each told.
-• Every permission and question waiting on you, in any thread, collects at the top of ⌘⇧I, answered there without opening the thread, with a notification when OriCode is in the background.
-• Threads working at once, in Settings › Agents, caps how many an agent can set going.
-
-### Smoother
-
-• A very long message no longer freezes the window, and one too long for its model stays in the message bar with a line saying so instead of breaking the thread.
-• The drawer opens, closes and switches threads up to twice as fast with hundreds of threads, and it's one plain list again with each row's project badge.
-• Two threads streaming side by side keep their frames, a long reply's end stays in view, Show earlier keeps the row you were reading, and an edit card wraps a long line instead of cutting it.
-• A message sent while a turn runs has Send now beside "Waiting for the next step": the step stops and the message goes as the next turn.
-• ⌘K, ⌘P, ⌘I and ⌘⇧I leave the thread dimmed under them instead of hiding it.
-• Stop ends what a thread left running, its background commands and the threads it set going, and a thread a usage limit paused says it waits and goes on at the reset.
-• A second copy of OriCode no longer opens the same threads; it brings the first to the front.
-
-### Preview
-
-• Home and the stage, in Settings › General › Preview: with no thread open, today's work as capsules over the composer, asks answered on them, and a workflow's agents on a stage while it runs. They're still taking shape and are off unless you turn them on. Heads choosing their own models and workers, and threads answering their children's asks first, are in Settings › Agents, off by default.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.0/OriCode-0.5.0.zip" sparkle:edSignature="YqYwPWReOG9Cv06/CtM40+gSBPB2MCQ764dccq8z2+lQKQ8fx5dwXO3IRojrQBnKFZ5GMRHR3s4JWrfwkjEGDg==" length="7732239" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• Agents and terminals sign with OriPass. While its SSH agent's socket is at `~/.oripass/agent.sock`, everything OriCode starts gets `SSH_AUTH_SOCK` pointing there, on every agent, terminal, action and git, and every agent is told to use ssh, scp and git over ssh plainly and to wait when a finger is asked for on the Mac. With no socket nothing changes, and Settings › Agents has a switch to turn it off. Cursor's allowlist can still refuse `ssh`, and Codex's sandbox can still block the network in Accept edits and Auto.
+• The thread list shows the threads you write to, each project's together under its name. A thread an agent opened in the same project sits under its opener, a click away on ⌘⇧I or ⌘K. One opened in another project is that project's main thread, and a thread that takes a task of a plan no longer loses its row.
+• A thread left alone for two weeks goes to the archive by itself, with the threads under it. The open thread, pinned threads, threads at work and threads holding a draft or an open task stay. Settings › Archive sets how long, or Never, and Restore brings any of them back.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.1/OriCode-0.5.1.zip" sparkle:edSignature="Yn06s1tShfTliZo1WzA/rkVYLO4A/JPTV8teGvKs9S1UTUaL07N5D5cy+ymteFii+js02spG5o8c9U5KJbG3DA==" length="7759104" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
