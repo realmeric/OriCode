@@ -11,6 +11,10 @@ extension PhoneLink {
         var projects: [String: ProjectInfo] = [:]
         var threads: [String: ThreadInfo] = [:]
         var asks: [String: AskInfo] = [:]
+        /// What a notification says of each ask, by its id.
+        var notices: [String: Notice] = [:]
+        /// Threads another thread opened, whose turns' ends don't buzz on their own.
+        var opened: Set<UUID> = []
     }
 
     static let window: Duration = .seconds(2)
@@ -71,8 +75,8 @@ extension PhoneLink {
         for (name, info) in snapshot.projects { written(RecordType.project, name, info) }
         for (name, info) in snapshot.threads { written(RecordType.thread, name, info) }
         for (name, info) in snapshot.asks { written(RecordType.ask, name, info) }
-        nudge(snapshot.asks, threads: snapshot.threads)
-        nudgeEnds(snapshot.threads)
+        nudge(snapshot)
+        nudgeEnds(snapshot)
         // What left the set, and what an earlier launch wrote that nothing holds now.
         let current = Set(snapshot.projects.keys).union(snapshot.threads.keys).union(snapshot.asks.keys)
         let held = Set(sentBoxes.keys).union(known.values.filter { Self.ours.contains($0.recordType) }.map(\.recordID.recordName))
@@ -120,10 +124,13 @@ extension PhoneLink {
                   let project = chat.project
             else { continue }
             snapshot.threads[RecordName.thread(chat.id)] = thread(chat, in: project, conversation)
+            if chat.openedBy != nil { snapshot.opened.insert(chat.id) }
             for ask in conversation?.waitingAsks ?? [] {
                 let asked = askedAt[ask.requestId] ?? .now
                 askedAt[ask.requestId] = asked
-                snapshot.asks[RecordName.ask(ask.requestId)] = Self.info(ask, thread: chat, agentName: model.providerInfo(ask.worker?.agent ?? chat.providerID).name, asked: asked)
+                let info = Self.info(ask, thread: chat, agentName: model.providerInfo(ask.worker?.agent ?? chat.providerID).name, asked: asked)
+                snapshot.asks[RecordName.ask(ask.requestId)] = info
+                snapshot.notices[ask.requestId] = Notice(ask, info, cwd: chat.cwd)
             }
         }
         return snapshot

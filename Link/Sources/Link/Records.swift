@@ -212,11 +212,44 @@ public struct AskInfo: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// What makes the phone buzz: the notification's words, made on the phone from this box.
+/// What makes the phone buzz: the notification's words, made on the phone from this box. A box
+/// from a Mac before P-23 has no project or agent, and decodes all the same.
 public struct NudgeInfo: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case permission, question, reply
+        /// A permission named no finer: a tool's, or any an older Mac wrote.
+        case permission
+        case run, edit, write, fetch, plan
+        case question, reply, failed, stopped
+
+        /// It waits on an answer, so it may break through.
+        public var asks: Bool {
+            switch self {
+            case .reply, .failed, .stopped: false
+            default: true
+            }
+        }
+
+        /// The fewest words for what it wants, under the thread's title.
+        public var words: String {
+            switch self {
+            case .permission: "Needs your permission"
+            case .run: "Run a command"
+            case .edit: "Edit a file"
+            case .write: "Write a file"
+            case .fetch: "Fetch a page"
+            case .plan: "Start a plan"
+            case .question: "Asks you"
+            case .reply: "Replied"
+            case .failed: "Failed"
+            case .stopped: "Stopped"
+            }
+        }
     }
+
+    /// Where a notification's command stops being read, a long press in.
+    public static let bodyLength = 1_000
+    static let replyLength = 300
+    static let replyLines = 3
 
     public var kind: Kind
     public var title: String
@@ -225,14 +258,58 @@ public struct NudgeInfo: Codable, Equatable, Sendable {
     public var ask: String?
     /// A question's options, when it has one question of three or fewer, which go on its buttons.
     public var options: [String]
+    /// The thread's project, for its name and the avatar's colour and letters.
+    public var project: ProjectInfo?
+    /// The agent it runs on, for the mark of a thread in no project.
+    public var agent: String?
 
-    public init(kind: Kind, title: String, body: String, thread: UUID, ask: String?, options: [String]) {
+    public init(kind: Kind, title: String, body: String, thread: UUID, ask: String?, options: [String], project: ProjectInfo? = nil, agent: String? = nil) {
         self.kind = kind
         self.title = title
         self.body = body
         self.thread = thread
         self.ask = ask
         self.options = options
+        self.project = project
+        self.agent = agent
+    }
+
+    /// Under the title: the project, which No folder isn't, and what it wants.
+    public var subtitle: String {
+        guard let name = project?.name, project?.color != nil else { return kind.words }
+        return "\(name) · \(kind.words)"
+    }
+
+    /// The thread as this notification named it, for a tap that lands before its record has come.
+    public var standIn: ThreadInfo {
+        let status: ThreadStatus = switch kind {
+        case .failed: .failed
+        case .stopped: .stopped
+        case .reply: .idle
+        default: .asking
+        }
+        return ThreadInfo(id: thread, project: project?.id ?? UUID(), title: title, agent: agent ?? "", status: status, step: nil, rays: [:],
+                          reply: body.isEmpty ? nil : body, pinned: false, updated: .now)
+    }
+
+    /// A reply's first lines as plain words, as many as a lock screen shows.
+    public static func opening(of reply: String) -> String {
+        let lines = reply.split(whereSeparator: \.isNewline).map(plain).filter { !$0.isEmpty }
+        return String(lines.prefix(replyLines).joined(separator: "\n").prefix(replyLength))
+    }
+
+    private static func plain(_ line: Substring) -> String {
+        let text = line.drop { $0 == "#" || $0 == " " }
+        let parsed = try? AttributedString(markdown: String(text), options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        return parsed.map { String($0.characters) } ?? String(text)
+    }
+
+    /// Whether a turn's end buzzes, Settings › Phone's Never aside: a thread the phone wrote to
+    /// always, since that's the end the phone waits for; a thread another thread opened never, or
+    /// a lead's sub-threads would spam; any other when the phone should buzz at all.
+    public static func endBuzzes(wrote: Bool, opened: Bool, nudging: @autoclosure () -> Bool) -> Bool {
+        if wrote { return true }
+        return !opened && nudging()
     }
 }
 

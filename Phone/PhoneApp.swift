@@ -58,12 +58,21 @@ struct PhoneApp: App {
     private func pairForTestIfAsked() {
 #if DEBUG
         let arguments = CommandLine.arguments
-        if let at = arguments.firstIndex(of: "-Screens"), at + 1 < arguments.count, let cache = Screens.cache(arguments[at + 1]) {
+        // A default too, so a launch from a tap on a notification, which takes no arguments, has it.
+        if let screen = UserDefaults.standard.string(forKey: "Screens"), let cache = Screens.cache(screen) {
             delegate.store.showForScreenshots(cache)
             // The thread screen: the asking thread, pushed.
-            if arguments[at + 1] == "thread", let asking = cache.threads.first(where: { $0.status == .asking }) { delegate.router.path = [asking.id] }
-            if arguments[at + 1] == "compose" { delegate.router.composing = true }
-            if arguments[at + 1] == "reply", let done = cache.threads.first(where: { $0.reply != nil }) { delegate.router.path = [done.id] }
+            if screen == "thread", let asking = cache.threads.first(where: { $0.status == .asking }) { delegate.router.path = [asking.id] }
+            if screen == "compose" { delegate.router.composing = true }
+            if screen == "reply", let done = cache.threads.first(where: { $0.reply != nil }) { delegate.router.path = [done.id] }
+            if let nudge = Screens.posted { Task { await Screens.post(nudge) } }
+            // What iCloud would bring a moment after a tap landed.
+            if screen == "late", let full = Screens.cache("thread") {
+                Task {
+                    try? await Task.sleep(for: .seconds(4))
+                    delegate.store.showForScreenshots(full)
+                }
+            }
             return
         }
         guard delegate.store.paired == nil, let at = arguments.firstIndex(of: "-PairCode"), at + 1 < arguments.count,
@@ -99,13 +108,13 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
 
     /// Once paired. Home works without notifications, and says everything they would.
     func askToNotify() {
-        guard store.paired?.phone != "phone-screenshots" else { return }
+        guard store.paired?.phone != "phone-screenshots" || UserDefaults.standard.bool(forKey: "ScreensNotify") else { return }
         Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
     }
 
     /// A button on a notification: Allow, Deny or a question's option, sealed and in iCloud before
     /// the system takes the app back. Allow and an option have had Face ID already. A tap on the
-    /// notification itself opens the app. UIKit takes the end of it on the main thread only: the
+    /// notification itself opens its thread. UIKit takes the end of it on the main thread only: the
     /// async form ended it from a background one, and a tap on a notification crashed the app
     /// (2026-10-27).
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
@@ -115,10 +124,28 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
         var strings: [String: String] = [:]
         for (key, value) in info { if let key = key as? String, let value = value as? String { strings[key] = value } }
         nonisolated(unsafe) let done = completionHandler
+        nonisolated(unsafe) let push = info
         Task { @MainActor in
-            await answered(action: action, info: strings, typed: typed)
+            if action == UNNotificationDefaultActionIdentifier {
+                await open(strings["nudge"], push: push)
+            } else {
+                await answered(action: action, info: strings, typed: typed)
+            }
             done()
         }
+    }
+
+    /// A tap lands on exactly its thread, from a cold start too, where this runs before the first
+    /// frame: the stack is replaced and any sheet goes. A notification the extension couldn't open
+    /// in time has its Nudge read here.
+    private func open(_ written: String?, push: [AnyHashable: Any]) async {
+        let said = written.flatMap { try? JSONDecoder().decode(NudgeInfo.self, from: Data($0.utf8)) }
+        var nudge = said
+        if nudge == nil { nudge = await store.nudge(in: push) }
+        guard let nudge else { return }
+        router.composing = false
+        router.path = [nudge.thread]
+        await store.land(on: nudge)
     }
 
     private func answered(action: String, info: [String: String], typed: String?) async {
@@ -126,9 +153,6 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
         let ask = info["ask"]
         let command: Command.Action
         switch action {
-        case UNNotificationDefaultActionIdentifier:
-            router.path = [thread]
-            return
         case NotifyCategory.allow, NotifyCategory.deny:
             guard let ask else { return }
             command = .answer(ask: ask, thread: thread, allow: action == NotifyCategory.allow, choice: nil, answers: nil, message: nil)

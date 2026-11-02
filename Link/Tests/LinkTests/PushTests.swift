@@ -24,4 +24,26 @@ struct PushTests {
         let other = Zone.id(mac: UUID())
         #expect(!ZoneSync.isPush(push(zone: other.zoneName, subscription: ZoneSync.subscriptionID(other)), for: zone))
     }
+
+    func nudge(zone name: String, record: String) -> [AnyHashable: Any] {
+        ["aps": ["alert": ["body": "Waiting on you"], "mutable-content": 1],
+         "ck": ["ce": 2, "cid": Container.identifier, "ckuserid": "_0123abcd", "nid": UUID().uuidString,
+                "qry": ["af": [:] as [String: Any], "dbs": 1, "fo": 1, "rid": record, "sid": "nudges-\(name)", "zid": name, "zoid": "_0123abcd"]]]
+    }
+
+    /// The push's zone isn't the phone's by whole id, which is why no Nudge was ever opened, and
+    /// the id handed on is in the zone the phone holds.
+    @Test func aNudgesPushNamesItsRecordInTheZoneThePhoneHolds() throws {
+        let info = nudge(zone: zone.zoneName, record: "nudge-ask-1")
+        let query = try #require(CKNotification(fromRemoteNotificationDictionary: info) as? CKQueryNotification)
+        #expect(query.recordID?.zoneID != zone)
+        let id = try #require(ZoneSync.nudge(in: info, for: zone))
+        #expect(id.recordName == "nudge-ask-1")
+        #expect(id.zoneID == zone)
+    }
+
+    @Test func anotherZonesNudgeIsNot() {
+        #expect(ZoneSync.nudge(in: nudge(zone: Zone.id(mac: UUID()).zoneName, record: "nudge-ask-1"), for: zone) == nil)
+        #expect(ZoneSync.nudge(in: push(zone: zone.zoneName, subscription: ZoneSync.subscriptionID(zone)), for: zone) == nil)
+    }
 }

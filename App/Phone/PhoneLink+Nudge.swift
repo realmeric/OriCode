@@ -23,6 +23,32 @@ extension PhoneLink {
         }
     }
 
+    /// What a notification says of an ask, finer than its card: what it wants, and the command,
+    /// path or page it's on. A question's text stays whole, since a button's answer is keyed by it.
+    struct Notice: Equatable {
+        var kind: NudgeInfo.Kind
+        var body: String
+
+        init(kind: NudgeInfo.Kind, body: String) {
+            self.kind = kind
+            self.body = body
+        }
+
+        init(_ ask: PendingAsk, _ info: AskInfo, cwd: String) {
+            let path = ToolSummary.relative(ask.call.file ?? "", to: cwd)
+            let on = String((info.detail ?? info.title).prefix(NudgeInfo.bodyLength))
+            switch ask.toolKind {
+            case _ where info.isQuestion: self.init(kind: .question, body: info.line)
+            case .run: self.init(kind: .run, body: on)
+            case .edit: self.init(kind: .edit, body: path)
+            case .write: self.init(kind: .write, body: path)
+            case .planning: self.init(kind: .plan, body: on)
+            case .fetch: self.init(kind: .fetch, body: on)
+            default: self.init(kind: .permission, body: on)
+            }
+        }
+    }
+
     /// Away: the screen locked, the display asleep, or no key or click for five minutes, read once
     /// now and never on a timer.
     static var away: Bool {
@@ -41,8 +67,9 @@ extension PhoneLink {
     }
 
     /// New asks nudge when the phone should buzz now; asks gone take their nudges with them.
-    func nudge(_ asks: [String: AskInfo], threads: [String: ThreadInfo], locked: Bool = false) {
+    func nudge(_ snapshot: Snapshot, locked: Bool = false) {
         guard let keys else { return }
+        let asks = snapshot.asks
         let waiting = Set(asks.values.map(\.id))
         for id in nudged.subtracting(waiting) {
             nudged.remove(id)
@@ -61,11 +88,13 @@ extension PhoneLink {
             return
         }
         for ask in fresh {
-            let thread = threads[RecordName.thread(ask.thread)]
+            let notice = snapshot.notices[ask.id] ?? Notice(kind: ask.isQuestion ? .question : .permission, body: ask.line)
+            let thread = snapshot.threads[RecordName.thread(ask.thread)]
             let options = ask.questions.count == 1 && !ask.questions[0].multiple && ask.questions[0].options.count <= 3
                 ? ask.questions[0].options.map(\.label) : []
-            let info = NudgeInfo(kind: ask.isQuestion ? .question : .permission, title: thread?.title ?? "", body: ask.line,
-                                 thread: ask.thread, ask: ask.id, options: options)
+            let info = NudgeInfo(kind: notice.kind, title: thread?.title ?? "", body: notice.body,
+                                 thread: ask.thread, ask: ask.id, options: options,
+                                 project: thread.flatMap { snapshot.projects[RecordName.project($0.project)] }, agent: thread?.agent)
             guard let record = record(RecordType.nudge, RecordName.nudge(ask.id)), (try? record.seal(info, key: keys.state)) != nil else { continue }
             put(record)
             nudged.insert(ask.id)
@@ -78,20 +107,24 @@ extension PhoneLink {
         guard running, Notify.current != .never else { return }
         let snapshot = snapshot()
         passed = []
-        nudge(snapshot.asks, threads: snapshot.threads, locked: true)
+        nudge(snapshot, locked: true)
     }
 
-    /// A turn's end in a thread the phone wrote to, its failure or a limit stopping it included,
-    /// since that's the end the phone waits for: its reply's first line, with Reply on it. A turn
-    /// ending in a thread written to from the Mac alone doesn't buzz the phone.
-    func nudgeEnds(_ threads: [String: ThreadInfo]) {
+    /// A turn's end, its failure or a limit stopping it included: its reply's first lines, with
+    /// Reply on it, for a thread the phone wrote to, and while the phone should buzz, for any other
+    /// thread nothing opened (NudgeInfo.endBuzzes). A Stop sent from the phone isn't news to it.
+    func nudgeEnds(_ snapshot: Snapshot) {
         guard let keys else { return }
-        for thread in threads.values where messaged.contains(thread.id) {
+        for thread in snapshot.threads.values {
             let before = statuses[thread.id]
             statuses[thread.id] = thread.status
-            guard before == .working || before == .asking, thread.status != .working, thread.status != .asking, Notify.current != .never else { continue }
-            let line = thread.reply?.split(whereSeparator: \.isNewline).first.map(String.init) ?? (thread.status == .failed ? "Failed" : "Stopped")
-            let info = NudgeInfo(kind: .reply, title: thread.title, body: line, thread: thread.id, ask: nil, options: [])
+            guard before == .working || before == .asking, thread.status != .working, thread.status != .asking else { continue }
+            guard stoppedHere.remove(thread.id) == nil, Notify.current != .never,
+                  NudgeInfo.endBuzzes(wrote: messaged.contains(thread.id), opened: snapshot.opened.contains(thread.id), nudging: nudging)
+            else { continue }
+            let info = NudgeInfo(kind: thread.status == .failed ? .failed : thread.status == .stopped ? .stopped : .reply, title: thread.title,
+                                 body: endWords(of: thread), thread: thread.id, ask: nil, options: [],
+                                 project: snapshot.projects[RecordName.project(thread.project)], agent: thread.agent)
             guard let record = record(RecordType.nudge, RecordName.nudge("reply-\(UUID().uuidString)")),
                   (try? record.seal(info, key: keys.state)) != nil
             else { continue }
@@ -100,5 +133,15 @@ extension PhoneLink {
             endNudges.append(record.recordID)
             while endNudges.count > 5 { delete(endNudges.removeFirst()) }
         }
+    }
+
+    /// A reply's first lines, or for a turn that ended short what it said as it did: its reply is
+    /// the turn before's.
+    private func endWords(of thread: ThreadInfo) -> String {
+        guard thread.status != .idle else { return NudgeInfo.opening(of: thread.reply ?? "") }
+        let items = model?.conversations[thread.id]?.items ?? []
+        let turn = items.lastIndex(where: \.startsTurn) ?? items.startIndex
+        let note = items[turn...].last { if case .note = $0 { true } else { false } }
+        return NudgeInfo.opening(of: note?.text ?? "")
     }
 }

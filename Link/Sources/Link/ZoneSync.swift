@@ -153,4 +153,14 @@ public final class ZoneSync {
         if let query = notification as? CKQueryNotification { return query.recordID?.zoneID.zoneName == zone.zoneName }
         return notification.subscriptionID == subscriptionID(zone) || notification.subscriptionID == macSubscriptionID(zone)
     }
+
+    /// The Nudge a visible push names, by the zone's name for the reason `isPush` says, and in the
+    /// zone the phone holds: comparing whole ids kept every notification at CloudKit's fallback
+    /// words, with no thread in it to open (2026-11-02).
+    public nonisolated static func nudge(in userInfo: [AnyHashable: Any], for zone: CKRecordZone.ID) -> CKRecord.ID? {
+        guard let query = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification,
+              let id = query.recordID, id.zoneID.zoneName == zone.zoneName
+        else { return nil }
+        return CKRecord.ID(recordName: id.recordName, zoneID: zone)
+    }
 }

@@ -40,6 +40,7 @@ extension PhoneLink {
             guard let chat = model.chat(withID: thread) else { return .refused("No such thread") }
             guard model.conversations[thread]?.working == true else { return .refused("Not working") }
             model.stop(in: chat)
+            stoppedHere.insert(thread)
             return Link.Outcome(ok: true)
         case .send(let thread, let text):
             guard let chat = model.chat(withID: thread), chat.agentID == nil else { return .refused("No such thread") }

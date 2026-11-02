@@ -14,6 +14,10 @@
 	<array>
 		<string>CloudKit</string>
 	</array>
+	<key>com.apple.developer.usernotifications.communication</key>
+	<true/>
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)com.realmeric.oricode.phone</string>

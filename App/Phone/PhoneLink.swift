@@ -50,9 +50,10 @@ final class PhoneLink {
     @ObservationIgnored var replies: [UUID: String?] = [:]
     /// When each ask was first seen waiting.
     @ObservationIgnored var askedAt: [String: Date] = [:]
-    /// Threads the phone wrote to, whose turn's end the phone hears about, and how each stood at
-    /// the last write, and the nudges those ends made.
+    /// Threads the phone wrote to, whose turn's end the phone always hears about, those it stopped,
+    /// whose end it knows of, how each thread stood at the last write, and the nudges ends made.
     @ObservationIgnored var messaged: Set<UUID> = []
+    @ObservationIgnored var stoppedHere: Set<UUID> = []
     @ObservationIgnored var statuses: [UUID: ThreadStatus] = [:]
     @ObservationIgnored var endNudges: [CKRecord.ID] = []
     /// Asks the phone was buzzed for, and asks seen while Meriç was at the Mac, which aren't.

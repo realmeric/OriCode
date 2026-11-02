@@ -10,7 +10,7 @@ struct ThreadView: View {
     @State private var sentAt = 0
     @FocusState private var typing: Bool
 
-    private var thread: ThreadInfo? { store.threads[id] }
+    private var thread: ThreadInfo? { store.thread(id) }
     private var awake: Bool { store.mac?.state ?? .awake == .awake }
     private var working: Bool { thread?.status == .working || thread?.status == .asking }
 

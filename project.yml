@@ -212,6 +212,8 @@ targets:
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [remote-notification]
+        # A notification speaks as its thread does, with its round avatar (PhoneNotify/Avatar.swift).
+        NSUserActivityTypes: [INSendMessageIntent]
         NSCameraUsageDescription: To scan the pairing code on your Mac.
         # The same Wi-Fi's way to the Mac (Link/Sources/Link/Near.swift).
         NSLocalNetworkUsageDescription: To reach your Mac at once on the same Wi-Fi.
@@ -258,6 +260,8 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+          NSExtensionAttributes:
+            IntentsSupported: [INSendMessageIntent]
     settings:
       base:
         PRODUCT_NAME: OriCodeNotify

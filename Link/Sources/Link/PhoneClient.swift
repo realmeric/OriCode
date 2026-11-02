@@ -48,6 +48,8 @@ public final class PhoneClient {
     public private(set) var sent: [String: Sent] = [:]
     /// The nudges the Mac wrote, by ask or reply; the notification extension shows them.
     public private(set) var nudges: [String: NudgeInfo] = [:]
+    /// Threads a notification opened, as it named them, until their records come.
+    public private(set) var named: [UUID: ThreadInfo] = [:]
 
     @ObservationIgnored var sync: ZoneSync?
     @ObservationIgnored var near: NearClient?
@@ -204,6 +206,7 @@ public final class PhoneClient {
         asks = [:]
         sent = [:]
         nudges = [:]
+        named = [:]
         nudgesAsked = false
         try? FileManager.default.removeItem(at: tokenFile)
         try? FileManager.default.removeItem(at: cacheFile)
@@ -319,6 +322,30 @@ public final class PhoneClient {
                 Self.logger.error("couldn't read: \(error.localizedDescription, privacy: .public)")
             }
         } while fetchAgain
+    }
+
+    /// A thread by what's known of it: its record, or what a notification said.
+    public func thread(_ id: UUID) -> ThreadInfo? {
+        threads[id] ?? named[id]
+    }
+
+    /// A notification's tap: its thread is on screen at once from what the notification said, and
+    /// filled in from iCloud, the record itself if a read since the last token doesn't bring it.
+    public func land(on nudge: NudgeInfo) async {
+        let id = nudge.thread
+        if threads[id] == nil { named[id] = nudge.standIn }
+        if let project = nudge.project, projects[project.id] == nil { projects[project.id] = project }
+        await fetch()
+        guard threads[id] == nil, let sync, let paired,
+              let record = try? await sync.record(CKRecord.ID(recordName: RecordName.thread(id), zoneID: paired.zone))
+        else { return }
+        fetched(record)
+    }
+
+    /// The Nudge a push names, for a tap on a notification the extension couldn't open in time.
+    public func nudge(in userInfo: sending [AnyHashable: Any]) async -> NudgeInfo? {
+        guard let paired, let sync, let id = ZoneSync.nudge(in: userInfo, for: paired.zone) else { return nil }
+        return try? await sync.record(id).open(NudgeInfo.self, key: paired.state)
     }
 
     /// In front, the phone stays connected to its Mac on the same Wi-Fi; behind, it lets go.
