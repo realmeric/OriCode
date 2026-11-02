@@ -37,7 +37,7 @@ extension AppModel {
     /// those. Under the drawer's filter, when it has one.
     var chats: [Chat] {
         // The archived ones, when they're what's asked for, the latest worked on first.
-        Chat.byProject(drawerFilter == .archived ? listedChats : Chat.inDrawerOrder(listedChats)).flatMap(\.self)
+        Chat.byProject(drawerFilter == .archived ? listedChats : Chat.inDrawerOrder(listedChats, byProject: true)).flatMap(\.self)
     }
 
     /// Every thread under this one, at any depth, whatever the drawer's filter.

@@ -337,6 +337,11 @@ final class AppModel {
     @ObservationIgnored var pullLooks: [String: Int] = [:]
     /// Which threads the drawer lists; not kept, so a launch shows them all.
     var drawerFilter: DrawerFilter = .all
+    /// The projects whose threads the drawer has folded away, kept across launches. A thread
+    /// picked by any route opens its project again.
+    var foldedProjects = Set((UserDefaults.standard.stringArray(forKey: "foldedProjects") ?? []).compactMap(UUID.init)) {
+        didSet { UserDefaults.standard.set(foldedProjects.map(\.uuidString).sorted(), forKey: "foldedProjects") }
+    }
     /// When old threads were last looked for.
     @ObservationIgnored var swept: Date?
     var sideShown = false
@@ -417,6 +422,7 @@ final class AppModel {
                 letGoSoon(oldValue)
             }
             if let selectedChatID { leaving[selectedChatID]?.cancel() }
+            if oldValue != selectedChatID, let selectedProjectID, foldedProjects.contains(selectedProjectID) { foldedProjects.remove(selectedProjectID) }
             UserDefaults.standard.set(selectedChatID?.uuidString, forKey: "selectedChat")
             // A ⌘digit peek ends when another thread is opened, however it's opened.
             if peekedChatID != selectedChatID { peekedChatID = nil }

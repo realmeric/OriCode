@@ -206,6 +206,67 @@ struct DrawerListTests {
         #expect(model.chats.map(\.title) == ["Other", "Lead"])
     }
 
+    /// Meriç, 2026-11-02: the second of blackjack's four threads dropped at the top, and blackjack
+    /// went under No folder. Only the dragged project's threads had a position, and a thread with
+    /// none sorts before one with, so the project that was dragged in came after the one beside it.
+    @Test func aDragInAProjectLeavesTheProjectsWhereTheyAre() throws {
+        let (model, _, _, _, _, other) = try model()
+        let blackjack = Project(name: "blackjack", path: "/tmp/blackjack")
+        model.context.insert(blackjack)
+        for (title, seconds) in [("Deal", 14.0), ("Split", 13), ("Hit", 12), ("Stand", 11)] {
+            let chat = Chat(project: blackjack, title: title)
+            chat.started = true
+            chat.createdAt = Date(timeIntervalSince1970: seconds * 100)
+            model.context.insert(chat)
+        }
+        model.save()
+        #expect(model.chats.map(\.title) == ["Deal", "Split", "Hit", "Stand", "Lead", "Other"])
+
+        model.moveThreads(in: blackjack, from: [1], to: 0)
+        #expect(model.chats.map(\.title) == ["Split", "Deal", "Hit", "Stand", "Lead", "Other"])
+        model.moveThreads(in: blackjack, from: [3], to: 1)
+        #expect(model.chats.map(\.title) == ["Split", "Stand", "Deal", "Hit", "Lead", "Other"])
+        model.moveThreads(in: try #require(other.project), from: [0], to: 2)
+        #expect(model.chats.map(\.title) == ["Split", "Stand", "Deal", "Hit", "Other", "Lead"])
+    }
+
+    /// A pin takes its project up, and a drag in a project that is not the pinned one doesn't take
+    /// it back.
+    @Test func aDragLeavesAPinnedProjectFirst() throws {
+        let (model, lead, _, _, _, other) = try model()
+        let beta = Project(name: "beta", path: "/tmp/beta")
+        model.context.insert(beta)
+        for (title, seconds) in [("One", 3_000.0), ("Two", 2_900), ("Three", 2_800)] {
+            let chat = Chat(project: beta, title: title)
+            chat.started = true
+            chat.createdAt = Date(timeIntervalSince1970: seconds)
+            model.context.insert(chat)
+        }
+        model.save()
+        model.togglePin(other)
+        #expect(model.chats.map(\.title) == ["Other", "Lead", "One", "Two", "Three"])
+
+        model.moveThreads(in: beta, from: [2], to: 0)
+        #expect(model.chats.map(\.title) == ["Other", "Lead", "Three", "One", "Two"])
+        // Dragged above the pinned thread, a thread is pinned there, and the project stays first.
+        model.moveThreads(in: try #require(lead.project), from: [1], to: 0)
+        #expect(model.chats.map(\.title) == ["Lead", "Other", "Three", "One", "Two"] && lead.pinned)
+    }
+
+    @Test func aFoldedProjectOpensWhenAThreadInItIsPicked() throws {
+        let (model, lead, _, _, _, other) = try model()
+        let project = try #require(lead.project)
+        defer { model.foldedProjects.remove(project.id) }
+
+        model.foldedProjects.insert(project.id)
+        // Folding hides rows and nothing else: the list the digits and ⌘K go by still holds them.
+        #expect(model.chats.map(\.title) == ["Lead", "Other"])
+        model.selectedChatID = other.id
+        #expect(model.foldedProjects.contains(project.id))
+        model.open(chatID: lead.id)
+        #expect(!model.foldedProjects.contains(project.id))
+    }
+
     @Test func aThreadGoesToTheArchiveWithTheThreadsUnderItAndComesBackWithThem() throws {
         let (model, lead, primes, words, test, _) = try model()
 

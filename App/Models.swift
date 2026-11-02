@@ -278,21 +278,38 @@ extension Chat {
     }
 
     /// The drawer's order: pinned threads first, as they were put, then the rest, a thread never
-    /// placed on top and newest first, the others as they were dragged. Each thread's three
-    /// values are read once: a stored value read through SwiftData costs a microsecond or more,
-    /// and comparing as the sort goes read six of them every step, 15 ms for 300 threads, which
-    /// the Thread menu and the drawer paid five times over at every change they watch (K-318).
-    static func inDrawerOrder(_ chats: [Chat]) -> [Chat] {
-        chats.map { (chat: $0, pinned: $0.pinned, position: $0.position, createdAt: $0.createdAt) }
-            .sorted { a, b in
-                if a.pinned != b.pinned { return a.pinned }
-                switch (a.position, b.position) {
-                case let (x?, y?) where x != y: return x < y
-                case (nil, _?): return true
-                case (_?, nil): return false
-                default: return a.createdAt > b.createdAt
-                }
+    /// placed on top and newest first, the others as they were dragged. With `byProject`, a
+    /// project with a pin comes first and then the one where a thread started last, and each
+    /// project's threads are in that order among themselves. A project's place comes from when its
+    /// threads started and not from where they were put, so a drag in one never moves another: a
+    /// dragged project's threads have a position and the others' none, and a thread with none
+    /// sorts before one with. Each thread's values are read once: a stored value read through
+    /// SwiftData costs a microsecond or more, and comparing as the sort goes read six of them
+    /// every step, 15 ms for 300 threads, which the Thread menu and the drawer paid five times
+    /// over at every change they watch (K-318).
+    static func inDrawerOrder(_ chats: [Chat], byProject: Bool = false) -> [Chat] {
+        let read = chats.map { (chat: $0, project: byProject ? $0.project?.id : nil, pinned: $0.pinned, position: $0.position, createdAt: $0.createdAt) }
+        var places: [UUID?: (pinned: Bool, newest: Date)] = [:]
+        if byProject {
+            for chat in read {
+                let place = places[chat.project] ?? (false, .distantPast)
+                places[chat.project] = (place.pinned || chat.pinned, max(place.newest, chat.createdAt))
             }
-            .map(\.chat)
+        }
+        return read.sorted { a, b in
+            if a.project != b.project, let x = places[a.project], let y = places[b.project] {
+                if x.pinned != y.pinned { return x.pinned }
+                if x.newest != y.newest { return x.newest > y.newest }
+                return a.project?.uuidString ?? "" < b.project?.uuidString ?? ""
+            }
+            if a.pinned != b.pinned { return a.pinned }
+            switch (a.position, b.position) {
+            case let (x?, y?) where x != y: return x < y
+            case (nil, _?): return true
+            case (_?, nil): return false
+            default: return a.createdAt > b.createdAt
+            }
+        }
+        .map(\.chat)
     }
 }

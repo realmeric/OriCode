@@ -45,7 +45,16 @@ struct Drawer: View {
                     let pinned = group.filter(\.pinned).count
                     // Each row's place in the whole list, which ⌘1–9 goes by.
                     let before = groups[..<place].reduce(0) { $0 + $1.count }
-                    Section {
+                    let project = group[0].project
+                    // A folded project's heading says whether a thread in it asks or works, since
+                    // its rows are away.
+                    let folded = project.map { model.foldedProjects.contains($0.id) } == true
+                    let asking = folded && group.contains { under.asking.contains($0.id) }
+                    let working = folded && group.contains { under.working.contains($0.id) }
+                    let expanded = Binding(get: { !folded }, set: { open in
+                        if let project { if open { model.foldedProjects.remove(project.id) } else { model.foldedProjects.insert(project.id) } }
+                    })
+                    DisclosureGroup(isExpanded: expanded) {
                         ForEach(Array(group.enumerated()), id: \.element.id) { offset, chat in
                             let index = before + offset
                             DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
@@ -62,11 +71,15 @@ struct Drawer: View {
                             if let project = group[0].project { model.moveThreads(in: project, from: source, to: destination) }
                         }
                         .moveDisabled(model.drawerFilter != .all)
-                    } header: {
-                        if let project = group[0].project {
-                            DrawerHeading(project: project)
+                    } label: {
+                        if let project {
+                            // The whole heading folds it, not only the arrow.
+                            DrawerHeading(project: project, asking: asking, working: working)
+                                .contentShape(.rect)
+                                .onTapGesture { expanded.wrappedValue.toggle() }
                         }
                     }
+                    .listRowSeparator(.hidden)
                 }
                 if chats.isEmpty, model.drawerFilter != .all {
                     Button("No threads here. Show all") { model.drawerFilter = .all }
@@ -240,7 +253,11 @@ struct Drawer: View {
 
 /// A project's name over its threads.
 private struct DrawerHeading: View {
+    @Environment(AppModel.self) private var model
     let project: Project
+    /// Set only while the project is folded: a thread in it asks, or works.
+    let asking: Bool
+    let working: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -249,6 +266,12 @@ private struct DrawerHeading: View {
                 .font(Type.secondary.weight(.medium))
                 .foregroundStyle(Ink.faint)
                 .lineLimit(1)
+            Spacer(minLength: 0)
+            if asking || working {
+                RaysMark(waiting: asking && model.drawerShown, restingOpacity: 0.28)
+                    .frame(width: 14, height: 14)
+                    .accessibilityLabel(asking ? "Waiting on you" : "Working")
+            }
         }
         .padding(.leading, 10)
         .accessibilityAddTraits(.isHeader)
