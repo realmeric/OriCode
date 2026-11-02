@@ -48,7 +48,6 @@ struct SettingsView: View {
                         case .conversation: ConversationPane()
                         case .sourceControl: SourceControlPane()
                         case .archive: ArchivePane()
-                        case .characters: CharactersPane()
                         case .activity: ActivityPane()
                         case .notifications: NotificationsPane()
                         case .phone: PhonePane()
@@ -85,7 +84,7 @@ struct SettingsView: View {
 }
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, agents, characters, mcp, conversation, sourceControl, archive, activity, notifications, phone, actions, shortcuts, about
+    case general, agents, mcp, conversation, sourceControl, archive, activity, notifications, phone, actions, shortcuts, about
 
     static let key = "settingsPane"
 
@@ -95,7 +94,6 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .agents: "Agents"
-        case .characters: "Characters"
         case .mcp: "MCP"
         case .conversation: "Conversation"
         case .sourceControl: "Source control"
@@ -113,7 +111,6 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .agents: "terminal"
-        case .characters: "person.2"
         case .mcp: "puzzlepiece.extension"
         case .conversation: "text.bubble"
         case .sourceControl: "arrow.triangle.branch"
@@ -132,7 +129,6 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: ["editor", "cursor", "zed", "xcode", "glass", "liquid glass", "system", "window", "tint", "dark", "transparency", "transparent", "clear", "frosted", "blur", "node", "engine", "new threads", "model", "effort", "permissions", "ask", "plan", "auto", "workspace", "worktree", "branch"]
         case .agents: ["agent", "cli", "claude", "codex", "cursor", "copilot", "opencode", "grok", "devin", "pi", "antigravity", "gemini", "command code", "anthropic", "console", "z.ai", "deepseek", "openrouter", "meta", "api key", "key", "keychain", "login", "sign in", "mac", "screen", "screenshot", "screen recording", "accessibility", "click", "computer use"]
-        case .characters: ["character", "hans", "memory", "notes", "personality", "voice", "proposal"]
         case .mcp: ["mcp", "server", "servers", "connector", "tools", "linear"]
         case .conversation: ["thinking", "thought", "concise", "short", "replies", "turn", "time", "how long", "cost", "footer", "transcript", "water", "litres", "liters", "fun", "limit", "usage", "session", "weekly", "reset", "go on"]
         case .activity: ["tokens", "usage", "activity", "daily", "weekly", "cumulative", "chart"]

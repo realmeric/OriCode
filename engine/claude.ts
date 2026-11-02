@@ -295,8 +295,7 @@ export async function fastCheck(claude: string, model: string | undefined, env =
 export async function oneShot(claude: string, cwd: string, prompt: string, env = cleanEnvironment(), model = "haiku"): Promise<string> {
   const call = query({
     prompt,
-    // Not kept: it would sit among the folder's sessions, the thread it read in its prompt.
-    options: { cwd, model, tools: [], maxTurns: 1, settingSources: [], persistSession: false, pathToClaudeCodeExecutable: claude, env },
+    options: { cwd, model, tools: [], maxTurns: 1, settingSources: [], pathToClaudeCodeExecutable: claude, env },
   });
   let text = "";
   for await (const message of call) {

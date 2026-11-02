@@ -744,7 +744,7 @@ export class Rays {
       title: String(args.title ?? "").trim(),
       text,
       reason: why,
-      ...pick(args, ["agent", "model", "folder", "task", "mode", "character"]),
+      ...pick(args, ["agent", "model", "folder", "task", "mode"]),
       worktree: args.worktree === true,
     });
   }

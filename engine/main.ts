@@ -13,8 +13,6 @@ import { grok } from "./grok.ts";
 import { opencode, opencodeSessions } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
-import { characterBrief, characters, core, deleteCharacter, readCharacter, saveCharacter, saveNotes, settleProposal, wipeNotes } from "./characters.ts";
-import { pass } from "./memory.ts";
 import { handed } from "./handover.ts";
 import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, settleMerges, usd, type Choice, type Seam } from "./rays.ts";
 import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
@@ -299,9 +297,6 @@ async function confirmed(): Promise<void> {
   }
 }
 
-/// The memory pass each character is on, which the next waits for.
-const passes = new Map<string, Promise<unknown>>();
-
 const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// `agents` are the ones turned on in Settings › Agents beside Claude Code, all looked for in
   /// one login shell; none of their CLIs is asked anything until a check. `sshAgent` is the socket
@@ -371,7 +366,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// Every one of them at the thread's own level. `from` is the thread that sent the message
   /// through message_thread or open_thread, which the session is told ahead of it, `task` the
   /// task of the plan the thread works, if it does, and `place` what a thread of a project is.
-  async send({ rays, choose, mac, goOn, handover, concise, noFolder, from, task, character, project, place, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean }; character?: string; project?: string; place?: Place }) {
+  async send({ rays, choose, mac, goOn, handover, concise, noFolder, from, task, place, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean }; place?: Place }) {
     const agent = provider(params.provider);
     const budget = choose?.budget ?? 0;
     if (budget > 0 && (choose?.spent ?? 0) >= budget) throw new Error(`This thread has spent its ${usd(budget)} budget. Raise it or lift it in Settings › Agents to go on.`);
@@ -396,16 +391,13 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const held = task?.id && !running ? `${taskLead(task)}\n\n` : "";
     // An agent with no system prompt of its own hears about signing here, in time for each turn.
     const signed = signs && !agent.prompted && !running ? `${signs}\n\n` : "";
-    const as = character ? await characterBrief(character, project) : undefined;
-    // One that keeps its session hears who it is once, ahead of the session's first message.
-    const cast = as && !agent.prompted && !running && (!params.sessionId || !agent.capabilities.resume) ? `${as}\n\n` : "";
     if (place) working(params.threadId, place, params.cwd, head.tools !== undefined);
     // Who else is at work here, ahead of each message that starts a turn, and nothing when nobody is.
     const others = place && !running ? atStart(params.threadId) : undefined;
-    const text = `${opening}${cast}${signed}${told && !running ? `${told}\n\n` : ""}${parts}${held}${others ? `${others}\n\n` : ""}${sender}${params.text}`;
+    const text = `${opening}${signed}${told && !running ? `${told}\n\n` : ""}${parts}${held}${others ? `${others}\n\n` : ""}${sender}${params.text}`;
     // Concise replies, asked for in Settings, go where a head's rays do, ahead of them, and after
     // what a thread without a folder is told of where it is.
-    const instructions = [agent.prompted ? as : undefined, noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
+    const instructions = [noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
     // An agent that stops itself at a cap is given what the thread has left, its budget beside it.
     const spendCap = choice?.budget && agent.costs ? { limit: choice.budget, left: choice.budget - choice.spent, over: async () => (await raysOf(params.threadId)?.over()) ?? false } : undefined;
     const waiting = await session(params.threadId, agent, path)
@@ -415,52 +407,6 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
         throw error;
       });
     return waiting ? { ok: true, waiting: true } : { ok: true };
-  },
-
-  /// The characters a thread can run as, for the app's menus and marks.
-  async "characters.list"() {
-    return { characters: await characters() };
-  },
-
-  async "character.read"({ id }: { id: string }) {
-    return { character: (await readCharacter(id)) ?? null };
-  },
-
-  /// The user's edit, or a new one with no `id`.
-  async "character.save"(params: Parameters<typeof saveCharacter>[0]) {
-    return { character: await saveCharacter(params) };
-  },
-
-  async "character.delete"({ id }: { id: string }) {
-    await deleteCharacter(id);
-    return { ok: true };
-  },
-
-  /// With no `id`, what every character shares. `held` is how many lines were secrets.
-  async "character.notes"({ id, notes, project }: { id?: string; notes: string; project?: string }) {
-    return { held: await saveNotes(id, notes, undefined, project) };
-  },
-
-  async "character.wipe"({ id }: { id: string }) {
-    await wipeNotes(id);
-    return { ok: true };
-  },
-
-  async "character.proposal"({ id, proposal, take }: { id: string; proposal: string; take: boolean }) {
-    return settleProposal(id, proposal, take);
-  },
-
-  /// One memory pass over what a thread said since the last, on the thread's agent's small model,
-  /// or Claude Code's when that agent has no one-shot, at most one at a time for a character.
-  async "character.remember"({ character, thread, title, cwd, project, provider: id }: { character: string; thread: string; title: string; cwd: string; project?: string; provider?: string }) {
-    const folder = process.env.ORICODE_CHARACTERS;
-    const found = folder ? await core(folder, character) : undefined;
-    if (!folder || !found) return { notes: false, about: false, proposed: false };
-    const small = provider(id).oneShot ? provider(id) : claude;
-    const ask = async (prompt: string) => small.oneShot!(await cli(small), cwd, prompt);
-    const turn = (passes.get(character) ?? Promise.resolve()).catch(() => {}).then(() => pass(folder, character, found.name, thread, title, ask, project));
-    passes.set(character, turn);
-    return turn;
   },
 
   /// Stop on a head stops its workers too.

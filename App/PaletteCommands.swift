@@ -254,7 +254,7 @@ extension AppModel {
             .sorted { $0.1.updatedAt > $1.1.updatedAt }
             .map { project, chat in
                 PaletteItem(id: "thread." + chat.id.uuidString, kind: .thread, title: chat.title, subtitle: project.name,
-                            icon: "bubble.left", project: project, character: character(of: chat), checked: chat.id == self.chat?.id,
+                            icon: "bubble.left", project: project, checked: chat.id == self.chat?.id,
                             action: .run { [weak self] in self?.open(chatID: chat.id) })
             }
     }
@@ -334,10 +334,6 @@ extension AppModel {
             items.append(PaletteItem(id: "thread.session", kind: .command, title: "Import sessions…",
                                      keywords: ["open", "session", "resume", "history", "terminal", "cli", "claude", "codex", "t3", "cursor", "opencode", "copilot"],
                                      icon: "square.and.arrow.down", unavailable: noProject ?? (engineState == .ready ? nil : "The engine isn't running"), action: .list(sessionList)))
-        }
-        for character in characters {
-            items.append(PaletteItem(id: "thread.as." + character.id, kind: .command, title: "New thread as \(character.name)", character: character,
-                                     action: .run { [weak self] in self?.openThread(as: character.id) }))
         }
         items.append(command("thread.noFolder", "New thread without a folder", icon: "laptopcomputer",
                              keywords: ["no folder", "no project", "laptop", "scratch", "anywhere"]) { [weak self] in self?.openThreadWithoutFolder() })

@@ -85,7 +85,6 @@ private struct HomeCapsule: View {
                     HomeMark(chat: chat, size: 14)
                     // The drawer's badge, so the project reads at a glance (Meriç, 2026-10-25).
                     if let project = chat.project { ProjectBadge(project: project) }
-                    if let character = model.character(of: chat) { CharacterMark(character: character) }
                     Text(chat.title)
                         .font(.system(size: 13))
                         .foregroundStyle(done ? Ink.secondary : Ink.primary)

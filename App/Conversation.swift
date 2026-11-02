@@ -1730,10 +1730,6 @@ extension Item {
 
     /// A message sent between turns, which starts one, or a turn OriCode started. One Claude took
     /// up mid-turn doesn't.
-    var isUser: Bool {
-        if case .user = self { true } else { false }
-    }
-
     var startsTurn: Bool {
         switch self {
         case .user(_, _, _, let midTurn): !midTurn

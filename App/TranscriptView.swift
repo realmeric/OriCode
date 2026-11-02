@@ -126,14 +126,10 @@ struct TranscriptView: View {
                 // whose plan it works told it: not the user's message, so not their bubble.
                 let task = conversation.chat.agentID == nil && conversation.chat.openedBy == nil ? nil
                     : conversation.items.first { if case .user = $0 { true } else { false } }?.id
-                let character = model.character(of: conversation.chat)
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     // One view a row, whatever the item draws: an item that can draw nothing, a footer
                     // with nothing to say, would have the lazy stack make every row to count them.
                     VStack(alignment: .leading, spacing: 0) {
-                        if let character, index > 0, entries[index - 1].last.isUser, !entry.first.isUser {
-                            CharacterHead(character: character)
-                        }
                         view(of: entry, listening: listening, lastLimit: lastLimit, water: entry.id == watered ? conversation.water : nil, task: task)
                     }
                         .background {

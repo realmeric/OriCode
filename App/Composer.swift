@@ -486,7 +486,6 @@ struct Composer: View {
             .padding(.vertical, 9)
             .padding(.leading, state.shellPrompt ? 0 : 14)
             HStack(spacing: 4) {
-                if chat?.started != true, !model.characters.isEmpty { CharacterMenu(chat: chat, state: state) }
                 attachButton
                 ModelMenu(chat: chat, state: state, says: paired ? says : .all)
                 if offers.usage { UsageGlass(chat: chat) }

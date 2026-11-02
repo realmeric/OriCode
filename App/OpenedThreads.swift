@@ -50,8 +50,6 @@ extension AppModel {
         var mode: String?
         /// A level of its model's, which a plan's task names.
         var effort: String?
-        /// The character it runs as, by name.
-        var character: String?
 
         init(parent: UUID, text: String) {
             self.parent = parent
@@ -68,7 +66,6 @@ extension AppModel {
             worktree = body["worktree"]?.bool ?? false
             task = body["task"]?.string?.nonEmpty
             mode = body["mode"]?.string?.nonEmpty
-            character = body["character"]?.string?.nonEmpty
         }
     }
 
@@ -85,7 +82,6 @@ extension AppModel {
         /// The task of the plan it takes as it opens, by its id and name, and the project whose
         /// plan it's in. open() finds it again there, since git may have run in between.
         var task: (id: UUID, name: String, plan: Project)?
-        var character: String?
     }
 
     /// The modes, tightest first: a thread opened on another agent gets none looser than its parent's.
@@ -284,16 +280,9 @@ extension AppModel {
             if let why = whyUnclaimable(found, for: nil, in: plan) { throw Refused(why: why) }
             task = (found.id, found.name, planned)
         }
-        var character: String?
-        if let named = request.character {
-            guard let found = characters.first(where: { $0.id == named || $0.name.localizedCaseInsensitiveCompare(named) == .orderedSame }) else {
-                throw Refused(why: "There's no character called \(named). There are: \(characters.map(\.name).joined(separator: ", ")).")
-            }
-            character = found.id
-        }
         return Opening(
             parent: parent, project: project, agent: agent, model: model, mode: mode, effort: request.effort,
-            beside: project.id == own.id && !request.worktree, task: task, character: character)
+            beside: project.id == own.id && !request.worktree, task: task)
     }
 
     /// Makes the thread and sends it its first message through the composer's own send. The
@@ -317,7 +306,6 @@ extension AppModel {
         chat.model = opening.model
         chat.openedBy = parent.id
         chat.owesOpener = true
-        chat.character = opening.character
         // Beside its parent it works where the parent does. A parent's worktree stays the
         // parent's, so deleting the opened thread never takes it away, and becomes this thread's
         // when the parent is deleted first.
@@ -509,10 +497,7 @@ extension AppModel {
     func turnEnded(_ id: UUID) {
         guard conversations[id]?.running != true else { return }
         interrupting.remove(id)
-        if let chat = conversations[id]?.chat {
-            passHeld(by: chat)
-            rememberSoon(chat)
-        }
+        if let chat = conversations[id]?.chat { passHeld(by: chat) }
         planTurnEnded(id)
         guard let waits = turnWaits.removeValue(forKey: id) else { return }
         for wait in waits.values {

@@ -35,8 +35,6 @@ enum OtherThreads {
         var openedByAsker = false
         /// What an agent under its opener is, in words: a workflow's agent, a subagent or a worker.
         var kind: String?
-        /// The character it runs as, by name.
-        var character: String?
     }
 
     struct Edit: Hashable, Sendable {
@@ -165,7 +163,6 @@ enum OtherThreads {
             if thread.openedByAsker { row["openedByYou"] = true }
             if thread.archived { row["archived"] = true }
             if let kind = thread.kind { row["kind"] = .string(kind) }
-            if let character = thread.character { row["character"] = .string(character) }
             if thread.cwd != folder { row["folder"] = .string(thread.cwd) }
             if let branch = thread.branch { row["branch"] = .string(branch) }
             rows.append(.object(row))
@@ -288,8 +285,7 @@ extension AppModel {
             OtherThreads.Listed(
                 id: thread.id, title: thread.title, agent: thread.providerID, state: state(of: thread), active: thread.updatedAt, cwd: thread.cwd,
                 branch: thread.worktreeBranch, archived: thread.archived, asking: thread.id == chat.id, openedByAsker: thread.openedBy == chat.id,
-                kind: thread.agentID == nil ? nil : thread.agentKind == "subagent" ? "subagent" : thread.agentKind == "worker" ? "worker" : "workflow agent",
-                character: character(of: thread)?.name)
+                kind: thread.agentID == nil ? nil : thread.agentKind == "subagent" ? "subagent" : thread.agentKind == "worker" ? "worker" : "workflow agent")
         }
         let (name, folder, container) = (project.name, project.path, context.container)
         return await Task.detached(priority: .userInitiated) {

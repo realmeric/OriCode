@@ -24,9 +24,6 @@ struct PaletteItem: Identifiable {
     var agent: String?
     /// Threads and projects show the project's badge, and a message shows it by its thread's name.
     var project: Project?
-    /// The character a thread runs as or a new one would, whose mark stands in for the icon or
-    /// comes after the badge.
-    var character: CharacterInfo?
     /// The thread a message was said in.
     var thread: UUID?
     /// The current model, level or mode in a list.

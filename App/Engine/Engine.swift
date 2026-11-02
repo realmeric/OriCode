@@ -97,8 +97,6 @@ actor Engine {
         }
         // Where the engine keeps what it learned from Claude Code between launches.
         environment["ORICODE_CACHE"] = Build.support.appending(path: "Engine").path
-        // The characters' files, which are the user's and which the engine alone reads and writes.
-        environment["ORICODE_CHARACTERS"] = Build.support.appending(path: "Characters").path
         // Node keeps what it compiled of the engine and the Agent SDK there, so the next start
         // reads it instead of compiling it again: 50ms of the engine's start. One folder for each
         // build, the others removed, so an update leaves nothing behind. The engine takes the

@@ -25,13 +25,10 @@ struct TitleCapsule: View {
             } label: {
                 // A draft's "New thread" says nothing the project's name doesn't.
                 let titled = model.chat.flatMap { $0.started || $0.title != Chat.untitled ? $0 : nil }
-                HStack(spacing: 6) {
-                    if let character = model.chat.flatMap(model.character(of:)) { CharacterMark(character: character) }
-                    Text(titled?.title ?? project.name)
-                        .foregroundStyle(titled == nil ? Ink.secondary : Ink.primary)
-                        .truncationMode(.tail)
-                        .modifier(Swap(key: titled.map { "\($0.id) \($0.title)" } ?? project.name))
-                }
+                Text(titled?.title ?? project.name)
+                    .foregroundStyle(titled == nil ? Ink.secondary : Ink.primary)
+                    .truncationMode(.tail)
+                    .modifier(Swap(key: titled.map { "\($0.id) \($0.title)" } ?? project.name))
                 .font(Type.secondary)
                 .lineLimit(1)
                 .padding(.horizontal, 12)

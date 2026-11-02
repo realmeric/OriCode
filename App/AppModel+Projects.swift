@@ -118,9 +118,6 @@ extension AppModel {
             say("Stop it first")
             return
         }
-        // Its end: what it said is read now rather than after a quiet that may never come.
-        rememberings.removeValue(forKey: chat.id)?.cancel()
-        remember(chat)
         let under = threads(under: chat).filter { !$0.archived }
         guard !under.contains(where: { conversations[$0.id]?.running == true || workflowRuns(in: $0) }) else {
             say("Stop the threads under it first")
@@ -433,7 +430,6 @@ extension AppModel {
             context.delete(draft)
         }
         let chat = makeChat(in: project)
-        chat.character = typed?.character
         if let typed { composers[chat.id] = typed }
         if open { selectedChatID = chat.id }
         return chat

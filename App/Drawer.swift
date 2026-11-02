@@ -57,7 +57,7 @@ struct Drawer: View {
                     DisclosureGroup(isExpanded: expanded) {
                         ForEach(Array(group.enumerated()), id: \.element.id) { offset, chat in
                             let index = before + offset
-                            DrawerRow(chat: chat, character: model.character(of: chat), index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
+                            DrawerRow(chat: chat, index: index, conversation: model.conversations[chat.id].flatMap { $0.working ? $0 : nil },
                                       working: under.working.contains(chat.id), asks: under.asking.contains(chat.id),
                                       selected: chat.id == open, beside: chat.id == beside, peeked: chat.id == peeked,
                                       digit: command && index < 9)
@@ -283,7 +283,6 @@ private struct DrawerHeading: View {
 private struct DrawerRow: View {
     @Environment(AppModel.self) private var model
     let chat: Chat
-    let character: CharacterInfo?
     let index: Int
     /// Its own conversation, while it works.
     let conversation: Conversation?
@@ -321,7 +320,6 @@ private struct DrawerRow: View {
                     }
             } else {
                 HStack(spacing: 5) {
-                    if let character { CharacterMark(character: character) }
                     Text(chat.title)
                         .font(Type.body)
                         .foregroundStyle(missing ? Ink.faint : selected ? Ink.primary : Ink.secondary)

@@ -344,10 +344,6 @@ extension AppModel {
         if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
         // So does the task of the plan it works, while it isn't done.
         if let task = taskParams(for: chat) { params["task"] = task }
-        if let character = chat.character {
-            params["character"] = .string(character)
-            if let project = chat.project, !project.isNoFolder { params["project"] = .string(project.path) }
-        }
         // What the engine tells the project's other threads at work of this one (engine/others.ts).
         if let project = chat.project, !project.isNoFolder, chat.agentID == nil {
             var place: [String: JSON] = ["project": .string(project.id.uuidString), "title": .string(chat.title)]
