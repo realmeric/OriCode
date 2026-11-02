@@ -264,6 +264,7 @@ struct MenuSetting {
         MenuSetting(name: "new_threads_workspace", key: NewThreads.workspace, kind: .choice([("projects_folder", ""), ("its_own_branch", NewThreads.worktree)])),
         MenuSetting(name: "review", key: ReviewDesign.key, kind: .choice(ReviewDesign.allCases.map { (word: $0.rawValue, stored: $0.rawValue) })),
         MenuSetting(name: "archive_old_threads", key: AutoArchive.key, kind: .choice(AutoArchive.choices)),
+        MenuSetting(name: "archive_finished_sub_threads", key: AutoArchive.tidyKey, kind: .toggle(true)),
         MenuSetting(name: "branch_prefix", key: NewThreads.branchPrefix, kind: .text(NewThreads.defaultBranchPrefix)),
         MenuSetting(name: "write_message_with", key: NewThreads.messageModel, kind: .choice([("a_small_model", ""), ("the_threads_model", NewThreads.threadModel)])),
     ]
@@ -370,6 +371,7 @@ extension AppModel {
         }
         UserDefaults.standard.set(stored, forKey: setting.key)
         if name == "threads_answer_first", given.bool == false { handAsksToUser() }
+        if name == "archive_finished_sub_threads", given.bool == true { tidySubThreads(force: true) }
         did("Set \(name.replacingOccurrences(of: "_", with: " ")) to \(Self.words(new))", on: nil, by: chat, reason: reason)
         return ["setting": .string(name), "value": setting.value]
     }

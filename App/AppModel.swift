@@ -238,7 +238,10 @@ final class AppModel {
     var reviewShown = false
     let review = ReviewState()
     var commandCenterShown = false {
-        didSet { paletteKept = nil }
+        didSet {
+            paletteKept = nil
+            if commandCenterShown { tidySubThreads() }
+        }
     }
     /// ⌘I's heads, for the open thread.
     var headsShown = false {
@@ -344,6 +347,9 @@ final class AppModel {
     }
     /// When old threads were last looked for.
     @ObservationIgnored var swept: Date?
+    /// When finished sub-threads were last looked for, and whether that is still going (K-356).
+    @ObservationIgnored var tidied: Date?
+    @ObservationIgnored var tidying = false
     var sideShown = false
     var pullShown = false
     var pullMerging = false
@@ -360,7 +366,12 @@ final class AppModel {
     /// Slash commands by agent, then by folder; an empty list means they're being fetched.
     var slashCommands: [String: [String: [SlashCommandInfo]]] = [:]
     var drawerShown = false {
-        didSet { if drawerShown { drawerBuilt = true } }
+        didSet {
+            if drawerShown {
+                drawerBuilt = true
+                tidySubThreads()
+            }
+        }
     }
     /// Whether the thread list has been made: from the pointer reaching the hot zone, or the first
     /// time it opens. After that it stays in the window, out of sight, so opening it moves it
@@ -835,6 +846,7 @@ final class AppModel {
             followAgents()
             titleOldThreads()
             sweepOldThreads()
+            tidySubThreads()
         } catch let error as NodeLocator.NotFound {
             engineState = .noNode(error.message)
         } catch {

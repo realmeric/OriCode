@@ -595,6 +595,7 @@ extension AppModel {
             sameFile(after: event, in: chat)
         }
         if event.name == "turn.done" {
+            tidySubThreads()
             // A thread out of view is counted when it comes into view.
             if inView(chat.id) { readWater(for: chat, turnEnded: true) }
             tellOpener(of: chat)

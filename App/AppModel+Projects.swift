@@ -189,9 +189,9 @@ extension AppModel {
         for thread in [chat] + threads(under: chat).filter({ $0.archived && $0.archivedWith == went }) {
             thread.archived = false
             thread.archivedWith = nil
+            // Brought back on purpose, so the next sweep doesn't take it straight away again.
+            thread.updatedAt = .now
         }
-        // Brought back on purpose, so the next sweep doesn't take it straight away again.
-        chat.updatedAt = .now
         save()
         drawerFilter = .all
         select(chat)

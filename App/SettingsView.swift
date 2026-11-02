@@ -483,6 +483,7 @@ private struct ArchivePane: View {
     /// The thread Delete was pressed on, asked about here rather than in the main window behind.
     @State private var deleting: Chat?
     @AppStorage(AutoArchive.key) private var after = AutoArchive.standard
+    @AppStorage(AutoArchive.tidyKey) private var tidies = true
 
     var body: some View {
         PaneTitle(text: "Archive")
@@ -499,6 +500,12 @@ private struct ArchivePane: View {
                     model.swept = nil
                     model.sweepOldThreads()
                 }
+            }
+            SettingsRow(title: "Archive finished sub-threads", detail: "An hour after they finish. Main threads stay.") {
+                Toggle("Archive finished sub-threads", isOn: $tidies).labelsHidden().toggleStyle(.switch)
+                    .onChange(of: tidies) { _, on in
+                        if on { model.tidySubThreads(force: true) }
+                    }
             }
         }
         .padding(.top, 14)
