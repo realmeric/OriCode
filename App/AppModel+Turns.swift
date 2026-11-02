@@ -344,6 +344,7 @@ extension AppModel {
         if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
         // So does the task of the plan it works, while it isn't done.
         if let task = taskParams(for: chat) { params["task"] = task }
+        if let character = chat.character { params["character"] = .string(character) }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]
@@ -609,7 +610,6 @@ extension AppModel {
         }
     }
 
-    /// A thread by its id: the one its conversation holds, or from the store.
     /// A thread by its id, from the store once and from memory after: a line of a lead's transcript
     /// asks for the thread it names as it draws, and a fetch for each of hundreds of lines, on the
     /// main thread, every time one of them drew, cost the frames those threads were working in.

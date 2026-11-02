@@ -13,6 +13,7 @@ import { grok } from "./grok.ts";
 import { opencode, opencodeSessions } from "./opencode.ts";
 import { releaseIdle, type Shown } from "./idle.ts";
 import { pi } from "./pi-provider.ts";
+import { characterBrief, characters } from "./characters.ts";
 import { handed } from "./handover.ts";
 import { brief, choosing, forgetMac, rayOf, raysFor, raysOf, settleMerges, usd, type Choice, type Seam } from "./rays.ts";
 import { appReplied, choosingLead, fromThread, leading, opening, reach, suggesting } from "./threads.ts";
@@ -364,7 +365,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// Every one of them at the thread's own level. `from` is the thread that sent the message
   /// through message_thread or open_thread, which the session is told ahead of it, and `task` the
   /// task of the plan the thread works, if it does.
-  async send({ rays, choose, mac, goOn, handover, concise, noFolder, from, task, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean } }) {
+  async send({ rays, choose, mac, goOn, handover, concise, noFolder, from, task, character, ...params }: SendParams & { provider?: string; rays?: string[]; choose?: Choose; mac?: boolean; goOn?: boolean; handover?: string; concise?: boolean; noFolder?: boolean; from?: { id: string; title: string }; task?: { id: string; title: string; done?: string; run?: boolean }; character?: string }) {
     const agent = provider(params.provider);
     const budget = choose?.budget ?? 0;
     if (budget > 0 && (choose?.spent ?? 0) >= budget) throw new Error(`This thread has spent its ${usd(budget)} budget. Raise it or lift it in Settings › Agents to go on.`);
@@ -389,14 +390,22 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     const held = task?.id && !running ? `${taskLead(task)}\n\n` : "";
     // An agent with no system prompt of its own hears about signing here, in time for each turn.
     const signed = signs && !agent.prompted && !running ? `${signs}\n\n` : "";
-    const text = `${opening}${signed}${told && !running ? `${told}\n\n` : ""}${parts}${held}${sender}${params.text}`;
+    const as = character ? await characterBrief(character) : undefined;
+    // One that keeps its session hears who it is once, ahead of the session's first message.
+    const cast = as && !agent.prompted && !running && (!params.sessionId || !agent.capabilities.resume) ? `${as}\n\n` : "";
+    const text = `${opening}${cast}${signed}${told && !running ? `${told}\n\n` : ""}${parts}${held}${sender}${params.text}`;
     // Concise replies, asked for in Settings, go where a head's rays do, ahead of them, and after
     // what a thread without a folder is told of where it is.
-    const instructions = [noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
+    const instructions = [agent.prompted ? as : undefined, noFolder ? scratch : undefined, concise ? brevity : undefined, head.instructions].filter(Boolean).join("\n\n") || undefined;
     // An agent that stops itself at a cap is given what the thread has left, its budget beside it.
     const spendCap = choice?.budget && agent.costs ? { limit: choice.budget, left: choice.budget - choice.spent, over: async () => (await raysOf(params.threadId)?.over()) ?? false } : undefined;
     const waiting = await session(params.threadId, agent, path).send({ ...params, text, workflows: own, ...head, instructions, ...(spendCap ? { spendCap } : {}) });
     return waiting ? { ok: true, waiting: true } : { ok: true };
+  },
+
+  /// The characters a thread can run as, for the app's menus and marks.
+  async "characters.list"() {
+    return { characters: await characters() };
   },
 
   /// Stop on a head stops its workers too.

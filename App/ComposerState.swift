@@ -10,6 +10,8 @@ final class ComposerState {
     var attachments: [ImageAttachment] = []
     /// Whether the composer is a shell prompt for the thread's folder, after a `!` at its start.
     var shellPrompt = false
+    /// The character picked with no thread open, which the thread the message starts runs as.
+    var character: String?
     /// Tab's list of matches is up in the composer, and Esc puts it away first.
     var menu = false
     /// Bumped to put the cursor in the composer when nothing else would move it there: ⌘N on the

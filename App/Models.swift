@@ -116,6 +116,9 @@ final class Chat {
     var agentState: String?
     /// The first line of what it returned, or why it failed.
     var agentResult: String?
+    /// The character it runs as, by its id, chosen while it's a draft. One since deleted leaves the
+    /// thread plain.
+    var character: String?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

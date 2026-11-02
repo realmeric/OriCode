@@ -430,6 +430,7 @@ extension AppModel {
             context.delete(draft)
         }
         let chat = makeChat(in: project)
+        chat.character = typed?.character
         if let typed { composers[chat.id] = typed }
         if open { selectedChatID = chat.id }
         return chat
