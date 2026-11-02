@@ -23,7 +23,15 @@ export function untap(threadId: string): void {
   taps.delete(threadId);
 }
 
+/// Hears every event before the app does: others.ts, for what threads at work are doing.
+let overhearing: ((name: string, fields: Record<string, unknown>) => void) | undefined;
+
+export function overhear(listener: (name: string, fields: Record<string, unknown>) => void): void {
+  overhearing = listener;
+}
+
 export function event(name: string, fields: Record<string, unknown> = {}): void {
+  overhearing?.(name, fields);
   const listener = typeof fields.threadId === "string" ? taps.get(fields.threadId) : undefined;
   if (listener?.(name, fields)) return;
   emit({ event: name, ...fields });

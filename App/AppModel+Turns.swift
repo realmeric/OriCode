@@ -348,6 +348,12 @@ extension AppModel {
             params["character"] = .string(character)
             if let project = chat.project, !project.isNoFolder { params["project"] = .string(project.path) }
         }
+        // What the engine tells the project's other threads at work of this one (engine/others.ts).
+        if let project = chat.project, !project.isNoFolder, chat.agentID == nil {
+            var place: [String: JSON] = ["project": .string(project.id.uuidString), "title": .string(chat.title)]
+            if let branch = chat.worktreeBranch { place["branch"] = .string(branch) }
+            params["place"] = .object(place)
+        }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]

@@ -8,7 +8,9 @@ import {
   type EffortLevel,
   type FastModeDisabledReason,
   type FastModeState,
+  type HookInput,
   type HookJSONOutput,
+  type Options,
   type PermissionMode,
   type PermissionResult,
   type Query,
@@ -22,6 +24,7 @@ import { cleanEnvironment, cliDebugFile } from "./claude.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { stepsEnded, subagentTranscript } from "./follow.ts";
 import { Heads } from "./heads.ts";
+import { atStep, editTools, hold } from "./others.ts";
 import { asks, told, toolsServer, toolsTimeout, type Answer, type Grant, type SendParams, type Session } from "./provider.ts";
 import { event, log } from "./wire.ts";
 import { finalShape, journalResults, stampEnds, workflowProgress, workflowShape, type WorkflowShape } from "./workflow.ts";
@@ -352,6 +355,32 @@ export class Thread implements Session {
     return { continue: false, stopReason: "This thread has spent its budget.", hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "This thread has spent its budget." } };
   }
 
+  /// What the hook before an edit answers: carry on, or a line in the edit's place when another
+  /// thread at work here has edited the file. The hook and not canUseTool, which Accept edits and
+  /// Don't ask never call.
+  private async beforeEdit(input: HookInput): Promise<HookJSONOutput> {
+    const call = (input as { tool_input?: { file_path?: string; notebook_path?: string } }).tool_input;
+    const file = call?.file_path ?? call?.notebook_path;
+    const held = file ? hold(this.id, file) : undefined;
+    return held ? { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: held } } : { continue: true };
+  }
+
+  /// What the hook after a tool answers: a note of the other threads at work when there's news of
+  /// them. Unlike a message into the turn it can't start a turn of its own, paid for, when the
+  /// turn has no step left. A subagent's step is left out, where the note would reach it alone.
+  private async afterTool(input: HookInput): Promise<HookJSONOutput> {
+    const note = input.agent_id ? undefined : atStep(this.id);
+    return note ? { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: note } } : { continue: true };
+  }
+
+  /// The hooks a send's CLI starts with, none for a session that has no use for them. A CLI can't
+  /// take new ones, so a thread's are there from its start, and do nothing while it's alone.
+  private hooks(params: SendParams): Options["hooks"] {
+    const beforeTool = [...(params.shared ? [{ matcher: editTools, hooks: [(input: HookInput) => this.beforeEdit(input)] }] : []), ...(params.spendCap ? [{ hooks: [() => this.spendGate()] }] : [])];
+    if (!beforeTool.length) return undefined;
+    return { PreToolUse: beforeTool, ...(params.shared ? { PostToolUse: [{ hooks: [(input: HookInput) => this.afterTool(input)] }] } : {}) };
+  }
+
   /// Returns whether the running turn took the new mode. Between turns there is
   /// nothing to apply it to, so it simply holds from the next send.
   async setMode(mode: PermissionMode): Promise<boolean> {
@@ -494,7 +523,7 @@ export class Thread implements Session {
         canUseTool: (tool, input, { signal, toolUseID, agentID }) => this.ask(tool, input, toolUseID, signal, agentID),
         // Under a budget each tool waits on the thread's count, so the request after its result
         // isn't sent once the thread is at the line, its own or its workers' spend taking it there.
-        hooks: params.spendCap ? { PreToolUse: [{ hooks: [() => this.spendGate()] }] } : undefined,
+        hooks: this.hooks(params),
         // Loaded with the prompt rather than behind tool search, so a head knows it can start workers.
         mcpServers: params.tools ? { [toolsServer]: { type: "http", url: params.tools, alwaysLoad: true, timeout: toolsTimeout } } : undefined,
       },

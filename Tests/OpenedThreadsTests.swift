@@ -113,6 +113,13 @@ struct OpenedThreadsTests {
         #expect(model.sendParams(in: chat, text: "hi", images: [], from: parent)["from"] == ["id": .string(parent.id.uuidString), "title": "Sums"])
         #expect(model.sendParams(in: chat, text: "hi", images: [])["from"] == nil)
         #expect(model.sendParams(in: chat, text: "hi", images: [])["opened"] == nil)
+        // Every thread of a project says where it is, for the others at work there to hear of.
+        let project = try #require(chat.project)
+        #expect(model.sendParams(in: chat, text: "hi", images: [])["place"] == ["project": .string(project.id.uuidString), "title": "Rename sum.txt"])
+        chat.worktreeBranch = "oricode/t-1"
+        #expect(model.sendParams(in: chat, text: "hi", images: [])["place"]?["branch"] == "oricode/t-1")
+        chat.agentID = "agent-1"
+        #expect(model.sendParams(in: chat, text: "hi", images: [])["place"] == nil)
     }
 
     private func acts(_ conversation: Conversation) -> [String] {

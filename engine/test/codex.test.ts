@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { heard, working } from "../others.ts";
 import { drawing } from "../provider.ts";
 import { CodexSession, answer, availability, choiceOf, limitsOf, listModels, policy, toolResults, unifiedHunks, unwrap, type CodexBinary } from "../codex.ts";
 
@@ -207,6 +208,26 @@ test("a send during a turn steers it, and the turn takes it", async () => {
   assert.equal(done.waiting, 0);
   const steer = (await sent()).find((message) => message.method === "turn/steer").params;
   assert.deepEqual(steer, { threadId: "t-1", input: [{ type: "text", text: "and the tests", text_elements: [] }], expectedTurnId: "turn-1", clientUserMessageId: "m2" });
+});
+
+test("an edit of a file another thread here edited is declined and a steer says why, and a note of it goes in at a step", async () => {
+  const { session: codex, cwd, sent } = await session("held");
+  working("held", { project: "P", title: "Me" }, "/w", true);
+  working("beside", { project: "P", title: "Beside" }, "/w", true);
+  heard("tool.use", { threadId: "beside", toolUseId: "c", name: "Edit", input: { file_path: "/w/a.txt" } });
+  heard("tool.result", { threadId: "beside", toolUseId: "c", isError: false });
+  const from = events.length;
+  await codex.send({ threadId: "held", cwd, text: "work" });
+  const run = await until(named("ask", "held"), from);
+  answer({ requestId: run.requestId, allow: true });
+  await until(named("turn.done", "held"), from);
+  assert.equal(told("held", from).filter((event) => event.event === "ask").length, 1, "the user isn't asked about the held edit");
+  const log = await sent();
+  assert.deepEqual(log.filter((message) => message.result?.decision).map((message) => message.result.decision), ["accept", "decline"]);
+  const [note, held] = log.filter((message) => message.method === "turn/steer").map((message) => message.params);
+  assert.match(note.input[0].text, /"Beside" \(id beside\), shares your folder/);
+  assert.match(held.input[0].text, /^Held, this edit wasn't made: the thread "Beside" \(id beside\)/);
+  assert.equal(held.clientUserMessageId, null);
 });
 
 test("Stop interrupts the turn and cancels its ask, and the turn ends interrupted", async () => {

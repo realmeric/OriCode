@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { agentEnvironment } from "./acp.ts";
 import { hunks, todos, toolView, type Hunk, type Todo, type View } from "./acp-map.ts";
 import { runSettled, within } from "./child.ts";
+import { atStep, hold } from "./others.ts";
 import { byMode, asks as registry, client, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
 import { replied } from "./sessions.ts";
 import { lastLine } from "./shell.ts";
@@ -420,6 +421,13 @@ export class CodexSession implements Session {
     });
   }
 
+  /// Words for the running turn at its next step, which go with the turn if it has ended: unlike a
+  /// message, they're no turn of their own.
+  private tell(text: string): void {
+    if (!this.turnId) return;
+    this.request("turn/steer", { threadId: this.threadId, input: [{ type: "text", text, text_elements: [] }], expectedTurnId: this.turnId, clientUserMessageId: null }).catch((error) => log(`note not taken for thread=${this.id}: ${describe(error)}`));
+  }
+
   private async stopTurn(): Promise<void> {
     await this.request("turn/interrupt", { threadId: this.threadId, turnId: this.turnId }).catch((error) => log(`interrupt for thread=${this.id}: ${describe(error)}`));
   }
@@ -614,6 +622,8 @@ export class CodexSession implements Session {
       this.done.add(result.id);
       event("tool.result", { threadId: this.id, toolUseId: result.id, content: result.content, isError: result.isError, patch: result.patch, exitCode: result.exitCode });
     }
+    const note = atStep(this.id);
+    if (note) this.tell(note);
   }
 
   private use(item: Item): void {
@@ -672,6 +682,13 @@ export class CodexSession implements Session {
     const paths = item.type === "fileChange" && calls.length ? { paths: calls.map((change) => ({ path: change.input.path, kind: change.kind })) } : {};
     const view = { ...call.view, ...paths, ...(params.reason ? { description: params.reason } : {}) };
     const offered: Decision[] = params.availableDecisions ?? decisions;
+    // Codex asks before an edit only on Ask: on Accept edits and Don't ask it writes unasked, and
+    // no call of its comes here to hold. A decline says nothing of why, so the steer does.
+    const held = command || !offered.includes("decline") ? undefined : calls.map((change) => hold(this.id, String(change.input.path))).find(Boolean);
+    if (held) {
+      this.tell(held);
+      return server.respond(id, { decision: "decline" });
+    }
     const choices = offered.map(choiceOf);
     const settled = byMode(this.mode, call.kind, choices);
     if (settled) return server.respond(id, { decision: offered[choices.indexOf(settled)] });

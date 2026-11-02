@@ -45,6 +45,8 @@ export type SendParams = {
   /// opens again when it changes, and `left` what the CLI started now may spend. `over` says
   /// whether the thread as a whole is at its budget, which Claude Code asks before each tool.
   spendCap?: { limit: number; left: number; over?: () => Promise<boolean> };
+  /// It's a thread of a project, which hears of the others at work there (others.ts).
+  shared?: boolean;
 };
 
 export type Grant = { tool: string; input: Record<string, unknown> };
