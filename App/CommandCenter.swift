@@ -204,6 +204,10 @@ struct CommandCenter: View {
             HStack(spacing: 10) {
                 if let project = item.project, item.kind != .message {
                     ProjectBadge(project: project)
+                    if let character = item.character { CharacterMark(character: character) }
+                } else if let character = item.character {
+                    CharacterMark(character: character)
+                        .frame(width: 22)
                 } else if let agent = item.agent {
                     AgentMark(agent: agent)
                         .frame(width: 14, height: 14)

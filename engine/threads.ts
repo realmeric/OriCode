@@ -32,6 +32,7 @@ export const openThread = {
       worktree: { type: "boolean", description: "Work on a new branch in a git worktree of its own, so its edits can't run into yours." },
       task: { type: "string", description: "A task of the plan the thread is for, by its id, T2: the thread takes it as it opens, and is told it ahead of its messages. Only a task that waits on nothing left undone." },
       mode: { type: "string", description: "A permission mode for it tighter than yours, by its id: plan, default (Ask), acceptEdits or auto. Yours when left out." },
+      character: { type: "string", description: "A character the user made that it runs as, by name, with its voice, way of working and memory. A plain thread when left out." },
     },
     required: ["title", "message", "reason"],
   },

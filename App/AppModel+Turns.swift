@@ -344,7 +344,10 @@ extension AppModel {
         if let sender { params["from"] = ["id": .string(sender.id.uuidString), "title": .string(sender.title)] }
         // So does the task of the plan it works, while it isn't done.
         if let task = taskParams(for: chat) { params["task"] = task }
-        if let character = chat.character { params["character"] = .string(character) }
+        if let character = chat.character {
+            params["character"] = .string(character)
+            if let project = chat.project, !project.isNoFolder { params["project"] = .string(project.path) }
+        }
         if !images.isEmpty {
             params["attachments"] = .array(images.map {
                 ["mediaType": .string($0.mediaType), "data": .string($0.data.base64EncodedString())]

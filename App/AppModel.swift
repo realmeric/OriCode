@@ -121,6 +121,8 @@ final class AppModel {
     @ObservationIgnored var chatsByID: [UUID: Chat] = [:]
     /// The characters a thread can run as, as the engine last listed them.
     var characters: [CharacterInfo] = []
+    /// The memory pass each thread as a character has coming once it's quiet.
+    @ObservationIgnored var rememberings: [UUID: Task<Void, Never>] = [:]
     /// Each agent's models by its id: Claude Code's from hello, another's once a menu needs them.
     var modelsByAgent: [String: [ModelOption]] = [:]
     /// The agents whose models have been asked for since the engine started.

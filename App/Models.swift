@@ -119,6 +119,8 @@ final class Chat {
     /// The character it runs as, by its id, chosen while it's a draft. One since deleted leaves the
     /// thread plain.
     var character: String?
+    /// The last item of it a memory pass has read, so the next reads only what's new.
+    var remembered: UUID?
     @Relationship(deleteRule: .cascade, inverse: \Event.chat) var events: [Event] = []
 
     init(project: Project, title: String = Chat.untitled, permissionMode: String = "default") {

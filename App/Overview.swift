@@ -168,11 +168,14 @@ private struct OverviewLine: View {
                     // The word at the row's end says it, to VoiceOver alone where the mark shows it.
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(chat.title)
-                        .font(Type.body)
-                        .foregroundStyle(status.live || selected ? Ink.primary : Ink.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    HStack(spacing: 5) {
+                        if let character = model.character(of: chat) { CharacterMark(character: character) }
+                        Text(chat.title)
+                            .font(Type.body)
+                            .foregroundStyle(status.live || selected ? Ink.primary : Ink.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                     if let step = status.step {
                         Text(step)
                             .font(Type.secondary)
