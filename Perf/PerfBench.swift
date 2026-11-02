@@ -45,6 +45,7 @@ enum PerfBench {
                 do {
                     switch part {
                     case "stream": try await stream()
+                    case "others": try await others()
                     case "codesettle": try await codeSettle()
                     case "keys": try await keys()
                     case "paste": try await paste()
@@ -354,7 +355,6 @@ enum PerfBench {
         let chats = stage.chat.project?.chats ?? []
         let agents = subagents.compactMap { id, _ in chats.first { $0.agentID == id }?.id }
         guard let worker = chats.first(where: { $0.agentID == "w1-key" })?.id else { return nil }
-        stage.model.stage.lane(stage.model.liveLane(of: stage.model.conversation(for: stage.chat)), in: thread, grow: true)
         let only = env["PERF_LANE_ONLY"] ?? ""
         if only == "static" { return nil }
         return Task {
@@ -452,6 +452,76 @@ enum PerfBench {
             }
             if turns == 100 { screenshot(stage.window, "\(label)-stream") }
         }
+    }
+
+    /// Several threads at work at once, as a lead's are: PERF_OTHERS threads, none of them the one
+    /// on screen, each streaming a reply with a tool call every 300 ms and a heads list that moves,
+    /// for ten seconds, with the open thread of 100 turns at rest or, with PERF_OPEN=1, at work too.
+    static func others() async throws {
+        let count = env["PERF_OTHERS"].flatMap(Int.init) ?? 5
+        var seeded: [Chat] = []
+        let stage = try Stage { context, project in
+            seeded = try (0..<count).map { try seed(context, project, title: "Thread \($0) at work", turns: 25, reply: nil) }
+            return try seed(context, project, title: "Make the review read git once", turns: 100, reply: nil)
+        }
+        defer { stage.window.close() }
+        await front(stage.window)
+        try await settle(1800)
+        let ids = seeded.map(\.id) + (env["PERF_OPEN"] == "1" ? [stage.chat.id] : [])
+        for id in ids {
+            _ = stage.model.conversation(for: stage.model.chat(withID: id)!)
+            stage.send("turn.started", [:], to: id)
+        }
+        try await settle(300)
+        if env["PERF_OVERVIEW"] == "1" {
+            stage.model.toggleOverview()
+            try await settle(600)
+        }
+        let start = cpu(), began = clock()
+        let frames = Frames(stage.window.contentView!)
+        var beat = 0
+        let seconds = env["PERF_SECONDS"].flatMap(Double.init) ?? 10
+        while clock() - began < seconds * 1000 {
+            beat += 1
+            for (index, id) in ids.enumerated() {
+                stage.send("text", ["delta": " some words of a reply"], to: id)
+                if beat % 15 == index % 15 {
+                    let call = "c\(beat)-\(index)"
+                    stage.send("tool.use", ["toolUseId": .string(call), "name": "Read", "input": ["file_path": "/tmp/a.swift"]], to: id)
+                    stage.send("tool.result", ["toolUseId": .string(call), "content": "contents", "isError": false], to: id)
+                    stage.send("heads", ["heads": [["id": .string(call), "kind": "agent", "toolUseId": .string(call), "label": "reader", "background": false, "depth": 1, "startedAt": .number(clock())]]], to: id)
+                }
+            }
+            // PERF_BURST=1: what a lead does in one breath, five threads and a plan's tasks at once,
+            // with the keyboard's way to the end pressed and the open thread's turns ending.
+            if env["PERF_BURST"] == "1" {
+                if beat % 5 == 0 { stage.model.threadEnd += 1 }
+                if beat % 40 == 0 {
+                    for n in 0..<5 {
+                        let opened = Chat(project: stage.chat.project!, title: "Opened \(beat)-\(n)")
+                        opened.started = true
+                        opened.openedBy = stage.chat.id
+                        stage.container.mainContext.insert(opened)
+                        stage.send("tool.use", ["toolUseId": .string("o\(beat)-\(n)"), "name": "mcp__oricode__open_thread", "input": ["title": .string(opened.title), "message": "Go", "reason": "Parts"]])
+                        stage.send("tool.result", ["toolUseId": .string("o\(beat)-\(n)"), "content": .string("{\"thread\":\"x\",\"id\":\"\(opened.id.uuidString)\"}"), "isError": false])
+                    }
+                    let project = stage.chat.project!
+                    project.lastTaskNumber += 1
+                    let task = PlanTask(number: project.lastTaskNumber, title: "Task \(beat)", doneWhen: "Done")
+                    stage.container.mainContext.insert(task)
+                    task.project = project
+                    try stage.container.mainContext.save()
+                }
+                if beat % 75 == 0 {
+                    stage.send("turn.done", ["durationMs": 1000, "costUSD": 0, "stopReason": "end_turn"])
+                    stage.send("turn.started", [:])
+                }
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let spent = cpu() - start, ran = clock() - began
+        let drawn = frames.stop()
+        log(String(format: "OTHERS %d at work%@, %d beats in %.0f ms: main %.0f ms a second; %@; long frames %@", count, env["PERF_OPEN"] == "1" ? " and the open one" : "", beat, ran, spent / ran * 1000, drawn.text, drawn.long))
     }
 
     /// A reply that ends inside a long code block, 120 lines of it still open, and the frame the
@@ -1615,12 +1685,23 @@ final class Stage {
     let container: ModelContainer
     private let host: NSHostingController<AnyView>
 
+    /// PERF_STORE: a copy of a real store, with `seed` run on the project of the thread PERF_THREAD
+    /// names, its threads and transcripts in place of made-up ones.
     init(cwd: String = NSTemporaryDirectory(), seed: (ModelContext, Project) throws -> Chat) throws {
-        container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
-        let project = Project(name: "alpha", path: cwd)
-        project.colorIndex = 2
-        container.mainContext.insert(project)
-        chat = try seed(container.mainContext, project)
+        if let store = PerfBench.env["PERF_STORE"] {
+            container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(url: URL(filePath: store), cloudKitDatabase: .none))
+            let title = PerfBench.env["PERF_THREAD"] ?? ""
+            let found = try container.mainContext.fetch(FetchDescriptor<Chat>()).first { $0.title == title }
+            guard let found, let project = found.project else { throw CocoaError(.fileNoSuchFile) }
+            _ = try seed(container.mainContext, project)
+            chat = found
+        } else {
+            container = try ModelContainer(for: Project.self, Chat.self, Event.self, PlanTask.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            let project = Project(name: "alpha", path: cwd)
+            project.colorIndex = 2
+            container.mainContext.insert(project)
+            chat = try seed(container.mainContext, project)
+        }
         try container.mainContext.save()
         model = AppModel(container: container)
         model.review.marks = ReviewMarks(file: FileManager.default.temporaryDirectory.appending(path: "oricode-perf-marks-\(UUID().uuidString).json"))

@@ -116,6 +116,9 @@ final class AppModel {
     @ObservationIgnored var keychain = Keychain(prefix: "OriCode")
     /// When this launch began. ⌘⇧I shows a plan whose tasks are all done only if one has changed since.
     @ObservationIgnored let openedAt = Date.now
+    @ObservationIgnored let hangWatch = HangWatch()
+    /// The threads asked for by id so far, which `chat(withID:)` answers from.
+    @ObservationIgnored var chatsByID: [UUID: Chat] = [:]
     /// Each agent's models by its id: Claude Code's from hello, another's once a menu needs them.
     var modelsByAgent: [String: [ModelOption]] = [:]
     /// The agents whose models have been asked for since the engine started.

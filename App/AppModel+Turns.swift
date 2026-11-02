@@ -609,8 +609,16 @@ extension AppModel {
     }
 
     /// A thread by its id: the one its conversation holds, or from the store.
+    /// A thread by its id, from the store once and from memory after: a line of a lead's transcript
+    /// asks for the thread it names as it draws, and a fetch for each of hundreds of lines, on the
+    /// main thread, every time one of them drew, cost the frames those threads were working in.
+    /// Not read through `conversations`, or every such line would draw again as any thread opens.
     func chat(withID id: UUID) -> Chat? {
-        conversations[id]?.chat ?? (try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first)
+        if let known = chatsByID[id], !known.isDeleted, known.modelContext != nil { return known }
+        chatsByID[id] = nil
+        guard let found = try? context.fetch(.init(predicate: #Predicate<Chat> { $0.id == id })).first else { return nil }
+        chatsByID[id] = found
+        return found
     }
 
     /// A turn that ends or asks while OriCode isn't the window you're in gets one notification.
@@ -651,6 +659,7 @@ extension AppModel {
         let busy = conversations.values.contains { $0.running }
         guard busy != holdingForTurns else { return }
         holdingForTurns = busy
+        hangWatch.watch(busy)
         Task { await engine.hold(busy) }
     }
 

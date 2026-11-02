@@ -1393,11 +1393,39 @@ final class Conversation {
 
     /// Streaming deltas only touch objects in memory; the store is written here.
     func flush() {
+        guard settle() else { return }
+        try? context.save()
+    }
+
+    /// What goes into a save: the held deltas, and the date of a thread that has something to save.
+    private func settle() -> Bool {
         writeHeld()
-        guard unsaved || context.hasChanges else { return }
+        guard unsaved || context.hasChanges else { return false }
         unsaved = false
         chat.updatedAt = .now
-        try? context.save()
+        return true
+    }
+
+    /// The threads with calls waiting for the save, and the task that makes it.
+    private static var unsavedCalls: [ObjectIdentifier: Conversation] = [:]
+    private static var saving: Task<Void, Never>?
+    /// How long a tool's call or result waits to be saved. One save for every thread at work: a
+    /// save is 5 ms of the main thread at best, and each thread's every call had its own, so a few
+    /// threads with subagents spent the frames on it. A quit or a turn's end saves what waits.
+    private static let saveEvery: Duration = .milliseconds(300)
+
+    private func saveSoon() {
+        Self.unsavedCalls[ObjectIdentifier(self)] = self
+        guard Self.saving == nil else { return }
+        Self.saving = Task { @MainActor in
+            try? await Task.sleep(for: Self.saveEvery)
+            // A thread deleted in the meantime can't be dated: its model is gone.
+            let waiting = Self.unsavedCalls.values.filter { $0.chat.modelContext != nil && !$0.chat.isDeleted }
+            Self.unsavedCalls = [:]
+            Self.saving = nil
+            let saved = waiting.map { $0.settle() }.contains(true)
+            if saved { try? waiting.first?.context.save() }
+        }
     }
 
     /// The held deltas into the store for a thread that reads this one (read_thread). Being read
@@ -1448,7 +1476,11 @@ final class Conversation {
         }
         if keepOpen, let last = items.indices.last { open = (last, event, kind) }
         if drawn() { clock.fill() }
-        if !keepOpen { flush() }
+        if kind == "tool.use" || kind == "tool.result" {
+            saveSoon()
+        } else if !keepOpen {
+            flush()
+        }
         return event
     }
 
