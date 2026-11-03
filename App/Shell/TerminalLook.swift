@@ -84,8 +84,8 @@ enum TerminalEnvironment {
     static func make(agent: String? = SSHAgent.path()) -> [String] {
         // What an app opened from the Dock is given, and nothing a terminal or a Claude Code
         // session that opened this one left behind (GIT_EDITOR=true, TMUX, CLAUDECODE): the login
-        // shell builds the rest from the user's own profile.
-        let kept = ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "PATH", "SSH_AUTH_SOCK", "LANG", "COMMAND_MODE", "__CF_USER_TEXT_ENCODING", "CLAUDE_CONFIG_DIR"]
+        // shell builds the rest from the user's own profile, from ZDOTDIR when one is set.
+        let kept = ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "PATH", "SSH_AUTH_SOCK", "LANG", "COMMAND_MODE", "__CF_USER_TEXT_ENCODING", "CLAUDE_CONFIG_DIR", "ZDOTDIR"]
         var environment = ProcessInfo.processInfo.environment.filter { key, _ in
             kept.contains(key) || key.hasPrefix("LC_")
         }

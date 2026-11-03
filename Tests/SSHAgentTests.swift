@@ -76,6 +76,13 @@ struct SSHAgentTests {
         #expect(SSHAgent.path(at: socket, on: true) == socket)
         #expect(Self.variable(in: TerminalEnvironment.make(agent: socket)) == socket)
 
+        // A login zsh reads ~/.zshenv, and one that points SSH_AUTH_SOCK at the real agent would
+        // hide this test's: an empty ZDOTDIR leaves the shell with nothing of the user's.
+        let zdotdir = ProcessInfo.processInfo.environment["ZDOTDIR"]
+        let empty = folder.appending(path: "zdot")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        setenv("ZDOTDIR", empty.path, 1)
+        defer { if let zdotdir { setenv("ZDOTDIR", zdotdir, 1) } else { unsetenv("ZDOTDIR") } }
         let block = ShellBlock(id: UUID(), chatID: UUID(), command: "ssh-add -l", folder: folder.path)
         #expect(block.start(agent: socket))
         // A login shell, whose profile can take seconds on a busy Mac.

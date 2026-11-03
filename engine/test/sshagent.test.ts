@@ -88,8 +88,16 @@ test("a key provider's own environment still comes last", () => {
   assert.equal(agentEnvironment({ SSH_AUTH_SOCK: "its own" }).SSH_AUTH_SOCK, "its own");
 });
 
-test("an agent's process, an action and every git of the engine's reach the key", async () => {
+test("an agent's process, an action and every git of the engine's reach the key", async (t) => {
   useSshAgent(socket);
+  // An action is the user's zsh, which reads ~/.zshenv, and one that points SSH_AUTH_SOCK at the
+  // real agent would hide this test's: an empty ZDOTDIR leaves the shell with nothing of his.
+  const zdotdir = process.env.ZDOTDIR;
+  process.env.ZDOTDIR = mkdtempSync(join(folder, "zdot-"));
+  t.after(() => {
+    if (zdotdir === undefined) delete process.env.ZDOTDIR;
+    else process.env.ZDOTDIR = zdotdir;
+  });
   const { stdout: agents } = await child("ssh-add", ["-l"], { env: agentEnvironment(), timeout: 10_000 });
   assert.equal(agents.trim(), listed);
   const { stdout: claudes } = await child("ssh-add", ["-l"], { env: cleanEnvironment() as NodeJS.ProcessEnv, timeout: 10_000 });
