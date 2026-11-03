@@ -2,6 +2,16 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.5.3 "Watching over" - 2026-11-03
+
+- Several threads working at once no longer take the window's frames: a tool call saves with the others instead of on its own, and a lead's lines stop asking the store as they draw. If the window ever stops answering while threads work, a sample of it goes to `~/Library/Logs/OriCode` by itself.
+- Threads working in one project know of each other. Each is told who else is at work there and what they've edited, and an edit to a file another thread in the same folder just changed is held once, with that thread's name, before it lands.
+- A thread another thread opened goes to the archive by itself an hour after it's done with, so ⌘K, the drawer and the phone hold what you're working on. Main threads stay. Settings › Archive turns it off.
+- Dragging a thread in the drawer moves that thread and never its project, and a project's name folds its threads away and back.
+- Show earlier keeps the line you were reading where it was.
+- The usage circle shows your limits on any thread, the moment you point at it, from the last reading if a new one is slow.
+- On the phone, a thread is the whole conversation, both sides, and what you send stands where it belongs. Notifications say which thread, which project and what it wants, and a tap opens that thread. What's running shows on the Dynamic Island and the Lock Screen. While OriCode holds an OriPass pass, what OriPass would still ask a finger for can be allowed from the phone with Face ID.
+
 ## v0.5.2 "Watching over" - 2026-10-31
 
 - Nothing grows over a thread's transcript any more. What a thread sets going is on ⌘⇧I and ⌘I, and a workflow's stage opens only from its line.
