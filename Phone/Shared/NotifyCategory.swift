@@ -5,6 +5,7 @@ enum NotifyCategory {
     static let permission = "permission"
     static let question = "question"
     static let reply = "reply"
+    static let pass = "oripass"
     static let optionsPrefix = "options-"
 
     static let allow = "allow"
@@ -22,6 +23,11 @@ enum NotifyCategory {
                 UNNotificationAction(identifier: deny, title: "Deny", options: [.destructive]),
             ], intentIdentifiers: []),
             UNNotificationCategory(identifier: question, actions: [], intentIdentifiers: []),
+            // OriPass's Allow opens the app, where Face ID signs with the key that answers to it.
+            UNNotificationCategory(identifier: pass, actions: [
+                UNNotificationAction(identifier: allow, title: "Allow", options: [.foreground]),
+                UNNotificationAction(identifier: deny, title: "Deny", options: [.destructive]),
+            ], intentIdentifiers: []),
             UNNotificationCategory(identifier: reply, actions: [
                 UNTextInputNotificationAction(identifier: answer, title: "Reply", options: [], textInputButtonTitle: "Reply", textInputPlaceholder: ""),
             ], intentIdentifiers: []),

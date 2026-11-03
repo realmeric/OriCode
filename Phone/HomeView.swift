@@ -17,6 +17,11 @@ struct HomeView: View {
         store.asks.values.sorted { ($0.asked, $0.id) < ($1.asked, $1.id) }
     }
 
+    /// OriPass's, which head the list: one lives two minutes.
+    private var passes: [PassAsk] {
+        store.passes.values.sorted { ($0.asked, $0.id) < ($1.asked, $1.id) }
+    }
+
     /// Projects with threads, in the Mac's order; in each, a thread asking first, then those at
     /// work, then the latest.
     private var sections: [(project: ProjectInfo?, threads: [ThreadInfo])] {
@@ -40,8 +45,14 @@ struct HomeView: View {
         @Bindable var router = router
         NavigationStack(path: $router.path) {
             List {
-                if !asks.isEmpty {
+                if !asks.isEmpty || !passes.isEmpty {
                     Section {
+                        ForEach(passes) { pass in
+                            PassCard(pass: pass)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                        }
                         ForEach(asks) { ask in
                             AskCard(ask: ask)
                                 .listRowBackground(Color.clear)
@@ -49,7 +60,7 @@ struct HomeView: View {
                                 .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
                         }
                     } header: {
-                        Text("\(asks.count) waiting on you")
+                        Text("\(asks.count + passes.count) waiting on you")
                             .font(.subheadline)
                             .foregroundStyle(Ink.secondary)
                             .textCase(nil)
@@ -88,7 +99,7 @@ struct HomeView: View {
             .scrollContentBackground(.hidden)
             .background { Ground() }
             .overlay {
-                if store.threads.isEmpty && store.asks.isEmpty {
+                if store.threads.isEmpty && store.asks.isEmpty && store.passes.isEmpty {
                     VStack(spacing: 14) {
                         Mark(restingOpacity: awake ? 0.3 : 0.15)
                             .opacity(awake ? 1 : 0.3)

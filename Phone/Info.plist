@@ -41,14 +41,16 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>To scan the pairing code on your Mac.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>To allow on your iPhone what OriPass asks for on your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>To reach your Mac at once on the same Wi-Fi.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INSendMessageIntent</string>
 	</array>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

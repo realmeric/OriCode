@@ -32,6 +32,13 @@ struct PhonePane: View {
                     .labelsHidden()
                     .fixedSize()
                 }
+                // Only while OriPass's socket is up: a pass standing, or its Add Phone waiting.
+                if link.oriPass.reachable {
+                    SettingsRow(title: "OriPass", detail: oriPassDetail) {
+                        Button("Register") { link.oriPass.register() }
+                            .disabled(link.phones.isEmpty || link.oriPass.registeringAsk != nil)
+                    }
+                }
                 ForEach(link.phones) { phone in
                     SettingsRow(title: phone.name) {
                         Button("Unpair") { link.unpair(phone) }
@@ -41,6 +48,18 @@ struct PhonePane: View {
         }
         .sheet(isPresented: $pairing) { PairingSheet() }
         .task { if link.on { await link.checkAccount() } }
+    }
+
+    private var oriPassDetail: String {
+        let line = model.phone.oriPass
+        switch line.registering {
+        case .asking: return "Open OriCode on your iPhone and register it there."
+        case .sent(_, _, let phone): return "Check that OriPass's card shows \(phone.fingerprint), as your iPhone does, then put a finger on it."
+        case .refused(let why): return why
+        case .idle: break
+        }
+        if let phone = line.phone { return "\(phone.name) · \(phone.fingerprint)" }
+        return "Allow from your iPhone, with Face ID, what OriPass would ask a finger for."
     }
 }
 

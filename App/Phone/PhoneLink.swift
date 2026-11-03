@@ -52,6 +52,8 @@ final class PhoneLink {
     @ObservationIgnored var askedAt: [String: Date] = [:]
     /// The threads phones are watching, and their pages (PhoneLink+Talk.swift).
     @ObservationIgnored var talk = TalkState()
+    /// OriPass's socket, looked for only while a phone is paired (PhoneLink+OriPass.swift).
+    @ObservationIgnored var oriPass = OriPassLine()
     /// Threads the phone wrote to, whose turn's end the phone always hears about, those it stopped,
     /// whose end it knows of, how each thread stood at the last write, and the nudges ends made.
     @ObservationIgnored var messaged: Set<UUID> = []
@@ -116,6 +118,7 @@ final class PhoneLink {
         }
         near.start()
         self.near = near
+        oriPass.start()
         watchSleep()
         Self.logger.notice("link started")
         making = Task {
@@ -136,6 +139,7 @@ final class PhoneLink {
         sync = nil
         near?.stop()
         near = nil
+        oriPass.stop()
         making = nil
         writing?.cancel()
         writing = nil

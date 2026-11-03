@@ -10,6 +10,8 @@ enum Ink {
     /// A card, as the Mac's: white at 5%, 7% while it asks, 3.5% done.
     static let card = Color.white.opacity(0.05)
     static let asking = Color.white.opacity(0.07)
+    /// OriPass's card, the icon's violet, which no agent's card has.
+    static let pass = Palette.color(0x3B3466).opacity(0.6)
     static let red = Color(red: 1, green: 0.42, blue: 0.4)
 }
 

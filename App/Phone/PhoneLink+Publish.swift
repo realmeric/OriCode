@@ -11,6 +11,8 @@ extension PhoneLink {
         var projects: [String: ProjectInfo] = [:]
         var threads: [String: ThreadInfo] = [:]
         var asks: [String: AskInfo] = [:]
+        /// What OriPass leaves to the phone, by record name (PhoneLink+OriPass.swift).
+        var passes: [String: PassAsk] = [:]
         /// What a notification says of each ask, by its id.
         var notices: [String: Notice] = [:]
         /// Threads another thread opened, whose turns' ends don't buzz on their own.
@@ -46,9 +48,8 @@ extension PhoneLink {
     /// the window.
     private func changed() {
         guard running, writing == nil else { return }
-        let asks = Set(model?.conversations.values.compactMap { $0.waitingAsk?.requestId } ?? [])
         let since = ContinuousClock.now - lastWrite
-        if asks != Set(sentAsks) || since >= Self.window {
+        if Set(askIDs) != Set(sentAsks) || since >= Self.window {
             watch()
         } else {
             writing = Task { [weak self] in
@@ -62,9 +63,8 @@ extension PhoneLink {
     private func write(_ snapshot: Snapshot) {
         guard let keys else { return }
         lastWrite = .now
-        // Each thread's oldest ask, which is what `changed` compares to say one came or went.
-        sentAsks = model?.conversations.values.compactMap { $0.waitingAsk?.requestId } ?? []
-        pace(asking: !snapshot.asks.isEmpty, working: snapshot.threads.values.contains { $0.status == .working })
+        sentAsks = askIDs
+        pace(asking: !snapshot.asks.isEmpty || !snapshot.passes.isEmpty, working: snapshot.threads.values.contains { $0.status == .working })
         var wrote = 0
         func written<Info: Encodable>(_ type: String, _ name: String, _ info: Info) {
             guard let data = try? Self.coder.encode(info), sentBoxes[name] != data, let record = record(type, name) else { return }
@@ -76,12 +76,13 @@ extension PhoneLink {
         for (name, info) in snapshot.projects { written(RecordType.project, name, info) }
         for (name, info) in snapshot.threads { written(RecordType.thread, name, info) }
         for (name, info) in snapshot.asks { written(RecordType.ask, name, info) }
+        for (name, info) in snapshot.passes { written(RecordType.ask, name, info) }
         nudge(snapshot)
         nudgeEnds(snapshot)
         // What left the set, and what an earlier launch wrote that nothing holds now: a thread's
         // pages are `Thread` records too, so those a lease holds are named here, and any other
         // goes, the Mac having quit under a lease say.
-        let current = Set(snapshot.projects.keys).union(snapshot.threads.keys).union(snapshot.asks.keys).union(talkNames)
+        let current = Set(snapshot.projects.keys).union(snapshot.threads.keys).union(snapshot.asks.keys).union(snapshot.passes.keys).union(talkNames)
         let held = Set(sentBoxes.keys).union(known.values.filter { Self.ours.contains($0.recordType) }.map(\.recordID.recordName))
         for name in held.subtracting(current) where name != RecordName.mac {
             sentBoxes[name] = nil
@@ -89,6 +90,11 @@ extension PhoneLink {
             wrote += 1
         }
         if wrote > 0 { sendNow() }
+    }
+
+    /// Each thread's oldest ask and OriPass's, which is what `changed` compares to say one came or went.
+    private var askIDs: [String] {
+        (model?.conversations.values.compactMap { $0.waitingAsk?.requestId } ?? []) + passAsks().values.map(\.id)
     }
 
     /// The record types the Mac writes and deletes as the set changes.
@@ -136,6 +142,7 @@ extension PhoneLink {
                 snapshot.notices[ask.requestId] = Notice(ask, info, cwd: chat.cwd)
             }
         }
+        snapshot.passes = passAsks()
         return snapshot
     }
 

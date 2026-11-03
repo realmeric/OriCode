@@ -70,6 +70,7 @@ struct PhoneApp: App {
             // The thread screen: the asking thread, pushed.
             if screen == "thread", let asking = cache.threads.first(where: { $0.status == .asking }) { delegate.router.path = [asking.id] }
             if screen == "compose" { delegate.router.composing = true }
+            if let passes = Screens.passes(screen) { Screens.answer(passes, in: delegate.store) }
             if screen == "reply", let done = cache.threads.first(where: { $0.reply != nil }) { delegate.router.path = [done.id] }
             if let nudge = Screens.posted { Task { await Screens.post(nudge) } }
             // What iCloud would bring a moment after a tap landed.
@@ -137,8 +138,11 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
         for (key, value) in info { if let key = key as? String, let value = value as? String { strings[key] = value } }
         nonisolated(unsafe) let done = completionHandler
         nonisolated(unsafe) let push = info
+        let category = response.notification.request.content.categoryIdentifier
         Task { @MainActor in
-            if action == UNNotificationDefaultActionIdentifier {
+            if category == NotifyCategory.pass {
+                await passAnswered(action: action, pass: strings["ask"])
+            } else if action == UNNotificationDefaultActionIdentifier {
                 await open(strings["nudge"], push: push)
             } else {
                 await answered(action: action, info: strings, typed: typed)
@@ -155,6 +159,7 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
         var nudge = said
         if nudge == nil { nudge = await store.nudge(in: push) }
         guard let nudge else { return }
+        if nudge.kind == .pass, let pass = nudge.ask { return await passAnswered(action: UNNotificationDefaultActionIdentifier, pass: pass) }
         router.composing = false
         router.path = [nudge.thread]
         await store.land(on: nudge)
@@ -181,6 +186,22 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
             return
         }
         _ = await store.sendNow(command)
+    }
+
+    /// OriPass's: a tap or Allow lands on home, where its card heads the list, and Allow asks for
+    /// Face ID there, since a key that answers to a face can't sign behind the lock screen. Deny
+    /// signs nothing and goes from the notification.
+    private func passAnswered(action: String, pass: String?) async {
+        guard let pass else { return }
+        if action == NotifyCategory.deny {
+            _ = await store.sendNow(.deny(request: pass))
+            return
+        }
+        router.composing = false
+        router.path = []
+        if action == NotifyCategory.allow { router.allowing = pass }
+        // A pass is held in memory alone, so a cold start reads it first.
+        await store.fetch()
     }
 
     /// In front, the asks are on home already: the notification goes to the list alone.
@@ -220,4 +241,6 @@ final class Router {
     var path: [UUID] = []
     /// The new thread's sheet is up.
     var composing = false
+    /// OriPass's request whose notification Allow opened the app, for its card to ask Face ID.
+    var allowing: String?
 }

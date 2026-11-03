@@ -70,7 +70,7 @@ extension PhoneLink {
     func nudge(_ snapshot: Snapshot, locked: Bool = false) {
         guard let keys else { return }
         let asks = snapshot.asks
-        let waiting = Set(asks.values.map(\.id))
+        let waiting = Set(asks.values.map(\.id)).union(snapshot.passes.values.map(\.id))
         for id in nudged.subtracting(waiting) {
             nudged.remove(id)
             delete(CKRecord.ID(recordName: RecordName.nudge(id), zoneID: keys.zone))
@@ -81,11 +81,17 @@ extension PhoneLink {
             delete(record.recordID)
         }
         let fresh = asks.values.filter { !nudged.contains($0.id) && !passed.contains($0.id) }
-        guard !fresh.isEmpty else { return }
+        let freshPasses = snapshot.passes.values.filter { !nudged.contains($0.id) && !passed.contains($0.id) }
+        guard !fresh.isEmpty || !freshPasses.isEmpty else { return }
         guard locked || nudging else {
             // Seen while Meriç was at the Mac: not buzzed later for the same ask, except at a lock.
-            passed.formUnion(fresh.map(\.id))
+            passed.formUnion(fresh.map(\.id) + freshPasses.map(\.id))
             return
+        }
+        for pass in freshPasses {
+            guard let record = record(RecordType.nudge, RecordName.nudge(pass.id)), (try? record.seal(Self.nudge(for: pass), key: keys.state)) != nil else { continue }
+            put(record)
+            nudged.insert(pass.id)
         }
         for ask in fresh {
             let notice = snapshot.notices[ask.id] ?? Notice(kind: ask.isQuestion ? .question : .permission, body: ask.line)

@@ -71,6 +71,8 @@ extension PhoneLink {
         case .unwatch:
             unwatched(by: phone, said: said)
             return Link.Outcome(ok: true)
+        case .approve, .deny, .register:
+            return applyPass(action)
         }
     }
 

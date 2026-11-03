@@ -58,7 +58,7 @@ enum Screens {
         let projects = [oricode, site, none]
         let threads = [store, review, water, blog, deploy, notes]
         switch name {
-        case "home", "compose":
+        case "home", "compose", "oripass", "register":
             var quiet = threads
             quiet[0].status = .working
             quiet[4].status = .working

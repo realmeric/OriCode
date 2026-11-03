@@ -37,6 +37,10 @@ extension PhoneLink {
         notify_register_dispatch("com.realmeric.oricode.bridge.long", &token, .main) { _ in
             MainActor.assumeIsolated { self.makeLongThread() }
         }
+        // Settings › Phone's Register with OriPass, for a fake OriPass at -OriPassSocket.
+        notify_register_dispatch("com.realmeric.oricode.bridge.oripass-register", &token, .main) { _ in
+            MainActor.assumeIsolated { self.oriPass.register() }
+        }
         notify_register_dispatch("com.realmeric.oricode.bridge.unpair", &token, .main) { _ in
             MainActor.assumeIsolated {
                 for phone in self.phones { self.unpair(phone) }

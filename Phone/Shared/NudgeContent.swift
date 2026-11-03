@@ -10,6 +10,11 @@ enum NudgeContent {
         content.subtitle = nudge.subtitle
         content.body = nudge.body
         content.threadIdentifier = nudge.thread.uuidString
+        if nudge.kind == .pass {
+            // OriPass's words as they came, the first heading them.
+            content.body = nudge.body.split(separator: "\n", maxSplits: 1).dropFirst().first.map(String.init) ?? ""
+            content.threadIdentifier = NotifyCategory.pass
+        }
         content.interruptionLevel = nudge.kind.asks ? .timeSensitive : .active
         content.userInfo["thread"] = nudge.thread.uuidString
         content.userInfo["ask"] = nudge.ask
@@ -26,6 +31,7 @@ enum NudgeContent {
     private static func category(for nudge: NudgeInfo) async -> String {
         switch nudge.kind {
         case .reply, .failed, .stopped: return NotifyCategory.reply
+        case .pass: return NotifyCategory.pass
         case .question:
             guard !nudge.options.isEmpty, let ask = nudge.ask else { return NotifyCategory.question }
             let identifier = NotifyCategory.options(ask)
@@ -45,6 +51,8 @@ enum NudgeContent {
     /// set before `updating(from:)` or after it, so what it wants heads the body. A phone that
     /// won't have that keeps its subtitle and gets the avatar as the notification's thumbnail.
     static func speaking(_ nudge: NudgeInfo, _ content: UNMutableNotificationContent) async -> UNNotificationContent {
+        // OriPass isn't a thread speaking, and keeps the app's own icon.
+        guard nudge.kind != .pass else { return content }
         let avatar = Avatar.png(for: nudge)
         let id = nudge.thread.uuidString
         let sender = INPerson(personHandle: INPersonHandle(value: id, type: .unknown), nameComponents: nil, displayName: nudge.title,

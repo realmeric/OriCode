@@ -48,6 +48,9 @@ public final class PhoneClient {
     public private(set) var projects: [UUID: ProjectInfo] = [:]
     public private(set) var threads: [UUID: ThreadInfo] = [:]
     public private(set) var asks: [String: AskInfo] = [:]
+    /// What OriPass leaves to this phone, by its id. Memory only, like `talk`: a request lives two
+    /// minutes and is never written to the phone's disk.
+    public private(set) var passes: [String: PassAsk] = [:]
     public private(set) var sent: [String: Sent] = [:]
     /// The conversation on screen. Memory only: it's in neither the cache nor any file.
     public private(set) var talk: ThreadTalk?
@@ -74,7 +77,8 @@ public final class PhoneClient {
     /// Nudge, which makes the record type, so it's tried again after each read until it is.
     @ObservationIgnored private var nudgesAsked = false
     @ObservationIgnored let keychain: PhoneKeychain
-    @ObservationIgnored let deviceName: String
+    /// What this phone calls itself, to its Mac and to OriPass.
+    @ObservationIgnored public let deviceName: String
     @ObservationIgnored let folder: URL
     @ObservationIgnored let registerForPushes: () -> Void
 
@@ -220,6 +224,7 @@ public final class PhoneClient {
         projects = [:]
         threads = [:]
         asks = [:]
+        passes = [:]
         sent = [:]
         nudges = [:]
         named = [:]
@@ -370,6 +375,21 @@ public final class PhoneClient {
     public func showForScreenshots(_ page: TalkPage) {
         if talk?.thread != page.thread { talk = ThreadTalk(thread: page.thread) }
         took(page)
+    }
+
+    /// OriPass's asks, for a made-up Mac in a screenshot.
+    public func showForScreenshots(_ shown: [PassAsk]) {
+        passes = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+    }
+
+    /// The made-up Mac took a command: a pass answered leaves, as OriPass's `closed` would take it.
+    public func settleForScreenshots(_ id: String) {
+        sent[id]?.state = .done
+        switch sent[id]?.action {
+        case .approve(let request, _), .deny(let request): passes[request] = nil
+        case .register(let ask, _, _, _): passes[ask] = nil
+        default: break
+        }
     }
 
     /// A message the made-up Mac refused.
@@ -546,6 +566,8 @@ public final class PhoneClient {
             if let page = try? record.open(TalkPage.self, key: key) { took(page) }
         case RecordType.thread:
             if let info = try? record.open(ThreadInfo.self, key: key) { threads[info.id] = info }
+        case RecordType.ask where RecordName.isPass(record.recordID.recordName):
+            if let info = try? record.open(PassAsk.self, key: key) { passes[info.id] = info }
         case RecordType.ask:
             if let info = try? record.open(AskInfo.self, key: key) { asks[info.id] = info }
         case RecordType.nudge:
@@ -568,6 +590,8 @@ public final class PhoneClient {
         // readable with the Mac asleep or closed.
         case RecordType.thread:
             if let thread = UUID(uuidString: named) { threads[thread] = nil }
+        case RecordType.ask where RecordName.isPass(id.recordName):
+            passes[named] = nil
         case RecordType.ask:
             asks[named] = nil
         case RecordType.nudge:

@@ -66,6 +66,14 @@ public enum RecordName {
         name.hasPrefix(talkPrefix)
     }
     public static func ask(_ id: String) -> String { "ask-\(id)" }
+    /// What OriPass leaves to the phone. An `Ask` record, as a page is a `Thread` one, and an old
+    /// phone's AskInfo doesn't decode from it.
+    public static func pass(_ id: String) -> String { "\(passPrefix)\(id)" }
+    private static let passPrefix = "oripass-"
+
+    public static func isPass(_ name: String) -> Bool {
+        name.hasPrefix(passPrefix)
+    }
     public static func nudge(_ id: String) -> String { "nudge-\(id)" }
 
     /// The id a name was made from: `thread-<id>` gives `<id>`.
@@ -231,6 +239,8 @@ public struct NudgeInfo: Codable, Equatable, Sendable {
         case permission
         case run, edit, write, fetch, plan
         case question, reply, failed, stopped
+        /// OriPass's, for no thread: its title is OriPass and its body the card's words.
+        case pass
 
         /// It waits on an answer, so it may break through.
         public var asks: Bool {
@@ -253,6 +263,7 @@ public struct NudgeInfo: Codable, Equatable, Sendable {
             case .reply: "Replied"
             case .failed: "Failed"
             case .stopped: "Stopped"
+            case .pass: "Wants Face ID"
             }
         }
     }
@@ -285,8 +296,13 @@ public struct NudgeInfo: Codable, Equatable, Sendable {
         self.agent = agent
     }
 
-    /// Under the title: the project, which No folder isn't, and what it wants.
+    /// The thread a pass's nudge names, which is none.
+    public static let noThread = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+
+    /// Under the title: the project, which No folder isn't, and what it wants; for a pass, the
+    /// card's first line.
     public var subtitle: String {
+        if kind == .pass { return body.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "" }
         guard let name = project?.name, project?.color != nil else { return kind.words }
         return "\(name) · \(kind.words)"
     }
@@ -345,6 +361,12 @@ public struct Command: Codable, Equatable, Sendable {
         case watch(thread: UUID, from: Int?, opening: Bool)
         /// Off the screen: the Mac stops publishing and takes the pages out of iCloud.
         case unwatch
+        /// OriPass's request allowed with Face ID: the phone's signature over what OP-88 says is
+        /// signed, which the Mac hands to OriPass as it is.
+        case approve(request: String, signature: Data)
+        case deny(request: String)
+        /// This phone's key for OriPass and its proof, for Settings › Phone's Register.
+        case register(ask: String, name: String, publicKey: Data, proof: Data)
     }
 
     public var action: Action
