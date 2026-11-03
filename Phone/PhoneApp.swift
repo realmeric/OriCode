@@ -45,7 +45,12 @@ struct PhoneApp: App {
             .onChange(of: phase, initial: true) { _, phase in
                 delegate.store.inFront(phase == .active)
                 if phase == .active { Task { await delegate.store.fetch() } }
+                Task { await delegate.showIsland(front: phase != .background) }
             }
+            .onChange(of: delegate.store.island) {
+                Task { await delegate.showIsland(front: phase != .background) }
+            }
+            .onOpenURL { delegate.opened($0) }
             .onChange(of: delegate.store.paired != nil) { _, paired in
                 if paired { delegate.askToNotify() }
             }
@@ -61,6 +66,7 @@ struct PhoneApp: App {
         // A default too, so a launch from a tap on a notification, which takes no arguments, has it.
         if let screen = UserDefaults.standard.string(forKey: "Screens"), let cache = Screens.cache(screen) {
             delegate.store.showForScreenshots(cache)
+            if let fresh = arguments.firstIndex(of: "-IslandFresh").flatMap({ Double(arguments[$0 + 1]) }) { delegate.island.fresh = fresh }
             // The thread screen: the asking thread, pushed.
             if screen == "thread", let asking = cache.threads.first(where: { $0.status == .asking }) { delegate.router.path = [asking.id] }
             if screen == "compose" { delegate.router.composing = true }
@@ -89,6 +95,8 @@ struct PhoneApp: App {
 final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     /// Where home is: a notification's tap pushes its thread.
     let router = Router()
+    var island = Island()
+    private var showing: Task<Void, Never>?
     let store = PhoneClient(keychain: PhoneDelegate.keychain, deviceName: UIDevice.current.model, folder: .applicationSupportDirectory) {
         UIApplication.shared.registerForRemoteNotifications()
     }
@@ -178,7 +186,26 @@ final class PhoneDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCe
 
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
         await store.pushed(userInfo)
+        await showIsland(front: false)
         return .newData
+    }
+
+    /// One at a time: two at once would each find none running and each start one.
+    func showIsland(front: Bool) async {
+        let (island, state, before) = (island, store.island, showing)
+        let shown = Task {
+            await before?.value
+            await island.show(state, front: front)
+        }
+        showing = shown
+        await shown.value
+    }
+
+    /// A tap on the Island or the Lock Screen: its thread, or home.
+    func opened(_ url: URL) {
+        guard url.scheme == IslandLink.scheme else { return }
+        router.composing = false
+        router.path = IslandLink.thread(in: url).map { [$0] } ?? []
     }
 }
 

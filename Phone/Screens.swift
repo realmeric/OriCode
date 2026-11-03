@@ -4,7 +4,7 @@ import Link
 import UserNotifications
 
 /// Made-up Macs for screenshots of the screens in the simulator, which has no iCloud account to
-/// pair with: launched with `-Screens home`, `asleep`, `empty`, `asks`, `thread`, `reply` or `compose`,
+/// pair with: launched with `-Screens home`, `busy`, `asleep`, `empty`, `asks`, `thread`, `reply` or `compose`,
 /// or `pairing` for the first launch with Scan, which the simulator has no camera for. `late` has
 /// no threads yet, for a notification's tap to land before they've come. `simctl push` never starts
 /// the notification extension, so launched with `-Post` and a Nudge's JSON as well, the app posts
@@ -61,6 +61,13 @@ enum Screens {
             var quiet = threads
             quiet[0].status = .working
             quiet[4].status = .working
+            return .init(mac: mac, projects: projects, threads: quiet, asks: [])
+        case "busy":
+            var quiet = threads
+            for index in quiet.indices {
+                quiet[index].status = .working
+                quiet[index].rays = [0: "claude", 1: "codex", 2: "pi"]
+            }
             return .init(mac: mac, projects: projects, threads: quiet, asks: [])
         case "asks":
             var asking = threads

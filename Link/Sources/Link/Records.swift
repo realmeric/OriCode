@@ -79,7 +79,7 @@ public struct MacInfo: Codable, Equatable, Sendable {
     }
 }
 
-public struct ProjectInfo: Codable, Equatable, Sendable, Identifiable {
+public struct ProjectInfo: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var name: String
     public var initials: String

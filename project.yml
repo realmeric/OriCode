@@ -200,6 +200,7 @@ targets:
     dependencies:
       - package: Link
       - target: OriCode Notify
+      - target: OriCode Island
     info:
       path: Phone/Info.plist
       properties:
@@ -214,6 +215,11 @@ targets:
         UIBackgroundModes: [remote-notification]
         # A notification speaks as its thread does, with its round avatar (PhoneNotify/Avatar.swift).
         NSUserActivityTypes: [INSendMessageIntent]
+        NSSupportsLiveActivities: true
+        # An Island's tap: oricode://thread/<uuid>, oricode://home.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.realmeric.oricode.phone
+            CFBundleURLSchemes: [oricode]
         NSCameraUsageDescription: To scan the pairing code on your Mac.
         # The same Wi-Fi's way to the Mac (Link/Sources/Link/Near.swift).
         NSLocalNetworkUsageDescription: To reach your Mac at once on the same Wi-Fi.
@@ -279,6 +285,37 @@ targets:
           ORICODE_CLOUDKIT_ENVIRONMENT: Development
         Release:
           ORICODE_CLOUDKIT_ENVIRONMENT: Production
+  # The Live Activity's views: what's running, in the Dynamic Island and on the Lock Screen.
+  OriCode Island:
+    type: app-extension
+    platform: iOS
+    sources:
+      - PhoneIsland
+      - path: Phone/Ink.swift
+      - path: Phone/Shared/Swatch.swift
+      - path: Phone/Mark.swift
+      - path: Phone/IslandAttributes.swift
+    dependencies:
+      - package: Link
+    info:
+      path: PhoneIsland/Info.plist
+      properties:
+        CFBundleDisplayName: OriCode
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_NAME: OriCodeIsland
+        PRODUCT_BUNDLE_IDENTIFIER: com.realmeric.oricode.phone.island
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        DEVELOPMENT_TEAM: 422F85XX9Z
+        ENABLE_DEBUG_DYLIB: NO
   # The phone's client running headless on this Mac, for checking the link end to end from a
   # script when no iPhone is at hand (Probe/main.swift). Debug only, never shipped.
   OriCode Probe:

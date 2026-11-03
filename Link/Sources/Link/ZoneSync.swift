@@ -112,7 +112,9 @@ public final class ZoneSync {
     }
 
     /// The one visible push: a Nudge made in the zone. Its words are CloudKit's fallback, "Waiting
-    /// on you"; the phone's notification extension opens the Nudge and writes the real ones.
+    /// on you"; the phone's notification extension opens the Nudge and writes the real ones. It wakes
+    /// the app as well, so what waits reaches the Island when a silent push wouldn't: the extension
+    /// can't, ActivityKit shows it none of the app's activities.
     public func subscribeToNudges() async throws {
         let subscription = CKQuerySubscription(recordType: RecordType.nudge, predicate: NSPredicate(value: true),
                                                subscriptionID: "nudges-\(zone.zoneName)", options: [.firesOnRecordCreation])
@@ -121,6 +123,7 @@ public final class ZoneSync {
         info.alertBody = "Waiting on you"
         info.soundName = "default"
         info.shouldSendMutableContent = true
+        info.shouldSendContentAvailable = true
         subscription.notificationInfo = info
         requests += 1
         _ = try await database.modifySubscriptions(saving: [subscription], deleting: [])
