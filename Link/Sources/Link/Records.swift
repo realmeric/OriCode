@@ -54,6 +54,17 @@ public enum RecordName {
     public static let mac = "mac"
     public static func project(_ id: UUID) -> String { "project-\(id.uuidString)" }
     public static func thread(_ id: UUID) -> String { "thread-\(id.uuidString)" }
+    /// A page of a thread's conversation. It is a `Thread` record, the type Production's schema
+    /// already has, so publishing a conversation asks for no schema deploy, which fails silently
+    /// there; what opens a `Thread` record goes by this name, and an old phone's ThreadInfo doesn't
+    /// decode from one.
+    public static func talk(_ thread: UUID, page: Int) -> String { "\(talkPrefix)\(thread.uuidString)-\(page)" }
+    private static let talkPrefix = "talk-"
+
+    /// Whether a `Thread` record's name is a page of a conversation's.
+    public static func isTalk(_ name: String) -> Bool {
+        name.hasPrefix(talkPrefix)
+    }
     public static func ask(_ id: String) -> String { "ask-\(id)" }
     public static func nudge(_ id: String) -> String { "nudge-\(id)" }
 
@@ -329,6 +340,11 @@ public struct Command: Codable, Equatable, Sendable {
         case stop(thread: UUID)
         case send(thread: UUID, text: String)
         case open(project: UUID?, text: String)
+        /// This thread is on the phone's screen: said as it opens, which publishes its newest pages
+        /// afresh, and every minute after. `from` asks for the pages from there on as well.
+        case watch(thread: UUID, from: Int?, opening: Bool)
+        /// Off the screen: the Mac stops publishing and takes the pages out of iCloud.
+        case unwatch
     }
 
     public var action: Action

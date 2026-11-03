@@ -50,6 +50,8 @@ final class PhoneLink {
     @ObservationIgnored var replies: [UUID: String?] = [:]
     /// When each ask was first seen waiting.
     @ObservationIgnored var askedAt: [String: Date] = [:]
+    /// The threads phones are watching, and their pages (PhoneLink+Talk.swift).
+    @ObservationIgnored var talk = TalkState()
     /// Threads the phone wrote to, whose turn's end the phone always hears about, those it stopped,
     /// whose end it knows of, how each thread stood at the last write, and the nudges ends made.
     @ObservationIgnored var messaged: Set<UUID> = []
@@ -137,6 +139,7 @@ final class PhoneLink {
         making = nil
         writing?.cancel()
         writing = nil
+        _ = endingTalk()
         outbox = [:]
         doomed = []
         known = [:]
@@ -263,12 +266,13 @@ final class PhoneLink {
     }
 
     /// A push is how the phone's commands reach the Mac, but CloudKit's silent pushes come late or
-    /// not at all, so while an ask waits on an answer the Mac also looks every five seconds, while
-    /// a thread works every fifteen, and with a phone paired and nothing working every twenty: on
-    /// Meriç's Mac no push came, and a message from the phone waited until something on the Mac
-    /// started working (2026-10-26). Without a phone paired the Mac never looks (rule 6).
+    /// not at all, so while an ask waits on an answer or a phone is watching a thread the Mac also
+    /// looks every five seconds, while a thread works every fifteen, and with a phone paired and
+    /// nothing working every twenty: on Meriç's Mac no push came, and a message from the phone
+    /// waited until something on the Mac started working (2026-10-26). Without a phone paired the
+    /// Mac never looks (rule 6).
     func pace(asking: Bool, working: Bool) {
-        let every: Duration = asking ? .seconds(5) : working ? .seconds(15) : .seconds(20)
+        let every: Duration = asking || !talk.leases.threads.isEmpty ? .seconds(5) : working ? .seconds(15) : .seconds(20)
         guard every != pacing?.every else { return }
         pacing?.task.cancel()
         pacing = (every, Task { [weak self] in
@@ -450,13 +454,14 @@ final class PhoneLink {
     }
 
     /// Asleep or closed, written straight to CloudKit, waiting up to two seconds for it, since the
-    /// Mac or the app may be gone before the next write.
+    /// Mac or the app may be gone before the next write. A conversation being watched goes with it.
     func closing(as state: MacState) {
         guard running, let record = macRecord(state) else { return }
         let database = container.privateCloudDatabase
         let written = OSAllocatedUnfairLock(initialState: false)
+        let pages = endingTalk()
         Task.detached {
-            _ = try? await database.modifyRecords(saving: [record], deleting: [], savePolicy: .allKeys)
+            _ = try? await database.modifyRecords(saving: [record], deleting: pages, savePolicy: .allKeys)
             written.withLock { $0 = true }
         }
         let until = Date.now.addingTimeInterval(2)

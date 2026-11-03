@@ -8,7 +8,8 @@ import UserNotifications
 /// or `pairing` for the first launch with Scan, which the simulator has no camera for. `late` has
 /// no threads yet, for a notification's tap to land before they've come. `simctl push` never starts
 /// the notification extension, so launched with `-Post` and a Nudge's JSON as well, the app posts
-/// what the extension would write, four seconds on or `-PostAfter` seconds, for a script to catch.
+/// what the extension would write, four seconds on or `-PostAfter` seconds, for a script to catch. `long`,
+/// `streaming`, `opened`, `new`, `waiting` or `failed` for a thread's conversation (Screens+Talk.swift).
 enum Screens {
     static let storeID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
     static let waterID = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
@@ -81,6 +82,8 @@ enum Screens {
             return .init(mac: mac, projects: projects, threads: threads, asks: [run])
         case "reply":
             return .init(mac: mac, projects: projects, threads: threads, asks: [])
+        case "long", "streaming", "opened", "new", "waiting", "failed":
+            return .init(mac: mac, projects: projects, threads: threads + [talkThread(name, project: oricode.id)], asks: name == "opened" ? [grant] : [])
         default:
             return nil
         }

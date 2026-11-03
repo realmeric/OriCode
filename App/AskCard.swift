@@ -44,7 +44,7 @@ struct AskCard: View {
                     .animation(.easeOut(duration: 0.12), value: ask.state == .waiting)
                     .transition(.identity)
             } else if !ask.shownElsewhere {
-                Text(settledLine)
+                Text(ask.settledLine(cwd: cwd))
                     .font(Type.secondary)
                     .foregroundStyle(Ink.faint)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,20 +58,6 @@ struct AskCard: View {
                 try? await Task.sleep(for: Self.fading)
                 withAnimation(Motion.move) { settled = true }
             }
-        }
-    }
-
-    private var settledLine: String {
-        let what = ask.kind == "question" ? "Question" : ask.app.map { "See and use \($0)" } ?? ask.loosening ?? ToolSummary.line(for: ask.call, cwd: cwd)
-        // Answered by the thread that set this one going, which the line names, its reason on hover.
-        if let by = ask.answeredBy, ask.state != .cancelled {
-            let done = ask.kind == "question" ? "\(by) answered" : ask.state == .allowed ? "\(by) allowed" : "\(by) denied"
-            return "\(done) · \(what)"
-        }
-        switch ask.state {
-        case .allowed: return ask.kind == "question" ? "Answered" : "Allowed · \(what)"
-        case .denied: return "Denied · \(what)"
-        case .cancelled, .waiting: return "No longer waiting · \(what)"
         }
     }
 }
@@ -463,6 +449,21 @@ private struct OtherField: View {
 }
 
 extension PendingAsk {
+    /// What's left of an answered ask: its one line in the transcript.
+    func settledLine(cwd: String) -> String {
+        let what = kind == "question" ? "Question" : app.map { "See and use \($0)" } ?? loosening ?? ToolSummary.line(for: call, cwd: cwd)
+        // Answered by the thread that set this one going, which the line names, its reason on hover.
+        if let by = answeredBy, state != .cancelled {
+            let done = kind == "question" ? "\(by) answered" : state == .allowed ? "\(by) allowed" : "\(by) denied"
+            return "\(done) · \(what)"
+        }
+        switch state {
+        case .allowed: return kind == "question" ? "Answered" : "Allowed · \(what)"
+        case .denied: return "Denied · \(what)"
+        case .cancelled, .waiting: return "No longer waiting · \(what)"
+        }
+    }
+
     /// Allowed by the user, a call whose run's line already shows it, so the ask leaves no line of
     /// its own.
     var shownElsewhere: Bool {

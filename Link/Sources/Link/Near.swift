@@ -169,6 +169,9 @@ public final class NearClient {
         drop()
     }
 
+    /// Whether the Mac's word reaches the phone straight, so a read needn't be timed.
+    public var connected: Bool { ready }
+
     /// The phone wrote: the Mac reads now, if it's near.
     public func tell() {
         if ready { lines?.send(Near.wrote) }

@@ -19,7 +19,8 @@ extension PhoneLink {
             Self.logger.notice("a command that didn't open was ignored")
             return
         }
-        let outcome = Self.refusal(seen: Self.seen(command.nonce), made: record.creationDate).map(Link.Outcome.refused) ?? apply(command.action)
+        let outcome = Self.refusal(seen: Self.seen(command.nonce), made: record.creationDate).map(Link.Outcome.refused)
+            ?? apply(command.action, by: sender, said: record.creationDate ?? .now)
         Self.remember(command.nonce)
         guard (try? record.seal(outcome, key: phone.pairingKey, field: Field.outcome)) != nil else { return }
         put(record)
@@ -27,7 +28,7 @@ extension PhoneLink {
         Self.logger.notice("a command from the phone: \(outcome.ok ? "done" : "refused", privacy: .public)")
     }
 
-    private func apply(_ action: Command.Action) -> Link.Outcome {
+    private func apply(_ action: Command.Action, by phone: String, said: Date) -> Link.Outcome {
         guard let model else { return .refused("OriCode isn't ready") }
         switch action {
         case .answer(let id, let thread, let allow, let choice, let answers, let message):
@@ -63,6 +64,13 @@ extension PhoneLink {
             messaged.insert(chat.id)
             statuses[chat.id] = .working
             return Link.Outcome(ok: true, thread: chat.id)
+        case .watch(let thread, let from, let opening):
+            guard model.chat(withID: thread) != nil else { return .refused("No such thread") }
+            watched(thread, from: from, opening: opening, by: phone, said: said)
+            return Link.Outcome(ok: true)
+        case .unwatch:
+            unwatched(by: phone, said: said)
+            return Link.Outcome(ok: true)
         }
     }
 

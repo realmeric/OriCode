@@ -79,6 +79,10 @@ struct PhoneApp: App {
                     delegate.store.showForScreenshots(full)
                 }
             }
+            if let shown = cache.threads.first(where: { $0.id == Screens.talkID }) {
+                Screens.play(screen, in: delegate.store)
+                delegate.router.path = [shown.id]
+            }
             return
         }
         guard delegate.store.paired == nil, let at = arguments.firstIndex(of: "-PairCode"), at + 1 < arguments.count,

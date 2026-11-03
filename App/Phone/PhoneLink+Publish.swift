@@ -29,9 +29,10 @@ extension PhoneLink {
         if again { sentBoxes = [:] }
         publishMac(.awake)
         watch()
+        if again { republishTalk() }
     }
 
-    private func watch() {
+    func watch() {
         guard running else { return }
         let snapshot = withObservationTracking {
             self.snapshot()
@@ -77,8 +78,10 @@ extension PhoneLink {
         for (name, info) in snapshot.asks { written(RecordType.ask, name, info) }
         nudge(snapshot)
         nudgeEnds(snapshot)
-        // What left the set, and what an earlier launch wrote that nothing holds now.
-        let current = Set(snapshot.projects.keys).union(snapshot.threads.keys).union(snapshot.asks.keys)
+        // What left the set, and what an earlier launch wrote that nothing holds now: a thread's
+        // pages are `Thread` records too, so those a lease holds are named here, and any other
+        // goes, the Mac having quit under a lease say.
+        let current = Set(snapshot.projects.keys).union(snapshot.threads.keys).union(snapshot.asks.keys).union(talkNames)
         let held = Set(sentBoxes.keys).union(known.values.filter { Self.ours.contains($0.recordType) }.map(\.recordID.recordName))
         for name in held.subtracting(current) where name != RecordName.mac {
             sentBoxes[name] = nil
@@ -149,8 +152,10 @@ extension PhoneLink {
                 status = Self.stopped(conversation) ? .stopped : .failed
             }
             if conversation.working {
-                let main = conversation.mainStep(cwd: chat.cwd)
-                step = conversation.planStep ?? [main.tool, main.detail].compactMap { $0 }.joined(separator: " ")
+                let main = conversation.mainStep(cwd: chat.cwd) { self.model?.chat(withID: $0)?.title }
+                let words = conversation.planStep ?? [main.tool, main.detail].compactMap { $0 }.joined(separator: " ")
+                // Waiting on you says nothing, which is the pulsing dot's to say.
+                step = words.isEmpty ? nil : words
                 rays = Dictionary(uniqueKeysWithValues: conversation.heads.lit.map { ($0, conversation.heads.rayAgents[$0] ?? chat.providerID) })
             }
         }
@@ -204,6 +209,12 @@ extension PhoneLink {
         switch ask.toolKind {
         case _ where ask.kind == "question":
             title = questions.first?.text ?? "A question"
+        // Seeing and using an app, and a change a menu tool would make, are asks of the engine's
+        // own, which name no tool anyone would know.
+        case _ where ask.app != nil:
+            title = "Let this thread see and use \(ask.app ?? "")?"
+        case _ where ask.loosening != nil:
+            title = "\(ask.loosening ?? "")?"
         case .run:
             title = "Run a command?"
             detail = ask.call.shown("command")

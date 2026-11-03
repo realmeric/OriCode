@@ -6,7 +6,8 @@ import os
 
 /// The phone's side of the link: its pairing, the latest records its Mac wrote, opened with the
 /// Mac's state key, and the commands it sends back. It reads on every push CloudKit sends, on the
-/// Mac's word across the same Wi-Fi while it's in front, and whenever it's asked to; it never polls.
+/// Mac's word across the same Wi-Fi while it's in front, and whenever it's asked to; it polls only
+/// off that Wi-Fi, in front, while a thread that works is on screen.
 @MainActor
 @Observable
 public final class PhoneClient {
@@ -29,6 +30,8 @@ public final class PhoneClient {
         /// For a new thread, the thread the Mac made.
         public var thread: UUID?
         public let at: Date
+        /// The last message of the conversation on screen when this one was sent.
+        public var after: String?
 
         /// Refused by the Mac, or never taken in its time.
         public func undelivered(now: Date = .now) -> Bool {
@@ -46,6 +49,8 @@ public final class PhoneClient {
     public private(set) var threads: [UUID: ThreadInfo] = [:]
     public private(set) var asks: [String: AskInfo] = [:]
     public private(set) var sent: [String: Sent] = [:]
+    /// The conversation on screen. Memory only: it's in neither the cache nor any file.
+    public private(set) var talk: ThreadTalk?
     /// The nudges the Mac wrote, by ask or reply; the notification extension shows them.
     public private(set) var nudges: [String: NudgeInfo] = [:]
     /// Threads a notification opened, as it named them, until their records come.
@@ -54,6 +59,13 @@ public final class PhoneClient {
     @ObservationIgnored var sync: ZoneSync?
     @ObservationIgnored var near: NearClient?
     @ObservationIgnored private var inFront = false
+    /// The renewing of the lease, and the timed reads, while a thread is on screen.
+    @ObservationIgnored private var watching: Task<Void, Never>?
+    @ObservationIgnored private var watchedSince = ContinuousClock.now
+    /// The last watch command, which goes with the next: a Mac too old to know it never answers.
+    @ObservationIgnored private var watchRecord: CKRecord.ID?
+    /// Who answers for earlier pages when no Mac is behind the screen, in a screenshot.
+    @ObservationIgnored public var earlierForScreenshots: ((Int) -> Void)?
     /// Every record of the Mac's zone as fetched, so a new state key can open them again.
     @ObservationIgnored var records: [CKRecord.ID: CKRecord] = [:]
     @ObservationIgnored private var fetching = false
@@ -199,6 +211,10 @@ public final class PhoneClient {
         near?.stop()
         near = nil
         records = [:]
+        watching?.cancel()
+        watching = nil
+        watchRecord = nil
+        talk = nil
         paired = nil
         mac = nil
         projects = [:]
@@ -237,12 +253,17 @@ public final class PhoneClient {
     }
 
     private func command(_ action: Command.Action) -> CKRecord? {
+        guard let record = sealed(action) else { return nil }
+        let name = record.recordID.recordName
+        sent[name] = Sent(id: name, action: action, state: .waiting, at: .now, after: talk?.lastMessage)
+        return record
+    }
+
+    private func sealed(_ action: Command.Action) -> CKRecord? {
         guard let paired else { return nil }
-        let name = "command-\(UUID().uuidString)"
-        let record = CKRecord(recordType: RecordType.command, recordID: CKRecord.ID(recordName: name, zoneID: paired.zone))
+        let record = CKRecord(recordType: RecordType.command, recordID: CKRecord.ID(recordName: "command-\(UUID().uuidString)", zoneID: paired.zone))
         record.encryptedValues[Field.phone] = paired.phone
         guard (try? record.seal(Command(action), key: paired.pairing)) != nil else { return nil }
-        sent[name] = Sent(id: name, action: action, state: .waiting, at: .now)
         return record
     }
 
@@ -263,6 +284,97 @@ public final class PhoneClient {
         sent[id] = nil
         guard let paired else { return }
         write(deleting: [CKRecord.ID(recordName: id, zoneID: paired.zone)])
+    }
+
+    // MARK: Watching
+
+    /// A thread came on screen: its lease starts, and its conversation comes in behind what's known.
+    public func watch(_ thread: UUID) {
+        if talk?.thread != thread { talk = ThreadTalk(thread: thread) }
+        keepWatching(thread, from: nil, opening: true)
+    }
+
+    /// The thread left the screen, and what the phone held of it goes with it. By its id: pushing
+    /// one thread over another can start the new screen ahead of ending the old.
+    public func leave(_ thread: UUID) {
+        guard talk?.thread == thread else { return }
+        talk = nil
+        stopWatching()
+    }
+
+    /// Scrolled to the top of what's in hand: the pages before it.
+    public func earlier() {
+        guard let talk, let from = talk.askEarlier() else { return }
+        earlierForScreenshots?(from)
+        say(.watch(thread: talk.thread, from: from, opening: false))
+    }
+
+    private func keepWatching(_ thread: UUID, from: Int?, opening: Bool) {
+        say(.watch(thread: thread, from: from, opening: opening))
+        watching?.cancel()
+        watchedSince = .now
+        watching = Task { [weak self] in
+            var renewed = ContinuousClock.now
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self else { return }
+                if ContinuousClock.now - renewed >= Leases.renewal {
+                    renewed = .now
+                    self.say(.watch(thread: thread, from: nil, opening: false))
+                }
+                if self.wantsReading { await self.fetch() }
+            }
+        }
+    }
+
+    private func stopWatching() {
+        watching?.cancel()
+        watching = nil
+        say(.unwatch)
+    }
+
+    /// How long a first page is looked for: a Mac too old to publish one never answers.
+    private static let firstPageWait: Duration = .seconds(30)
+
+    /// A timed read: off the Mac's Wi-Fi, only while the thread on screen works or a page or an
+    /// answer is on its way, and never while the Mac is away. Near it, the Mac's word says when.
+    private var wantsReading: Bool {
+        guard let talk, near?.connected != true, mac?.state ?? .awake == .awake else { return false }
+        let status = threads[talk.thread]?.status
+        let firstPage = talk.first == nil && ContinuousClock.now - watchedSince < Self.firstPageWait
+        return status == .working || status == .asking || firstPage || talk.asked != nil
+            || sent.values.contains { ThreadTalk.written($0, to: talk.thread) != nil && !$0.undelivered() }
+    }
+
+    /// What's on the screen, told to the Mac, in place of what was told before.
+    private func say(_ action: Command.Action) {
+        guard let record = sealed(action) else { return }
+        let old = watchRecord
+        watchRecord = record.recordID
+        write(saving: [record], deleting: old.map { [$0] } ?? [])
+    }
+
+    /// A page in hand: messages sent from here that the Mac's transcript carries now stand once,
+    /// in their real place.
+    private func took(_ page: TalkPage) {
+        guard let talk, talk.thread == page.thread else { return }
+        talk.take(page)
+        let waiting = sent.values.filter { ThreadTalk.written($0, to: page.thread) != nil }.sorted { $0.at < $1.at }
+        let outgoing = waiting.compactMap { message in
+            ThreadTalk.written(message, to: page.thread).map { Talk.Outgoing(id: message.id, text: $0, after: message.after) }
+        }
+        for id in Talk.carried(outgoing, in: talk.lines) { sent[id] = nil }
+    }
+
+    /// The same pages, for a made-up Mac in a screenshot.
+    public func showForScreenshots(_ page: TalkPage) {
+        if talk?.thread != page.thread { talk = ThreadTalk(thread: page.thread) }
+        took(page)
+    }
+
+    /// A message the made-up Mac refused.
+    public func refuseForScreenshots(_ id: String) {
+        sent[id]?.state = .refused("")
     }
 
     // MARK: The zone
@@ -312,7 +424,8 @@ public final class PhoneClient {
                 for record in changes.changed { fetched(record) }
                 for (id, type) in changes.deleted { gone(id, type: type) }
                 try? sync.tokenData?.write(to: tokenFile, options: .atomic)
-                if !changes.changed.isEmpty || !changes.deleted.isEmpty { writeCache() }
+                let talks = changes.changed.allSatisfy { RecordName.isTalk($0.recordID.recordName) }
+                if !talks || !changes.deleted.isEmpty { writeCache() }
                 askForNudges()
             } catch ZoneSync.Gone.zone {
                 Self.logger.notice("the Mac's zone is gone")
@@ -350,8 +463,19 @@ public final class PhoneClient {
 
     /// In front, the phone stays connected to its Mac on the same Wi-Fi; behind, it lets go.
     public func inFront(_ front: Bool) {
+        guard front != inFront else { return }
         inFront = front
         if front { near?.start() } else { near?.stop() }
+        // Behind, what's on screen stays and the lease lapses by itself: Control Center pulled
+        // down isn't leaving. In front again it goes on from the page last held, which leaves no
+        // gap however far the thread went on.
+        guard let talk else { return }
+        if front {
+            keepWatching(talk.thread, from: talk.last, opening: false)
+        } else {
+            watching?.cancel()
+            watching = nil
+        }
     }
 
     /// A push from the Mac's zone.
@@ -380,6 +504,8 @@ public final class PhoneClient {
     }
 
     private func fetched(_ record: CKRecord) {
+        // A page is opened and held in `talk`, and the Mac seals its pages again with a new key.
+        if RecordName.isTalk(record.recordID.recordName) { return open(record) }
         records[record.recordID] = record
         guard var paired else { return }
         switch record.recordType {
@@ -416,6 +542,8 @@ public final class PhoneClient {
             if let info = try? record.open(MacInfo.self, key: key) { mac = info }
         case RecordType.project:
             if let info = try? record.open(ProjectInfo.self, key: key) { projects[info.id] = info }
+        case RecordType.thread where RecordName.isTalk(record.recordID.recordName):
+            if let page = try? record.open(TalkPage.self, key: key) { took(page) }
         case RecordType.thread:
             if let info = try? record.open(ThreadInfo.self, key: key) { threads[info.id] = info }
         case RecordType.ask:
@@ -436,6 +564,8 @@ public final class PhoneClient {
             forget()
         case RecordType.project:
             if let project = UUID(uuidString: named) { projects[project] = nil }
+        // A page taken out of iCloud isn't this: `named` is no UUID, and what's on screen stays
+        // readable with the Mac asleep or closed.
         case RecordType.thread:
             if let thread = UUID(uuidString: named) { threads[thread] = nil }
         case RecordType.ask:

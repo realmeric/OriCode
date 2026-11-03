@@ -1155,7 +1155,7 @@ struct ToolRunRow: View {
 
     /// The run's items with a wait or a read on a thread that the call after it repeats left out,
     /// so a lead waiting six times on the same thread shows one line, the latest.
-    static func collapsed(_ items: [Item]) -> [Item] {
+    nonisolated static func collapsed(_ items: [Item]) -> [Item] {
         func repeated(_ call: ToolCall) -> String? {
             guard let tool = call.oricodeTool, tool == "wait_thread" || tool == "read_thread", !call.isError else { return nil }
             return tool + (call.otherThread.id?.uuidString ?? "")
