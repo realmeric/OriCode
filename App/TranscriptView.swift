@@ -147,6 +147,7 @@ struct TranscriptView: View {
                                     if self.kept?.under == nil {
                                         showEarlier(at: frame)
                                     } else if let y = self.kept?.scroll(for: frame, visible: content.visible) {
+                                        self.kept?.moved()
                                         position.scrollTo(y: y)
                                     }
                                 }
@@ -485,9 +486,8 @@ struct TranscriptView: View {
     /// are measured and move it, it's put back where it stood: for a second, or until a hand
     /// takes the scroll.
     private func showEarlier() {
-        let first = TranscriptEntry.fold(shown, thinking: showThinking).first?.id
-        // A run the cut went through is a longer run once it's whole, and starts further up.
-        guard let first, TranscriptEntry.fold(conversation.items, thinking: showThinking).contains(where: { $0.id == first }) else {
+        guard let first = TranscriptEntry.kept(TranscriptEntry.fold(shown, thinking: showThinking),
+                                               in: TranscriptEntry.fold(conversation.items, thinking: showThinking)) else {
             return showAll = true
         }
         kept = TranscriptEnd.Kept(id: first)
@@ -589,6 +589,12 @@ enum TranscriptEnd {
         private(set) var under: CGFloat?
         /// Where the scroll stood then.
         private var from: CGFloat = 0
+        /// How many times it's been put back.
+        private(set) var moves = 0
+        /// As many times as it may be. Put back once or twice as a rule; the second it's held for
+        /// ends on a timer, which never comes while the main thread is held in one update, and a
+        /// row a scroll moves that moves the scroll would hold it there.
+        static let moveLimit = 8
 
         /// Where a row starts, under the view's top edge and from the top of the thread.
         struct Frame: Equatable {
@@ -608,9 +614,12 @@ enum TranscriptEnd {
         /// scroll to it has moved, the row is where the lazy stack guesses it is, or where it was
         /// laid out before; out of a view `visible` tall, it's a guess too.
         func scroll(for frame: Frame, visible: CGFloat) -> CGFloat? {
-            guard let under, abs(frame.scroll - from) >= 0.5, abs(frame.screen) < visible, abs(frame.screen - under) >= 0.5 else { return nil }
+            guard let under, moves < Self.moveLimit, abs(frame.scroll - from) >= 0.5, abs(frame.screen) < visible, abs(frame.screen - under) >= 0.5 else { return nil }
             return max(0, frame.thread - under)
         }
+
+        /// The scroll went where `scroll(for:visible:)` said.
+        mutating func moved() { moves += 1 }
     }
 
     /// How much of the thread lies under what's showing.
@@ -830,6 +839,15 @@ enum TranscriptEntry: Identifiable {
         case .item(let item): item.id == id
         case .run(let items): items.contains { $0.id == id }
         }
+    }
+
+    /// The row held in place while the rest of the thread comes in above it: the first of the
+    /// latest rows that is still a row once the thread is whole. A run the cut went through is a
+    /// longer run then, starting further up; holding no row for it left the scroll at the top of
+    /// the whole thread.
+    static func kept(_ shown: [TranscriptEntry], in whole: [TranscriptEntry]) -> UUID? {
+        let rows = Set(whole.map(\.id))
+        return shown.first { rows.contains($0.id) }?.id
     }
 
     /// Folds the tool calls between two pieces of Claude's text, with any thinking among them,

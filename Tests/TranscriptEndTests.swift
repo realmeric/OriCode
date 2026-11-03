@@ -179,6 +179,32 @@ struct TranscriptEndTests {
         #expect(kept.scroll(for: .init(screen: 14, thread: 34661), visible: 684) == 34604)
     }
 
+    @Test func aRowPutBackOverAndOverIsLetGo() {
+        var kept = TranscriptEnd.Kept(id: UUID())
+        kept.measured(at: .init(screen: 87, thread: 87))
+        // A row the scroll moves away again each time it's put back, which no timer ends while
+        // the main thread is held in one update.
+        for n in 0..<TranscriptEnd.Kept.moveLimit {
+            #expect(kept.scroll(for: .init(screen: n % 2 == 0 ? 14 : 160, thread: 34661), visible: 684) != nil)
+            kept.moved()
+        }
+        #expect(kept.scroll(for: .init(screen: 14, thread: 34661), visible: 684) == nil)
+    }
+
+    @Test func showEarlierHoldsTheFirstRowTheCutLeavesWhole() {
+        let calls = (0..<4).map { Item.tool(id: UUID(), call: ToolCall(toolUseId: "t\($0)", name: "Read", input: ["file_path": "/tmp/a.swift"])) }
+        let said = Item.text(id: UUID(), text: "Done.")
+        let items = [Item.text(id: UUID(), text: "Reading.")] + calls + [said]
+        let whole = TranscriptEntry.fold(items)
+        // The cut leaves the last two calls, a run of its own whose first call isn't the whole
+        // run's first: the reply under it is the row held.
+        let cut = TranscriptEntry.fold(items.suffix(3))
+        #expect(!whole.contains { $0.id == cut[0].id })
+        #expect(TranscriptEntry.kept(cut, in: whole) == said.id)
+        // Cut between rows, the first row is held.
+        #expect(TranscriptEntry.kept(TranscriptEntry.fold(items.suffix(5)), in: whole) == calls[0].id)
+    }
+
     @Test func aRevealThatLandsAtTheEndLeavesNoPill() {
         // An item in the last screenful, or a thread shorter than the window: the scroll view's
         // place is the end before and after, so it says nothing.
