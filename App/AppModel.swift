@@ -323,8 +323,10 @@ final class AppModel {
     /// Each agent's plan usage by its id, and when the engine last read it.
     var usages: [String: PlanUsage] = [:]
     var usagesAt: [String: Date] = [:]
-    var usageStale = false
     var usageLoading = false
+    /// Where those readings are kept across a quit, so the ring answers on the first hover of a
+    /// launch with what was last known; nil in a test that doesn't look at it.
+    @ObservationIgnored let usageKept: UserDefaults?
     var fileFinderShown = false
     /// Each folder's branch's pull request, for the folders that have one.
     var pulls: [String: PullRequest] = [:]
@@ -615,12 +617,14 @@ final class AppModel {
         return (list.first { $0.id == id } ?? list.first).map(agent(for: chat).narrowing)
     }
 
-    init(container: ModelContainer, drafts: UserDefaults = .standard,
+    init(container: ModelContainer, drafts: UserDefaults = .standard, usageKept: UserDefaults? = nil,
          readEvents: @escaping @Sendable (UUID, ModelContext) throws -> [StoredEvent] = StoredEvent.read) {
         store = container
         context = container.mainContext
         draftsKept = drafts
         self.readEvents = readEvents
+        self.usageKept = usageKept
+        (usages, usagesAt) = Self.keptUsages(in: usageKept)
         selectedProjectID = UserDefaults.standard.string(forKey: "selectedProject").flatMap(UUID.init)
         // The drawer's header starts on the project that was open, and stays on it from then on.
         if drawerProjectID.map({ id in projects.contains { $0.id == id } }) != true { drawerProjectID = selectedProjectID }

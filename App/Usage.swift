@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Claude plan usage as the engine reports it: one entry per metered window.
-struct PlanUsage: Sendable {
-    struct Window: Identifiable, Hashable, Sendable {
+struct PlanUsage: Codable, Sendable {
+    struct Window: Identifiable, Hashable, Codable, Sendable {
         let id: String
         let label: String
         /// A fraction; nil when the plan meters the window but didn't say how much is gone.
@@ -13,6 +13,10 @@ struct PlanUsage: Sendable {
     let available: Bool
     let plan: String?
     private(set) var windows: [Window]
+
+    /// Whether it tells anything: a login the plan's limits don't apply to is an answer, a plan
+    /// that came back with no window at all isn't.
+    var says: Bool { !available || !windows.isEmpty }
 
     /// What the ring means: the session window, as kullanym-notch shows it.
     var headline: Window? {
@@ -100,32 +104,52 @@ enum ResetCopy {
 }
 
 extension AppModel {
-    /// The open thread's agent's plan usage, or with no thread the next one's.
+    /// What the ring shows is the thread's own agent's, the open thread's when it's the open
+    /// thread asking, or with no thread the next one's.
+    func usage(for thread: Chat?) -> PlanUsage? {
+        usages[providerID(for: thread)]
+    }
+
+    func usageAt(for thread: Chat?) -> Date? {
+        usagesAt[providerID(for: thread)]
+    }
+
     var usage: PlanUsage? {
-        usages[providerID(for: chat)]
+        usage(for: chat)
     }
 
-    var usageAt: Date? {
-        usagesAt[providerID(for: chat)]
+    /// A reading older than the engine's own minute and a little, which the card dates and the
+    /// ring dims. One kept from the last launch is that, until a hover asks again.
+    func usageStale(for thread: Chat?) -> Bool {
+        usageAt(for: thread).map { Date.now.timeIntervalSince($0) > 120 } ?? false
     }
 
-    /// Asks the engine for the whole picture, which it keeps a minute.
     func refreshUsage() {
-        guard engineState == .ready, !usageLoading, agentReady(for: chat), provider(for: chat)?.capabilities.usage == true else { return }
-        if let usageAt, Date.now.timeIntervalSince(usageAt) < 60 { return }
-        let agent = providerID(for: chat)
+        refreshUsage(for: chat)
+    }
+
+    /// Asks the engine for the whole picture, which it keeps a minute. Only the pointer arriving
+    /// asks: nothing here polls, and no key does.
+    func refreshUsage(for thread: Chat?) {
+        guard engineState == .ready, !usageLoading, agentReady(for: thread), provider(for: thread)?.capabilities.usage == true else { return }
+        let agent = providerID(for: thread)
+        if let at = usagesAt[agent], Date.now.timeIntervalSince(at) < 60 { return }
         usageLoading = true
         Task {
             defer { usageLoading = false }
-            do {
-                let reply = try await engine.request("usage", .object([String: JSON]().naming(agent)))
-                usages[agent] = PlanUsage(json: reply)
-                usagesAt[agent] = .now
-                usageStale = false
-            } catch {
-                usageStale = usages[agent] != nil
-            }
+            guard let reply = try? await engine.request("usage", .object([String: JSON]().naming(agent))) else { return }
+            takeUsage(reply, for: agent)
         }
+    }
+
+    /// The engine's answer, over what was known. One with no window says nothing, so what was
+    /// known stays, dated as it was.
+    func takeUsage(_ reply: JSON, for agent: String) {
+        let taken = PlanUsage(json: reply)
+        guard taken.says else { return }
+        usages[agent] = taken
+        usagesAt[agent] = .now
+        keepUsages()
     }
 
     /// A thread's CLI reporting the plan's limits as its turn goes, which keeps the glass current
@@ -144,6 +168,24 @@ extension AppModel {
         var taken = usages[agent] ?? PlanUsage(json: ["available": true])
         for (id, label, used, resetsAt) in readings { taken.take(id, label: label, used: used, resetsAt: resetsAt) }
         usages[agent] = taken
-        usageStale = false
+        usagesAt[agent] = .now
+        keepUsages()
+    }
+
+    static let usageKey = "planUsages"
+
+    private struct KeptUsage: Codable {
+        let usage: PlanUsage
+        let at: Date
+    }
+
+    static func keptUsages(in defaults: UserDefaults?) -> ([String: PlanUsage], [String: Date]) {
+        guard let data = defaults?.data(forKey: usageKey), let kept = try? JSONDecoder().decode([String: KeptUsage].self, from: data) else { return ([:], [:]) }
+        return (kept.mapValues(\.usage), kept.mapValues(\.at))
+    }
+
+    private func keepUsages() {
+        let kept = usages.compactMap { agent, usage in usagesAt[agent].map { (agent, KeptUsage(usage: usage, at: $0)) } }
+        usageKept?.set(try? JSONEncoder().encode(Dictionary(uniqueKeysWithValues: kept)), forKey: Self.usageKey)
     }
 }

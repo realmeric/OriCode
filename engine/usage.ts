@@ -40,7 +40,8 @@ export function usage(claude: string): Promise<Usage> {
         windows.push({ id: `model:${limit.display_name}`, label: `${limit.display_name} week`, used: percent(limit.utilization), resetsAt: limit.resets_at });
       }
       const result = { available: answer.rate_limits_available, plan: answer.subscription_type, windows };
-      cached = { at: Date.now(), usage: result };
+      // A probe that came up before the plan answered has no window to show; the next ask tries again.
+      if (windows.length > 0 || !result.available) cached = { at: Date.now(), usage: result };
       return result;
     } finally {
       probe.close();

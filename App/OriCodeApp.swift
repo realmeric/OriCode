@@ -11,7 +11,7 @@ struct OriCodeApp: App {
     init() {
         // A write to an engine that just died must fail as an error, not kill the app.
         signal(SIGPIPE, SIG_IGN)
-        _model = State(initialValue: AppModel(container: container))
+        _model = State(initialValue: AppModel(container: container, usageKept: .standard))
 #if PERF
         PerfBench.appModel = _model.wrappedValue
 #endif

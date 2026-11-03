@@ -22,7 +22,7 @@ struct UsageGlass: View {
     var body: some View {
         let ofWater = showWater && model.providerID(for: chat) == ProviderInfo.claudeID
         let periods = ofWater ? model.waterTotals.periods : nil
-        let used = ofWater ? nil : model.usage?.headline?.used
+        let used = ofWater ? nil : model.usage(for: chat)?.headline?.used
         // Empty until the first reading, which it rises to.
         let level = ofWater ? periods?.level ?? 0 : min(max(used ?? 0, 0), 1)
         Group {
@@ -34,14 +34,14 @@ struct UsageGlass: View {
             }
         }
         .animation(Motion.reading, value: level)
-        .opacity(!ofWater && model.usageStale ? 0.45 : 1)
+        .opacity(!ofWater && model.usageStale(for: chat) ? 0.45 : 1)
         .padding(6)
         // Lit while its card is out, as the model button is while its picker is.
         .background(shown ? Surface.hover : .clear, in: .circle)
         .contentShape(.rect)
         .onHover { inside in
             overGlass = inside
-            if inside, !ofWater { model.refreshUsage() }
+            if inside, !ofWater { model.refreshUsage(for: chat) }
             settle()
         }
         .popover(isPresented: $shown, arrowEdge: .top) {
@@ -246,16 +246,16 @@ struct UsageCard: View {
         HStack(spacing: 8) {
             AgentMark(agent: model.providerID(for: chat)).frame(width: 14, height: 14)
             Text(model.agent(for: chat).agent).font(Type.body.weight(.semibold)).foregroundStyle(Ink.primary)
-            if let plan = model.usage?.plan {
+            if let plan = model.usage(for: chat)?.plan {
                 Text(plan.capitalized).font(Type.secondary).foregroundStyle(Ink.secondary)
             }
             Spacer(minLength: 8)
-            if model.usageStale, let at = model.usageAt {
-                Text("as of \(ResetCopy.span(Date.now.timeIntervalSince(at))) ago")
-                    .font(Type.secondary).foregroundStyle(Ink.faint)
+            if model.usageStale(for: chat), let at = model.usageAt(for: chat) {
+                Text("\(ResetCopy.span(Date.now.timeIntervalSince(at))) ago")
+                    .font(Type.secondary).foregroundStyle(Ink.faint).lineLimit(1)
             }
         }
-        if let usage = model.usage {
+        if let usage = model.usage(for: chat), usage.says {
             if usage.available {
                 ForEach(Array(usage.windows.enumerated()), id: \.element.id) { index, window in
                     WindowBar(window: window, appeared: appeared)
