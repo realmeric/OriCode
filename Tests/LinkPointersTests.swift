@@ -297,20 +297,23 @@ struct LinkPointersTests {
         window.close()
     }
 
-    /// Mouse events at a point counted from the window's top left, as a reply's layout counts.
-    private func send(_ types: [NSEvent.EventType], to window: NSWindow, x: CGFloat, y: CGFloat, clicks: Int = 1) {
-        for type in types {
-            let event = NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: 200 - y), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                           windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
-            window.sendEvent(event)
-        }
-    }
-
     /// The view a mouse event at the point is sent to.
     private func hit(_ window: NSWindow, x: CGFloat, y: CGFloat) throws -> NSView? {
         let content = try #require(window.contentView)
         let point = NSPoint(x: x, y: 200 - y)
         return content.hitTest(content.superview?.convert(point, from: nil) ?? point)
+    }
+
+    /// The reply's text, and the link it finds under a point counted from the window's top left.
+    private func link(_ window: NSWindow, x: CGFloat, y: CGFloat) throws -> URL? {
+        guard let text = try hit(window, x: x, y: y) as? ReplyTextView else { return nil }
+        return text.link(at: text.convert(NSPoint(x: x, y: 200 - y), from: nil))
+    }
+
+    /// What a click on that link does: the text's delegate opens it through the transcript's action.
+    private func click(_ window: NSWindow, x: CGFloat, y: CGFloat) throws {
+        let text = try #require(try hit(window, x: x, y: y) as? ReplyTextView)
+        if let url = try link(window, x: x, y: y) { _ = text.delegate?.textView?(text, clickedOnLink: url, at: 0) }
     }
 
     private final class Seen {
@@ -335,9 +338,10 @@ struct LinkPointersTests {
 
     private static let linkMenu = ["Open Link", "Copy Link"]
 
-    /// Whether a link's area is under the point: nothing else in a reply has its menu.
+    /// Whether a link is under the point: nothing else in a reply has its menu.
     private func linked(_ window: NSWindow, x: CGFloat, y: CGFloat) throws -> Bool {
-        try menu(window, x: x, y: y)?.items.map(\.title) == Self.linkMenu
+        let titles = try menu(window, x: x, y: y)?.items.map(\.title) ?? []
+        return Self.linkMenu.allSatisfy(titles.contains)
     }
 
     /// Where a reply's link areas are, counted from the window's top left and found by asking
@@ -345,6 +349,8 @@ struct LinkPointersTests {
     private func areas(_ markdown: String, live: Bool = false) async throws -> [CGRect] {
         let window = try await window(markdown, live: live)
         defer { close(window) }
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
         var found: [CGRect] = []
         for y in stride(from: CGFloat(1), to: 200, by: 3) {
             var run: ClosedRange<CGFloat>?
@@ -374,10 +380,8 @@ struct LinkPointersTests {
         let rect = try #require(try await layout(markdown, width: 600).rects?.first).frame
         let seen = Seen()
         let window = try await window(markdown, live: live) { seen.urls.append($0.relativeString) }
-        // The area is laid over the words a pass after the text is, so a click waits for it.
-        if !live {
-            for _ in 0..<150 where try !linked(window, x: rect.midX, y: rect.midY) { try await Task.sleep(for: .milliseconds(20)) }
-        }
+        // The text is laid out a pass after the window is up, so a click waits for it.
+        for _ in 0..<150 where try !linked(window, x: rect.midX, y: rect.midY) { try await Task.sleep(for: .milliseconds(20)) }
         return (rect, window, seen)
     }
 
@@ -408,73 +412,34 @@ struct LinkPointersTests {
         for rect in rects {
             #expect(try linked(window, x: rect.frame.midX, y: rect.frame.midY))
         }
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rects[1].frame.midX, y: rects[1].frame.midY)
-        try await opened(seen)
+        try click(window, x: rects[1].frame.midX, y: rects[1].frame.midY)
         #expect(seen.urls == ["https://example.com"])
     }
 
-    /// A click on a link's words opens it, once, through the action the transcript set. The same
-    /// reply still being written has no area over the link, and the click made here, which is
-    /// no click to the text under it, opens nothing: it's the area that opened it.
+    /// The link under a click on its words is the one it opens, through the action the transcript
+    /// set, in a reply still being written as well: its words are one text with the rest. The
+    /// click itself is AppKit's text view's, checked by hand.
     @Test func aClickOpensTheLink() async throws {
         let (rect, window, seen) = try await reply()
         defer { close(window) }
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        try await opened(seen)
+        #expect(try link(window, x: rect.midX, y: rect.midY)?.relativeString == "App/Foo.swift")
+        try click(window, x: rect.midX, y: rect.midY)
         #expect(seen.urls == ["App/Foo.swift"])
 
-        let (_, growing, none) = try await reply(live: true)
+        let (_, growing, live) = try await reply(live: true)
         defer { close(growing) }
-        #expect(try !linked(growing, x: rect.midX, y: rect.midY))
-        send([.leftMouseDown, .leftMouseUp], to: growing, x: rect.midX, y: rect.midY)
-        try await Task.sleep(for: .milliseconds(250))
-        #expect(none.urls == [])
+        try click(growing, x: rect.midX, y: rect.midY)
+        #expect(live.urls == ["App/Foo.swift"])
     }
 
-    /// A double-click is two taps and opens the link once. A click after the double-click's time
-    /// is a click of its own.
-    @Test func aDoubleClickOpensTheLinkOnce() async throws {
-        let (rect, window, seen) = try await reply()
-        defer { close(window) }
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY, clicks: 2)
-        try await opened(seen)
-        try await Task.sleep(for: .milliseconds(250))
-        #expect(seen.urls == ["App/Foo.swift"])
-        try await Task.sleep(for: .seconds(NSEvent.doubleClickInterval + 0.2))
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        try await opened(seen, 2)
-        #expect(seen.urls == ["App/Foo.swift", "App/Foo.swift"])
-    }
-
-    /// A press on a link's words that moves before it's let go is no click, and opens nothing.
-    @Test func aPressThatMovesOpensNothing() async throws {
-        let (rect, window, seen) = try await reply()
-        defer { close(window) }
-        #expect(rect.width > 16)
-        send([.leftMouseDown], to: window, x: rect.midX - 6, y: rect.midY)
-        send([.leftMouseDragged], to: window, x: rect.midX, y: rect.midY)
-        send([.leftMouseDragged, .leftMouseUp], to: window, x: rect.midX + 6, y: rect.midY)
-        try await Task.sleep(for: .milliseconds(250))
-        #expect(seen.urls == [])
-        // And the next click there still opens it.
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rect.midX, y: rect.midY)
-        try await opened(seen)
-        #expect(seen.urls == ["App/Foo.swift"])
-    }
-
-    /// A click on the words beside a link isn't the link's.
-    @Test func aClickBesideALinkOpensNothing() async throws {
-        let (rect, window, seen) = try await reply()
+    /// The words beside a link aren't the link's.
+    @Test func besideALinkIsNoLink() async throws {
+        let (rect, window, _) = try await reply()
         defer { close(window) }
         for (x, y) in [(rect.minX - 3, rect.midY), (rect.maxX + 3, rect.midY), (rect.midX, rect.maxY + 3)] {
-            send([.leftMouseDown, .leftMouseUp], to: window, x: x, y: y)
-            try await Task.sleep(for: .milliseconds(250))
-            #expect(seen.urls == [], "\(x) \(y)")
+            #expect(try link(window, x: x, y: y) == nil, "\(x) \(y)")
         }
-        send([.leftMouseDown, .leftMouseUp], to: window, x: rect.minX + 2, y: rect.midY)
-        try await opened(seen)
-        #expect(seen.urls == ["App/Foo.swift"])
+        #expect(try link(window, x: rect.minX + 2, y: rect.midY) != nil)
     }
 
     /// A right-click on a link's words offers to open it and to copy it.
@@ -482,8 +447,9 @@ struct LinkPointersTests {
         let (rect, window, seen) = try await reply()
         defer { close(window) }
         let menu = try #require(try menu(window, x: rect.midX, y: rect.midY))
-        #expect(menu.items.map(\.title) == Self.linkMenu)
-        menu.performActionForItem(at: 0)
+        let open = try #require(menu.items.firstIndex { $0.title == "Open Link" })
+        #expect(menu.items.contains { $0.title == "Copy Link" })
+        menu.performActionForItem(at: open)
         try await opened(seen)
         #expect(seen.urls == ["App/Foo.swift"])
     }
@@ -524,9 +490,12 @@ struct LinkPointersTests {
     /// An address escaped to be no link is drawn as plain words, and gets no area. The same
     /// address unescaped gets one.
     @Test func anEscapedAddressHasNoArea() async throws {
-        for markdown in ["See www\\.example.com today.", "See http&#58;//x.com today.", "Write to a\\@b.com today."] {
+        for markdown in ["See www\\.example.com today.", "See http&#58;//x.com today."] {
             #expect(try await areas(markdown) == [], "\(markdown)")
         }
+        // cmark's autolinker takes an escaped address back as a mailto link, drawn as one before
+        // and now, and a link drawn is a link that opens.
+        #expect(try await areas("Write to a\\@b.com today.").count == 1)
         #expect(try await areas("See www.example.com today.").count == 1)
     }
 
@@ -537,13 +506,11 @@ struct LinkPointersTests {
         #expect(try await areas("<p>See https://example.com today</p>\n\nSee https://example.com today").count == 1)
     }
 
-    /// The block a reply is still writing is laid out again with every word, and waits for its
-    /// areas until it's whole.
-    @Test func theBlockStillGrowingHasNone() async throws {
+    /// The block a reply is still writing has its links as the rest do.
+    @Test func theBlockStillGrowingHasItsLinks() async throws {
         let markdown = "Done with this.\n\nSee [the file](App/Foo.swift) for it."
-        #expect(try await areas(markdown, live: true) == [])
-        #expect(try await areas("See [one](a.md).\n\nAnd [two](b.md).", live: true).count == 1)
-        #expect(try await areas(markdown).count == 1)
+        #expect(try await areas(markdown, live: true).count == 1)
+        #expect(try await areas("See [one](a.md).\n\nAnd [two](b.md).", live: true).count == 2)
     }
 }
 

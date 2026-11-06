@@ -3,17 +3,14 @@ import cmark_gfm_extensions
 import MarkdownUI
 import SwiftUI
 
-/// Claude's text as a Markdown view for each of its top-level blocks. One Markdown for the whole
-/// reply coloured all its code in the frame the reply settled; now a code block takes its colours
-/// on its own, once its fence closes or the reply moves past it, and a settle redraws only the
-/// last block. The blocks are spaced as MarkdownUI spaces them inside one Markdown, from the
-/// margins the theme gives them.
+/// Claude's text, one text from its first word to its last (ReplyText.swift), so a drag or ⌘A
+/// takes the whole reply. The reply is still cut into its top-level blocks: a delta renders
+/// only the block still growing, and the clock lets a frame start one block at most.
 struct Reply: View {
     let id: UUID
     let text: String
     /// Still streaming, so its last block is still growing.
     let live: Bool
-    @State private var margins: [Int: ReplyMargin.Value] = [:]
 
     /// The last split of each reply, which a body run again for anything but a delta reads.
     private static let splits = NSCache<NSUUID, Split>()
@@ -29,22 +26,12 @@ struct Reply: View {
     }
 
     var body: some View {
-        let blocks = blocks
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(blocks.indices, id: \.self) { index in
-                ReplyBlock(source: blocks[index], open: live && index == blocks.count - 1)
-                    .equatable()
-                    .onPreferenceChange(ReplyMargin.self) { margins[index] = $0 }
-                    .padding(.top, index == 0 ? 0 : spacing(before: index))
-            }
-        }
-        .markdownTheme(.glass)
-        .markdownSoftBreakMode(.lineBreak)
-        .environment(\.softBreaksAreLines, true)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        ReplyText(id: id, text: text, live: live)
+            .markdownTheme(.glass)
+            .markdownSoftBreakMode(.lineBreak)
+            .environment(\.softBreaksAreLines, true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    private var blocks: [String] { Self.blocks(of: id, text: text) }
 
     /// The reply's text cut into its blocks, kept for its next body: a stream asks how many
     /// there are as it shows a delta, and the body that follows finds them cut.
@@ -54,12 +41,6 @@ struct Reply: View {
         let blocks = split(text)
         splits.setObject(Split(text: text, blocks: blocks), forKey: key)
         return blocks
-    }
-
-    /// MarkdownUI's rule: the larger of the block's top margin and the bottom margin of the one
-    /// before, and the system's spacing when neither has one.
-    private func spacing(before index: Int) -> CGFloat? {
-        [margins[index]?.top, margins[index - 1]?.bottom].compactMap { $0 }.max()
     }
 
     /// The text cut where each top-level block starts, as cmark finds them for MarkdownUI, tables
@@ -159,7 +140,7 @@ struct Reply: View {
 
 /// One top-level block of a reply. Equatable, so a block that hasn't changed isn't parsed or laid
 /// out again when the reply grows.
-private struct ReplyBlock: View, Equatable {
+struct ReplyBlock: View, Equatable {
     let source: String
     /// The block still growing, whose code shows plain.
     let open: Bool

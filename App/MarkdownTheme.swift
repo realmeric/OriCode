@@ -72,31 +72,11 @@ extension Theme {
         }
 }
 
-/// A block's margins, the largest of each among it and the blocks inside it, as MarkdownUI works
-/// out its own, which are internal to it: Reply spaces its blocks with these.
-struct ReplyMargin: PreferenceKey {
-    struct Value: Equatable {
-        var top: CGFloat?
-        var bottom: CGFloat?
-
-        mutating func merge(_ other: Value) {
-            top = [top, other.top].compactMap { $0 }.max()
-            bottom = [bottom, other.bottom].compactMap { $0 }.max()
-        }
-    }
-
-    static let defaultValue = Value()
-
-    static func reduce(value: inout Value, nextValue: () -> Value) {
-        value.merge(nextValue())
-    }
-}
-
 extension View {
-    /// MarkdownUI's margin, told to Reply as well.
+    /// MarkdownUI's margin. ReplyMarkup (ReplyText.swift) spaces a reply's text by the same
+    /// numbers, so a change here is made there too.
     func blockMargin(top: CGFloat? = nil, bottom: CGFloat? = nil) -> some View {
         markdownMargin(top: top, bottom: bottom)
-            .transformPreference(ReplyMargin.self) { $0.merge(.init(top: top, bottom: bottom)) }
     }
 }
 

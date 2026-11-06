@@ -110,7 +110,8 @@ struct ReplyTests {
         #expect(Reply.code(in: "") == nil)
     }
 
-    /// A reply in a window, and how many of its texts can be selected, which AppKit gives a view each.
+    /// A reply in a window: its text view, and how many of its code blocks can be selected, which
+    /// AppKit gives a view each.
     @MainActor
     private final class Shown {
         let host: NSHostingView<AnyView>
@@ -131,7 +132,16 @@ struct ReplyTests {
 
         func become(_ text: String, live: Bool) { host.rootView = Self.reply(text, live: live) }
 
-        var selectable: Int {
+        private func all<T: NSView>(_ type: T.Type, in view: NSView) -> [T] {
+            (view as? T).map { [$0] } ?? [] + view.subviews.flatMap { all(type, in: $0) }
+        }
+
+        var texts: [ReplyTextView] {
+            host.layoutSubtreeIfNeeded()
+            return all(ReplyTextView.self, in: host)
+        }
+
+        var selectableCode: Int {
             host.layoutSubtreeIfNeeded()
             func count(_ view: NSView) -> Int {
                 (String(describing: type(of: view)).contains("TextInteraction") ? 1 : 0) + view.subviews.map(count).reduce(0, +)
@@ -139,74 +149,62 @@ struct ReplyTests {
             return count(host)
         }
 
-        /// Whether it comes to have that many, in two seconds: a block is made selectable a frame
-        /// after it stops, and code once it's coloured.
-        func comes(to count: Int) async throws -> Bool {
+        /// What ⌘A and ⌘C in its text give.
+        func copiedWhole() -> String? {
+            guard let text = texts.first else { return nil }
+            text.selectAll(nil)
+            let board = NSPasteboard(name: NSPasteboard.Name("ReplyTests-\(UUID())"))
+            defer { board.releaseGlobally() }
+            guard text.writeSelection(to: board, types: [.string]) else { return nil }
+            return board.string(forType: .string)
+        }
+
+        func comes(toCode count: Int) async throws -> Bool {
             for _ in 0..<100 {
-                if selectable == count { return true }
+                if selectableCode == count { return true }
                 try await Task.sleep(for: .milliseconds(20))
             }
             return false
         }
 
-        /// What it has after a moment in which nothing more would come.
         func rests() async throws -> Int {
             for _ in 0..<10 {
                 host.layoutSubtreeIfNeeded()
                 try await Task.sleep(for: .milliseconds(20))
             }
-            return selectable
+            return selectableCode
         }
     }
 
-    @Test func everyBlockButTheOneStillGrowingCanBeSelected() async throws {
-        let text = "First paragraph.\n\nSecond paragraph.\n\nThe third is still"
-        let stored = Shown(text, live: false)
-        defer { stored.window.close() }
-        // A stored reply waits for nothing.
-        #expect(stored.selectable == 3)
-        let live = Shown(text, live: true)
-        defer { live.window.close() }
-        #expect(try await live.rests() == 2)
-        let only = Shown("Only this, still", live: true)
-        defer { only.window.close() }
-        #expect(try await only.rests() == 0)
-        let open = Shown("Here:\n\n```swift\nlet a = 1\nlet", live: true)
-        defer { open.window.close() }
-        #expect(try await open.rests() == 1)
-        let ended = Shown("Here:\n\n```swift\nlet a = 1\nlet", live: false)
-        defer { ended.window.close() }
-        #expect(ended.selectable == 2)
+    /// The whole reply is one text, so one drag or ⌘A takes it, and Copy gives it as it reads.
+    @Test func aReplyIsOneTextCopiedAsItReads() throws {
+        let shown = Shown(Self.text, live: false)
+        defer { shown.window.close() }
+        #expect(shown.texts.count == 1)
+        let copied = try #require(shown.copiedWhole())
+        #expect(copied.hasPrefix("Title\n\nA paragraph with code and a link,\nand a second line."))
+        #expect(copied.contains("• one\n• two"))
+        #expect(copied.contains("1. loose\n\n2. list"))
+        // Code is in its place, without its fences.
+        #expect(copied.contains("let a = 1\n\nlet b = 2\n\nStraight after the fence."))
+        #expect(copied.contains("a\tb\n1\t2"))
+        #expect(copied.contains("quoted\ntwice"))
+        #expect(copied.hasSuffix("still open"))
+        #expect(!copied.contains("```") && !copied.contains("# ") && !copied.contains("\u{FFFC}") && !copied.contains("\u{200B}"))
     }
 
-    @Test func aBlockCanBeSelectedOnceItStops() async throws {
+    /// A reply still streaming can be selected to its last word, and a delta only adds to the
+    /// text: the view and the blocks before the growing one stay as they were.
+    @Test func aStreamingReplyCanBeSelectedAndGrowsAtItsTail() throws {
         let shown = Shown("First paragraph.\n\nThe second is still", live: true)
         defer { shown.window.close() }
-        #expect(try await shown.rests() == 1)
-        // The reply moves on to a third block, and the second has stopped.
-        shown.become("First paragraph.\n\nThe second is whole.\n\nA third", live: true)
-        #expect(try await shown.comes(to: 2))
-        // The turn ends.
-        shown.become("First paragraph.\n\nThe second is whole.\n\nA third", live: false)
-        #expect(try await shown.comes(to: 3))
-    }
-
-    /// Claude's last sentence before a long tool input is the reply's last block for as long as
-    /// the input takes to write. It has stopped, and reads so.
-    @Test func aBlockThatHasPausedCanBeSelectedUntilItGrowsAgain() async throws {
-        let shown = Shown("First paragraph.\n\nI'll write [the plan](PLAN.md) now.", live: true)
-        defer { shown.window.close() }
-        #expect(try await shown.rests() == 1)
-        #expect(try await shown.comes(to: 2))
-        // A word more and it is growing again, with nothing laid out over it at each delta.
-        shown.become("First paragraph.\n\nI'll write [the plan](PLAN.md) now. And", live: true)
-        #expect(try await shown.rests() == 1)
-        shown.become("First paragraph.\n\nI'll write [the plan](PLAN.md) now. And then", live: true)
-        #expect(try await shown.rests() == 1)
-        #expect(try await shown.comes(to: 2))
-        // The turn moves on and the block stays as it was made.
-        shown.become("First paragraph.\n\nI'll write [the plan](PLAN.md) now. And then", live: false)
-        #expect(try await shown.rests() == 2)
+        let view = try #require(shown.texts.first)
+        #expect(shown.copiedWhole() == "First paragraph.\n\nThe second is still")
+        let first = view.textStorage!.attributedSubstring(from: NSRange(location: 0, length: 16))
+        shown.become("First paragraph.\n\nThe second is still growing", live: true)
+        #expect(shown.texts.first === view)
+        #expect(view.textStorage!.attributedSubstring(from: NSRange(location: 0, length: 16)) == first)
+        #expect(shown.copiedWhole() == "First paragraph.\n\nThe second is still growing")
     }
 
     /// Code whose fence has closed has nothing left to gain, though the reply hasn't moved on, and
@@ -214,14 +212,14 @@ struct ReplyTests {
     @Test func codeCanBeSelectedOnceItIsColoured() async throws {
         let shown = Shown("Here:\n\n```swift\nlet growing = 1\nlet", live: true)
         defer { shown.window.close() }
-        #expect(try await shown.rests() == 1)
+        #expect(try await shown.rests() == 0)
         shown.become("Here:\n\n```swift\nlet growing = 1\nlet b = 2\n```\n", live: true)
-        #expect(try await shown.comes(to: 2))
+        #expect(try await shown.comes(toCode: 1))
         let ended = Shown("Here:\n\n```swift\nlet ended = 1\nlet", live: true)
         defer { ended.window.close() }
-        #expect(try await ended.rests() == 1)
+        #expect(try await ended.rests() == 0)
         ended.become("Here:\n\n```swift\nlet ended = 1\nlet", live: false)
-        #expect(try await ended.comes(to: 2))
+        #expect(try await ended.comes(toCode: 1))
     }
 }
 
