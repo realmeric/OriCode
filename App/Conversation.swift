@@ -1262,26 +1262,40 @@ final class Conversation {
 
     /// A delta waits for the display's next frame, where every thread's are shown together.
     private func hold(_ delta: String) {
+        let now = now()
+        // Deltas a few milliseconds apart are one burst; the time from one burst to the next is
+        // how soon the next is expected. A pause of a second or more is a pause, not the pace.
+        if lastDelta.map({ $0.duration(to: now) >= Self.together }) ?? true {
+            if let burstAt, burstAt.duration(to: now) < Self.pause {
+                let gap = burstAt.duration(to: now)
+                cadence = cadence.map { $0 * 0.7 + gap * 0.3 } ?? gap
+            }
+            burstAt = now
+        }
+        lastDelta = now
+        arrived.append((now, delta.count))
         held += delta
         clock.wait(for: self)
     }
 
-    /// Whether deltas wait for the clock.
-    fileprivate var holds: Bool { !held.isEmpty || opening != nil }
+    /// Whether deltas wait for the clock, or the turn's end waits a frame after the last of them.
+    fileprivate var holds: Bool { !held.isEmpty || opening != nil || ending }
 
     /// What waits for the clock dropped unrecorded, for a thread being deleted, whose chat a
     /// row recorded later would point at.
     func forget() {
         opening = nil
         held = ""
+        arrived = []
+        ending = false
         clock.forget(self)
         caughtUp()
     }
 
-    /// Whether the reply is still showing a burst at the steady rate, which the turn's end waits
-    /// for: shown with it, the rest of the burst would land in the footer's frame as one slab.
+    /// Whether the reply still has words held, which the turn's end waits for: they're shown in
+    /// the next frame, all of them, and the footer in the one after.
     var catchingUp: Bool {
-        open?.kind == "text" && held.utf8.count > Self.steady && drawn()
+        open?.kind == "text" && !held.isEmpty && drawn()
     }
 
     @ObservationIgnored private var afterCatchingUp: (() -> Void)?
@@ -1309,12 +1323,41 @@ final class Conversation {
         }
         record(opening.kind, ["event": .string(opening.kind), "delta": .string(text)], keepOpen: true)
         held = rest
+        arrived = rest.isEmpty ? [] : [(now(), rest.count)]
     }
 
     static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
-    /// Characters a frame shows of a reply at the least, about 3,800 a second: well past what an
-    /// agent streams, so only a burst is spread out.
-    static let steady = 64
+    /// The most a reply's words are shown behind their arrival.
+    static let behind = Duration.milliseconds(200)
+    /// Deltas closer than this are one burst.
+    static let together = Duration.milliseconds(8)
+    /// A gap this long between bursts is a pause and says nothing of the pace.
+    static let pause = Duration.seconds(1)
+
+    /// When each part of what's held came, oldest first, and how many characters it brought.
+    @ObservationIgnored private var arrived: [(at: ContinuousClock.Instant, count: Int)] = []
+    @ObservationIgnored private var lastDelta: ContinuousClock.Instant?
+    @ObservationIgnored private var burstAt: ContinuousClock.Instant?
+    /// The time from one burst to the next, smoothed.
+    @ObservationIgnored private var cadence: Duration?
+    /// The turn has ended and the reply's last words are shown: the end follows a frame later.
+    @ObservationIgnored private var ending = false
+    @ObservationIgnored var now: () -> ContinuousClock.Instant = { .now }
+
+    /// How many of `total` held characters this frame shows: spread over the frames until the
+    /// next burst is expected, so the words run on between bursts instead of landing in a lump
+    /// and waiting, never more than `behind` after they came, and all of them once the turn has
+    /// ended.
+    private func paced(_ total: Int) -> Int {
+        if afterCatchingUp != nil { return total }
+        let now = now()
+        let cadence = min(max(self.cadence ?? .milliseconds(50), Self.frame), Self.behind)
+        var until = (burstAt ?? now) + cadence
+        if let oldest = arrived.first { until = min(until, oldest.at + Self.behind) }
+        let frames = max(1, Int((now.duration(to: until) / Self.frame).rounded(.up)))
+        let due = arrived.filter { $0.at.duration(to: now) >= Self.behind }.reduce(0) { $0 + $1.count }
+        return min(total, max(due, Int((Double(total) / Double(frames)).rounded(.up))))
+    }
 
     /// The held deltas onto the open item, for the view. Its event and ⌘K's fold of it wait for
     /// `writeHeld`: the whole reply encoded and folded at every frame cost more with each one.
@@ -1329,18 +1372,27 @@ final class Conversation {
             openHeld(whole: allowed == nil)
             return true
         }
-        guard let open, !held.isEmpty else { return false }
+        guard let open, !held.isEmpty else {
+            arrived = []
+            ending = false
+            return false
+        }
+        let heldBefore = held.count
         let current = stored[open.item]
         let before = current.text ?? ""
-        // A burst, many lines come at once from the agent, is shown over the next frames at a
-        // steady rate rather than in one jump: a twelfth of what waits a frame, word by word.
+        // What's held is shown at the pace it comes, word by word (`paced`).
         var shown = held
         var later = ""
-        if allowed != nil, open.kind == "text", drawn(), held.utf8.count > Self.steady {
-            let cap = max(Self.steady, held.count / 12)
+        if allowed != nil, open.kind == "text", drawn() {
+            let cap = paced(held.count)
             if cap < held.count {
                 var cut = held.index(held.startIndex, offsetBy: cap)
-                if let space = held[..<cut].lastIndex(where: \.isWhitespace) { cut = held.index(after: space) }
+                if let space = held[..<cut].lastIndex(where: \.isWhitespace) {
+                    cut = held.index(after: space)
+                } else {
+                    // Less than a word: the whole of the first word.
+                    cut = held[cut...].firstIndex(where: \.isWhitespace).map { held.index(after: $0) } ?? held.endIndex
+                }
                 later = String(held[cut...])
                 shown = String(held[..<cut])
             }
@@ -1365,6 +1417,16 @@ final class Conversation {
             }
         }
         held = rest + later
+        var consumed = heldBefore - held.count
+        while consumed > 0, !arrived.isEmpty {
+            let taken = min(consumed, arrived[0].count)
+            arrived[0].count -= taken
+            consumed -= taken
+            if arrived[0].count == 0 { arrived.removeFirst() }
+        }
+        if held.isEmpty { arrived = [] }
+        // The turn's end comes a frame after its last words, not in the same frame.
+        if held.isEmpty, afterCatchingUp != nil { ending = true }
         shownAt = .now
         stored[open.item] = open.kind == "text" ? .text(id: current.id, text: text) : .thinking(id: current.id, text: text)
         live.text = text
