@@ -2,6 +2,11 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.5.4 "Watching over" - 2026-11-07
+
+- A reply is one piece of text you can select whole. One drag runs from its first word to its last, through lists and code, and ⌘C copies it as it reads, without Markdown's marks.
+- A streaming reply comes in word by word at the pace the model sends it, and no longer jumps a few lines at a time.
+
 ## v0.5.3 "Watching over" - 2026-11-03
 
 - Several threads working at once no longer take the window's frames: a tool call saves with the others instead of on its own, and a lead's lines stop asking the store as they draw. If the window ever stops answering while threads work, a sample of it goes to `~/Library/Logs/OriCode` by itself.
