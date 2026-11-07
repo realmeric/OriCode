@@ -458,24 +458,35 @@ extension AppModel {
 
 /// A project's plan on ⌘⇧I's screen, above its threads: a quiet line saying how far it has got,
 /// then each task with where it stands. Past six tasks done only the latest three of them are
-/// drawn, since a plan kept for weeks is mostly those, and the line says how many it leaves out.
+/// drawn, since a plan kept for weeks is mostly those; the line says how many it leaves out, and
+/// a click on it draws them all, and folds them back.
 struct PlanLines: View {
+    @Environment(AppModel.self) private var model
     let plan: ProjectPlan
+    let project: Project
     @Binding var hovered: UUID?
 
-    static func drawn(_ plan: ProjectPlan) -> (tasks: [PlanTask], doneLeftOut: Int) {
-        plan.doneCount > 6 ? plan.shown(keepingDone: 3) : (plan.tasks, 0)
+    static func drawn(_ plan: ProjectPlan, unfolded: Bool = false) -> (tasks: [PlanTask], doneLeftOut: Int) {
+        plan.doneCount > 6 && !unfolded ? plan.shown(keepingDone: 3) : (plan.tasks, 0)
     }
 
     var body: some View {
-        let shown = Self.drawn(plan)
+        let unfolded = model.plansUnfolded.contains(project.id)
+        let shown = Self.drawn(plan, unfolded: unfolded)
+        let foldable = plan.doneCount > 6
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(plan.doneCount)/\(plan.tasks.count)" + (shown.doneLeftOut > 0 ? " · +\(shown.doneLeftOut)" : ""))
+            Text("\(plan.doneCount)/\(plan.tasks.count) done" + (foldable ? " · \(unfolded ? "hide" : "show") \(plan.doneCount - 3) older" : ""))
                 .font(Type.secondary)
                 .foregroundStyle(Ink.faint)
                 .lineLimit(1)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
+                .contentShape(.rect)
+                .onTapGesture {
+                    guard foldable else { return }
+                    if unfolded { model.plansUnfolded.remove(project.id) } else { model.plansUnfolded.insert(project.id) }
+                }
+                .accessibilityAddTraits(foldable ? .isButton : [])
             ForEach(shown.tasks) { task in
                 PlanLine(task: task, plan: plan, hovered: $hovered)
             }

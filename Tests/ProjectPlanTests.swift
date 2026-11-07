@@ -277,6 +277,9 @@ struct ProjectPlanTests {
 
         let drawn = PlanLines.drawn(ProjectPlan(project))
         #expect(drawn.tasks.map(\.name) == ["T10", "T11", "T12", "T13", "T14"] && drawn.doneLeftOut == 9)
+        // Unfolded, every done task is drawn and none is left out.
+        let unfolded = PlanLines.drawn(ProjectPlan(project), unfolded: true)
+        #expect(unfolded.tasks.count == 14 && unfolded.doneLeftOut == 0)
         // A plan with six done or fewer is drawn whole.
         #expect(PlanLines.drawn(ProjectPlan(Array(project.tasks.sorted { $0.number < $1.number }.suffix(8)))).doneLeftOut == 0)
         // A plan all done before OriCode opened leaves ⌘⇧I's screen to the threads.

@@ -254,6 +254,8 @@ final class AppModel {
     /// which only that screen reads.
     var overviewShown = false
     var outcomes: [UUID: Outcome] = [:]
+    /// The projects whose plan ⌘⇧I's screen draws with every done task, until the launch ends.
+    var plansUnfolded: Set<UUID> = []
     /// The ask a notification's click opened the screen on, lit at the top of its queue until the
     /// screen goes.
     var overviewAsk: String?

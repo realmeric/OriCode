@@ -112,7 +112,7 @@ struct Overview: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     if !section.plan.tasks.isEmpty {
-                                        PlanLines(plan: section.plan, hovered: $hovered)
+                                        PlanLines(plan: section.plan, project: section.project, hovered: $hovered)
                                             .padding(.bottom, section.rows.isEmpty ? 0 : 6)
                                     }
                                     ForEach(section.rows) { row in
