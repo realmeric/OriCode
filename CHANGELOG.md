@@ -2,6 +2,11 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.5.5 "Watching over" - 2026-11-07
+
+- A project in the drawer can be dragged to where you want it, and the order stays. Its menu archives it, threads and plan kept, until Settings › Archive brings it back, or deletes it after saying what goes with it. The folder on your Mac stays either way.
+- A plan on ⌘⇧I says how many done tasks it hides, and a click shows them.
+
 ## v0.5.4 "Watching over" - 2026-11-07
 
 - A reply is one piece of text you can select whole. One drag runs from its first word to its last, through lists and code, and ⌘C copies it as it reads, without Markdown's marks.
