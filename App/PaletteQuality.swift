@@ -103,9 +103,9 @@ extension AppModel {
         })
         if let project {
             let busy = project.chats.contains { conversations[$0.id]?.running == true }
-            items.append(command("project.remove", "Remove project…", icon: "folder.badge.minus", keywords: ["delete", "forget"],
+            items.append(command("project.remove", "Delete project…", icon: "folder.badge.minus", keywords: ["remove", "forget"],
                                  unavailable: busy ? "Wait for its threads to finish" : nil) { [weak self] in
-                self?.removingProject = project
+                self?.askToDelete(project)
             })
         }
         return items

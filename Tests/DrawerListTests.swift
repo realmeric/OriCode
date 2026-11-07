@@ -253,6 +253,119 @@ struct DrawerListTests {
         #expect(model.chats.map(\.title) == ["Lead", "Other", "Three", "One", "Two"] && lead.pinned)
     }
 
+    /// The fixture's alpha, and beta with two threads started after it, so beta is first.
+    private func twoProjects() throws -> (AppModel, alpha: Project, beta: Project) {
+        let (model, lead, _, _, _, _) = try model()
+        let beta = Project(name: "beta", path: "/tmp/beta")
+        model.context.insert(beta)
+        for (title, seconds) in [("Build", 3_000.0), ("Ship", 2_900)] {
+            let chat = Chat(project: beta, title: title)
+            chat.started = true
+            chat.createdAt = Date(timeIntervalSince1970: seconds)
+            model.context.insert(chat)
+        }
+        model.save()
+        return (model, try #require(lead.project), beta)
+    }
+
+    @Test func aDragOnAHeadingMovesTheProjectAndItStays() throws {
+        let (model, alpha, beta) = try twoProjects()
+        #expect(model.chats.map(\.title) == ["Build", "Ship", "Lead", "Other"])
+
+        model.moveProjects(from: [1], to: 0)
+        #expect(model.chats.map(\.title) == ["Lead", "Other", "Build", "Ship"])
+        #expect(alpha.position == 0 && beta.position == 1)
+        // A thread starting in the project that came last, and a pin in it, move nothing.
+        let newest = Chat(project: beta, title: "Newest")
+        newest.started = true
+        model.context.insert(newest)
+        model.togglePin(newest)
+        #expect(model.chats.map(\.title) == ["Lead", "Other", "Newest", "Build", "Ship"])
+        // A project added later is above the ones placed, as a thread is.
+        let gamma = Project(name: "gamma", path: "/tmp/gamma")
+        model.context.insert(gamma)
+        let fresh = Chat(project: gamma, title: "Fresh")
+        fresh.started = true
+        model.context.insert(fresh)
+        model.save()
+        #expect(model.chats.map(\.title) == ["Fresh", "Lead", "Other", "Newest", "Build", "Ship"])
+        // Dragged from the top to the bottom, it goes there.
+        model.moveProjects(from: [0], to: 3)
+        #expect(model.chats.map(\.title) == ["Lead", "Other", "Newest", "Build", "Ship", "Fresh"])
+    }
+
+    @Test func aFilteredListHasNoProjectOrderToDrag() throws {
+        let (model, alpha, beta) = try twoProjects()
+
+        model.drawerFilter = .working
+        model.moveProjects(from: [0], to: 1)
+        #expect(alpha.position == nil && beta.position == nil)
+    }
+
+    @Test func anArchivedProjectIsOutOfTheListsAndComesBackWithItsThreads() throws {
+        let (model, alpha, beta) = try twoProjects()
+        model.selectedProjectID = beta.id
+        model.selectedChatID = beta.chats.first?.id
+
+        model.archive(beta)
+        #expect(beta.archived && beta.chats.count == 2 && !beta.chats.contains { $0.archived })
+        #expect(model.projects.map(\.name) == ["alpha"] && model.archivedProjects.map(\.name) == ["beta"])
+        #expect(model.chats.map(\.title) == ["Lead", "Other"] && model.listedChats.count == 2)
+        // The open thread was beta's; the window moves to a project that is still listed.
+        #expect(model.selectedProjectID == alpha.id)
+
+        model.restore(beta)
+        #expect(!beta.archived && model.archivedProjects.isEmpty)
+        #expect(model.chats.map(\.title) == ["Build", "Ship", "Lead", "Other"] && model.selectedProjectID == beta.id)
+    }
+
+    @Test func aProjectAtWorkIsNotArchivedAndNoFolderIsNotArchivedAtAll() throws {
+        let (model, _, beta) = try twoProjects()
+        let build = try #require(beta.chats.first { $0.title == "Build" })
+
+        model.conversation(for: build).userSent("Run the test")
+        model.archive(beta)
+        #expect(!beta.archived && model.note == "Stop its threads first")
+        model.askToDelete(beta)
+        #expect(model.removingProject == nil)
+
+        let nowhere = model.noFolderProject()
+        model.archive(nowhere)
+        #expect(!nowhere.archived)
+    }
+
+    /// Archived, a project is added again by its folder and finds its threads.
+    @Test func addingAnArchivedProjectsFolderRestoresIt() throws {
+        let (model, _, beta) = try twoProjects()
+        model.archive(beta)
+
+        model.addProject(at: URL(filePath: "/tmp/beta"))
+        #expect(!beta.archived && model.projects.count == 2 && model.selectedProjectID == beta.id)
+    }
+
+    @Test func deletingAProjectTakesItsThreadsAndPlanAndLeavesItsFolder() throws {
+        let (model, alpha, beta) = try twoProjects()
+        let folder = FileManager.default.temporaryDirectory.appending(path: "delete-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = folder.appending(path: "kept.txt")
+        try "mine".write(to: kept, atomically: true, encoding: .utf8)
+        beta.path = folder.path
+        let task = PlanTask(number: 1, title: "Ship it", doneWhen: "")
+        task.project = beta
+        model.context.insert(task)
+        model.save()
+        #expect(model.deletionNote(of: beta).hasPrefix("Its 2 threads and its plan go with it. The folder stays"))
+
+        model.askToDelete(beta)
+        #expect(model.removingProject?.id == beta.id)
+        model.remove(beta)
+        #expect(model.projects.map(\.name) == ["alpha"] && model.chats.map(\.title) == ["Lead", "Other"])
+        #expect(try model.context.fetch(FetchDescriptor<PlanTask>()).isEmpty)
+        #expect(try model.context.fetch(FetchDescriptor<Chat>()).count == alpha.chats.count)
+        #expect(FileManager.default.fileExists(atPath: kept.path))
+    }
+
     @Test func aFoldedProjectOpensWhenAThreadInItIsPicked() throws {
         let (model, lead, _, _, _, other) = try model()
         let project = try #require(lead.project)

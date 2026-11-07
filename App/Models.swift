@@ -18,6 +18,12 @@ final class Project {
     /// The highest number a task of its plan has had, so a deleted task's is never given again: a
     /// thread still told it works T4 can't then change a new T4.
     var lastTaskNumber = 0
+    /// Archived: out of the drawer and ⌘K with its threads and its plan kept, until Settings ›
+    /// Archive restores it or deletes it for good.
+    var archived: Bool = false
+    /// Where a drag in the drawer put it among the projects; nil for one never placed, which sits
+    /// above those that were.
+    var position: Double?
 
     init(name: String, path: String) {
         id = UUID()
@@ -283,12 +289,16 @@ extension Chat {
     /// project's threads are in that order among themselves. A project's place comes from when its
     /// threads started and not from where they were put, so a drag in one never moves another: a
     /// dragged project's threads have a position and the others' none, and a thread with none
-    /// sorts before one with. Each thread's values are read once: a stored value read through
+    /// sorts before one with. Once projects are dragged they go by their own position, a project
+    /// never placed above those that were. Each thread's values are read once: a stored value read through
     /// SwiftData costs a microsecond or more, and comparing as the sort goes read six of them
     /// every step, 15 ms for 300 threads, which the Thread menu and the drawer paid five times
     /// over at every change they watch (K-318).
     static func inDrawerOrder(_ chats: [Chat], byProject: Bool = false) -> [Chat] {
-        let read = chats.map { (chat: $0, project: byProject ? $0.project?.id : nil, pinned: $0.pinned, position: $0.position, createdAt: $0.createdAt) }
+        let read = chats.map { chat -> (chat: Chat, project: UUID?, rank: Double?, pinned: Bool, position: Double?, createdAt: Date) in
+            let project = byProject ? chat.project : nil
+            return (chat, project?.id, project?.position, chat.pinned, chat.position, chat.createdAt)
+        }
         var places: [UUID?: (pinned: Bool, newest: Date)] = [:]
         if byProject {
             for chat in read {
@@ -298,6 +308,12 @@ extension Chat {
         }
         return read.sorted { a, b in
             if a.project != b.project, let x = places[a.project], let y = places[b.project] {
+                switch (a.rank, b.rank) {
+                case let (p?, q?) where p != q: return p < q
+                case (nil, _?): return true
+                case (_?, nil): return false
+                default: break
+                }
                 if x.pinned != y.pinned { return x.pinned }
                 if x.newest != y.newest { return x.newest > y.newest }
                 return a.project?.uuidString ?? "" < b.project?.uuidString ?? ""

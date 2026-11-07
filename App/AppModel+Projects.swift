@@ -19,11 +19,18 @@ extension AppModel {
     var projects: [Project] {
         if let fetched, fetched.revision == revision { return fetched.projects }
         let all = (try? context.fetch(FetchDescriptor<Project>(sortBy: [SortDescriptor(\.createdAt)]))) ?? []
-        // No folder comes after the folders, wherever projects are listed.
-        let projects = all.filter { !$0.isNoFolder } + all.filter(\.isNoFolder)
+        // No folder comes after the folders, wherever projects are listed. An archived project is
+        // in none of them.
+        let kept = all.filter { !$0.archived }
+        let projects = kept.filter { !$0.isNoFolder } + kept.filter(\.isNoFolder)
         fetched = (revision, projects)
         initials = Project.initials(of: projects)
         return projects
+    }
+
+    /// The archived projects, for Settings › Archive, the latest created first.
+    var archivedProjects: [Project] {
+        (try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.archived }, sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))) ?? []
     }
 
     var project: Project? {
@@ -127,6 +134,70 @@ extension AppModel {
         put(away: chat, with: nil)
     }
 
+    /// Takes a project and its threads out of the drawer and ⌘K, and keeps everything: its threads
+    /// with their transcripts and sessions, its plan, its worktrees. Its CLIs are let go, and a
+    /// thread at work is stopped first by hand. No folder is deleted instead, being the app's own.
+    func archive(_ project: Project) {
+        guard !project.isNoFolder else { return }
+        guard !project.chats.contains(where: { conversations[$0.id]?.running == true || workflowRuns(in: $0) }) else {
+            say("Stop its threads first")
+            return
+        }
+        if project.chats.contains(where: { $0.id == besideChatID }) { besideChatID = nil }
+        for chat in project.chats {
+            endShells(of: chat)
+            let id = chat.id.uuidString
+            Task { _ = try? await engine.request("close", ["threadId": .string(id)]) }
+            dropConversation(chat.id)
+            forgetComposer(of: chat.id)
+        }
+        project.archived = true
+        save()
+        guard selectedProjectID == project.id, !besideTakesWindow() else { return }
+        if let next = projects.first {
+            select(next)
+        } else {
+            selectedProjectID = nil
+            selectedChatID = nil
+        }
+    }
+
+    /// Back into the drawer, where a project never placed goes: on top.
+    func restore(_ project: Project) {
+        project.archived = false
+        project.position = nil
+        save()
+        drawerFilter = .all
+        select(project)
+    }
+
+    /// Delete asks first. A project at work can't be deleted, its threads being what the engine runs.
+    func askToDelete(_ project: Project) {
+        guard !project.chats.contains(where: { conversations[$0.id]?.running == true }) else {
+            say("Stop its threads first")
+            return
+        }
+        removingProject = project
+    }
+
+    /// What the confirmation says goes with a project, and what stays.
+    func deletionNote(of project: Project) -> String {
+        let threads = project.chats.filter(\.started).count
+        let worktrees = project.chats.contains { $0.worktreeBranch != nil }
+        let goes = switch (threads, project.tasks.isEmpty) {
+        case (0, true): "It has no threads and no plan."
+        case (0, false): "Its plan goes with it."
+        case (1, true): "Its thread goes with it."
+        case (1, false): "Its thread and its plan go with it."
+        case (_, true): "Its \(threads) threads go with it."
+        case (_, false): "Its \(threads) threads and its plan go with it."
+        }
+        // No folder's own folder goes when nothing is in it, and nothing else on the Mac does.
+        let folder = project.isNoFolder ? "Whatever they wrote on your Mac stays" : "The folder stays\(worktrees ? ", and so do its worktrees" : "")"
+        let stopping = shellsStopping(in: project.chats)
+        return "\(goes) \(folder).\(stopping.map { " " + $0 } ?? "")"
+    }
+
     /// The main threads left alone since `cutoff`, with everything under them. A thread stays while
     /// it's open, pinned, at work, waiting on someone, holding a draft or a task not done.
     func oldThreads(before cutoff: Date) -> [Chat] {
@@ -197,6 +268,18 @@ extension AppModel {
         select(chat)
     }
 
+    /// A drag on a project's heading, among the projects the drawer lists. Each takes its place in
+    /// the order the drag left, which is kept from then on.
+    func moveProjects(from source: IndexSet, to destination: Int) {
+        // A filtered list shows some of the projects, and an order among those isn't one among all.
+        guard drawerFilter == .all else { return }
+        var list = Chat.byProject(chats).map { $0[0].project }
+        guard let first = source.first, list.indices.contains(first) else { return }
+        list.move(fromOffsets: source, toOffset: destination)
+        for (index, project) in list.enumerated() { project?.position = Double(index) }
+        save()
+    }
+
     /// Pinning puts a thread after the pinned ones; unpinning puts it back on top of the rest.
     func togglePin(_ chat: Chat) {
         if chat.pinned {
@@ -250,6 +333,11 @@ extension AppModel {
         let path = url.standardizedFileURL.path
         if let existing = projects.first(where: { $0.path == path }) {
             select(existing)
+            return
+        }
+        // Added again after it was archived, it comes back with its threads.
+        if let archived = archivedProjects.first(where: { $0.path == path }) {
+            restore(archived)
             return
         }
         let project = Project(name: url.lastPathComponent, path: path)

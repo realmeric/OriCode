@@ -77,10 +77,18 @@ struct Drawer: View {
                             DrawerHeading(project: project, asking: asking, working: working)
                                 .contentShape(.rect)
                                 .onTapGesture { expanded.wrappedValue.toggle() }
+                                .contextMenu {
+                                    if !project.isNoFolder {
+                                        Button("Archive") { withAnimation(Motion.move) { model.archive(project) } }
+                                    }
+                                    Button("Delete…") { model.askToDelete(project) }
+                                }
                         }
                     }
                     .listRowSeparator(.hidden)
                 }
+                .onMove { source, destination in model.moveProjects(from: source, to: destination) }
+                .moveDisabled(model.drawerFilter != .all)
                 if chats.isEmpty, model.drawerFilter != .all {
                     Button("No threads here. Show all") { model.drawerFilter = .all }
                         .buttonStyle(.plain)

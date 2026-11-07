@@ -387,7 +387,7 @@ final class AppModel {
     var peekedChatID: UUID?
     var renamingChatID: UUID?
     var deletingChat: Chat?
-    /// A project Remove project… is asking about.
+    /// A project Delete is asking about.
     var removingProject: Project?
     var deletingLoss: WorktreeLoss?
     var showingShortcuts = false

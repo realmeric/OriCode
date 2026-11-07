@@ -232,25 +232,15 @@ struct RootView: View {
             }
         }
         .confirmationDialog(
-            "Remove “\(model.removingProject?.name ?? "")” from OriCode?",
+            "Delete “\(model.removingProject?.name ?? "")”?",
             isPresented: Binding(get: { model.removingProject != nil }, set: { if !$0 { model.removingProject = nil } }),
             presenting: model.removingProject
         ) { project in
-            Button("Remove", role: .destructive) { model.remove(project) }
+            Button("Delete", role: .destructive) { model.remove(project) }
                 .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         } message: { project in
-            let threads = project.chats.filter(\.started).count
-            let worktrees = project.chats.contains { $0.worktreeBranch != nil }
-            let goes = switch threads {
-            case 0: "It has no threads."
-            case 1: "Its thread goes with it."
-            default: "Its \(threads) threads go with it."
-            }
-            let stopping = model.shellsStopping(in: project.chats)
-            // No folder's own folder goes when nothing is in it, and nothing else on the Mac does.
-            let folder = project.isNoFolder ? "Whatever they wrote on your Mac stays" : "The folder stays\(worktrees ? ", and so do its worktrees" : "")"
-            Text("\(goes) \(folder).\(stopping.map { " " + $0 } ?? "")")
+            Text(model.deletionNote(of: project))
         }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()

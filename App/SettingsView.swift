@@ -482,6 +482,7 @@ private struct ArchivePane: View {
     @Environment(AppModel.self) private var model
     /// The thread Delete was pressed on, asked about here rather than in the main window behind.
     @State private var deleting: Chat?
+    @State private var deletingProject: Project?
     @AppStorage(AutoArchive.key) private var after = AutoArchive.standard
     @AppStorage(AutoArchive.tidyKey) private var tidies = true
 
@@ -510,36 +511,64 @@ private struct ArchivePane: View {
         }
         .padding(.top, 14)
         let archived = model.archivedChats
-        if archived.isEmpty {
-            Text("Nothing archived. Archive a thread from its row in the thread list, or from ⌘K, and it waits here with its transcript and its session.")
+        let archivedProjects = model.archivedProjects
+        if archived.isEmpty, archivedProjects.isEmpty {
+            Text("Nothing archived. Archive a thread from its row in the thread list, or from ⌘K, and it waits here with its transcript and its session. A project waits here with its threads and its plan.")
                 .font(Type.secondary)
                 .foregroundStyle(Ink.secondary)
                 .padding(.top, 12)
         } else {
-            SettingsCard {
-                ForEach(archived) { chat in
-                    SettingsRow(title: chat.title, detail: [chat.project?.name, chat.updatedAt.formatted(date: .abbreviated, time: .omitted)].compactMap { $0 }.joined(separator: " · ")) {
-                        HStack(spacing: 8) {
-                            Button("Restore") { model.restore(chat) }
-                                .buttonStyle(.action(small: true))
-                            Button("Delete…") { deleting = chat }
-                                .buttonStyle(.action(small: true))
+            if !archivedProjects.isEmpty {
+                SettingsCard {
+                    ForEach(archivedProjects) { project in
+                        SettingsRow(title: project.name, detail: project.path) {
+                            HStack(spacing: 8) {
+                                Button("Restore") { model.restore(project) }
+                                    .buttonStyle(.action(small: true))
+                                Button("Delete…") { deletingProject = project }
+                                    .buttonStyle(.action(small: true))
+                            }
                         }
                     }
                 }
+                .padding(.top, 14)
+                .confirmationDialog(
+                    "Delete “\(deletingProject?.name ?? "")”?",
+                    isPresented: Binding(get: { deletingProject != nil }, set: { if !$0 { deletingProject = nil } }),
+                    presenting: deletingProject
+                ) { project in
+                    Button("Delete", role: .destructive) { model.remove(project) }
+                    Button("Cancel", role: .cancel) {}
+                } message: { project in
+                    Text(model.deletionNote(of: project))
+                }
             }
-            .padding(.top, 14)
-            .confirmationDialog(
-                "Delete “\(deleting?.title ?? "")”?",
-                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                presenting: deleting
-            ) { chat in
-                Button("Delete", role: .destructive) { model.delete(chat) }
-                Button("Cancel", role: .cancel) {}
-            } message: { chat in
-                Text(chat.worktreeBranch == nil
-                    ? "Its transcript goes for good. Its session stays in Claude Code's own history."
-                    : "Its transcript goes for good. Its worktree and its branch, \(chat.worktreeBranch ?? ""), stay where they are.")
+            if !archived.isEmpty {
+                SettingsCard {
+                    ForEach(archived) { chat in
+                        SettingsRow(title: chat.title, detail: [chat.project?.name, chat.updatedAt.formatted(date: .abbreviated, time: .omitted)].compactMap { $0 }.joined(separator: " · ")) {
+                            HStack(spacing: 8) {
+                                Button("Restore") { model.restore(chat) }
+                                    .buttonStyle(.action(small: true))
+                                Button("Delete…") { deleting = chat }
+                                    .buttonStyle(.action(small: true))
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 14)
+                .confirmationDialog(
+                    "Delete “\(deleting?.title ?? "")”?",
+                    isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                    presenting: deleting
+                ) { chat in
+                    Button("Delete", role: .destructive) { model.delete(chat) }
+                    Button("Cancel", role: .cancel) {}
+                } message: { chat in
+                    Text(chat.worktreeBranch == nil
+                        ? "Its transcript goes for good. Its session stays in Claude Code's own history."
+                        : "Its transcript goes for good. Its worktree and its branch, \(chat.worktreeBranch ?? ""), stay where they are.")
+                }
             }
         }
     }
