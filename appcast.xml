@@ -3,14 +3,14 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.5.4</title>
-      <pubDate>Sat, 07 Nov 2026 03:10:42 +0300</pubDate>
-      <sparkle:version>522</sparkle:version>
-      <sparkle:shortVersionString>0.5.4</sparkle:shortVersionString>
+      <title>0.5.5</title>
+      <pubDate>Sat, 07 Nov 2026 03:15:36 +0300</pubDate>
+      <sparkle:version>526</sparkle:version>
+      <sparkle:shortVersionString>0.5.5</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[• A reply is one piece of text you can select whole. One drag runs from its first word to its last, through lists and code, and ⌘C copies it as it reads, without Markdown's marks.
-• A streaming reply comes in word by word at the pace the model sends it, and no longer jumps a few lines at a time.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.4/OriCode-0.5.4.zip" sparkle:edSignature="ID/wmwDbUj7RTCvsmyv/tZhnmeHjGtwXUYzllZ2q24kRavKjlDKI+sSFnpjMuAaPTWGSy9+/gRnlf27BpyoPBg==" length="7933551" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• A project in the drawer can be dragged to where you want it, and the order stays. Its menu archives it, threads and plan kept, until Settings › Archive brings it back, or deletes it after saying what goes with it. The folder on your Mac stays either way.
+• A plan on ⌘⇧I says how many done tasks it hides, and a click shows them.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.5/OriCode-0.5.5.zip" sparkle:edSignature="AJUBAteILroKKIkw/J4Jbhh4KlQyE1Ci374VodRKUDfXDEoWYoDT8xmFPhQEFPHW97Qz6Jowc/B1IiNG6Gs2Bw==" length="7948459" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
