@@ -106,6 +106,11 @@ struct RootView: View {
                         .background {
                             if covered { Color.clear.contentShape(.rect) }
                         }
+                        // Under ⌘K, ⌘I, ⌘⇧I or ⌘P a click on the thread's text puts them away
+                        // too, rather than going to the text, which would keep it for itself.
+                        .overlay {
+                            if floating { Color.clear.contentShape(.rect) }
+                        }
                         .transition(.asymmetric(insertion: Self.rise, removal: Self.leave))
                     } else if home {
                         HomeBoard()
