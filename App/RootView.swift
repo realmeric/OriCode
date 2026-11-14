@@ -5,6 +5,14 @@ struct RootView: View {
     @AppStorage(AppModel.previewKey) private var preview = false
     @Environment(Updates.self) private var updates
     @AppStorage(Glass.key) private var glass = Glass.defaultTint
+    // Each half's composer as tall as it stands, so the row under the transcripts can keep to
+    // the shorter and a composer growing with its text takes room from its own column only.
+    @State private var composerHeights: [AppModel.Half: CGFloat] = [:]
+
+    private func rise(_ side: AppModel.Half) -> CGFloat {
+        guard let own = composerHeights[side], let line = composerHeights.values.min() else { return 0 }
+        return own - line
+    }
 
     var body: some View {
         GeometryReader { window in
@@ -66,6 +74,8 @@ struct RootView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                // What its composer stands above the shorter one's line.
+                                .padding(.bottom, beside == nil ? 0 : rise(thread.id == threads[0]?.id ? .left : .right))
                                 // A click in a column puts the keyboard in its thread. Its title
                                 // capsule is laid over this, so the cross there closes its own side.
                                 .simultaneousGesture(TapGesture().onEnded {
@@ -134,11 +144,16 @@ struct RootView: View {
                             // like the model's name, is drawn where the composer is going while
                             // the rest of it is still on the way.
                             .geometryGroup()
+                            .onGeometryChange(for: CGFloat.self, of: \.size.height) { composerHeights[side] = $0 }
                             .padding(.leading, side == halves[0] ? clear : 0)
                             .column()
                             .transition(.asymmetric(insertion: Self.swap, removal: Self.leave))
                         }
                     }
+                    // Two stand on the shorter one's line and the taller rises over its own column,
+                    // so one growing with its text leaves the other transcript where it was.
+                    .fixedSize(horizontal: false, vertical: beside != nil)
+                    .frame(height: beside == nil ? nil : composerHeights.values.min(), alignment: .bottom)
                     // The one there was glides to its half as a second comes beside it.
                     .animation(Motion.glide, value: beside?.id)
                     // Above the transcript, so the slash menu can rise over it.
