@@ -5,6 +5,7 @@ Before 0.1.0, the first public release, a version was 0.0.N, where N was the num
 ## v0.5.6 "Watching over" - 2026-11-14
 
 - With two threads side by side, a long draft in one composer no longer pushes the other thread's transcript up.
+- A click on a thread's text puts ⌘K, ⌘P, ⌘I or Everything Running away, as a click on empty glass does.
 
 ## v0.5.5 "Watching over" - 2026-11-07
 
