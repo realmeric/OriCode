@@ -79,22 +79,22 @@ struct TranscriptEndTests {
         #expect(!TranscriptEnd.offered(pinned: standing.pinned, covered: false))
     }
 
-    @Test func aNewTranscriptThatNeverLaidOutItsEndIsAdrift() {
-        #expect(TranscriptEnd.Standing().adrift(endSeen: false))
-        #expect(!TranscriptEnd.Standing().adrift(endSeen: true))
-        // A reveal on appear leaves the end unmade on purpose.
-        var revealed = TranscriptEnd.Standing()
-        revealed.revealing()
-        #expect(!revealed.adrift(endSeen: false))
-        // Scrolled away by hand, or already on the way, it's left alone.
-        #expect(!standing(at: .near).adrift(endSeen: false))
-        #expect(!standing(at: .away).adrift(endSeen: false))
+    @Test func aNewTranscriptAwayFromItsLaidOutEndIsStranded() {
+        // At its end with the end's row made, it's where it should be.
+        #expect(!TranscriptEnd.Standing().stranded(endLaidOut: true, touched: false))
+        // At the foot by its numbers with nothing made there: the blank a thread came back to.
+        #expect(TranscriptEnd.Standing().stranded(endLaidOut: false, touched: false))
+        // Measuring what it guessed moved it on its own, the end's row coming and going.
+        #expect(standing(at: .near).stranded(endLaidOut: false, touched: false))
+        #expect(standing(at: .away).stranded(endLaidOut: true, touched: false))
+        // A hand or a reveal put it there, and it's left alone.
+        #expect(!standing(at: .away).stranded(endLaidOut: false, touched: true))
+        // On the way to the end it isn't; landed short of it, it is again.
         var heading = TranscriptEnd.Standing()
         _ = heading.jump()
-        #expect(!heading.adrift(endSeen: false))
-        // Landed at the foot by its numbers with the end's row still unmade, it is again.
+        #expect(!heading.stranded(endLaidOut: false, touched: false))
         heading.landed()
-        #expect(heading.adrift(endSeen: false))
+        #expect(heading.stranded(endLaidOut: false, touched: false))
     }
 
     @Test func anEndTakenFromATranscriptFollowingItIsLost() {

@@ -39,9 +39,8 @@ struct TranscriptView: View {
         var reached = TranscriptEnd.Place.end
         /// The row named `end` is laid out, which the lazy stack does only around what's showing.
         var endLaidOut = true
-        /// The row named `end` has appeared at least once: until it has, `endLaidOut` and the
-        /// place the view starts at are what it assumed of itself, which nothing has borne out.
-        var endSeen = false
+        /// A hand has had the scroll, or a reveal sent it to an item: where it stands is wanted.
+        var touched = false
         /// The way to the end that's under way, which the next one, or a reveal, takes over.
         var jump: Task<Void, Never>?
         /// No hand and no momentum is moving the scroll.
@@ -168,7 +167,6 @@ struct TranscriptView: View {
                     .frame(height: 24)
                     .id(Self.end)
                     .onAppear {
-                        content.endSeen = true
                         place(endLaidOut: true)
                     }
                     .onDisappear {
@@ -223,7 +221,10 @@ struct TranscriptView: View {
         .onScrollPhaseChange {
             content.resting = $1 == .idle
             // A hand on the scroll has it from there.
-            if $1 == .tracking || $1 == .interacting { kept = nil }
+            if $1 == .tracking || $1 == .interacting {
+                kept = nil
+                content.touched = true
+            }
         }
         // Only what's laid out is growth to tell of: thinking left out, or a call folded into
         // the run above it, adds no row.
@@ -272,8 +273,19 @@ struct TranscriptView: View {
             } while !Task.isCancelled && !NSApp.occlusionState.contains(.visible)
             // A way to the end that's under way lands first: it doesn't bring the rows either.
             await content.jump?.value
-            guard !Task.isCancelled, end.adrift(endSeen: content.endSeen) else { return }
-            Self.logger.notice("A transcript of \(conversation.items.count) items came up without its end, \(Int(content.height)) tall in \(Int(content.visible)); laying it out from the top")
+            // The lazy stack measures what it guessed over a few frames, moving the scroll as it
+            // goes: what it settles on is what's looked at, a second at most.
+            var last = (content.offset, content.height)
+            for _ in 0..<10 where !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                if (content.offset, content.height) == last { break }
+                last = (content.offset, content.height)
+            }
+            // The row named `end` coming and going while the lazy stack measures what it guessed
+            // says nothing: a thread opened again under a tall draft saw it appear, go, and leave
+            // the scroll at a foot with nothing laid out, the pill up over blank glass.
+            guard !Task.isCancelled, end.stranded(endLaidOut: content.endLaidOut, touched: content.touched || position.isPositionedByUser) else { return }
+            Self.logger.notice("A transcript of \(conversation.items.count) items came up away from its end, \(Int(content.height)) tall in \(Int(content.visible)); laying it out from the top")
             fromTheTop()
         }
         .mask {
@@ -447,6 +459,7 @@ struct TranscriptView: View {
     private func takeReveal() {
         guard let id = model.reveal, conversation.items.contains(where: { $0.id == id }) else { return }
         model.reveal = nil
+        content.touched = true
         if !shown.contains(where: { $0.id == id }) { showAll = true }
         content.jump?.cancel()
         end.revealing()
@@ -705,11 +718,12 @@ enum TranscriptEnd {
             if pinned { news = false }
         }
 
-        /// Whether a transcript that takes itself to be at its end has never laid that end out:
-        /// what it starts as, until the row named `end` appears. A reveal unpins and a way to the
-        /// end is under way, so neither is adrift.
-        func adrift(endSeen: Bool) -> Bool {
-            !endSeen && pinned && place == .end && !heading
+        /// Whether a transcript nobody has scrolled came up anywhere but at its end, laid out:
+        /// where a new one starts is the lazy stack's guess at heights it hasn't measured, and
+        /// measuring them moves the scroll on its own, unpinning it on the way. A hand or a
+        /// reveal put it where it is, and a way to the end is under way, so neither is stranded.
+        func stranded(endLaidOut: Bool, touched: Bool) -> Bool {
+            !touched && !heading && (!endLaidOut || place != .end)
         }
 
         /// Whether the row that is the end went out of view from a transcript following it, with the
