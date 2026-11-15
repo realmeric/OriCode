@@ -2,8 +2,10 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
-## v0.5.6 "Watching over" - 2026-11-14
+## v0.5.6 "Watching over" - 2026-11-15
 
+- A permission or a question from a thread you're not looking at grows out of the title capsule, to be answered there or opened in its thread. Two fingers pushing up, or Esc, fold it back, and a mark on the capsule says it still waits until it's answered.
+- A long thread opened again after another took the window shows its last lines, where it could come back as blank glass until you scrolled.
 - With two threads side by side, a long draft in one composer no longer pushes the other thread's transcript up.
 - A click on a thread's text puts ⌘K, ⌘P, ⌘I or Everything Running away, as a click on empty glass does.
 
