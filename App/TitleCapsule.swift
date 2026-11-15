@@ -8,6 +8,7 @@ import SwiftUI
 struct TitleCapsule: View {
     @Environment(AppModel.self) private var model
     @Environment(Updates.self) private var updates
+    @Environment(\.appearsActive) private var active
     let island: Namespace.ID
     @Binding var hovering: Bool
     /// Its own tint, for when the island's glass isn't there to be it: with Reduce Motion.
@@ -20,6 +21,7 @@ struct TitleCapsule: View {
     var body: some View {
         if let project = model.project {
             let working = model.currentConversation?.working == true
+            let asking = !model.islandAsks.isEmpty
             Button {
                 model.toggleCommandCenter()
             } label: {
@@ -33,6 +35,7 @@ struct TitleCapsule: View {
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .padding(.leading, working ? Self.mark + 6 : 0)
+                .padding(.trailing, asking ? Self.mark + 6 : 0)
                 .frame(height: Self.height)
                 .background(glass ? hovering ? Surface.selected : Surface.drawer : .clear, in: .capsule)
                 .contentShape(.capsule)
@@ -52,8 +55,27 @@ struct TitleCapsule: View {
                 }
                 .animation(Motion.fade, value: model.chat?.id)
             }
+            // While an ask pushed back up still waits, the mark that pulses for one in the
+            // drawer, at the capsule's right end, which brings the ask out again.
+            .overlay(alignment: .trailing) {
+                if asking {
+                    Button {
+                        model.unfoldIslandAsks()
+                    } label: {
+                        RaysMark(waiting: active, restingOpacity: 0.28)
+                            .frame(width: Self.mark, height: Self.mark)
+                            .padding(.trailing, 10)
+                            .frame(height: Self.height)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Waiting on you")
+                    .transition(.asymmetric(insertion: .opacity.animation(Motion.fade.delay(0.22)), removal: .opacity.animation(.easeOut(duration: 0.1))))
+                }
+            }
             .animation(Motion.fade, value: model.keyboardSide)
             .animation(Motion.move, value: working)
+            .animation(Motion.move, value: asking)
             .overlay(alignment: .trailing) {
                 if updates.phase != .idle {
                     UpdateCircle()

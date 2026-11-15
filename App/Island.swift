@@ -10,10 +10,12 @@ struct Island: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var island
     @State private var capsuleHovered = false
+    /// How far two fingers have pushed an ask back up, which squeezes the glass toward the capsule.
+    @State private var pull: CGFloat = 0
     @AppStorage(ReviewDesign.key) private var reviewDesign = ReviewDesign.witness
 
     enum Piece: Hashable {
-        case capsule, command, heads, overview, files, side, pull, review
+        case capsule, command, heads, overview, files, side, pull, review, ask
 
         /// What VoiceOver calls the surface.
         var name: String {
@@ -26,6 +28,7 @@ struct Island: View {
             case .side: "Side question"
             case .pull: "Pull request"
             case .review: "Review"
+            case .ask: "Waiting on you"
             }
         }
     }
@@ -76,6 +79,9 @@ struct Island: View {
                         RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                             .matchedGeometryEffect(id: shown, in: island, isSource: false)
                     }
+                    // Pushed up, the glass gives like a drop drawn back into the capsule: much
+                    // shorter, a little narrower, and less the further it goes.
+                    .scaleEffect(x: 1 - squeeze / 1400, y: 1 - squeeze / 260, anchor: .top)
                 }
                 // Outside the mask, which would cut off the update circle hanging off its end.
                 if shown == .capsule {
@@ -88,6 +94,8 @@ struct Island: View {
             // steps out of its way while it's out.
             .opacity(shown == .capsule && underDrawer ? 0 : 1)
             .animation(Motion.fade, value: shown == .capsule && underDrawer)
+            // An ask comes and goes on its own, so the island swells out with it unbidden.
+            .animation(Motion.blob, value: shown == .ask)
         }
         // A surface folding back leaves the keyboard with nobody; the composer, or an open
         // block, takes it back once the surface has gone.
@@ -95,6 +103,11 @@ struct Island: View {
             guard folded else { return }
             model.returnKeyboardSoon()
         }
+    }
+
+    /// The fingers' push, eased: it gives less the further it goes, and never past 100pt.
+    private var squeeze: CGFloat {
+        100 * (1 - exp(-max(0, pull) / 100))
     }
 
     private var underDrawer: Bool {
@@ -109,6 +122,7 @@ struct Island: View {
         if model.sideShown { return .side }
         if model.pullShown, model.pull != nil { return .pull }
         if model.reviewShown { return .review }
+        if !model.unfoldedIslandAsks.isEmpty { return .ask }
         return .capsule
     }
 
@@ -147,6 +161,11 @@ struct Island: View {
             PullSurface()
                 .frame(width: min(PullSurface.width, room.width))
                 .surface(.pull, in: island, glass: reduceMotion)
+                .transition(arrival)
+        case .ask:
+            AskIsland(pull: $pull)
+                .frame(width: min(AskIsland.width, room.width))
+                .surface(.ask, in: island, glass: reduceMotion)
                 .transition(arrival)
         case .review:
             Group {

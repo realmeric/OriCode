@@ -38,7 +38,7 @@ struct AskQueue: View {
 }
 
 /// One ask in the queue: who asks, which opens that thread, then what it asks and its answers.
-private struct AskEntry: View {
+struct AskEntry: View {
     @Environment(AppModel.self) private var model
     let waiting: WaitingAsk
     let lit: Bool

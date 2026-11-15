@@ -259,6 +259,9 @@ final class AppModel {
     /// The ask a notification's click opened the screen on, lit at the top of its queue until the
     /// screen goes.
     var overviewAsk: String?
+    /// The asks pushed back up into the capsule with two fingers, which the island leaves folded
+    /// while the capsule's mark says they still wait.
+    var foldedAsks: Set<String> = []
     /// The worker, subagent or workflow agent each live ask came from, by its request id: found
     /// once as the ask comes, or as the engine tells of the asker's thread after it, so a view
     /// reading who asks does a lookup. An ask from before a quit isn't here, and stays its holder's.

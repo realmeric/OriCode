@@ -42,6 +42,10 @@ extension AppModel {
             }
             return true
         }
+        if !unfoldedIslandAsks.isEmpty, !reviewShown {
+            withAnimation(Motion.blob) { foldIslandAsks() }
+            return true
+        }
         if reviewShown {
             if review.noting != nil {
                 review.noting = nil

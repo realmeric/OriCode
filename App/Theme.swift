@@ -35,6 +35,9 @@ enum Motion {
     static let glide = Animation.spring(response: 0.5, dampingFraction: 0.86)
     /// kullanym-notch's reading spring: a gauge that snaps to a new value reads as a glitch.
     static let reading = Animation.spring(response: 0.9, dampingFraction: 0.9)
+    /// An ask swelling out of the capsule and drawn back into it: the island's one bounce, so
+    /// what came unbidden reads as the glass itself giving way.
+    static let blob = Animation.spring(duration: 0.42, bounce: 0.24)
 }
 
 enum Glass {
