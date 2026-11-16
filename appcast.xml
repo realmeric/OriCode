@@ -3,16 +3,13 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.5.6</title>
-      <pubDate>Sun, 15 Nov 2026 19:12:17 +0300</pubDate>
-      <sparkle:version>534</sparkle:version>
-      <sparkle:shortVersionString>0.5.6</sparkle:shortVersionString>
+      <title>0.5.7</title>
+      <pubDate>Mon, 16 Nov 2026 17:59:32 +0300</pubDate>
+      <sparkle:version>537</sparkle:version>
+      <sparkle:shortVersionString>0.5.7</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[• A permission or a question from a thread you're not looking at grows out of the title capsule, to be answered there or opened in its thread. Two fingers pushing up, or Esc, fold it back, and a mark on the capsule says it still waits until it's answered.
-• A long thread opened again after another took the window shows its last lines, where it could come back as blank glass until you scrolled.
-• With two threads side by side, a long draft in one composer no longer pushes the other thread's transcript up.
-• A click on a thread's text puts ⌘K, ⌘P, ⌘I or Everything Running away, as a click on empty glass does.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.6/OriCode-0.5.6.zip" sparkle:edSignature="Y39ZuFFxMaYIUb2JyGHbtkiuhkSpAQcc85jEFA/qB0OMRy6y1+fBH5Iyx/d/v029Q/JtDR0TDLYq9a9NR5fbAg==" length="7968677" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• With a project folded in the drawer, ⌘1–9, ⌥⌘1–9 and ⌃Tab go by the threads on show: a folded project's threads take no number, and the ones after them count up from the first row you see.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.7/OriCode-0.5.7.zip" sparkle:edSignature="+pZlg98IQcdjK6ggET3LeKyGCN+OaKRBIBg1KZVlJ/wRKeui77ZN7qNh2HPeCI7q+Bl+xs3gLEcxrVLhIANBAA==" length="7969969" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
