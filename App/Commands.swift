@@ -77,11 +77,11 @@ struct OriCodeCommands: Commands {
                 .disabled(model.project == nil || model.project?.isNoFolder == true)
             Button("Next Thread") { model.stepThread(1) }
                 .keyboardShortcut(shortcuts.key(.nextThread))
-                .disabled(chats.count < 2)
+                .disabled(model.numberedChats.count < 2)
             Button("Previous Thread") { model.stepThread(-1) }
                 .keyboardShortcut(shortcuts.key(.previousThread))
-                .disabled(chats.count < 2)
-            ForEach(Array(chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
+                .disabled(model.numberedChats.count < 2)
+            ForEach(Array(model.numberedChats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                 Button(chat.title) { model.pick(threadAt: index) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
             }
@@ -90,7 +90,7 @@ struct OriCodeCommands: Commands {
             // these is ever disabled: the menu hears of a change late, and a key pressed right
             // after the thread came beside would find its item still off.
             Section("Open Beside") {
-                ForEach(Array(chats.prefix(9).enumerated()), id: \.element.id) { index, chat in
+                ForEach(Array(model.numberedChats.prefix(9).enumerated()), id: \.element.id) { index, chat in
                     Button(chat.title) { model.openBeside(threadAt: index) }
                         .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
                 }

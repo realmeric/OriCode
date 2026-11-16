@@ -69,7 +69,7 @@ extension AppModel {
 
     /// ⌘1–9: select the thread and slide the drawer in just long enough to show which.
     func pick(threadAt index: Int) {
-        let visible = chats
+        let visible = numberedChats
         guard visible.indices.contains(index) else { return }
         select(visible[index])
         nudge(visible[index])
@@ -90,7 +90,7 @@ extension AppModel {
 
     /// ⌥⌘1–9: that drawer thread comes beside the open one.
     func openBeside(threadAt index: Int) {
-        let visible = chats
+        let visible = numberedChats
         guard visible.indices.contains(index) else { return }
         openBeside(visible[index])
     }
@@ -138,7 +138,7 @@ extension AppModel {
     /// peeking the drawer like ⌘1–9. A thread with no row of its own steps from the row of the top
     /// thread it sits under, as if it sat just below it.
     func stepThread(_ by: Int) {
-        let visible = chats
+        let visible = numberedChats
         guard !visible.isEmpty else { return }
         var at = visible.firstIndex { $0.id == chat?.id }
         if at == nil, let id = chat?.id, let top = topThreads[id], let row = visible.firstIndex(where: { $0.id == top }) {

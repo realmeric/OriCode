@@ -47,6 +47,12 @@ extension AppModel {
         Chat.byProject(drawerFilter == .archived ? listedChats : Chat.inDrawerOrder(listedChats, byProject: true)).flatMap(\.self)
     }
 
+    /// The drawer's threads that ⌘1–9 reach: those in a folded project have no row on show, so
+    /// they take no number and the ones after them move up.
+    var numberedChats: [Chat] {
+        chats.filter { chat in chat.project.map { !foldedProjects.contains($0.id) } ?? true }
+    }
+
     /// Every thread under this one, at any depth, whatever the drawer's filter.
     func threads(under chat: Chat) -> [Chat] {
         let all = projects.flatMap(\.chats).filter(\.started)

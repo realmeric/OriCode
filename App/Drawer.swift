@@ -44,7 +44,10 @@ struct Drawer: View {
                 ForEach(Array(groups.enumerated()), id: \.element[0].project?.id) { place, group in
                     let pinned = group.filter(\.pinned).count
                     // Each row's place in the whole list, which ⌘1–9 goes by.
-                    let before = groups[..<place].reduce(0) { $0 + $1.count }
+                    // A folded project's rows are away, so they take no number.
+                    let before = groups[..<place].reduce(0) { sum, other in
+                        sum + (other[0].project.map { model.foldedProjects.contains($0.id) } == true ? 0 : other.count)
+                    }
                     let project = group[0].project
                     // A folded project's heading says whether a thread in it asks or works, since
                     // its rows are away.
