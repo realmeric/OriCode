@@ -2,6 +2,10 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.5.7 "Watching over" - 2026-11-16
+
+- With a project folded in the drawer, ⌘1–9, ⌥⌘1–9 and ⌃Tab go by the threads on show: a folded project's threads take no number, and the ones after them count up from the first row you see.
+
 ## v0.5.6 "Watching over" - 2026-11-15
 
 - A permission or a question from a thread you're not looking at grows out of the title capsule, to be answered there or opened in its thread. Two fingers pushing up, or Esc, fold it back, and a mark on the capsule says it still waits until it's answered.
