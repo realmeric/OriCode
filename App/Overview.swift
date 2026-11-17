@@ -235,6 +235,24 @@ private struct OverviewLine: View {
                     .padding(.top, -2)
                     .padding(.bottom, 7)
             }
+            // The subagents it runs inside its own turn, while they run.
+            ForEach(model.runningSubagents(of: chat)) { agent in
+                HStack(spacing: 8) {
+                    RaysMark(restingOpacity: 0.16, dotOpacity: 0.92)
+                        .frame(width: 12, height: 12)
+                        .accessibilityHidden(true)
+                    Text(agent.title)
+                        .font(Type.secondary)
+                        .foregroundStyle(Ink.faint)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 24)
+                .padding(.bottom, 7)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue("Working")
+            }
         }
         .padding(.horizontal, 8)
         .background(selected ? Surface.selected : under ? Surface.hover : .clear, in: .rect(cornerRadius: 8, style: .continuous))
@@ -322,6 +340,15 @@ extension AppModel {
             let shown = plan.tasks.contains { $0.state != "done" || $0.updatedAt >= openedAt }
             return mine.isEmpty && !shown ? nil : OverviewSection(project: project, plan: shown ? plan : ProjectPlan([]), rows: mine.map { OverviewRow(chat: $0) })
         }
+    }
+
+    /// The subagents a thread's own loop has running, which the engine tells of as they start and
+    /// end, so a finished one has left by itself.
+    func runningSubagents(of chat: Chat) -> [Chat] {
+        guard let project = chat.project else { return [] }
+        return project.chats
+            .filter { $0.openedBy == chat.id && $0.agentKind == "subagent" && $0.agentState == "running" && !$0.archived }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     /// Whether a thread is on the screen of its own accord.
