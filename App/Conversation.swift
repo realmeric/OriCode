@@ -1037,8 +1037,7 @@ final class Conversation {
             // refused too: it goes back to the field.
             failed = true
             record(event.name, event.body)
-            if Limit.goesOn, let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }),
-               Limit.resumes(window: event.body["window"]?.string, resetsAt: resetsAt) {
+            if Limit.goesOn, let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }) {
                 // Refused again past the reset, a Mac's clock ahead of Claude's: a while longer.
                 chat.resumeAt = resetsAt > .now ? resetsAt : .now.addingTimeInterval(300)
                 flush()

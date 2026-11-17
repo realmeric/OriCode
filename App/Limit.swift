@@ -1,19 +1,15 @@
 import SwiftUI
 
 /// An agent's plan limits as a thread meets them: a turn one of them refused says which, and when
-/// it resets. The session limit resets within five hours, and a thread it stopped goes on by
-/// itself then, the way the Claude Code app's does, unless Settings says not to; a weekly one
-/// only says when, unless its card is told to wait for it.
+/// it resets. A thread a limit stopped goes on by itself once it resets, whichever limit it is,
+/// the way the Claude Code app's does, or as soon as a reset the account was granted is used,
+/// unless Settings or the limit's card says not to.
 enum Limit {
     /// Settings' "Go on when a limit resets", on unless turned off.
     static let goOnKey = "goOnWhenLimitResets"
 
     static var goesOn: Bool {
         UserDefaults.standard.object(forKey: goOnKey) as? Bool ?? true
-    }
-
-    static func resumes(window: String?, resetsAt: Date) -> Bool {
-        window == "five_hour" || window == nil && resetsAt.timeIntervalSinceNow < 6 * 3600
     }
 
     static func name(of window: String?) -> String {

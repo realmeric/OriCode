@@ -720,16 +720,14 @@ struct OpenedThreadsTests {
         model.route(done(chat))
         #expect(lines(model.conversation(for: parent)) == [waiting, stopped, waiting, "Rename sum.txt replied"])
 
-        // The weekly limit only says when, so there's nothing to wait for, until the card's toggle waits for it.
+        // A weekly limit is waited for as the session's is.
         let again = request(parent)
         let weekly = try model.open(model.opening(for: again), again)
         let weekReset = Date.now.addingTimeInterval(3 * 86_400)
         model.route(limited(weekly, resetsAt: weekReset, window: "seven_day"))
         model.route(done(weekly, "stop_sequence"))
-        #expect(lines(model.conversation(for: parent)).last == stopped)
-        model.goOn(true, at: weekReset, in: weekly.id)
         #expect(lines(model.conversation(for: parent)).last == "Rename sum.txt waits · \(Limit.time(weekReset))")
-        #expect(lines(model.conversation(for: parent)).count == 6)
+        #expect(lines(model.conversation(for: parent)).count == 5)
     }
 
     @Test func atTheResetAThreadGoesOnOrItsOpenerHearsItWont() throws {

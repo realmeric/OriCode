@@ -356,6 +356,15 @@ test("a usage limit Codex names a reset for comes as a limit, not an error", asy
   assert.equal(done.stopReason, "error_during_execution");
 });
 
+test("a limit Codex refuses a turn at without a reading of the plan's window first is asked of Codex", async () => {
+  const { session: codex, cwd } = await session("quiet", { CODEX_FULL: "1" });
+  const from = events.length;
+  await codex.send({ threadId: "quiet", cwd, text: "limit, unannounced" });
+  await until(named("turn.done", "quiet"), from);
+  const limited = told("quiet", from).find((event) => event.event === "limited");
+  assert.deepEqual(limited, { event: "limited", threadId: "quiet", resetsAt: 1792439399000, window: "30_day" });
+});
+
 test("Codex's questions come as AskUserQuestion, and go back by their ids", async () => {
   const { session: codex, cwd, sent } = await session("question");
   const from = events.length;

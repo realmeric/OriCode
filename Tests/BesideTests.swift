@@ -196,7 +196,7 @@ struct BesideTests {
         }
         model.besideChatID = second.id
         defer { model.resumeTask?.cancel() }
-        model.goOn(true, at: reset, in: second.id)
+        model.goOn(false, at: reset)
         #expect(second.resumeAt == reset)
         #expect(first.resumeAt == nil)
         model.goOn(true, at: reset)

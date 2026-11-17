@@ -689,7 +689,7 @@ private struct ConversationPane: View {
             SettingsCard {
                 SettingsRow(
                     title: "Go on when a limit resets",
-                    detail: "A thread stopped at \(waiting.map { "\($0.agent)'s" }.formatted(.list(type: .or))) session limit carries on by itself once the limit resets. For a weekly limit, turn it on in the limit's card."
+                    detail: "A thread stopped at \(waiting.map { "\($0.agent)'s" }.formatted(.list(type: .or))) limit carries on by itself once the limit resets, or a reset is used."
                 ) {
                     Toggle("Go on when a limit resets", isOn: $goOn).labelsHidden().toggleStyle(.switch)
                 }

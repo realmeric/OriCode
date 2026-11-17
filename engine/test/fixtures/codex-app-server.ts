@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const signedOut = process.env.CODEX_SIGNED_OUT === "1";
+/// The plan's window used up, as account/rateLimits/read reports it.
+const full = process.env.CODEX_FULL === "1";
 /// The user's history its thread/list and thread/read give, made up.
 const history = JSON.parse(readFileSync(new URL("./sessions/codex-threads.json", import.meta.url), "utf8"));
 
@@ -178,6 +180,12 @@ async function turn(text: string, clientId: string | null): Promise<void> {
     notify("error", { error: { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded", additionalDetails: null }, willRetry: false });
     return complete("failed", { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded", additionalDetails: null });
   }
+  if (text === "limit, unannounced") {
+    // As Codex 0.157.1 does: a rolling update for another bucket, empty, and none for the plan's.
+    send({ method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", limitName: null, primary: null, secondary: null, planType: null, rateLimitReachedType: null } } });
+    notify("error", { error: { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded", additionalDetails: null }, willRetry: false });
+    return complete("failed", { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded", additionalDetails: null });
+  }
   if (text === "die") {
     notify("item/agentMessage/delta", { itemId: "m-1", delta: "About to go." });
     const rm = command("exec-4", "rm x", [{ type: "unknown", command: "rm x" }]);
@@ -226,7 +234,7 @@ async function handle(message: any): Promise<void> {
       return send({
         id,
         result: {
-          rateLimits: { limitId: "codex", primary: { usedPercent: 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null },
+          rateLimits: { limitId: "codex", primary: { usedPercent: full ? 100 : 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null },
           rateLimitResetCredits: {
             availableCount: 1,
             credits: [

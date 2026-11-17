@@ -42,7 +42,7 @@ struct CodexTests {
     }
 
     /// Codex refuses a turn with usageLimitExceeded, which the engine sends as a limit on its 30-day
-    /// window: the card names that window, waits only when told to, and goes on at the reset.
+    /// window: the card names that window, and the thread waits for it and goes on at the reset.
     @Test func aCodexLimitNamesItsWindowAndGoesOnWhenAsked() async throws {
         let model = AppModel(container: container)
         let codex = Self.codex
@@ -65,8 +65,6 @@ struct CodexTests {
         #expect(Limit.name(of: "30_day") == "30-day limit")
         #expect(Limit.span(of: "30_day") == "the 30-day window")
         #expect(Limit.time(reset) == reset.formatted(.dateTime.day().month(.abbreviated)) + " " + reset.formatted(date: .omitted, time: .shortened))
-        #expect(chat.resumeAt == nil)
-        model.goOn(true, at: reset)
         #expect(chat.resumeAt == reset)
         #expect(AppModel.limitLine(model.conversation(for: chat).lastLimitWindow) == "The 30-day limit has reset. Please continue from where you left off.")
         chat.resumeAt = .now.addingTimeInterval(-30)

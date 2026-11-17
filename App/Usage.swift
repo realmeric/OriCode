@@ -224,6 +224,7 @@ extension AppModel {
         usages[agent] = usage
         usagesAt[agent] = usage.windows.compactMap(\.at).max() ?? .now
         keepUsages()
+        goOnEarly(agent)
     }
 
     /// A thread's CLI reporting the plan's limits as its turn goes, which keeps the glass current
@@ -244,6 +245,7 @@ extension AppModel {
         usages[agent] = taken
         usagesAt[agent] = .now
         keepUsages()
+        goOnEarly(agent)
     }
 
     /// Spends one of the account's resets through the agent's own CLI, then asks for the limits
@@ -257,6 +259,7 @@ extension AppModel {
             switch outcome {
             case "reset", "alreadyRedeemed":
                 usages[agent]?.spend(reset.id)
+                goOnEarly(agent, used: true)
             case "nothingToReset":
                 resetRefused = "Nothing to reset yet."
             case "noCredit":

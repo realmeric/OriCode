@@ -50,6 +50,37 @@ extension AppModel {
         scheduleResumes()
     }
 
+    /// A thread waiting on a limit goes on before the reset it was told when the limit has started
+    /// over already: a reset the account was granted was used, here (`used`) or in the agent's own
+    /// app, which a reading shows as the window that stopped it running to a reset of its own.
+    func goOnEarly(_ agent: String, used: Bool = false) {
+        let waiting = (try? context.fetch(FetchDescriptor<Chat>(predicate: #Predicate { $0.resumeAt != nil }))) ?? []
+        var due = false
+        for chat in waiting where chat.providerID == agent {
+            guard let at = chat.resumeAt, at > .now else { continue }
+            if !used {
+                guard let usage = usages[agent], let window = Self.window(conversation(for: chat).lastLimitWindow, in: usage),
+                      let used = window.used, used < 1, let resetsAt = window.resetsAt, abs(resetsAt.timeIntervalSince(at)) > 120
+                else { continue }
+            }
+            // As though the reset were past, the margin resumeDue waits for included.
+            chat.resumeAt = .now.addingTimeInterval(-20)
+            due = true
+        }
+        if due { resumeDue() }
+    }
+
+    /// The window a limit names in the plan's usage. Claude's weekly limit for the models extra
+    /// usage covers is the one model's week the usage names.
+    static func window(_ id: String?, in usage: PlanUsage) -> PlanUsage.Window? {
+        guard let id else { return nil }
+        if id == "seven_day_overage_included" {
+            let scoped = usage.windows.filter { $0.id.hasPrefix("model:") }
+            return scoped.count == 1 ? scoped[0] : nil
+        }
+        return usage.windows.first { $0.id == id }
+    }
+
     /// The limit card's toggle: its thread waits for its limit to reset, a weekly one too, or no
     /// longer does. `thread` is the card's own, the open one when nil.
     func goOn(_ on: Bool, at resetsAt: Date, in thread: UUID? = nil) {

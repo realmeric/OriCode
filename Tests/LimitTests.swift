@@ -41,11 +41,45 @@ struct LimitTests {
         #expect(resetsAt == reset && window == "five_hour")
     }
 
-    @Test func aWeeklyLimitOnlySaysWhen() {
+    @Test func aWeeklyLimitWaitsForItsResetToo() {
         let conversation = Conversation(chat: chat, context: container.mainContext)
-        conversation.receive(limited("seven_day", at: .now.addingTimeInterval(3 * 86_400)))
-        #expect(chat.resumeAt == nil)
+        let reset = Date.now.addingTimeInterval(3 * 86_400).rounded
+        conversation.receive(limited("seven_day", at: reset))
+        #expect(chat.resumeAt == reset)
         #expect(conversation.lastLimit != nil)
+    }
+
+    /// A reset used, in OriCode or in the agent's own app, starts the limit over before the time
+    /// the thread was told, and the thread goes on then and not days later.
+    @Test func aResetUsedSendsAWaitingThreadOnNow() {
+        let model = AppModel(container: container)
+        model.engineState = .ready
+        model.providers = [.claude]
+        defer { model.resumeTask?.cancel() }
+        let reset = Date.now.addingTimeInterval(3 * 86_400).rounded
+        model.conversation(for: chat).receive(limited("seven_day", at: reset))
+        #expect(chat.resumeAt == reset)
+        // A reading of the same window, still full, changes nothing.
+        model.takeLimits(["windows": [["id": "seven_day", "used": .number(1), "resetsAt": .number(reset.timeIntervalSince1970 * 1000)]]], for: "claude")
+        #expect(chat.resumeAt == reset)
+        // One that shows the window started over sends it on.
+        let next = Date.now.addingTimeInterval(7 * 86_400)
+        model.takeLimits(["windows": [["id": "seven_day", "used": .number(0.01), "resetsAt": .number(next.timeIntervalSince1970 * 1000)]]], for: "claude")
+        #expect(chat.resumeAt == nil)
+        let sent = model.conversation(for: chat).items.contains { if case .user(_, let text, _, _) = $0 { text == AppModel.limitLine("seven_day") } else { false } }
+        #expect(sent)
+    }
+
+    @Test func aResetUsedFromTheCardSendsOnEveryThreadOfItsAgent() {
+        let model = AppModel(container: container)
+        model.engineState = .ready
+        model.providers = [.claude]
+        defer { model.resumeTask?.cancel() }
+        model.conversation(for: chat).receive(limited("five_hour", at: .now.addingTimeInterval(3600)))
+        model.goOnEarly("codex", used: true)
+        #expect(chat.resumeAt != nil)
+        model.goOnEarly("claude", used: true)
+        #expect(chat.resumeAt == nil)
     }
 
     @Test func refusedPastTheResetItWaitsAWhileLonger() {
@@ -85,12 +119,13 @@ struct LimitTests {
         #expect(conversation.lastLimit != nil)
     }
 
-    @Test func theCardsToggleWaitsForAWeeklyLimitAndCallsItOff() {
+    @Test func theCardsToggleCallsOffAWaitForAWeeklyLimitAndWaitsAgain() {
         let model = AppModel(container: container)
         model.selectedProjectID = chat.project?.id
         model.selectedChatID = chat.id
         let reset = Date.now.addingTimeInterval(3 * 86_400).rounded
         model.conversation(for: chat).receive(limited("seven_day", at: reset))
+        model.goOn(false, at: reset)
         #expect(chat.resumeAt == nil)
         model.goOn(true, at: reset)
         #expect(chat.resumeAt == reset)

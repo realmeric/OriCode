@@ -481,8 +481,30 @@ export class CodexSession implements Session {
   }
 
   /// Codex's turn has ended: completed, interrupted, or failed with why. A usage limit it names
-  /// a reset for says so as a limit, not an error.
+  /// a reset for says so as a limit, not an error. Codex may refuse a turn at a limit without a
+  /// rolling update for the plan's bucket first, so then its limits are asked for.
   private completed(turn: { status: string; error: TurnError | null }): void {
+    const error = turn.error ?? this.lastError;
+    if (turn.status === "failed" && error?.codexErrorInfo === "usageLimitExceeded" && !this.limitReached()) {
+      void this.readLimits().then(() => this.ended(turn));
+      return;
+    }
+    this.ended(turn);
+  }
+
+  private async readLimits(): Promise<void> {
+    try {
+      const read: { rateLimits: RateLimits; rateLimitsByLimitId?: Record<string, RateLimits> | null } = await withServer(this.binary, (server) => server.request("account/rateLimits/read", {}));
+      for (const limits of read.rateLimitsByLimitId ? Object.values(read.rateLimitsByLimitId) : [read.rateLimits]) {
+        const bucket = limits.limitId ?? "codex";
+        this.rateLimits.set(bucket, merge(this.rateLimits.get(bucket), limits));
+      }
+    } catch {
+      // Without them the refusal is said as Codex worded it.
+    }
+  }
+
+  private ended(turn: { status: string; error: TurnError | null }): void {
     if (turn.status === "failed") {
       const error = turn.error ?? this.lastError;
       const limit = error?.codexErrorInfo === "usageLimitExceeded" ? this.limitReached() : undefined;
