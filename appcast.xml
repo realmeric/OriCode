@@ -3,13 +3,20 @@
   <channel>
     <title>OriCode</title>
     <item>
-      <title>0.5.7</title>
-      <pubDate>Mon, 16 Nov 2026 17:59:32 +0300</pubDate>
-      <sparkle:version>537</sparkle:version>
-      <sparkle:shortVersionString>0.5.7</sparkle:shortVersionString>
+      <title>0.5.8</title>
+      <pubDate>Wed, 18 Nov 2026 00:59:19 +0300</pubDate>
+      <sparkle:version>548</sparkle:version>
+      <sparkle:shortVersionString>0.5.8</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <description sparkle:descriptionFormat="plain-text"><![CDATA[• With a project folded in the drawer, ⌘1–9, ⌥⌘1–9 and ⌃Tab go by the threads on show: a folded project's threads take no number, and the ones after them count up from the first row you see.]]></description>
-      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.7/OriCode-0.5.7.zip" sparkle:edSignature="+pZlg98IQcdjK6ggET3LeKyGCN+OaKRBIBg1KZVlJ/wRKeui77ZN7qNh2HPeCI7q+Bl+xs3gLEcxrVLhIANBAA==" length="7969969" type="application/octet-stream"/>
+      <description sparkle:descriptionFormat="plain-text"><![CDATA[• A picture opens in a viewer of its own, sent, waiting in the composer or in the file viewer. Pinch, ⌘+ and ⌘− zoom it, ⌘0 fits it, a double click goes to its real pixels and back, and its menu shows it in Finder or opens it in Preview.
+• The plan's limits match what the agent's CLI reports. A newer reading no longer loses to an older one, the Fable week shows again, and a window whose reset has passed reads empty.
+• A reset your ChatGPT account already holds can be used from Codex's ↺ on the usage card, after a confirmation. Claude Code offers its `/limit-reset` only in its own terminal, so Claude has no button.
+• A thread a limit stopped goes on by itself when the limit starts over, the weekly one and Codex's monthly one too, and at once when a reset is used.
+• Each project on Everything Running folds, as it does in the drawer, and both stay folded together.
+• A subagent a thread runs shows under it on Everything Running while it works, and a click opens its transcript.
+• With two threads side by side, a click on the other one's text moves to it, as a click on empty glass does. Selecting text there still works.
+• A new thread opened from the drawer is laid out even when its last row never appeared, which could leave it blank until a scroll.]]></description>
+      <enclosure url="https://github.com/realmeric/OriCode/releases/download/v0.5.8/OriCode-0.5.8.zip" sparkle:edSignature="lUO5tg8y5ke+ZSjCKKaHWcuxYYyStE9spBZPAOyvk0sd9q7QfYRuwhuw31+asy4GPNcHWyFHbibrEicjC2HqAQ==" length="8029508" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
