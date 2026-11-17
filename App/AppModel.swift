@@ -325,10 +325,15 @@ final class AppModel {
     var mainWindowKey = true
     /// Whether the engine has been told a turn is running, so it keeps App Nap off.
     var holdingForTurns = false
-    /// Each agent's plan usage by its id, and when the engine last read it.
+    /// Each agent's plan usage by its id, and when its newest reading was taken.
     var usages: [String: PlanUsage] = [:]
     var usagesAt: [String: Date] = [:]
-    var usageLoading = false
+    /// When the engine was last asked each agent's whole picture, this launch, which a thread's
+    /// stream doesn't bring: only some windows ride on a turn.
+    @ObservationIgnored var usagesAsked: [String: Date] = [:]
+    /// The agents whose usage is being asked for now.
+    var loadingUsage: Set<String> = []
+    var usageLoading: Bool { !loadingUsage.isEmpty }
     /// Where those readings are kept across a quit, so the ring answers on the first hover of a
     /// launch with what was last known; nil in a test that doesn't look at it.
     @ObservationIgnored let usageKept: UserDefaults?

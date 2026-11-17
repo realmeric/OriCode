@@ -20,6 +20,13 @@ struct UsageGlass: View {
     @State private var pending: Task<Void, Never>?
 
     var body: some View {
+        // Drawn again at the next reset, when the reading of its window stops holding.
+        TimelineView(.explicit(model.usages[model.providerID(for: chat)]?.nextReset.map { [$0] } ?? [])) { _ in
+            glass
+        }
+    }
+
+    @ViewBuilder private var glass: some View {
         let ofWater = showWater && model.providerID(for: chat) == ProviderInfo.claudeID
         let periods = ofWater ? model.waterTotals.periods : nil
         let used = ofWater ? nil : model.usage(for: chat)?.headline?.used
@@ -266,7 +273,7 @@ struct UsageCard: View {
                     .font(Type.secondary).foregroundStyle(Ink.secondary)
             }
         } else {
-            Text(model.usageLoading ? "Checking usage…" : "Usage isn't available right now.")
+            Text(model.usageLoading(for: chat) ? "Checking usage…" : "Usage isn't available right now.")
                 .font(Type.secondary).foregroundStyle(Ink.secondary)
         }
     }

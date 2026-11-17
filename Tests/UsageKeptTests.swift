@@ -29,7 +29,8 @@ struct UsageKeptTests {
         return model
     }
 
-    private let session: JSON = ["windows": [["id": "five_hour", "used": .number(0.42), "resetsAt": 1792439399000]]]
+    private let resets = Date.now.addingTimeInterval(3600)
+    private var session: JSON { ["windows": [["id": "five_hour", "used": .number(0.42), "resetsAt": .number(resets.timeIntervalSince1970 * 1000)]]] }
 
     @Test func aReadingIsStillThereAfterARelaunch() {
         launched().takeLimits(session, for: "claude")
@@ -80,5 +81,39 @@ struct UsageKeptTests {
         #expect(model.usage(for: other)?.headline?.label == "30-day window")
         #expect(model.usage(for: chat)?.headline?.label == "Session")
         #expect(model.usage?.headline?.label == "Session")
+    }
+
+    /// A probe's answer, as the engine sends it: the CLI's numbers, dated by when it fetched them.
+    private func probe(at: Date, _ windows: [(String, String, Double)]) -> JSON {
+        let iso = ISO8601DateFormatter().string(from: resets.addingTimeInterval(86_400))
+        return [
+            "available": true, "plan": "max", "at": .number(at.timeIntervalSince1970 * 1000),
+            "windows": .array(windows.map { ["id": .string($0.0), "label": .string($0.1), "used": .number($0.2), "resetsAt": .string(iso)] }),
+        ]
+    }
+
+    @Test func aProbeTheCLIAnsweredFromAnEarlierFetchDoesntPutBackWhatAThreadMovedPast() {
+        let model = launched()
+        model.takeUsage(probe(at: .now.addingTimeInterval(-600), [("five_hour", "Session", 0.31), ("seven_day", "Week", 0.85), ("model:Fable", "Fable week", 0.55)]), for: "claude")
+        // A Fable turn's report: the session and the week, and the week of the models extra usage covers.
+        model.takeLimits(["windows": [
+            ["id": "five_hour", "used": .number(0.45), "resetsAt": .number(resets.timeIntervalSince1970 * 1000)],
+            ["id": "seven_day_overage_included", "used": .number(0.56), "resetsAt": .number(resets.timeIntervalSince1970 * 1000)],
+        ]], for: "claude")
+        // The CLI's kept answer again, four minutes on, still older than the turn's report.
+        model.takeUsage(probe(at: .now.addingTimeInterval(-600), [("five_hour", "Session", 0.31), ("seven_day", "Week", 0.85)]), for: "claude")
+        let windows = model.usage?.windows.map { "\($0.id) \($0.used ?? -1)" }
+        #expect(windows == ["five_hour 0.45", "seven_day 0.85", "model:Fable 0.56"])
+        // A fresh one wins.
+        model.takeUsage(probe(at: .now, [("five_hour", "Session", 0.47)]), for: "claude")
+        #expect(model.usage?.headline?.used == 0.47)
+    }
+
+    @Test func aWindowWhoseResetHasPassedShowsNothingUsedUntilItsReadAgain() {
+        let model = launched()
+        model.takeLimits(["windows": [["id": "five_hour", "used": .number(0.9), "resetsAt": .number(Date.now.addingTimeInterval(-60).timeIntervalSince1970 * 1000)]]], for: "claude")
+        #expect(model.usage?.headline?.used == 0)
+        #expect(model.usage?.headline?.resetsAt == nil)
+        #expect(model.usages["claude"]?.headline?.used == 0.9)
     }
 }

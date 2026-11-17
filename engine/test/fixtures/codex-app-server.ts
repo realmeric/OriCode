@@ -223,7 +223,13 @@ async function handle(message: any): Promise<void> {
     case "account/read":
       return send({ id, result: signedOut ? { account: null, requiresOpenaiAuth: true } : { account: { type: "chatgpt", email: "someone@example.com", planType: "go" }, requiresOpenaiAuth: true } });
     case "account/rateLimits/read":
-      return send({ id, result: { rateLimits: { limitId: "codex", primary: { usedPercent: 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null } } });
+      return send({
+        id,
+        result: {
+          rateLimits: { limitId: "codex", primary: { usedPercent: 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null },
+        },
+      });
+
     case "model/list":
       return send({ id, result: params.cursor ? { data: [models[1]], nextCursor: null } : { data: [models[0]], nextCursor: "page-2" } });
     case "thread/list":

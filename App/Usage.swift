@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Claude plan usage as the engine reports it: one entry per metered window.
+/// An agent's plan usage as the engine reports it: one entry per metered window, each with when
+/// it was read, since a thread's stream and the probe read different windows at different times.
 struct PlanUsage: Codable, Sendable {
     struct Window: Identifiable, Hashable, Codable, Sendable {
         let id: String
@@ -8,6 +9,8 @@ struct PlanUsage: Codable, Sendable {
         /// A fraction; nil when the plan meters the window but didn't say how much is gone.
         let used: Double?
         let resetsAt: Date?
+        /// When this reading was taken; nil in one kept by an earlier version.
+        var at: Date?
     }
 
     let available: Bool
@@ -23,25 +26,66 @@ struct PlanUsage: Codable, Sendable {
         windows.first { $0.id == "five_hour" } ?? windows.first
     }
 
+    /// The soonest reset still to come, after which a reading of its window no longer holds.
+    var nextReset: Date? {
+        windows.compactMap(\.resetsAt).filter { $0 > .now }.min()
+    }
+
     init(json: JSON) {
         available = json["available"]?.bool ?? false
         plan = json["plan"]?.string
+        let at = json["at"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) } ?? .now
         windows = (json["windows"]?.array ?? []).map { window in
             Window(
                 id: window["id"]?.string ?? "",
                 label: window["label"]?.string ?? "",
                 used: window["used"]?.double,
-                resetsAt: window["resetsAt"]?.string.flatMap(Self.date))
+                resetsAt: window["resetsAt"]?.string.flatMap(Self.date),
+                at: at)
         }
+    }
+
+    /// As it stands at `now`: a window whose reset has passed has nothing used since, as far as
+    /// is known, and its next reset isn't known until it's read again.
+    func current(at now: Date = .now) -> PlanUsage {
+        var usage = self
+        usage.windows = windows.map { window in
+            guard let resetsAt = window.resetsAt, resetsAt <= now else { return window }
+            return Window(id: window.id, label: window.label, used: window.used == nil ? nil : 0, resetsAt: nil, at: window.at)
+        }
+        return usage
+    }
+
+    /// A probe's answer over what was known: each window the newer of the two readings, so a
+    /// probe the CLI answered from its own earlier fetch doesn't put back what a thread's turn has
+    /// since moved past. A window it leaves out stays until its reset.
+    func merged(over known: PlanUsage?, now: Date = .now) -> PlanUsage {
+        guard let known, available else { return self }
+        var usage = self
+        usage.windows = windows.map { window in
+            guard let old = known.windows.first(where: { $0.id == window.id }), let oldAt = old.at, let at = window.at, oldAt > at else { return window }
+            return old
+        }
+        for old in known.windows where !windows.contains(where: { $0.id == old.id }) && old.resetsAt.map({ $0 > now }) == true {
+            usage.windows.append(old)
+        }
+        return usage
     }
 
     /// A window as a thread's CLI just reported it, over the probe's older reading. Windows the
     /// probe doesn't name are left out, as it leaves them out, unless the report names them itself,
-    /// as Codex's "30-day window" does.
-    mutating func take(_ id: String, label named: String? = nil, used: Double, resetsAt: Date?) {
+    /// as Codex's "30-day window" does. Claude's weekly window for the models extra usage covers
+    /// is the one model's week the probe names, when it names one.
+    mutating func take(_ id: String, label named: String? = nil, used: Double, resetsAt: Date?, at: Date = .now) {
         let names = ["five_hour": "Session", "seven_day": "Week", "seven_day_opus": "Opus week", "seven_day_sonnet": "Sonnet week"]
+        var id = id
+        if id == "seven_day_overage_included" {
+            let scoped = windows.filter { $0.id.hasPrefix("model:") }
+            guard scoped.count == 1 else { return }
+            id = scoped[0].id
+        }
         guard let label = windows.first(where: { $0.id == id })?.label ?? names[id] ?? named else { return }
-        let window = Window(id: id, label: label, used: used, resetsAt: resetsAt)
+        let window = Window(id: id, label: label, used: used, resetsAt: resetsAt, at: at)
         if let index = windows.firstIndex(where: { $0.id == id }) {
             windows[index] = window
         } else {
@@ -105,9 +149,9 @@ enum ResetCopy {
 
 extension AppModel {
     /// What the ring shows is the thread's own agent's, the open thread's when it's the open
-    /// thread asking, or with no thread the next one's.
+    /// thread asking, or with no thread the next one's, as it stands now.
     func usage(for thread: Chat?) -> PlanUsage? {
-        usages[providerID(for: thread)]
+        usages[providerID(for: thread)]?.current()
     }
 
     func usageAt(for thread: Chat?) -> Date? {
@@ -124,20 +168,27 @@ extension AppModel {
         usageAt(for: thread).map { Date.now.timeIntervalSince($0) > 120 } ?? false
     }
 
+    func usageLoading(for thread: Chat?) -> Bool {
+        loadingUsage.contains(providerID(for: thread))
+    }
+
     func refreshUsage() {
         refreshUsage(for: chat)
     }
 
     /// Asks the engine for the whole picture, which it keeps a minute. Only the pointer arriving
-    /// asks: nothing here polls, and no key does.
+    /// asks: nothing here polls, and no key does. A thread's stream doesn't count as an ask, since
+    /// it brings only some windows, and a reset passed since the last ask makes it old.
     func refreshUsage(for thread: Chat?) {
-        guard engineState == .ready, !usageLoading, agentReady(for: thread), provider(for: thread)?.capabilities.usage == true else { return }
         let agent = providerID(for: thread)
-        if let at = usagesAt[agent], Date.now.timeIntervalSince(at) < 60 { return }
-        usageLoading = true
+        guard engineState == .ready, !loadingUsage.contains(agent), agentReady(for: thread), provider(for: thread)?.capabilities.usage == true else { return }
+        if let asked = usagesAsked[agent], Date.now.timeIntervalSince(asked) < 60,
+           usages[agent]?.windows.contains(where: { $0.resetsAt.map { $0 > asked && $0 <= .now } ?? false }) != true { return }
+        loadingUsage.insert(agent)
         Task {
-            defer { usageLoading = false }
+            defer { loadingUsage.remove(agent) }
             guard let reply = try? await engine.request("usage", .object([String: JSON]().naming(agent))) else { return }
+            usagesAsked[agent] = .now
             takeUsage(reply, for: agent)
         }
     }
@@ -147,8 +198,9 @@ extension AppModel {
     func takeUsage(_ reply: JSON, for agent: String) {
         let taken = PlanUsage(json: reply)
         guard taken.says else { return }
-        usages[agent] = taken
-        usagesAt[agent] = .now
+        let usage = taken.merged(over: usages[agent])
+        usages[agent] = usage
+        usagesAt[agent] = usage.windows.compactMap(\.at).max() ?? .now
         keepUsages()
     }
 
@@ -184,7 +236,7 @@ extension AppModel {
         return (kept.mapValues(\.usage), kept.mapValues(\.at))
     }
 
-    private func keepUsages() {
+    func keepUsages() {
         let kept = usages.compactMap { agent, usage in usagesAt[agent].map { (agent, KeptUsage(usage: usage, at: $0)) } }
         usageKept?.set(try? JSONEncoder().encode(Dictionary(uniqueKeysWithValues: kept)), forKey: Self.usageKey)
     }

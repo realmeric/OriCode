@@ -11,7 +11,7 @@ import { atStep, hold } from "./others.ts";
 import { byMode, asks as registry, client, told, toolsServer, toolsTimeout, type Session } from "./provider.ts";
 import { replied } from "./sessions.ts";
 import { lastLine } from "./shell.ts";
-import type { Usage } from "./usage.ts";
+import { passed, type Usage } from "./usage.ts";
 import { version } from "./version.ts";
 import { event, log } from "./wire.ts";
 
@@ -65,7 +65,16 @@ type Breakdown = { totalTokens: number; inputTokens: number; cachedInputTokens: 
 
 type RateLimitWindow = { usedPercent: number; windowDurationMins: number | null; resetsAt: number | null };
 
-type RateLimits = { primary: RateLimitWindow | null; secondary: RateLimitWindow | null; planType: string | null; rateLimitReachedType: string | null };
+/// One metered bucket of Codex's, "codex" for the plan's own; a rolling update carries only what
+/// changed, so a window it leaves null is still as it was.
+type RateLimits = {
+  limitId?: string | null;
+  limitName?: string | null;
+  primary: RateLimitWindow | null;
+  secondary: RateLimitWindow | null;
+  planType: string | null;
+  rateLimitReachedType: string | null;
+};
 
 type TurnError = { message: string; codexErrorInfo: unknown; additionalDetails: string | null };
 
@@ -198,8 +207,9 @@ export class CodexSession implements Session {
   private lastError: TurnError | undefined;
   private spent = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   private context: { used: number; window: number } | undefined;
-  private rateLimits: RateLimits | undefined;
-  private limitsTold = "";
+  /// Each bucket as the rolling updates have built it up, by its limit's id.
+  private rateLimits = new Map<string, RateLimits>();
+  private limitsTold = new Map<string, string>();
   /// Sent during a turn before Codex had said the turn's id, which a steer names.
   private steering: CodexSendParams[] = [];
   /// Steered into the turn and not yet seen in it.
@@ -481,7 +491,7 @@ export class CodexSession implements Session {
   }
 
   private limitReached(): { resetsAt: number; window: string } | undefined {
-    const full = this.rateLimits && limitsOf(this.rateLimits).windows.find((window) => window.used >= 1);
+    const full = [...this.rateLimits.values()].flatMap((limits) => limitsOf(limits).windows).find((window) => window.used >= 1);
     return full && { resetsAt: full.resetsAt, window: full.id };
   }
 
@@ -543,11 +553,14 @@ export class CodexSession implements Session {
         return;
       }
       case "account/rateLimits/updated": {
-        this.rateLimits = params.rateLimits;
-        const limits = limitsOf(params.rateLimits);
+        const update: RateLimits = params.rateLimits;
+        const bucket = update.limitId ?? "codex";
+        const merged = merge(this.rateLimits.get(bucket), update);
+        this.rateLimits.set(bucket, merged);
+        const limits = limitsOf(merged);
         const told = limitsKey(limits);
-        if (told === this.limitsTold) return;
-        this.limitsTold = told;
+        if (told === this.limitsTold.get(bucket)) return;
+        this.limitsTold.set(bucket, told);
         event("limits", { threadId: this.id, ...limits });
         return;
       }
@@ -836,11 +849,16 @@ type Limits = {
 
 /// Codex's rate limits in K-166's shape: fractions used, resets in milliseconds, and each window
 /// named by its length. A five-hour and a seven-day window take Claude's ids, so the app names
-/// them Session and Weekly as it does Claude's.
+/// them Session and Weekly as it does Claude's. A bucket other than the plan's own, one model's
+/// say, keeps its windows apart under its own name.
 export function limitsOf(limits: RateLimits): Limits {
-  const windows = [limits.primary, limits.secondary].flatMap((window) =>
-    window && window.resetsAt !== null ? [{ ...windowName(window.windowDurationMins), used: window.usedPercent / 100, resetsAt: window.resetsAt * 1000 }] : [],
-  );
+  const bucket = limits.limitId && limits.limitId !== "codex" ? limits.limitId : undefined;
+  const windows = [limits.primary, limits.secondary].flatMap((window) => {
+    if (!window || window.resetsAt === null) return [];
+    const name = windowName(window.windowDurationMins);
+    const named = bucket ? { id: `${bucket}:${name.id}`, label: `${limits.limitName ?? bucket} ${name.label}` } : name;
+    return [{ ...named, used: window.usedPercent / 100, resetsAt: window.resetsAt * 1000 }];
+  });
   const nearest = [...windows].sort((a, b) => b.used - a.used)[0];
   return {
     status: limits.rateLimitReachedType ? "rejected" : "allowed",
@@ -851,6 +869,14 @@ export function limitsOf(limits: RateLimits): Limits {
     windows,
     plan: limits.planType,
   };
+}
+
+/// A rolling update over what was known of its bucket: what it leaves null hasn't changed.
+export function merge(known: RateLimits | undefined, update: RateLimits): RateLimits {
+  if (!known) return update;
+  const kept = Object.fromEntries(Object.entries(update).filter(([, value]) => value !== null && value !== undefined));
+  // Reaching a limit is said by naming it, and it is over when the update says nothing of it.
+  return { ...known, ...kept, rateLimitReachedType: update.rateLimitReachedType ?? null };
 }
 
 function windowName(minutes: number | null): { id: string; label: string } {
@@ -905,17 +931,30 @@ export async function listModels(binary: CodexBinary = { command: "codex" }): Pr
 
 let usageRead: { at: number; command: string; usage: Usage } | undefined;
 
-/// The plan's windows as the usage glass draws them, asked of a short-lived app-server, which
-/// reads them from OpenAI without reaching a model. An answer is kept a minute, as Claude's is.
+/// The plan's windows as the usage glass draws them, asked of a short-lived app-server, which reads them from OpenAI without reaching a model. An
+/// answer is kept a minute, as Claude's is, and not past a reset it names.
 export async function usage(binary: CodexBinary = { command: "codex" }): Promise<Usage> {
-  if (usageRead && usageRead.command === binary.command && Date.now() - usageRead.at < 60_000) return usageRead.usage;
-  const read: { rateLimits: RateLimits } = await withServer(binary, (server) => server.request("account/rateLimits/read", {}));
-  const limits = limitsOf(read.rateLimits);
-  const windows = limits.windows.map((window) => ({ id: window.id, label: window.label, used: window.used, resetsAt: new Date(window.resetsAt).toISOString() }));
-  const result = { available: windows.length > 0, plan: limits.plan, windows };
+  if (usageRead && usageRead.command === binary.command && Date.now() - usageRead.at < 60_000 && !passed(usageRead.usage)) return usageRead.usage;
+  const read: RateLimitsRead = await withServer(binary, (server) => server.request("account/rateLimits/read", {}));
+  const result = { ...usageOf(read), at: Date.now() };
   usageRead = { at: Date.now(), command: binary.command, usage: result };
   return result;
 }
+
+type RateLimitsRead = {
+  rateLimits: RateLimits;
+  rateLimitsByLimitId?: Record<string, RateLimits> | null;
+};
+
+/// What `account/rateLimits/read` says, as the app draws it: every bucket's windows, the plan's
+/// own first.
+export function usageOf(read: RateLimitsRead): Usage {
+  const buckets = read.rateLimitsByLimitId ? Object.values(read.rateLimitsByLimitId) : [read.rateLimits];
+  buckets.sort((a, b) => Number((b.limitId ?? "codex") === "codex") - Number((a.limitId ?? "codex") === "codex"));
+  const windows = buckets.flatMap((bucket) => limitsOf(bucket).windows.map((window) => ({ id: window.id, label: window.label, used: window.used, resetsAt: new Date(window.resetsAt).toISOString() })));
+  return { available: windows.length > 0, plan: read.rateLimits.planType, windows };
+}
+
 
 /// A thread as Codex's own list gives it, with what an import needs of it.
 export type CodexThread = { id: string; name: string | null; preview: string; cwd: string; updatedAt: number; originator: string | null; gitInfo: { branch: string | null } | null };

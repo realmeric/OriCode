@@ -690,8 +690,13 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
   const limits = lines.slice(from).find((line) => line.event === "limits");
   assert.deepEqual(limits.windows, [{ id: "30_day", label: "30-day window", used: 0.01, resetsAt: 1792439399000 }]);
 
-  const usage = await request("usage", { provider: "codex" });
-  assert.deepEqual(usage.result, { available: true, plan: "go", windows: [{ id: "30_day", label: "30-day window", used: 0.02, resetsAt: new Date(1792439399000).toISOString() }] });
+  const { at, ...usage } = (await request("usage", { provider: "codex" })).result;
+  assert.ok(Math.abs(at - Date.now()) < 60_000);
+  assert.deepEqual(usage, {
+    available: true,
+    plan: "go",
+    windows: [{ id: "30_day", label: "30-day window", used: 0.02, resetsAt: new Date(1792439399000).toISOString() }],
+  });
   engine.stdin.end();
   await new Promise((done) => engine.on("close", done));
 
