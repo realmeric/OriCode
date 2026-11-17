@@ -2,6 +2,17 @@
 
 Before 0.1.0, the first public release, a version was 0.0.N, where N was the number of its release card on KANBAN.md.
 
+## v0.5.8 "Watching over" - 2026-11-18
+
+- A picture opens in a viewer of its own, sent, waiting in the composer or in the file viewer. Pinch, ⌘+ and ⌘− zoom it, ⌘0 fits it, a double click goes to its real pixels and back, and its menu shows it in Finder or opens it in Preview.
+- The plan's limits match what the agent's CLI reports. A newer reading no longer loses to an older one, the Fable week shows again, and a window whose reset has passed reads empty.
+- A reset your ChatGPT account already holds can be used from Codex's ↺ on the usage card, after a confirmation. Claude Code offers its `/limit-reset` only in its own terminal, so Claude has no button.
+- A thread a limit stopped goes on by itself when the limit starts over, the weekly one and Codex's monthly one too, and at once when a reset is used.
+- Each project on Everything Running folds, as it does in the drawer, and both stay folded together.
+- A subagent a thread runs shows under it on Everything Running while it works, and a click opens its transcript.
+- With two threads side by side, a click on the other one's text moves to it, as a click on empty glass does. Selecting text there still works.
+- A new thread opened from the drawer is laid out even when its last row never appeared, which could leave it blank until a scroll.
+
 ## v0.5.7 "Watching over" - 2026-11-16
 
 - With a project folded in the drawer, ⌘1–9, ⌥⌘1–9 and ⌃Tab go by the threads on show: a folded project's threads take no number, and the ones after them count up from the first row you see.
