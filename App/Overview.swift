@@ -101,23 +101,43 @@ struct Overview: View {
                                 AskQueue(asks: asks)
                             }
                             ForEach(sections) { section in
-                                VStack(alignment: .leading, spacing: 2) {
+                                // The drawer's own folded set, so a project folds in both at once.
+                                let folded = model.foldedProjects.contains(section.project.id)
+                                let asking = folded && section.rows.contains { model.status(of: $0.chat).state == .waiting }
+                                let working = folded && section.rows.contains { model.status(of: $0.chat).live }
+                                let expanded = Binding(get: { !folded }, set: { open in
+                                    if open { model.foldedProjects.remove(section.project.id) } else { model.foldedProjects.insert(section.project.id) }
+                                })
+                                DisclosureGroup(isExpanded: expanded) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        if !section.plan.tasks.isEmpty {
+                                            PlanLines(plan: section.plan, project: section.project, hovered: $hovered)
+                                                .padding(.bottom, section.rows.isEmpty ? 0 : 6)
+                                        }
+                                        ForEach(section.rows) { row in
+                                            OverviewLine(chat: row.chat, hovered: $hovered)
+                                        }
+                                    }
+                                } label: {
+                                    // The whole heading folds it, not only the arrow.
                                     HStack(spacing: 8) {
                                         ProjectBadge(project: section.project)
                                         Text(section.project.isNoFolder ? Project.noFolderName : section.project.name)
                                             .font(Type.secondary)
                                             .foregroundStyle(Ink.secondary)
                                             .lineLimit(1)
+                                        Spacer(minLength: 0)
+                                        // A folded project says whether a thread in it asks or works.
+                                        if asking || working {
+                                            RaysMark(waiting: asking, restingOpacity: 0.28)
+                                                .frame(width: 14, height: 14)
+                                                .accessibilityLabel(asking ? "Waiting on you" : "Working")
+                                        }
                                     }
-                                    .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    if !section.plan.tasks.isEmpty {
-                                        PlanLines(plan: section.plan, project: section.project, hovered: $hovered)
-                                            .padding(.bottom, section.rows.isEmpty ? 0 : 6)
-                                    }
-                                    ForEach(section.rows) { row in
-                                        OverviewLine(chat: row.chat, hovered: $hovered)
-                                    }
+                                    .contentShape(.rect)
+                                    .onTapGesture { withAnimation(Motion.move) { expanded.wrappedValue.toggle() } }
+                                    .accessibilityAddTraits(.isHeader)
                                 }
                             }
                         }
