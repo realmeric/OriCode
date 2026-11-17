@@ -38,6 +38,10 @@ struct TranscriptView: View {
         var reached = TranscriptEnd.Place.end
         /// The row named `end` is laid out, which the lazy stack does only around what's showing.
         var endLaidOut = true
+        /// The row named `end` has been laid out at least once. `endLaidOut` starts true, so a
+        /// transcript whose rows were never made, built while the Mac was busy or its window
+        /// hidden, would read as at its end with the row laid out.
+        var endSeen = false
         /// A hand has had the scroll, or a reveal sent it to an item: where it stands is wanted.
         var touched = false
         /// The way to the end that's under way, which the next one, or a reveal, takes over.
@@ -166,6 +170,7 @@ struct TranscriptView: View {
                     .frame(height: 24)
                     .id(Self.end)
                     .onAppear {
+                        content.endSeen = true
                         place(endLaidOut: true)
                     }
                     .onDisappear {
@@ -283,7 +288,7 @@ struct TranscriptView: View {
             // The row named `end` coming and going while the lazy stack measures what it guessed
             // says nothing: a thread opened again under a tall draft saw it appear, go, and leave
             // the scroll at a foot with nothing laid out, the pill up over blank glass.
-            guard !Task.isCancelled, end.stranded(endLaidOut: content.endLaidOut, touched: content.touched || position.isPositionedByUser) else { return }
+            guard !Task.isCancelled, end.stranded(endLaidOut: content.endLaidOut && content.endSeen, touched: content.touched || position.isPositionedByUser) else { return }
             Self.logger.notice("A transcript of \(conversation.items.count) items came up away from its end, \(Int(content.height)) tall in \(Int(content.visible)); laying it out from the top")
             fromTheTop()
         }

@@ -142,6 +142,45 @@ Chocolate remains tied to the regions where cacao is grown, and that connection 
         }
     }
 
+    /// A short thread sent from home with a picture, opened from the drawer once its turn is
+    /// over: its lines are on screen without a scroll.
+    @Test func aShortThreadWithAPictureOpenedFromHomeShowsItsLines() async throws {
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let short = Chat(project: project, title: "Ok")
+        short.started = true
+        short.position = 1
+        container.mainContext.insert(short)
+        let conversation = model.conversation(for: short)
+        let picture = NSImage(size: NSSize(width: 600, height: 400), flipped: false) { rect in
+            NSColor.systemTeal.setFill()
+            rect.fill()
+            return true
+        }
+        let tiff = try #require(picture.tiffRepresentation)
+        let png = try #require(NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]))
+        conversation.userSent("Reply with one word: ok", previews: [png], id: UUID())
+        conversation.receive(EngineEvent(name: "thinking", threadId: short.id.uuidString, body: ["event": "thinking", "delta": .string("Just one word.")]))
+        conversation.receive(EngineEvent(name: "text", threadId: short.id.uuidString, body: ["event": "text", "delta": .string("ok")]))
+        conversation.receive(EngineEvent(name: "turn.done", threadId: short.id.uuidString, body: ["event": "turn.done", "stopReason": "end_turn"]))
+        model.selectedChatID = nil
+        model.drawerPinned = true
+        let window = stage(width: 1180)
+        defer { window.close() }
+        try await settle(1.5)
+        for time in 1...3 {
+            // Built while no window shows, as a thread opened from home behind another app is.
+            window.orderOut(nil)
+            model.select(short)
+            try await settle(0.6)
+            window.orderFrontRegardless()
+            try await settle(1.5)
+            let seen = try #require(standing(in: window))
+            #expect(seen.text > 0, "open \(time) showed \(seen)")
+            model.selectedChatID = nil
+            try await settle(1.0)
+        }
+    }
+
     private struct Standing: CustomStringConvertible {
         let top: CGFloat, bottom: CGFloat, height: CGFloat
         /// How much of the replies' text shows in the transcript, in points of its height.
