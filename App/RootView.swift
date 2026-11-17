@@ -8,6 +8,7 @@ struct RootView: View {
     // Each half's composer as tall as it stands, so the row under the transcripts can keep to
     // the shorter and a composer growing with its text takes room from its own column only.
     @State private var composerHeights: [AppModel.Half: CGFloat] = [:]
+    @State private var sideClicks = SideClicks()
 
     private func rise(_ side: AppModel.Half) -> CGFloat {
         guard let own = composerHeights[side], let line = composerHeights.values.min() else { return 0 }
@@ -78,9 +79,14 @@ struct RootView: View {
                                 .padding(.bottom, beside == nil ? 0 : rise(thread.id == threads[0]?.id ? .left : .right))
                                 // A click in a column puts the keyboard in its thread. Its title
                                 // capsule is laid over this, so the cross there closes its own side.
+                                // Text keeps the clicks on it from this; the watch takes those.
                                 .simultaneousGesture(TapGesture().onEnded {
                                     if !open { model.select(thread) }
                                 })
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                                    sideClicks.columns[thread.id] = (thread, $0)
+                                }
+                                .onDisappear { sideClicks.columns[thread.id] = nil }
                                 // Gone at once from the column the keyboard comes to, whose top
                                 // fade comes up as it goes, so it's never a ghost over the lines
                                 // under it, and in with a fade over the one it left.
@@ -210,6 +216,8 @@ struct RootView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
+        .onAppear { sideClicks.start(model) }
+        .onDisappear { sideClicks.stop() }
         // SwiftUI keeps the I-beam of selectable text that goes from under a resting pointer, a
         // transcript left for a new thread say, and sets it again on every move until that text
         // comes back. A style of the window's own under everything is what it falls back to.
@@ -667,5 +675,50 @@ struct EmptyStateView: View {
                 .font(Type.body)
                 .foregroundStyle(Ink.secondary)
         }
+    }
+}
+
+/// A click on the text of the thread beside the open one brings the keyboard to it, as one on its
+/// blank glass does. Text takes the mouse down for its selection before the column's tap gesture
+/// can see it, so this reads the click on its way and lets it go on to the text. The thread is
+/// switched once the click is over: a drag that selects keeps the lines still under it.
+@MainActor
+final class SideClicks {
+    var columns: [UUID: (chat: Chat, frame: CGRect)] = [:]
+    private var monitor: Any?
+
+    func start(_ model: AppModel) {
+        stop()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self, weak model] event in
+            MainActor.assumeIsolated {
+                guard let self, let model, model.besideShown != nil,
+                      event.window?.identifier?.rawValue.hasPrefix("main") == true,
+                      let view = event.window?.contentView else { return }
+                // Whatever lies over the columns keeps its clicks, and the window's own gesture puts it away.
+                let over = (model.drawerShown && !model.drawerDocked) || model.reviewShown || model.openFile != nil
+                    || model.openShell != nil || model.commandCenterShown || model.overviewShown || model.headsShown
+                    || model.fileFinderShown || model.modelPickerShown || model.sideShown || model.pullShown
+                guard !over else { return }
+                let local = view.convert(event.locationInWindow, from: nil)
+                let point = view.isFlipped ? local : CGPoint(x: local.x, y: view.bounds.height - local.y)
+                // Under the title line, whose capsule and cross keep their own clicks.
+                guard let hit = self.columns.values.first(where: { $0.frame.contains(point) }),
+                      hit.chat.id != model.selectedChatID,
+                      point.y > hit.frame.minY + TitleBar.height + BesideTitle.height else { return }
+                let id = hit.chat.id
+                // The default mode only: not while text tracks the drag that selects it.
+                RunLoop.main.perform(inModes: [.default]) { [weak self, weak model] in
+                    MainActor.assumeIsolated {
+                        if let chat = self?.columns[id]?.chat { model?.select(chat) }
+                    }
+                }
+            }
+            return event
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
     }
 }
