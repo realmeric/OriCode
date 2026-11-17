@@ -52,11 +52,14 @@ struct FileEditorTests {
         return try #require(bitmap.representation(using: .jpeg, properties: [:]))
     }
 
+    /// A camera's frame comes back at its own pixels, so the viewer can zoom to them.
     @Test func aPictureComesBackAtItsOwnSizeOrTheLargestTheViewerShows() async throws {
         let small = await AppModel.picture(at: try written("sheet01.jpg", try jpeg(width: 64, height: 48)))
         #expect(small?.size == NSSize(width: 64, height: 48))
-        let large = await AppModel.picture(at: try written("large", try jpeg(width: 6400, height: 3200)))
-        #expect(large?.size == NSSize(width: 3200, height: 1600))
+        let photo = await AppModel.picture(at: try written("photo", try jpeg(width: 6000, height: 4000)))
+        #expect(photo?.size == NSSize(width: 6000, height: 4000))
+        let large = await AppModel.picture(at: try written("large", try jpeg(width: 16384, height: 8192)))
+        #expect(large?.size == NSSize(width: 8192, height: 4096))
     }
 
     @Test func whatIsntAPictureIsSaidToBeNone() async throws {

@@ -363,27 +363,41 @@ struct Composer: View {
     private var thumbnails: some View {
         HStack(spacing: 6) {
             ForEach(state.attachments) { attachment in
-                Image(nsImage: attachment.thumbnail)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 44, height: 44)
-                    .clipShape(.rect(cornerRadius: 10, style: .continuous))
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            state.attachments.removeAll { $0.id == attachment.id }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Ink.primary, Color.black.opacity(0.6))
-                        }
-                        .buttonStyle(.plain)
-                        .offset(x: 5, y: -5)
-                        .accessibilityLabel("Remove image")
+                Button { look(at: attachment) } label: {
+                    Image(nsImage: attachment.thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(.rect(cornerRadius: 10, style: .continuous))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open image")
+                .overlay(alignment: .topTrailing) {
+                    Button {
+                        state.attachments.removeAll { $0.id == attachment.id }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Ink.primary, Color.black.opacity(0.6))
                     }
+                    .buttonStyle(.plain)
+                    .offset(x: 5, y: -5)
+                    .accessibilityLabel("Remove image")
+                }
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
+    }
+
+    /// A picture waiting to go, in the viewer a file opens in, from a file written for it as it
+    /// will go out, since it has none of its own.
+    private func look(at attachment: ImageAttachment) {
+        Task {
+            guard let file = await attachment.written() else { return }
+            model.openPicture(file)
+        }
     }
 
     private func accept(_ providers: [NSItemProvider]) -> Bool {

@@ -100,3 +100,25 @@ extension AppModel {
         }
     }
 }
+
+extension ImageAttachment {
+    /// The picture as a file in the temporary folder, written off the main thread the first time
+    /// it's looked at.
+    func written() async -> URL? {
+        let data = data
+        let file = SentPictures.standard.temporary
+            .appending(path: "Waiting", directoryHint: .isDirectory)
+            .appending(path: id.uuidString, directoryHint: .isDirectory)
+            .appending(path: "Image.\(mediaType == "image/png" ? "png" : "jpg")", directoryHint: .notDirectory)
+        return await Task.detached(priority: .userInitiated) {
+            if FileManager.default.fileExists(atPath: file.path) { return file }
+            do {
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: file, options: .atomic)
+                return file
+            } catch {
+                return nil
+            }
+        }.value
+    }
+}

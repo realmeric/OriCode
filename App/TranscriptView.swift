@@ -1,6 +1,5 @@
 import AppKit
 import OSLog
-import QuickLook
 import SwiftUI
 
 struct TranscriptView: View {
@@ -931,10 +930,6 @@ struct ItemView: View {
     var stream: LiveText?
     /// The thread's water so far, on the footer under its latest turn.
     var water: WaterMeter?
-    /// The picture Quick Look shows, and the message's others to step through.
-    @State private var shown: URL?
-    @State private var files: [URL] = []
-
     /// Your messages' pictures, decoded once by the message rather than on every render.
     private static let decoded = NSCache<NSUUID, NSArray>()
 
@@ -946,16 +941,26 @@ struct ItemView: View {
         return pictures
     }
 
-    /// A picture in full, from the file its send kept. The disk is read off the main thread, and
-    /// only for a click.
+    /// A picture in full, from the file its send kept, in the viewer a file opens in, where it
+    /// zooms. The disk is read off the main thread, and only for a click.
     private func open(_ index: Int, of images: [Data]) {
         let message = item.id
         let kept = thread
         Task {
             let urls = await SentPictures.standard.opened(thread: kept, message: message, previews: images)
             guard urls.indices.contains(index), let url = urls[index] else { return }
-            files = urls.compactMap { $0 }
-            shown = url
+            model.openPicture(url)
+        }
+    }
+
+    /// The file a picture was kept in, for its context menu, found as the click finds it.
+    private func act(_ index: Int, of images: [Data], _ run: @escaping @MainActor (URL) -> Void) {
+        let message = item.id
+        let kept = thread
+        Task {
+            let urls = await SentPictures.standard.opened(thread: kept, message: message, previews: images)
+            guard urls.indices.contains(index), let url = urls[index] else { return }
+            run(url)
         }
     }
 
@@ -977,9 +982,12 @@ struct ItemView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open image")
                             .help("Open")
+                            .contextMenu {
+                                Button("Show in Finder") { act(index, of: images, PictureView.reveal) }
+                                Button(PictureView.openTitle(.png)) { act(index, of: images, PictureView.open) }
+                            }
                         }
                     }
-                    .quickLookPreview($shown, in: files)
                 }
                 MessageText(text: text, waiting: waiting)
                 if waiting {

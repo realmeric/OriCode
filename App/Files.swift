@@ -19,6 +19,8 @@ struct OpenFile: Identifiable {
     var code: AttributedString?
     /// What's up in place of the lines when the file is a picture.
     var picture: NSImage?
+    /// The picture's file, which Finder shows and its app opens.
+    var file: URL?
     var lines = 0
     var truncated = false
     var problem: String?
@@ -65,9 +67,13 @@ extension AppModel {
             do {
                 let reply = try await engine.request("files.read", ["cwd": .string(cwd), "path": .string(path)])
                 if reply["binary"]?.bool == true {
-                    let picture = await Self.picture(at: reply["full"]?.string ?? path)
+                    let full = reply["full"]?.string ?? path
+                    let picture = await Self.picture(at: full)
                     guard openFile?.id == id else { return }
-                    if let picture { openFile?.picture = picture } else { openFile?.problem = "That file isn't text or a picture." }
+                    if let picture {
+                        openFile?.picture = picture
+                        openFile?.file = URL(filePath: full)
+                    } else { openFile?.problem = "That file isn't text or a picture." }
                     return
                 }
                 let content = reply["content"]?.string ?? ""
@@ -84,8 +90,25 @@ extension AppModel {
         }
     }
 
-    /// The picture a file holds, turned as it was taken and no larger than the viewer can show,
-    /// decoded away from the main thread. Nil for a file that isn't one.
+    /// A picture from outside the project, a sent one, in the same viewer, named from ~.
+    func openPicture(_ file: URL) {
+        guard settleFile() else { return }
+        if reviewShown { closeReview() }
+        let shown = OpenFile(path: (file.path as NSString).abbreviatingWithTildeInPath, file: file)
+        withAnimation(Motion.move) {
+            fileFinderShown = false
+            openFile = shown
+        }
+        Task {
+            let picture = await Self.picture(at: file.path)
+            guard openFile?.id == shown.id else { return }
+            if let picture { openFile?.picture = picture } else { openFile?.problem = "That picture can't be read." }
+        }
+    }
+
+    /// The picture a file holds, turned as it was taken, at its own pixels up to a size that
+    /// still fits in memory, so it can be zoomed to them, decoded away from the main thread. Nil
+    /// for a file that isn't one.
     nonisolated static func picture(at path: String) async -> NSImage? {
         await Task.detached(priority: .userInitiated) {
             let options: [CFString: Any] = [
@@ -100,8 +123,9 @@ extension AppModel {
         }.value
     }
 
-    /// The panel's greatest height on a large display, in pixels.
-    private nonisolated static let pictureEdge = 3200
+    /// The longest edge decoded, in pixels: a camera's full frame, and a quarter of a gigabyte
+    /// at most.
+    private nonisolated static let pictureEdge = 8192
 
     func closeFile() {
         guard settleFile() else { return }
@@ -329,11 +353,15 @@ struct FileFinder: View {
 struct FileViewer: View {
     @Environment(AppModel.self) private var model
     let file: OpenFile
+    /// The viewer has finished growing in. A view of AppKit's takes no part in SwiftUI's scale
+    /// and fade, so until then a picture is drawn as a plain image, fitted the same way.
+    @State private var settled: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(file.path)
+                // A sent picture is kept in a folder named for ids, so only its name says anything.
+                Text(file.cwd.isEmpty ? (file.path as NSString).lastPathComponent : file.path)
                     .font(Type.mono)
                     .foregroundStyle(Ink.primary)
                     .lineLimit(1)
@@ -353,6 +381,15 @@ struct FileViewer: View {
                 } else if file.code != nil, file.stamp != nil, !file.truncated {
                     Button("Edit") { model.editFile() }
                         .buttonStyle(.action(small: true))
+                } else if let url = file.file, file.picture != nil {
+                    Button { PictureView.reveal(url) } label: { Image(systemName: "folder") }
+                        .buttonStyle(.action(small: true))
+                        .help("Show in Finder")
+                        .accessibilityLabel("Show in Finder")
+                    Button { PictureView.open(url) } label: { Image(systemName: "arrow.up.forward.app") }
+                        .buttonStyle(.action(small: true))
+                        .help(PictureView.openTitle(url))
+                        .accessibilityLabel(PictureView.openTitle(url))
                 }
                 Button("Close") { model.closeFile() }
                     .buttonStyle(.action(small: true))
@@ -370,14 +407,24 @@ struct FileViewer: View {
             } else if let code = file.code {
                 FileCode(code: code, lines: file.lines, line: file.line)
             } else if let picture = file.picture {
-                // Fitted to the panel, and never larger than its pixels.
-                Image(nsImage: picture)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: picture.size.width, maxHeight: picture.size.height)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding([.horizontal, .bottom], 16)
-                    .accessibilityLabel("Picture")
+                Group {
+                    if settled == file.id {
+                        PictureView(picture: picture, file: file.file)
+                    } else {
+                        // Never larger than a pixel to a point, as the zoomable view fits it.
+                        Image(nsImage: picture)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: picture.size.width, maxHeight: picture.size.height)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .padding([.horizontal, .bottom], 16)
+                .accessibilityLabel("Picture")
+                .task(id: file.id) {
+                    try? await Task.sleep(for: .milliseconds(320))
+                    settled = file.id
+                }
             } else {
                 ProgressView().controlSize(.small).padding(16)
             }
