@@ -250,7 +250,11 @@ private struct OverviewLine: View {
                 }
                 .padding(.leading, 24)
                 .padding(.bottom, 7)
+                .contentShape(.rect)
+                // Its own transcript, read as it works and kept with its thread.
+                .onTapGesture { model.openFromOverview(agent, beside: NSEvent.modifierFlags.contains(.option)) }
                 .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
                 .accessibilityValue("Working")
             }
         }
