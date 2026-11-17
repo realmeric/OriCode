@@ -56,11 +56,13 @@ test("Codex's rolling update keeps what it leaves out, and a bucket of its own s
   assert.deepEqual(other.windows.map((window) => [window.id, window.label]), [["codex_other:seven_day", "GPT Large 7-day window"]]);
 });
 
-test("Codex's read lists every bucket, the plan's first", () => {
+test("Codex's read lists every bucket, the plan's first, and only the resets still to use", () => {
   const bucket = (limitId: string, usedPercent: number) => ({ limitId, primary: { usedPercent, windowDurationMins: 43200, resetsAt: 1796751044 }, secondary: null, planType: "go", rateLimitReachedType: null });
   const usage = codexUsage({
     rateLimits: bucket("codex", 100),
     rateLimitsByLimitId: { other: bucket("other", 5), codex: bucket("codex", 100) },
+    rateLimitResetCredits: { availableCount: 1, credits: [{ id: "r1", status: "available", title: "Full reset (Monthly)", expiresAt: 1797105122 }, { id: "r0", status: "redeemed", title: null, expiresAt: null }] },
   });
   assert.deepEqual(usage.windows.map((window) => [window.id, window.used]), [["30_day", 1], ["other:30_day", 0.05]]);
+  assert.deepEqual(usage.resets, [{ id: "r1", title: "Full reset (Monthly)", expiresAt: new Date(1797105122000).toISOString() }]);
 });

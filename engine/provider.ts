@@ -195,6 +195,9 @@ export type Provider = {
   /// Commands for a folder when no thread there has a CLI running.
   folderCommands?(cli: string, cwd: string): Promise<Command[]>;
   usage?(cli: string): Promise<Usage>;
+  /// Spends a reset the account was granted, one `usage` listed, through the agent's own CLI, and
+  /// says how it went: "reset", "nothingToReset", "noCredit" or "alreadyRedeemed".
+  useReset?(cli: string, id: string, attempt: string): Promise<string>;
   /// A question asked beside a thread: answered from a copy of its session, which is never
   /// saved, so neither the question nor the answer joins the thread. `tell` gets the answer as
   /// it streams, and `stop` ends it early.

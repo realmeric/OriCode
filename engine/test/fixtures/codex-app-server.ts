@@ -227,9 +227,17 @@ async function handle(message: any): Promise<void> {
         id,
         result: {
           rateLimits: { limitId: "codex", primary: { usedPercent: 2, windowDurationMins: 43200, resetsAt: 1792439399 }, secondary: null, planType: "go", rateLimitReachedType: null },
+          rateLimitResetCredits: {
+            availableCount: 1,
+            credits: [
+              { id: "credit-1", resetType: "codexRateLimits", status: "available", grantedAt: 1792000000, expiresAt: 1797105122, title: "Full reset (Monthly)", description: null },
+              { id: "credit-0", resetType: "codexRateLimits", status: "redeemed", grantedAt: 1791000000, expiresAt: null, title: null, description: null },
+            ],
+          },
         },
       });
-
+    case "account/rateLimitResetCredit/consume":
+      return send({ id, result: { outcome: params.creditId === "credit-1" && params.idempotencyKey ? "reset" : "noCredit" } });
     case "model/list":
       return send({ id, result: params.cursor ? { data: [models[1]], nextCursor: null } : { data: [models[0]], nextCursor: "page-2" } });
     case "thread/list":

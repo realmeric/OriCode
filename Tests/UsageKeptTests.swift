@@ -116,4 +116,15 @@ struct UsageKeptTests {
         #expect(model.usage?.headline?.resetsAt == nil)
         #expect(model.usages["claude"]?.headline?.used == 0.9)
     }
+
+    @Test func aResetTheCardUsedIsGoneFromItAndTheOthersStay() {
+        let model = launched()
+        model.takeUsage([
+            "available": true, "plan": "go", "windows": [["id": "30_day", "label": "30-day window", "used": .number(1)]],
+            "resets": [["id": "r1", "title": "Full reset (Monthly)", "expiresAt": "2026-12-18T10:58:42Z"], ["id": "r2", "title": .null, "expiresAt": .null]],
+        ], for: "codex")
+        #expect(model.usages["codex"]?.resets?.map(\.title) == ["Full reset (Monthly)", nil])
+        model.usages["codex"]?.spend("r1")
+        #expect(model.usages["codex"]?.resets?.map(\.id) == ["r2"])
+    }
 }

@@ -76,6 +76,8 @@ type RateLimits = {
   rateLimitReachedType: string | null;
 };
 
+type ResetCredit = { id: string; status: string; title: string | null; expiresAt: number | null };
+
 type TurnError = { message: string; codexErrorInfo: unknown; additionalDetails: string | null };
 
 /// A permission ask carries its call's kind and its choices, which the thread's mode may answer.
@@ -931,7 +933,8 @@ export async function listModels(binary: CodexBinary = { command: "codex" }): Pr
 
 let usageRead: { at: number; command: string; usage: Usage } | undefined;
 
-/// The plan's windows as the usage glass draws them, asked of a short-lived app-server, which reads them from OpenAI without reaching a model. An
+/// The plan's windows as the usage glass draws them, and the resets the account was granted,
+/// asked of a short-lived app-server, which reads them from OpenAI without reaching a model. An
 /// answer is kept a minute, as Claude's is, and not past a reset it names.
 export async function usage(binary: CodexBinary = { command: "codex" }): Promise<Usage> {
   if (usageRead && usageRead.command === binary.command && Date.now() - usageRead.at < 60_000 && !passed(usageRead.usage)) return usageRead.usage;
@@ -944,17 +947,28 @@ export async function usage(binary: CodexBinary = { command: "codex" }): Promise
 type RateLimitsRead = {
   rateLimits: RateLimits;
   rateLimitsByLimitId?: Record<string, RateLimits> | null;
+  rateLimitResetCredits?: { availableCount: number; credits: ResetCredit[] | null } | null;
 };
 
 /// What `account/rateLimits/read` says, as the app draws it: every bucket's windows, the plan's
-/// own first.
+/// own first, and each reset that can still be used.
 export function usageOf(read: RateLimitsRead): Usage {
   const buckets = read.rateLimitsByLimitId ? Object.values(read.rateLimitsByLimitId) : [read.rateLimits];
   buckets.sort((a, b) => Number((b.limitId ?? "codex") === "codex") - Number((a.limitId ?? "codex") === "codex"));
   const windows = buckets.flatMap((bucket) => limitsOf(bucket).windows.map((window) => ({ id: window.id, label: window.label, used: window.used, resetsAt: new Date(window.resetsAt).toISOString() })));
-  return { available: windows.length > 0, plan: read.rateLimits.planType, windows };
+  const resets = (read.rateLimitResetCredits?.credits ?? [])
+    .filter((credit) => credit.status === "available")
+    .map((credit) => ({ id: credit.id, title: credit.title, expiresAt: credit.expiresAt === null ? null : new Date(credit.expiresAt * 1000).toISOString() }));
+  return { available: windows.length > 0, plan: read.rateLimits.planType, windows, resets };
 }
 
+/// Spends one of the account's resets on its limits, through Codex's own app-server, and forgets
+/// the answer kept, which the reset has made old. A retry of the same attempt passes the same key.
+export async function useReset(binary: CodexBinary, creditId: string, attempt: string): Promise<string> {
+  const answer: { outcome: string } = await withServer(binary, (server) => server.request("account/rateLimitResetCredit/consume", { creditId, idempotencyKey: attempt }));
+  usageRead = undefined;
+  return answer.outcome;
+}
 
 /// A thread as Codex's own list gives it, with what an import needs of it.
 export type CodexThread = { id: string; name: string | null; preview: string; cwd: string; updatedAt: number; originator: string | null; gitInfo: { branch: string | null } | null };

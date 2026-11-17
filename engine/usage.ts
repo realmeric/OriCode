@@ -4,9 +4,11 @@ import { within } from "./child.ts";
 import { cleanEnvironment } from "./claude.ts";
 
 export type UsageWindow = { id: string; label: string; used: number | null; resetsAt: string | null };
+/// A reset the account was granted, which the agent's own CLI can spend on its limits.
+export type UsageReset = { id: string; title: string | null; expiresAt: string | null };
 /// `at` is when the numbers were read from the plan, in milliseconds, which for Claude Code can
 /// be minutes before the ask: its CLI keeps the endpoint's answer and gives it again.
-export type Usage = { available: boolean; plan: string | null; windows: UsageWindow[]; at?: number };
+export type Usage = { available: boolean; plan: string | null; windows: UsageWindow[]; at?: number; resets?: UsageReset[] };
 
 type Limit = { utilization: number | null; resets_at: string | null } | null | undefined;
 /// One of the server's usage rows, as /usage draws them.

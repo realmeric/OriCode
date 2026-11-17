@@ -270,6 +270,27 @@ struct RootView: View {
         } message: { project in
             Text(model.deletionNote(of: project))
         }
+        .confirmationDialog(
+            "Use a reset on \(model.agent(for: model.usingReset?.thread).agent)'s limits?",
+            isPresented: Binding(get: { model.usingReset != nil }, set: { if !$0 { model.usingReset = nil } }),
+            presenting: model.usingReset
+        ) { asked in
+            let resets = model.usage(for: asked.thread)?.resets ?? []
+            ForEach(resets) { reset in
+                Button(resets.count == 1 ? "Use It" : [reset.title ?? "Reset", reset.expiresAt.map { "until \(Limit.time($0))" }].compactMap { $0 }.joined(separator: " · ")) {
+                    model.useReset(reset, for: asked.thread)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { asked in
+            let resets = model.usage(for: asked.thread)?.resets ?? []
+            if resets.count == 1, let reset = resets.first {
+                Text([reset.title ?? "One reset", reset.expiresAt.map { "good until \(Limit.time($0))" }].compactMap { $0 }.joined(separator: ", ") + ".")
+            }
+        }
+        .alert(model.resetRefused ?? "", isPresented: Binding(get: { model.resetRefused != nil }, set: { if !$0 { model.resetRefused = nil } })) {
+            Button("OK") {}
+        }
         .sheet(isPresented: Binding(get: { model.showingShortcuts }, set: { model.showingShortcuts = $0 })) {
             ShortcutsSheet()
         }

@@ -638,6 +638,12 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return agent.usage(await cli(agent));
   },
 
+  async "usage.reset"({ provider: id, reset, attempt }: { provider?: string; reset: string; attempt: string }) {
+    const agent = provider(id);
+    if (!agent.useReset) throw new Error(`${agent.agent} has no resets to use.`);
+    return { outcome: await agent.useReset(await cli(agent), reset, attempt) };
+  },
+
   async commands({ threadId, cwd, provider: id }: { threadId?: string; cwd: string; provider?: string }) {
     const live = threadId ? await sessions.get(threadId)?.commands().catch(() => undefined) : undefined;
     const agent = provider(id);

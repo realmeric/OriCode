@@ -13,9 +13,18 @@ struct PlanUsage: Codable, Sendable {
         var at: Date?
     }
 
+    /// A reset the account was granted, which the agent's own CLI spends on its limits.
+    struct Reset: Identifiable, Hashable, Codable, Sendable {
+        let id: String
+        let title: String?
+        let expiresAt: Date?
+    }
+
     let available: Bool
     let plan: String?
     private(set) var windows: [Window]
+    /// Nil in one kept by an earlier version, which is none.
+    private(set) var resets: [Reset]?
 
     /// Whether it tells anything: a login the plan's limits don't apply to is an answer, a plan
     /// that came back with no window at all isn't.
@@ -42,6 +51,9 @@ struct PlanUsage: Codable, Sendable {
                 used: window["used"]?.double,
                 resetsAt: window["resetsAt"]?.string.flatMap(Self.date),
                 at: at)
+        }
+        resets = (json["resets"]?.array ?? []).compactMap { reset in
+            reset["id"]?.string.map { Reset(id: $0, title: reset["title"]?.string, expiresAt: reset["expiresAt"]?.string.flatMap(Self.date)) }
         }
     }
 
@@ -91,6 +103,11 @@ struct PlanUsage: Codable, Sendable {
         } else {
             windows.append(window)
         }
+    }
+
+    /// The resets left once one is used.
+    mutating func spend(_ reset: String) {
+        resets?.removeAll { $0.id == reset }
     }
 
     private static func date(_ text: String) -> Date? {
@@ -145,6 +162,11 @@ enum ResetCopy {
         let hours = minutes / 60, rest = minutes % 60
         return rest == 0 ? "\(hours) hr" : "\(hours) hr \(rest) min"
     }
+}
+
+/// The usage card a reset was asked for from: its thread, the next one's agent when nil.
+struct UsingReset {
+    let thread: Chat?
 }
 
 extension AppModel {
@@ -222,6 +244,31 @@ extension AppModel {
         usages[agent] = taken
         usagesAt[agent] = .now
         keepUsages()
+    }
+
+    /// Spends one of the account's resets through the agent's own CLI, then asks for the limits
+    /// again, which it has made old. A reset that went through is gone from the card at once.
+    func useReset(_ reset: PlanUsage.Reset, for thread: Chat?) {
+        let agent = providerID(for: thread)
+        let attempt = UUID().uuidString
+        Task {
+            let reply = try? await engine.request("usage.reset", .object(["reset": .string(reset.id), "attempt": .string(attempt)].naming(agent)))
+            let outcome = reply?["outcome"]?.string
+            switch outcome {
+            case "reset", "alreadyRedeemed":
+                usages[agent]?.spend(reset.id)
+            case "nothingToReset":
+                resetRefused = "Nothing to reset yet."
+            case "noCredit":
+                usages[agent]?.spend(reset.id)
+                resetRefused = "That reset has been used."
+            default:
+                resetRefused = "Couldn't use the reset."
+            }
+            usagesAsked[agent] = nil
+            keepUsages()
+            refreshUsage(for: thread)
+        }
     }
 
     static let usageKey = "planUsages"

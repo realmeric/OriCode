@@ -334,6 +334,10 @@ final class AppModel {
     /// The agents whose usage is being asked for now.
     var loadingUsage: Set<String> = []
     var usageLoading: Bool { !loadingUsage.isEmpty }
+    /// The usage card whose agent's resets were asked to be used, which the window confirms.
+    var usingReset: UsingReset?
+    /// What came of using one when it wasn't a reset, for the window to say.
+    var resetRefused: String?
     /// Where those readings are kept across a quit, so the ring answers on the first hover of a
     /// launch with what was last known; nil in a test that doesn't look at it.
     @ObservationIgnored let usageKept: UserDefaults?

@@ -1,5 +1,5 @@
 import { agent, binary, isOn, versionOf } from "./agents.ts";
-import { availability, CodexSession, listModels, threadEvents, threadsIn, usage } from "./codex.ts";
+import { availability, CodexSession, listModels, threadEvents, threadsIn, usage, useReset } from "./codex.ts";
 import type { Model } from "./models.ts";
 import { client, type Availability, type Provider } from "./provider.ts";
 import { perSource, type Found, type Source } from "./sessions.ts";
@@ -64,6 +64,7 @@ export const codex: Provider = {
   listModels: models,
   session: (threadId, cli) => new CodexSession(threadId, { command: cli }),
   usage: (cli) => usage({ command: cli }),
+  useReset: (cli, id, attempt) => useReset({ command: cli }, id, attempt),
 };
 
 /// The user's Codex threads, from its CLI's and its app's alike, while Codex is turned on in

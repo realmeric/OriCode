@@ -696,7 +696,10 @@ test("a Codex thread through the engine: checked ready, its models listed, a tur
     available: true,
     plan: "go",
     windows: [{ id: "30_day", label: "30-day window", used: 0.02, resetsAt: new Date(1792439399000).toISOString() }],
+    resets: [{ id: "credit-1", title: "Full reset (Monthly)", expiresAt: new Date(1797105122000).toISOString() }],
   });
+  // A reset is spent through Codex's own app-server, the attempt's key passed along.
+  assert.deepEqual((await request("usage.reset", { provider: "codex", reset: "credit-1", attempt: "a-1" })).result, { outcome: "reset" });
   engine.stdin.end();
   await new Promise((done) => engine.on("close", done));
 

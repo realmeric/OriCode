@@ -261,6 +261,20 @@ struct UsageCard: View {
                 Text("\(ResetCopy.span(Date.now.timeIntervalSince(at))) ago")
                     .font(Type.secondary).foregroundStyle(Ink.faint).lineLimit(1)
             }
+            if let resets = model.usage(for: chat)?.resets, !resets.isEmpty {
+                // The window asks which and confirms, since the card goes when the pointer leaves it.
+                Button { model.usingReset = UsingReset(thread: chat) } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.counterclockwise")
+                        if resets.count > 1 { Text("\(resets.count)").monospacedDigit() }
+                    }
+                }
+                .buttonStyle(.borderless)
+                .font(Type.secondary)
+                .foregroundStyle(Ink.secondary)
+                .help(resets.count == 1 ? "Use a reset" : "Use one of \(resets.count) resets")
+                .accessibilityLabel(resets.count == 1 ? "Use a reset" : "Use one of \(resets.count) resets")
+            }
         }
         if let usage = model.usage(for: chat), usage.says {
             if usage.available {
