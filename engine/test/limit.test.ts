@@ -1,7 +1,7 @@
 // When a turn the plan's limits refused can go on, from the CLI's last report of them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { limitReached, Thread } from "../thread.ts";
+import { limitReached, Thread, wakeHold } from "../thread.ts";
 
 test("a reached session limit says when it resets, in milliseconds", () => {
   assert.deepEqual(limitReached({ status: "rejected", resetsAt: 1790281800, rateLimitType: "five_hour" }), {
@@ -163,4 +163,86 @@ test("Claude Code's notices come to the thread as notes, and its quieter lines d
       ["note", "Stop hook prevented continuation"],
     ],
   );
+});
+
+/// What a thread tells the app of the messages its CLI sends between turns as well as in them.
+function heard(thread: any, messages: object[]): Record<string, any>[] {
+  const lines: string[] = [];
+  const write = process.stdout.write;
+  process.stdout.write = ((chunk: string) => (lines.push(chunk), true)) as typeof process.stdout.write;
+  try {
+    for (const message of messages) thread.handle({ session_id: "s", uuid: "u", ...message });
+  } finally {
+    process.stdout.write = write;
+  }
+  return lines.map((line) => JSON.parse(line)).filter((event) => ["limited", "error", "turn.started", "turn.done"].includes(event.event));
+}
+
+/// A thread whose turn has ended with its CLI still up, a background subagent out.
+function idleThread(): any {
+  const thread: any = new Thread("t", "/nowhere/claude");
+  thread.sessionId = "s";
+  thread.query = { close() {} };
+  thread.idleSince = Date.now() - 3_600_000;
+  return thread;
+}
+
+const inAnHour = Math.floor(Date.now() / 1000) + 3600;
+// What the CLI sent when a background subagent of a thread met the session limit on 2026-11-18:
+// the subagent's refusal, its end, and the turn that end woke, refused as well.
+const subagentRefusal = { ...refusal, parent_tool_use_id: "toolu_agent", message: { ...refusal.message, id: "sub" } };
+const sessionLimit = { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: inAnHour, rateLimitType: "five_hour" } };
+const subagentFailed = {
+  type: "system",
+  subtype: "task_notification",
+  task_id: "a1",
+  tool_use_id: "toolu_agent",
+  status: "failed",
+  output_file: "",
+  summary: 'Agent "Redesign the site" failed: Agent terminated early due to an API error: You\'ve hit your 5-hour limit · resets 10am (Europe/Istanbul)',
+};
+
+test("a subagent stopped by the session limit keeps its thread's CLI up for the turn it wakes, which waits for the reset", () => {
+  const thread = idleThread();
+  heard(thread, [subagentRefusal, sessionLimit, subagentFailed]);
+  // Nothing of the woken turn has come yet, and closing the CLI now would lose it.
+  assert.equal(thread.releaseIfIdle(0), false);
+  const woken = heard(thread, [sessionLimit, { ...refusal, message: { ...refusal.message, id: "woke" } }, result]);
+  assert.deepEqual(woken.map((event) => [event.event, event.resetsAt, event.window]), [
+    ["turn.started", undefined, undefined],
+    ["limited", inAnHour * 1000, "five_hour"],
+    ["turn.done", undefined, undefined],
+  ]);
+  assert.equal(thread.releaseIfIdle(0), true);
+});
+
+test("a task's end that wakes no turn holds the CLI only so long", () => {
+  const thread = idleThread();
+  heard(thread, [subagentFailed]);
+  assert.equal(thread.releaseIfIdle(0), false);
+  assert.equal(thread.releaseIfIdle(0, Date.now() + wakeHold), true);
+});
+
+test("a subagent stopped by a limit its thread's turn went on past makes the thread wait for that limit", () => {
+  const thread = new Thread("t", "/nowhere/claude");
+  const opus = { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: inAnHour, rateLimitType: "seven_day_opus" } };
+  const allowed = { type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: inAnHour + 600, rateLimitType: "five_hour" } };
+  const reply = { ...refusal, error: undefined, message: { ...refusal.message, id: "m2", content: [{ type: "text", text: "The agent stopped at its limit." }] } };
+  const done = { ...result, is_error: false, stop_reason: "end_turn" };
+  const first = eventsFor([subagentRefusal, opus, allowed, reply, done], thread).filter((event) => event.event !== "limits");
+  assert.deepEqual(first.map((event) => [event.event, event.resetsAt, event.window, event.subagent]), [
+    ["limited", inAnHour * 1000, "seven_day_opus", true],
+    ["turn.done", undefined, undefined, undefined],
+  ]);
+  // The turn the reset sends, or a reset used, goes on with nothing left to wait for.
+  const next = eventsFor([allowed, { ...reply, message: { ...reply.message, id: "m3" } }, done], thread).filter((event) => event.event !== "limits");
+  assert.deepEqual(next.map((event) => event.event), ["turn.done"]);
+});
+
+test("a subagent and its thread refused by the same limit wait for it once", () => {
+  const events = eventsFor([subagentRefusal, sessionLimit, refusal, result]).filter((event) => event.event !== "limits");
+  assert.deepEqual(events.map((event) => [event.event, event.subagent]), [
+    ["limited", undefined],
+    ["turn.done", undefined],
+  ]);
 });

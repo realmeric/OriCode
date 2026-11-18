@@ -163,6 +163,13 @@ export class Thread implements Session {
   /// The plan's limits as the CLI last reported them, and whether this turn was refused by one.
   private limit: SDKRateLimitInfo | undefined;
   private refused = false;
+  /// A subagent's request the limits refused, and when that limit resets as the CLI reported it:
+  /// said as the parent's own limit when its turn ends, unless that turn was refused too.
+  private subagentRefused = false;
+  private subagentLimit: { resetsAt: number; window: string | null } | undefined;
+  /// When a task told its end while no turn ran. The CLI starts a turn for it, but nothing of that
+  /// turn arrives before the model's first words, up to a minute later, and the CLI is kept up till then.
+  private wakeDue: number | undefined;
   /// The limits last told to the app, so a report that repeats them isn't sent again.
   private limitsTold = "";
 
@@ -414,15 +421,18 @@ export class Thread implements Session {
   /// is out until the CLI says how it ended, not only while the heads list it: they let one go as
   /// soon as the CLI's background list leaves it out, and closing the CLI would end it.
   releaseIfIdle(idleMs: number, now = Date.now()): boolean {
-    if (!this.query || this.running || this.idleSince === undefined || this.busy()) return false;
+    if (!this.query || this.running || this.idleSince === undefined || this.busy(now)) return false;
     if (now - this.idleSince < idleMs) return false;
     this.close();
     return true;
   }
 
   /// Whether anything is still out between turns: a message waiting, a subagent, a workflow or a
-  /// background command the CLI hasn't said the end of, or an ask of the user.
-  private busy(): boolean {
+  /// background command the CLI hasn't said the end of, an ask of the user, or the turn a task's
+  /// end is about to wake. Closing the CLI then would lose that turn: a subagent's limit, say, which
+  /// the turn it wakes is refused by too and has to wait out.
+  private busy(now = Date.now()): boolean {
+    if (this.wakeDue !== undefined && now - this.wakeDue < wakeHold) return true;
     if (this.waiting.size > 0 || this.heads.size > 0 || this.backgroundCalls.size > 0) return true;
     if ([...this.workflows.values()].some((workflow) => !workflow.ended)) return true;
     return [...asks.values()].some((ask) => ask.threadId === this.id);
@@ -656,6 +666,7 @@ export class Thread implements Session {
         break;
       }
       case "task_notification":
+        if (!this.running) this.wakeDue = Date.now();
         // A workflow's end is its line in the transcript, which the turn it wakes needs no word for,
         // nor for the commands its agents ran before it.
         if (!this.running) this.ended = this.workflows.has(message.task_id) ? undefined : (this.endedWhat(message.task_id, message.status, message.summary) ?? this.ended);
@@ -792,6 +803,7 @@ export class Thread implements Session {
   /// between the two turns and reaches the second.
   private begin(stopped = false): void {
     this.running = true;
+    this.wakeDue = undefined;
     this.ended = undefined;
     this.started = false;
     this.interrupted = stopped;
@@ -917,6 +929,10 @@ export class Thread implements Session {
       }
       case "assistant": {
         if (message.parent_tool_use_id) {
+          if (message.error === "rate_limit") {
+            this.subagentRefused = true;
+            this.subagentLimit = limitReached(this.limit) ?? this.subagentLimit;
+          }
           this.heads.frame(message.parent_tool_use_id, message.message.content);
           // A subagent's commands, edits and subagents go to the app under the call that started
           // it, where the review reads what it ran and what it edited. Its words stay its own,
@@ -988,6 +1004,7 @@ export class Thread implements Session {
         // Claude's plan's limits, which a model API's key has nothing to do with.
         if (this.elsewhere) return;
         this.limit = message.rate_limit_info;
+        if (this.subagentRefused) this.subagentLimit = limitReached(message.rate_limit_info) ?? this.subagentLimit;
         const limits = limitsOf(message.rate_limit_info);
         const told = limitsKey(limits);
         if (told === this.limitsTold) return;
@@ -1056,7 +1073,13 @@ export class Thread implements Session {
           if (limited) event("limited", { threadId: this.id, ...limited });
           else if (this.limit?.status === "rejected") this.fail("Stopped at one of Claude's usage limits.");
           else this.fail(errorText("rate_limit", this.elsewhere?.agent));
+        } else if (this.subagentLimit && this.subagentLimit.resetsAt > Date.now()) {
+          // The turn went on past its subagent, which is left stopped at the limit: the thread
+          // waits for it as for its own, and its model takes the subagent up again then.
+          event("limited", { threadId: this.id, ...this.subagentLimit, subagent: true });
         }
+        this.subagentRefused = false;
+        this.subagentLimit = undefined;
         this.idleSince = Date.now();
         this.streamed.clear();
         this.tellFast(message);
@@ -1117,6 +1140,9 @@ export class Thread implements Session {
     }
   }
 }
+
+/// How long a task's end keeps the CLI up for the turn it wakes, should that turn never come.
+export const wakeHold = 600_000;
 
 /// The tools that start a subagent, whose own calls follow with `parent`.
 const subagentTools = new Set(["Task", "Agent"]);

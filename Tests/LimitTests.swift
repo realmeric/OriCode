@@ -147,6 +147,37 @@ struct LimitTests {
         #expect(conversation.turnLimit == nil)
     }
 
+    /// The turn a background subagent's end woke, refused by the limit that stopped the subagent,
+    /// as the engine tells it: the thread waits, and goes on at the reset or once a reset is used.
+    @Test func aSubagentsLimitMakesItsThreadWaitAndGoOn() {
+        let model = AppModel(container: container)
+        model.engineState = .ready
+        model.providers = [.claude]
+        defer { model.resumeTask?.cancel() }
+        let conversation = model.conversation(for: chat)
+        let woke = { (body: JSON) in model.route(EngineEvent(name: body["event"]?.string ?? "", threadId: chat.id.uuidString, body: body)) }
+        let reset = Date.now.addingTimeInterval(3600).rounded
+        woke(["event": "turn.started", "sessionId": "s", "woke": "Redesign the site failed"])
+        woke(["event": "limited", "resetsAt": .number(reset.timeIntervalSince1970 * 1000), "window": "five_hour"])
+        woke(["event": "turn.done", "stopReason": "stop_sequence", "durationMs": 10, "costUSD": 0])
+        #expect(chat.resumeAt == reset)
+        #expect(conversation.turnLimit?.window == "five_hour")
+        model.goOnEarly("claude", used: true)
+        #expect(chat.resumeAt == nil)
+        let sent = { conversation.items.filter { if case .user(_, let text, _, _) = $0 { text == AppModel.limitLine("five_hour") } else { false } }.count }
+        #expect(sent() == 1)
+        // A subagent stopped by a limit its thread's turn went on past: the thread waits for it
+        // too, and is sent on at its reset.
+        woke(["event": "turn.done", "stopReason": "end_turn", "durationMs": 10, "costUSD": 0])
+        woke(["event": "limited", "resetsAt": .number(Date.now.addingTimeInterval(-30).timeIntervalSince1970 * 1000), "window": "five_hour", "subagent": true])
+        woke(["event": "turn.done", "stopReason": "end_turn", "durationMs": 10, "costUSD": 0])
+        #expect(chat.resumeAt != nil)
+        chat.resumeAt = .now.addingTimeInterval(-30)
+        model.resumeDue()
+        #expect(chat.resumeAt == nil)
+        #expect(sent() == 2)
+    }
+
     private func limits(_ status: String, _ window: String, used: Double, resetsAt: Date) -> EngineEvent {
         EngineEvent(name: "limits", threadId: chat.id.uuidString, body: [
             "event": "limits", "status": .string(status), "rateLimitType": .string(window), "utilization": .number(used),

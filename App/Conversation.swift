@@ -1102,8 +1102,8 @@ final class Conversation {
             }
         case "limited":
             // Refused by a limit, the turn didn't end by itself, and the queue's next would only be
-            // refused too: it goes back to the field.
-            failed = true
+            // refused too: it goes back to the field. A subagent's limit stopped only the subagent.
+            if event.body["subagent"]?.bool != true { failed = true }
             record(event.name, event.body)
             if Limit.goesOn, let resetsAt = event.body["resetsAt"]?.double.map({ Date(timeIntervalSince1970: $0 / 1000) }) {
                 // Refused again past the reset, a Mac's clock ahead of Claude's: a while longer.

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { crowdedRelease, idleRelease, releaseIdle } from "../idle.ts";
-import { Thread } from "../thread.ts";
+import { Thread, wakeHold } from "../thread.ts";
 import { engineWith, sandbox, standInCli } from "./engine.ts";
 
 const write = process.stdout.write.bind(process.stdout);
@@ -99,9 +99,9 @@ test("a CLI let go leaves no heads, watcher or timer behind", async () => {
   head.output = output;
   heads.tail(head);
   assert.ok(head.tail && heads.timer);
-  // Its agent ends, and before the heads' next send the CLI is let go.
+  // Its agent ends, the turn its end would wake never comes, and before the heads' next send the CLI is let go.
   (thread as any).handle({ type: "system", subtype: "task_notification", task_id: "t1", status: "completed", session_id: "s", uuid: "u" });
-  const { released } = releaseIdle(new Map([["a", thread]]), { threadId: "a", visible: true }, ended + idleRelease);
+  const { released } = releaseIdle(new Map([["a", thread]]), { threadId: "a", visible: true }, Date.now() + wakeHold);
   assert.deepEqual(released, ["a"]);
   assert.equal(cli.closes, 1);
   assert.equal(heads.size, 0);
@@ -218,7 +218,9 @@ test("a background command keeps its CLI until the CLI says how it ended", async
   const threads = new Map([["a", thread]]);
   assert.deepEqual(releaseIdle(threads, { threadId: "a", visible: true }, ended + idleRelease).released, []);
   (thread as any).handle({ type: "system", subtype: "task_notification", task_id: "c1", tool_use_id: "call-c1", status: "completed", session_id: "s", uuid: "u" });
-  assert.deepEqual(releaseIdle(threads, { threadId: "a", visible: true }, ended + idleRelease).released, ["a"]);
+  // Its end wakes a turn, which the CLI is kept for until it starts, or for so long.
+  assert.deepEqual(releaseIdle(threads, { threadId: "a", visible: true }, ended + idleRelease).released, []);
+  assert.deepEqual(releaseIdle(threads, { threadId: "a", visible: true }, Date.now() + wakeHold).released, ["a"]);
   assert.equal(cli.closes, 1);
 });
 
