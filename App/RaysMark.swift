@@ -188,6 +188,13 @@ private struct MovingRays: NSViewRepresentable {
         private var turnPeriod = RaysMark.turn
         /// Bumped by each turn, so a coast that ends after a newer turn began leaves its trail be.
         private var generation = 0
+        /// The dot's opacity it pulses down from, while the thread waits on you.
+        private var pulsing: Double?
+        /// The window's occlusion and the app coming forward, which stop and start the pulse.
+        private var watching: [NSObjectProtocol] = []
+        /// Down to a third and back this many times, half a minute, and then it rests: an ask
+        /// still waits, but a pulse with nobody looking is the render server's frames for nothing.
+        static let pulses: Float = 17
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -288,19 +295,45 @@ private struct MovingRays: NSViewRepresentable {
                 spinner.removeAnimation(forKey: "turn")
                 CATransaction.commit()
             }
-            if waiting, dot.animation(forKey: "pulse") == nil {
-                // Down to a third and back every 1.8 seconds: the thread is waiting on you.
-                let pulse = CABasicAnimation(keyPath: "opacity")
-                pulse.fromValue = dotOpacity
-                pulse.toValue = dotOpacity * 0.35
-                pulse.duration = 0.9
-                pulse.autoreverses = true
-                pulse.repeatCount = .infinity
-                pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                dot.add(pulse, forKey: "pulse")
-            } else if !waiting {
+            if waiting, pulsing == nil {
+                pulsing = dotOpacity
+                pulse()
+            } else if !waiting, pulsing != nil {
+                pulsing = nil
                 dot.removeAnimation(forKey: "pulse")
             }
+        }
+
+        /// Down to a third and back every 1.8 seconds while the thread waits on you, from the
+        /// start, in a window that can be seen; out of sight, none.
+        private func pulse() {
+            guard let from = pulsing, window?.occlusionState.contains(.visible) == true else {
+                dot.removeAnimation(forKey: "pulse")
+                return
+            }
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = from
+            pulse.toValue = from * 0.35
+            pulse.duration = 0.9
+            pulse.autoreverses = true
+            pulse.repeatCount = Self.pulses
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            dot.add(pulse, forKey: "pulse")
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            watching.forEach(NotificationCenter.default.removeObserver)
+            watching = []
+            guard let window else { return }
+            let again: @Sendable (Notification) -> Void = { [weak self] _ in
+                MainActor.assumeIsolated { self?.pulse() }
+            }
+            watching = [
+                NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main, using: again),
+                NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main, using: again),
+            ]
+            pulse()
         }
 
         override func layout() {

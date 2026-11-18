@@ -312,6 +312,22 @@ final class StreamClock: NSObject {
     /// A frame already full before anything shows in it: the one after a block was made again,
     /// whose drawing spills into it, or the one a new row was added for.
     private var fullAt = Int.min
+    /// What keeps the clock's time while something waits for it: the display's frames, or, with
+    /// the window out of sight, a beat four times a second.
+    enum Beat { case display, hidden }
+    private(set) var beat: Beat?
+    private var hiddenBeat: Timer?
+    /// Whether the window can be seen. Out of sight nothing is drawn, so nothing keeps the
+    /// display's time: what's held is shown all at once at the hidden beat, for the phone that may
+    /// be watching, and a block made again waits for no frame.
+    var visible = true {
+        didSet {
+            guard visible != oldValue, beat != nil || !makers.isEmpty else { return }
+            stop()
+            start()
+        }
+    }
+    static let hiddenEvery: TimeInterval = 0.25
 
     init(manual: Bool = false) {
         self.manual = manual
@@ -335,6 +351,7 @@ final class StreamClock: NSObject {
     /// Returns in a frame with room for a block to be made again in, one block a frame: made
     /// beside another stream growing, or with a block starting, it cost two frames.
     func frameToMake() async {
+        guard visible else { return }
         let id = UUID()
         await withTaskCancellationHandler {
             await withCheckedContinuation { resume in
@@ -362,13 +379,27 @@ final class StreamClock: NSObject {
     }
 
     private func start() {
-        guard link == nil, !manual else { return }
+        guard beat == nil else { return }
+        guard visible else {
+            while !makers.isEmpty { makers.removeFirst().resume.resume() }
+            guard !waiting.isEmpty else { return }
+            beat = .hidden
+            guard !manual else { return }
+            hiddenBeat = Timer.scheduledTimer(withTimeInterval: Self.hiddenEvery, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            }
+            hiddenBeat?.tolerance = Self.hiddenEvery / 2
+            return
+        }
+        beat = .display
+        guard !manual else { return }
         // The display the window is on, which mainWindow doesn't say while the app is in the
         // background. A view's own link would stop with its window, and a window can close
         // mid-stream.
         let window = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
         guard let screen = window?.screen ?? NSScreen.main else {
             // No display to keep time by: everything at once.
+            beat = nil
             for conversation in waiting { conversation.showHeld() }
             waiting = []
             while !makers.isEmpty { makers.removeFirst().resume.resume() }
@@ -379,10 +410,17 @@ final class StreamClock: NSObject {
         self.link = link
     }
 
+    private func stop() {
+        link?.invalidate()
+        link = nil
+        hiddenBeat?.invalidate()
+        hiddenBeat = nil
+        beat = nil
+    }
+
     private func restart() {
-        guard let link else { return }
-        link.invalidate()
-        self.link = nil
+        guard beat == .display else { return }
+        stop()
         start()
     }
 
@@ -414,8 +452,7 @@ final class StreamClock: NSObject {
         waiting.removeAll { !$0.holds }
         shown = shown.filter { count - $1 < 3 }
         guard waiting.isEmpty, makers.isEmpty else { return }
-        link?.invalidate()
-        link = nil
+        stop()
     }
 
     /// Whether the thread beside shows in this frame, last shown `since` frames ago: every other
@@ -538,6 +575,9 @@ final class Conversation {
     /// Deltas for the open item that haven't reached it yet: a stream reaches the view at the
     /// display's frame, once a frame at most.
     private var held = ""
+    /// The characters in `held`, kept as it changes: counting them again took each frame longer
+    /// the longer the reply.
+    @ObservationIgnored private var heldCount = 0
     /// A reply's first deltas in the thread beside, waiting for a frame with room for its row.
     @ObservationIgnored private var opening: (kind: String, text: String)?
     /// Whether streaming text is shown every other frame, asked at each frame: so while the
@@ -1272,8 +1312,10 @@ final class Conversation {
             burstAt = now
         }
         lastDelta = now
-        arrived.append((now, delta.count))
+        let count = delta.count
+        arrived.append((now, count))
         held += delta
+        heldCount += count
         clock.wait(for: self)
     }
 
@@ -1285,6 +1327,7 @@ final class Conversation {
     func forget() {
         opening = nil
         held = ""
+        heldCount = 0
         arrived = []
         ending = false
         clock.forget(self)
@@ -1322,7 +1365,8 @@ final class Conversation {
         }
         record(opening.kind, ["event": .string(opening.kind), "delta": .string(text)], keepOpen: true)
         held = rest
-        arrived = rest.isEmpty ? [] : [(now(), rest.count)]
+        heldCount = rest.count
+        arrived = rest.isEmpty ? [] : [(now(), heldCount)]
     }
 
     static let frame = Duration.seconds(NSScreen.main?.minimumRefreshInterval ?? 1.0 / 60)
@@ -1354,7 +1398,12 @@ final class Conversation {
         var until = (burstAt ?? now) + cadence
         if let oldest = arrived.first { until = min(until, oldest.at + Self.behind) }
         let frames = max(1, Int((now.duration(to: until) / Self.frame).rounded(.up)))
-        let due = arrived.filter { $0.at.duration(to: now) >= Self.behind }.reduce(0) { $0 + $1.count }
+        // Oldest first, so what's due is where the list starts.
+        var due = 0
+        for part in arrived {
+            guard part.at.duration(to: now) >= Self.behind else { break }
+            due += part.count
+        }
         return min(total, max(due, Int((Double(total) / Double(frames)).rounded(.up))))
     }
 
@@ -1376,15 +1425,16 @@ final class Conversation {
             ending = false
             return false
         }
-        let heldBefore = held.count
         let current = stored[open.item]
         let before = current.text ?? ""
+        let drawn = drawn()
         // What's held is shown at the pace it comes, word by word (`paced`).
         var shown = held
         var later = ""
-        if allowed != nil, open.kind == "text", drawn() {
-            let cap = paced(held.count)
-            if cap < held.count {
+        var laterCount = 0
+        if allowed != nil, open.kind == "text", drawn {
+            let cap = paced(heldCount)
+            if cap < heldCount {
                 var cut = held.index(held.startIndex, offsetBy: cap)
                 if let space = held[..<cut].lastIndex(where: \.isWhitespace) {
                     cut = held.index(after: space)
@@ -1394,14 +1444,16 @@ final class Conversation {
                 }
                 later = String(held[cut...])
                 shown = String(held[..<cut])
+                laterCount = heldCount - held.distance(from: held.startIndex, to: cut)
             }
         }
         var text = before + shown
         var rest = ""
+        var restCount = 0
         var starts = false
-        if open.kind == "text", drawn() {
+        if open.kind == "text", drawn {
             let had = Reply.blocks(of: current.id, text: before).count
-            let blocks = Reply.blocks(of: current.id, text: text)
+            let blocks = Reply.blocks(of: current.id, text: text, grownFrom: before, by: shown)
             starts = blocks.count > had
             // Up to where the block after those allowed starts, when the blocks before it are
             // the text's start.
@@ -1409,14 +1461,17 @@ final class Conversation {
                 let kept = blocks.prefix(had + allowed).joined()
                 if text.hasPrefix(kept) {
                     guard kept.utf8.count > before.utf8.count else { return false }
-                    rest = String(text.dropFirst(kept.count))
+                    // Blocks are cut at a line's start, so `kept` is the text's first bytes.
+                    rest = String(text.utf8.dropFirst(kept.utf8.count)) ?? String(text.dropFirst(kept.count))
+                    restCount = rest.count
                     text = kept
                     starts = allowed > 0
                 }
             }
         }
         held = rest + later
-        var consumed = heldBefore - held.count
+        var consumed = heldCount - restCount - laterCount
+        heldCount = restCount + laterCount
         while consumed > 0, !arrived.isEmpty {
             let taken = min(consumed, arrived[0].count)
             arrived[0].count -= taken

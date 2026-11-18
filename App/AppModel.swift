@@ -143,8 +143,14 @@ final class AppModel {
     ]
     @ObservationIgnored private var startingSeen: [String] = []
     /// Whether the main window can be seen: not hidden, minimised, on another Space or covered.
-    @ObservationIgnored private var windowVisible = true {
-        didSet { if windowVisible != oldValue { tellWindow() } }
+    /// Out of sight, a thread streaming draws nothing, so it does nothing a frame (K-383).
+    @ObservationIgnored var windowVisible = true {
+        didSet {
+            guard windowVisible != oldValue else { return }
+            tellWindow()
+            StreamClock.shared.visible = windowVisible
+            watchHangs()
+        }
     }
     /// Whether macOS says memory is short, from its warning to its all-clear: every idle CLI goes
     /// at once while it is, and Everything Running shows it.
@@ -332,6 +338,8 @@ final class AppModel {
     var mainWindowKey = true
     /// Whether the engine has been told a turn is running, so it keeps App Nap off.
     var holdingForTurns = false
+    /// Whether HangWatch is on, which `watchHangs` keeps to turns in a window that can be seen.
+    @ObservationIgnored var watchingHangs = false
     /// Each agent's plan usage by its id, and when its newest reading was taken.
     var usages: [String: PlanUsage] = [:]
     var usagesAt: [String: Date] = [:]

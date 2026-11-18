@@ -62,6 +62,23 @@ struct ReplyTests {
         #expect(Reply.split("") == [])
     }
 
+    /// A reply grown a few characters at a time, its last block alone cut again each time, is cut
+    /// as the whole of it would be at every step.
+    @Test func aGrowingReplyIsCutAsTheWholeWouldBe() {
+        let id = UUID()
+        let characters = Array(Self.text + "\n\nSee [the file][f].\n\n[f]: App/Foo.swift\n\nMore.")
+        var before = ""
+        _ = Reply.blocks(of: id, text: before)
+        var at = 0
+        while at < characters.count {
+            let added = String(characters[at..<min(at + 3, characters.count)])
+            at += 3
+            let text = before + added
+            #expect(Reply.blocks(of: id, text: text, grownFrom: before, by: added) == Reply.split(text), "at \(at)")
+            before = text
+        }
+    }
+
     /// The blocks laid out apart come to the height of the same text in one Markdown, which only
     /// holds if they're spaced as MarkdownUI spaces them.
     @Test func blocksAreSpacedAsOneMarkdownSpacesThem() async throws {

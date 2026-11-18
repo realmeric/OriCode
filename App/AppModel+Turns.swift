@@ -63,11 +63,11 @@ extension AppModel {
     func pace(_ conversation: Conversation) {
         let id = conversation.chat.id
         conversation.everyOtherFrame = { [weak self] in
-            guard let self, id == besideChatID, roomForTwo else { return false }
+            guard let self, windowVisible, id == besideChatID, roomForTwo else { return false }
             return currentConversation?.running == true
         }
         conversation.drawn = { [weak self] in
-            guard let self else { return false }
+            guard let self, windowVisible else { return false }
             return id == selectedChatID || id == besideChatID && roomForTwo
         }
     }
@@ -667,8 +667,17 @@ extension AppModel {
         let busy = conversations.values.contains { $0.running }
         guard busy != holdingForTurns else { return }
         holdingForTurns = busy
-        hangWatch.watch(busy)
+        watchHangs()
         Task { await engine.hold(busy) }
+    }
+
+    /// Hangs are watched for while a turn runs in a window that can be seen: out of sight a hang
+    /// is felt by nobody, and the watch's beat would wake the Mac every two seconds of the turn.
+    func watchHangs() {
+        let on = holdingForTurns && windowVisible
+        guard on != watchingHangs else { return }
+        watchingHangs = on
+        hangWatch.watch(on)
     }
 
     /// What went with the engine, whether it died or was restarted: every thread's turn, tasks and

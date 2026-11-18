@@ -37,8 +37,24 @@ struct Reply: View {
     /// there are as it shows a delta, and the body that follows finds them cut.
     static func blocks(of id: UUID, text: String) -> [String] {
         let key = id as NSUUID
-        if let split = splits.object(forKey: key), split.text == text { return split.blocks }
+        // A stream asks with a text one delta longer than the last, which a comparison would
+        // read through to the end to tell apart: the lengths tell it at once. Asked again with the
+        // text it was cut from, the comparison finds the same storage and doesn't read it.
+        if let split = splits.object(forKey: key), split.text.utf8.count == text.utf8.count, split.text == text { return split.blocks }
         let blocks = split(text)
+        splits.setObject(Split(text: text, blocks: blocks), forKey: key)
+        return blocks
+    }
+
+    /// The blocks of a reply that has grown by `added` since it was cut as `before`: its last
+    /// block alone is cut again, since a block another came after is closed and stays as it was.
+    /// Cutting the whole reply at every frame of a stream cost the frame more the longer it got.
+    /// A link definition resolves across the whole, so one added cuts the whole again.
+    static func blocks(of id: UUID, text: String, grownFrom before: String, by added: String) -> [String] {
+        let key = id as NSUUID
+        guard let split = splits.object(forKey: key), let last = split.blocks.last, split.text.utf8.count == before.utf8.count,
+              split.text == before, !added.contains("]:") else { return blocks(of: id, text: text) }
+        let blocks = split.blocks.dropLast() + Self.split(last + added)
         splits.setObject(Split(text: text, blocks: blocks), forKey: key)
         return blocks
     }

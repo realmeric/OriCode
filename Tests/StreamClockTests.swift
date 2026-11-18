@@ -291,4 +291,45 @@ struct StreamClockTests {
         #expect(conversation.items.compactMap(\.text).last == "Start." + burst)
         #expect(model.behindBurst.isEmpty)
     }
+
+    /// Out of sight the clock keeps no frames: what's held waits for the hidden beat and is shown
+    /// there all at once, with nothing paced and no block counted.
+    @Test func outOfSightTheClockKeepsNoFrames() {
+        clock.visible = false
+        open.drawn = { false }
+        delta("One", in: open)
+        delta(" two three four five six seven", in: open)
+        #expect(clock.beat == .hidden)
+        clock.tick()
+        #expect(text(of: open) == "One two three four five six seven")
+        #expect(clock.beat == nil)
+        clock.visible = true
+        delta(" eight", in: open)
+        #expect(clock.beat == .display)
+    }
+
+    /// The window out of sight: the thread streaming in it isn't drawn, the shared clock keeps
+    /// the hidden beat, and hangs aren't watched for; back in sight, all three as they were.
+    @Test func aHiddenWindowDrawsNothingAndWatchesNoHangs() throws {
+        let container = try TestStore.memory()
+        let project = Project(name: "alpha", path: NSTemporaryDirectory())
+        container.mainContext.insert(project)
+        let model = AppModel(container: container)
+        let chat = Chat(project: project)
+        container.mainContext.insert(chat)
+        try container.mainContext.save()
+        model.selectedProjectID = project.id
+        model.selectedChatID = chat.id
+        let conversation = model.conversation(for: chat)
+        model.holdingForTurns = true
+        model.watchHangs()
+        #expect(conversation.drawn() && model.watchingHangs && StreamClock.shared.visible)
+        model.windowVisible = false
+        #expect(!conversation.drawn() && !conversation.everyOtherFrame())
+        #expect(!model.watchingHangs && !StreamClock.shared.visible)
+        model.windowVisible = true
+        #expect(conversation.drawn() && model.watchingHangs && StreamClock.shared.visible)
+        model.holdingForTurns = false
+        model.watchHangs()
+    }
 }

@@ -66,12 +66,14 @@ private final class Swipe {
     func start(over frame: @escaping () -> CGRect, moved: @escaping (CGFloat) -> Void, ended: @escaping (CGFloat) -> Void) {
         stop()
         monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            // Every scroll in the app passes here while the island is up, the transcript's
+            // included: one that isn't the island's leaves at the first look.
             guard let self else { return event }
+            let phase = event.phase
+            if !self.tracking, !phase.contains(.began), !phase.isEmpty { return event }
             if !event.momentumPhase.isEmpty { return self.tracking ? nil : event }
-            // Fingers moving up, whichever way the Mac scrolls.
-            let up = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
-            let wheel = event.phase.isEmpty
-            if event.phase.contains(.began) || (wheel && !self.tracking) {
+            let wheel = phase.isEmpty
+            if phase.contains(.began) || (wheel && !self.tracking) {
                 guard let window = event.window, let content = window.contentView else { return event }
                 let point = CGPoint(x: event.locationInWindow.x, y: content.frame.height - event.locationInWindow.y)
                 guard frame().contains(point) else { return event }
@@ -79,8 +81,10 @@ private final class Swipe {
                 self.distance = 0
             }
             guard self.tracking else { return event }
+            // Fingers moving up, whichever way the Mac scrolls.
+            let up = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
             self.distance += up * (event.hasPreciseScrollingDeltas ? 1 : 8)
-            if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            if phase.contains(.ended) || phase.contains(.cancelled) {
                 self.tracking = false
                 ended(self.distance)
             } else if wheel {
