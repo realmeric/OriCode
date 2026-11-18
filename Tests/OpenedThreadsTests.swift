@@ -178,6 +178,26 @@ struct OpenedThreadsTests {
         #expect(model.threadsAtOnce == AppModel.defaultCeiling)
     }
 
+    @Test func theCeilingFollowsTheMacsMemory() {
+        let gb: UInt64 = 1 << 30
+        #expect(AppModel.ceiling(memory: 8 * gb) == 3)
+        #expect(AppModel.ceiling(memory: 16 * gb) == 4)
+        #expect(AppModel.ceiling(memory: 24 * gb) == 5)
+        #expect(AppModel.ceiling(memory: 36 * gb) == 6)
+        #expect(AppModel.ceiling(memory: 64 * gb) == 8)
+        #expect(AppModel.defaultCeiling == AppModel.ceiling(memory: ProcessInfo.processInfo.physicalMemory))
+    }
+
+    @Test func memoryIsShortFromAWarningToTheAllClear() throws {
+        let (model, _) = try model()
+        model.memoryPressure(.warning)
+        #expect(model.memoryShort)
+        model.memoryPressure(.critical)
+        #expect(model.memoryShort)
+        model.memoryPressure(.normal)
+        #expect(!model.memoryShort)
+    }
+
     @Test func anOpenThatWaitedOnGitIsCheckedAgainstTheCeilingBeforeItSends() throws {
         let (model, parent) = try model()
         UserDefaults.standard.set(2, forKey: AppModel.ceilingKey)

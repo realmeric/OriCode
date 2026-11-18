@@ -13,7 +13,20 @@ extension AppModel {
     /// Threads working at once past which an agent can't set another going, so threads opening
     /// threads can't take the Mac. The user's own sends are never refused by it.
     static let ceilingKey = "threadsAtOnce"
-    static let defaultCeiling = 6
+    /// What it is until the user sets their own, from the Mac's memory.
+    static let defaultCeiling = ceiling(memory: ProcessInfo.processInfo.physicalMemory)
+
+    /// A working thread is a CLI and its MCP servers, 300 to 430MB, beside everything else the Mac
+    /// runs: 3 on 8GB, 4 on 16GB, 5 on 24GB, 6 on 32GB and 8 above.
+    static func ceiling(memory: UInt64) -> Int {
+        switch memory >> 30 {
+        case ..<12: 3
+        case ..<20: 4
+        case ..<28: 5
+        case ..<40: 6
+        default: 8
+        }
+    }
 
     var threadsAtOnce: Int {
         max(1, UserDefaults.standard.object(forKey: Self.ceilingKey) as? Int ?? Self.defaultCeiling)

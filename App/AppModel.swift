@@ -146,6 +146,13 @@ final class AppModel {
     @ObservationIgnored private var windowVisible = true {
         didSet { if windowVisible != oldValue { tellWindow() } }
     }
+    /// Whether macOS says memory is short, from its warning to its all-clear: every idle CLI goes
+    /// at once while it is, and Everything Running shows it.
+    private(set) var memoryShort = false {
+        didSet { if memoryShort != oldValue { tellWindow() } }
+    }
+    /// macOS's word on memory, heard as it's said and never polled.
+    @ObservationIgnored private var pressure: DispatchSourceMemoryPressure?
     /// What Claude Code last said about fast mode for each model, by ModelRef's key: whether it
     /// would serve it and, if not, why. The answer is the account's more than any thread's, so a
     /// thread that hasn't asked yet, or no thread at all, shows what's already known.
@@ -666,6 +673,13 @@ final class AppModel {
             let visible = window.occlusionState.contains(.visible)
             MainActor.assumeIsolated { self?.windowVisible = visible }
         }
+        let pressure = DispatchSource.makeMemoryPressureSource(eventMask: [.normal, .warning, .critical], queue: .main)
+        pressure.setEventHandler { [weak self, weak pressure] in
+            guard let event = pressure?.data else { return }
+            MainActor.assumeIsolated { self?.memoryPressure(event) }
+        }
+        pressure.activate()
+        self.pressure = pressure
         // Files change outside the app too: an editor, a terminal, another tool.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -781,8 +795,13 @@ final class AppModel {
     /// the other threads' idle CLIs go at once.
     func tellWindow() {
         guard engineState == .ready else { return }
-        let params: JSON = ["threadId": selectedChatID.map { .string($0.uuidString) } ?? .null, "visible": .bool(windowVisible)]
+        let params: JSON = ["threadId": selectedChatID.map { .string($0.uuidString) } ?? .null, "visible": .bool(windowVisible), "pressed": .bool(memoryShort)]
         Task { _ = try? await engine.request("window", params) }
+    }
+
+    /// A warning or a critical makes memory short until macOS says it's normal again.
+    func memoryPressure(_ event: DispatchSource.MemoryPressureEvent) {
+        memoryShort = !event.isDisjoint(with: [.warning, .critical])
     }
 
     /// Settings › Agents' switch went off, so the apps each thread was let use are asked about

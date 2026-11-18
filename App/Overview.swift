@@ -159,6 +159,15 @@ struct Overview: View {
                     }
                 }
             }
+            // While macOS says memory is short, idle threads' CLIs go at once and resume on the next send.
+            if model.memoryShort {
+                Label("Memory low", systemImage: "memorychip")
+                    .font(Type.secondary)
+                    .foregroundStyle(Ink.faint)
+                    .help("Idle threads let go of their memory until macOS has enough again")
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
         }
     }
 

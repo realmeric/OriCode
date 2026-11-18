@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { idleRelease, releaseIdle } from "../idle.ts";
+import { crowdedRelease, idleRelease, releaseIdle } from "../idle.ts";
 import { Thread } from "../thread.ts";
 import { engineWith, sandbox, standInCli } from "./engine.ts";
 
@@ -138,9 +138,9 @@ function brief(limit: number, since: number | undefined, running = false) {
 
 test("an agent that asks for less is let go at its own limit, and one running or not idle isn't", () => {
   const now = 1_000_000;
-  const idle = brief(30_000, now - 30_000);
-  const soon = brief(30_000, now - 10_000);
-  const running = brief(30_000, undefined, true);
+  const idle = brief(20_000, now - 20_000);
+  const soon = brief(20_000, now - 10_000);
+  const running = brief(20_000, undefined, true);
   const threads = new Map([
     ["idle", idle.session],
     ["soon", soon.session],
@@ -148,9 +148,42 @@ test("an agent that asks for less is let go at its own limit, and one running or
   ]);
   const { released, next } = releaseIdle(threads, { threadId: "idle", visible: true }, now);
   assert.deepEqual(released, ["idle"]);
-  assert.equal(next, 20_000);
+  assert.equal(next, 10_000);
   assert.equal(soon.log.closed + running.log.closed, 0);
   assert.equal(idle.log.closed, 1);
+});
+
+test("with three CLIs up an idle one goes after 25 seconds, and with one after 90", () => {
+  const now = 1_000_000;
+  const lone = brief(Infinity, now - crowdedRelease);
+  assert.deepEqual(releaseIdle(new Map([["a", lone.session]]), { threadId: "a", visible: true }, now).released, []);
+  const idle = brief(Infinity, now - crowdedRelease);
+  const soon = brief(Infinity, now - 5_000);
+  const running = brief(Infinity, undefined, true);
+  const threads = new Map([
+    ["idle", idle.session],
+    ["soon", soon.session],
+    ["running", running.session],
+  ]);
+  const { released, next } = releaseIdle(threads, { threadId: "idle", visible: true }, now);
+  assert.deepEqual(released, ["idle"]);
+  assert.equal(next, crowdedRelease - 5_000);
+  // Down to two, the one left waits out the usual 90 seconds.
+  threads.delete("idle");
+  assert.equal(releaseIdle(threads, { threadId: "soon", visible: true }, now).next, idleRelease - 5_000);
+});
+
+test("while memory is short every idle CLI goes at once, and one with agents out stays", async () => {
+  const open = await finished("open");
+  const busy = await finished("busy");
+  (busy.thread as any).handle(started("t1"));
+  const threads = new Map([
+    ["open", open.thread],
+    ["busy", busy.thread],
+  ]);
+  const { released } = releaseIdle(threads, { threadId: "open", visible: true, pressed: true }, open.ended);
+  assert.deepEqual(released, ["open"]);
+  assert.equal(busy.cli.closes, 0);
 });
 
 const workflow = (id: string) => ({ ...started(id), description: "water-041", task_type: "local_workflow", tool_use_id: `call-${id}` });

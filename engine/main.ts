@@ -735,8 +735,9 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
     return { ok: true };
   },
 
-  async window({ threadId, visible }: { threadId?: string | null; visible: boolean }) {
-    shown = { threadId: threadId ?? null, visible };
+  /// Which thread is open, whether the window can be seen, and whether macOS says memory is short.
+  async window({ threadId, visible, pressed }: { threadId?: string | null; visible: boolean; pressed?: boolean }) {
+    shown = { threadId: threadId ?? null, visible, pressed: pressed === true };
     letGo();
     return { ok: true };
   },
