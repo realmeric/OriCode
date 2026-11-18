@@ -176,7 +176,9 @@ async function threadTools(params: SendParams & { rays?: string[]; choose?: Choo
   const mac = takes && params.mac === true;
   const instructions = [told, takes ? (choice ? reach : opening) : undefined, takes ? suggesting : undefined, mac ? seeing : undefined, params.signs].filter(Boolean).join("\n\n") || undefined;
   const head = takes ? await raysFor(params.threadId, seam, watched.has(params.threadId)) : raysOf(params.threadId);
-  head?.update(params.cwd, params.permissionMode, rays, instructions, params.effort, choice, mac);
+  // An agent with a system prompt of its own hears them there, so its MCP server doesn't say them
+  // again (K-382); an ACP agent hears them only from the server.
+  head?.update(params.cwd, params.permissionMode, rays, agent.prompted ? "" : (instructions ?? ""), params.effort, choice, mac);
   // A worker a limit stopped goes on at the reset unless Settings says threads don't.
   if (head) head.goOn = params.goOn !== false;
   // An app allowed on a Mac ask that a quit cut off is allowed before the agent calls on it again.

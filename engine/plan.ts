@@ -13,19 +13,17 @@ const waitsOn = {
 export const readPlan = {
   name: "read_plan",
   description:
-    "Read the plan of the project this thread is in, its latest done tasks and every one not done, and what the user sees on OriCode's screen of everything running: each other project's tasks not done, every thread working or waiting now in any project with what it's on, and every ask waiting on the user. " +
-    "A task has an id, its title, what done means, the tasks it waits on, the thread working it, its state and its note. Its state is waiting (on tasks not done yet), ready, working, done or stuck. " +
-    "It reads and changes nothing.",
+    "Read this project's plan, its latest done tasks and every one not done, and what OriCode's screen of everything running shows: other projects' tasks not done, every thread working or waiting in any project and what it's on, and every ask waiting on the user. " +
+    "A task has an id, title, what done means, what it waits on, its thread, its note and its state: waiting (on tasks not done), ready, working, done or stuck. It reads and changes nothing.",
   inputSchema: { type: "object", properties: {} },
 };
 
 export const addTasks = {
   name: "add_tasks",
   description:
-    "Add tasks to this project's plan, which the user watches on OriCode's screen of everything running and every thread can read with read_plan. " +
-    "Write a plan when the work has parts, above all parts that wait on others: every part as a task, with what done means and what it waits on. Returns each task with its id. " +
-    "With `run`, OriCode runs them for you: each task starts as a thread under this one, sent its `message`, as soon as every task it waits on is done and that task's worktree, if it had one, is merged into your folder; a thread whose turn ends has its task done and its last reply as the result, and one that's stopped or stuck stops what waits on it. " +
-    "No more threads work at once than the user allows; the rest start as others end. Wait for them with wait_plan, and bring each worktree's work in with merge_thread as it comes back.",
+    "Add tasks to this project's plan, which the user watches and every thread can read: every part, with what done means and what it waits on. Returns each with its id. " +
+    "With `run`, each task starts as a thread under you, sent its `message`, once every task it waits on is done and that task's worktree merged into your folder. A thread whose turn ends has its task done, its last reply the result; one stopped or stuck stops what waits on it. " +
+    "No more threads work at once than the user allows. Wait with wait_plan, and merge_thread each worktree as it comes back.",
   inputSchema: {
     type: "object",
     properties: {
@@ -34,14 +32,14 @@ export const addTasks = {
         items: {
           type: "object",
           properties: {
-            title: { type: "string", description: "A few words saying what the task is: Write primes.py." },
-            done: { type: "string", description: "What done means for it, one line someone can check: primes.py prints the first twenty primes." },
+            title: { type: "string", description: "A few words: Write primes.py." },
+            done: { type: "string", description: "One line someone can check: primes.py prints the first twenty primes." },
             waitsOn,
-            message: { type: "string", description: "With `run`: its thread's first message, written for someone who hasn't seen this conversation: what to do and what to say when it's done. Name files by their path inside the project, never your folder's full path: a task with a worktree works in its own copy of your folder, and an edit by your folder's path would land in yours, outside its branch." },
-            agent: { type: "string", description: "With `run`: the agent its thread runs on, by its id, such as claude or codex. Yours when left out." },
-            model: { type: "string", description: "With `run`: a model of that agent's, by its id. Yours when left out, or on another agent its first." },
-            effort: { type: "string", description: "With `run`: the model's effort level, such as low or high. Yours when left out and the model has it." },
-            worktree: { type: "boolean", description: "With `run`: its thread works on a branch in a worktree of its own, started from your folder as it is then, so its edits can't run into another's. Give one to each task that edits files while another does." },
+            message: { type: "string", description: "With `run`: its thread's first message, for someone who hasn't seen this conversation: what to do and what to say when it's done. Name files by their path in the project, never your folder's full path: a task with a worktree works in its own copy, and an edit by your folder's path would land in yours, outside its branch." },
+            agent: { type: "string", description: "With `run`: another agent's id, such as claude or codex." },
+            model: { type: "string", description: "With `run`: a model id of that agent's; its first when another agent is named." },
+            effort: { type: "string", description: "With `run`: the model's level, such as low or high." },
+            worktree: { type: "boolean", description: "With `run`: its own branch in a worktree, from your folder as it is then. Give one to each task that edits files while another does." },
             reason: { type: "string", description: "With `run`, when you choose the models: why this model at this level for this task, one line the user reads." },
           },
           required: ["title", "done"],
@@ -56,9 +54,8 @@ export const addTasks = {
 export const waitPlan = {
   name: "wait_plan",
   description:
-    "Wait for a task of the plan you run with add_tasks' `run` to end, and get each that ended since you last asked: done with its thread's last reply, or stuck with why and the tasks that won't start because of it. " +
-    "A done task whose thread worked in a worktree says `merge`: bring its work in with merge_thread, since the tasks waiting on it start only once it's in. " +
-    "Answers at once when a task has ended unheard, and otherwise waits up to five minutes. As wait_thread does, it answers at once with `asks` when a thread you set going asks you something. `planDone` says every task you run is done.",
+    "Wait up to five minutes for tasks you run with add_tasks' `run`, and get each that ended since you last asked: done with its thread's last reply, or stuck with why and what it holds up. Answers at once when one ended unheard. " +
+    "A done task with `merge` worked in a worktree: merge_thread it, since what waits on it starts only once it's in. Like wait_thread, it answers at once with `asks`. `planDone` says every task you run is done.",
   inputSchema: { type: "object", properties: {} },
 };
 

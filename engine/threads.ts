@@ -16,22 +16,21 @@ const thread = { type: "string", description: "The thread's id, from list_thread
 export const openThread = {
   name: "open_thread",
   description:
-    "Open another thread in OriCode and send it its first message. Open one when you judge the work wants it: for a part that edits files while another part does, a long part, or one the user should be able to watch, write to or answer on its own, and collect them with wait_thread; or for work in another of the user's projects, or something to look into while you carry on. A part that only reads, searches or checks costs far less as a subagent of your own, where you have one. " +
-    "It is an ordinary thread of the user's, on your agent and model unless you name others and in a permission mode no looser than yours, and it can open threads of its own. " +
-    "It works on its own while you go on: wait_thread gives you its reply when its turn ends, message_thread sends it more, stop_thread stops it. " +
-    "Returns its name, which you tell the user, and its id. OriCode refuses it when as many threads are working as the user allows at once, and says so.",
+    "Open another of the user's threads and send it its first message, when you judge the work wants it: a part that edits files while another part does, a long part, one the user should watch, write to or answer on its own, work in another of their projects, or something to look into while you carry on. A part that only reads, searches or checks costs far less as your own subagent, where you have one. " +
+    "It runs on your agent and model unless you name others, in a permission mode no looser than yours, and can open threads of its own. wait_thread gives you its reply, message_thread sends it more, stop_thread stops it. " +
+    "Returns its id and its name, which you tell the user. Refused, and said so, when as many threads work as the user allows at once.",
   inputSchema: {
     type: "object",
     properties: {
-      title: { type: "string", description: "A few words saying what the thread does, as the user will see it in their list under this thread: Write primes.py and run it." },
-      message: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what to do, where, and what to say when it's done." },
+      title: { type: "string", description: "A few words for the user's list: Write primes.py and run it." },
+      message: { type: "string", description: "For someone who hasn't seen this conversation: what to do, where, and what to say when it's done." },
       reason,
-      agent: { type: "string", description: "Another agent to run it on, by its id, such as claude or codex. Yours when left out." },
-      model: { type: "string", description: "A model of that agent's, by its id. Yours when left out, or on another agent its first." },
-      folder: { type: "string", description: "The folder of another of the user's projects, by its full path. This thread's project when left out." },
-      worktree: { type: "boolean", description: "Work on a new branch in a git worktree of its own, so its edits can't run into yours." },
-      task: { type: "string", description: "A task of the plan the thread is for, by its id, T2: the thread takes it as it opens, and is told it ahead of its messages. Only a task that waits on nothing left undone." },
-      mode: { type: "string", description: "A permission mode for it tighter than yours, by its id: plan, default (Ask), acceptEdits or auto. Yours when left out." },
+      agent: { type: "string", description: "Another agent's id, such as claude or codex." },
+      model: { type: "string", description: "A model id of that agent's; its first when another agent is named." },
+      folder: { type: "string", description: "Another of the user's projects, by its full path." },
+      worktree: { type: "boolean", description: "Its own branch in a git worktree, so its edits can't run into yours." },
+      task: { type: "string", description: "A task of the plan that waits on nothing undone, T2: the thread takes it as it opens." },
+      mode: { type: "string", description: "A mode tighter than yours: plan, default (Ask), acceptEdits or auto." },
     },
     required: ["title", "message", "reason"],
   },
@@ -40,9 +39,9 @@ export const openThread = {
 export const messageThread = {
   name: "message_thread",
   description:
-    "Send a message to another of the user's threads, one you opened or not, as the user would from its composer. An idle thread starts a turn on it; a working one takes it in at its next step. A working thread on an agent that can't take a message mid-turn refuses it: wait for it with wait_thread, then send again. " +
-    "The thread is told the message came from you, with your id, and answers in its own transcript: wait_thread gives you that answer. " +
-    "OriCode refuses one to a thread in a looser permission mode than yours, and one that would start a turn when as many threads are working as the user allows at once, and says why.",
+    "Send a message to another of the user's threads, as the user would from its composer: an idle one starts a turn on it, a working one takes it at its next step, or refuses it where its agent can't, so wait_thread and send again. " +
+    "It's told the message is from you and answers in its own transcript, which wait_thread gives you. " +
+    "Refused, with why, for a thread in a looser permission mode than yours, or one that would start a turn past the number the user allows at once.",
   inputSchema: {
     type: "object",
     properties: {
@@ -57,10 +56,9 @@ export const messageThread = {
 export const waitThread = {
   name: "wait_thread",
   description:
-    "Wait for another thread's turn to end, and get its last reply. A thread that isn't working answers at once with the reply it last gave. " +
-    "Waits up to five minutes; a thread still working then comes back with its state and no reply, and you can call again. A thread waiting on the user to answer a question waits on them, and says so. " +
-    "While your turn runs, an ask of a thread you set going comes to you before the user: the wait answers at once with it in `asks`, whichever thread you wait on, and you answer it with answer_ask before you wait again. Keep waiting while threads you set going work: an ask you haven't read in a wait within 30 seconds, or answered within two minutes of reading it, goes on up without you. " +
-    "When its turn edited a file another working thread of the project edited too, the answer names each in `sameFiles`: merging both will meet it.",
+    "Wait up to five minutes for a thread's turn to end and get its last reply. One not working answers at once; one still working comes back with its state, so call again; one waiting on the user's answer says so. " +
+    "An ask from a thread you set going comes back at once in `asks`, whichever thread you wait on: answer it with answer_ask, then wait again. One you haven't read in a wait within 30 seconds, or answered within two minutes of reading it, goes up without you, so keep waiting while they work. " +
+    "`sameFiles` names files another working thread edited too: merging both will meet them.",
   inputSchema: {
     type: "object",
     properties: { thread },
@@ -71,10 +69,10 @@ export const waitThread = {
 export const answerAsk = {
   name: "answer_ask",
   description:
-    "Answer an ask of a thread you set going with open_thread or message_thread, which wait_thread gives you in `asks`. OriCode sends it to you before the user while your turn runs. " +
-    "`allow` lets the call run, and takes only what your own permission mode would have done without asking the user: on Accept edits or Auto an edit to a file in your folder or the thread's, on Don't ask anything, on Ask or Plan nothing; `youMayAllow` says which. `deny` refuses it, and the thread is told your reason. `answer` answers its question from what you know of the task, with `answers`. " +
-    "`pass` sends it up, to the thread that set yours going while its turn runs and otherwise to the user, with your reason: pass what your mode can't allow, and what you aren't sure the user would want. " +
-    "Each answer is a line in both threads' transcripts, so the user reads what was allowed on their behalf and by whom. An ask still with you when your turn ends goes up by itself.",
+    "Answer an ask that wait_thread gave you in `asks`, from a thread you set going. " +
+    "`allow` runs the call, and takes only what your own permission mode would have done without asking the user (`youMayAllow` says which): on Accept edits or Auto an edit in your folder or the thread's, on Don't ask anything, on Ask or Plan nothing. `deny` refuses it, and the thread is told your reason. `answer` answers its question with `answers`. " +
+    "`pass` sends it up, to the thread that set yours going while its turn runs and otherwise to the user: pass what your mode can't allow and what you aren't sure the user would want. " +
+    "Both transcripts show each answer. An ask still with you when your turn ends goes up by itself.",
   inputSchema: {
     type: "object",
     properties: {
@@ -83,7 +81,7 @@ export const answerAsk = {
       answers: {
         type: "object",
         additionalProperties: { type: "string" },
-        description: "For a question: each question's text to its answer, one of its options' labels or your own words.",
+        description: "Each question's text to its answer: an option's label or your own words.",
       },
       reason,
     },
@@ -94,7 +92,7 @@ export const answerAsk = {
 export const stopThread = {
   name: "stop_thread",
   description:
-    "Stop another thread's turn, as the user's Stop button would: what it was doing ends and what it had waiting goes back to its composer. The thread stays, and a message starts it again. Only a working thread can be stopped.",
+    "Stop a working thread's turn, as the user's Stop button would. What it had waiting goes back to its composer, and a message starts it again.",
   inputSchema: {
     type: "object",
     properties: { thread, reason },
@@ -105,9 +103,8 @@ export const stopThread = {
 export const mergeThread = {
   name: "merge_thread",
   description:
-    "Bring the work of a thread you opened with a worktree into your own folder, once its turn has ended: what's uncommitted in its worktree is committed to its branch, and git merges the branch into your folder as it is, so the files arrive uncommitted beside your own edits for the user to review. Returns what came in. " +
-    "When nothing in its worktree is left unmerged, OriCode removes the worktree and its branch, and the thread works in your folder from then on. " +
-    "When git meets a conflict, the merge stays open: you get each conflicting file with its hunks, marked in the file as git marks them. Settle each in the file, or ask the user which side to keep where you can't tell, then call finish_merge; or finish_merge with undo, which puts every file the merge wrote back as it was. A merge still open when your turn ends is undone.",
+    "Once its turn has ended, bring the work of a thread you opened with a worktree into your folder: what's uncommitted there is committed to its branch and merged, arriving uncommitted beside your edits for the user to review. Once nothing is left unmerged its worktree and branch go, and it works in your folder. " +
+    "On a conflict the merge stays open, each file's hunks marked as git marks them: settle them in the files, or ask the user which side where you can't tell, then call finish_merge, or finish_merge with undo. A merge still open when your turn ends is undone.",
   inputSchema: {
     type: "object",
     properties: { thread },
@@ -132,6 +129,13 @@ export const finishMerge = {
   },
 };
 
+/// A tool Claude Code lists from the first turn. The rest of the server's wait behind its tool
+/// search, named in `reach` and `seeing`, since every listed tool's schema is in each request
+/// (K-382: the 34 of them, always loaded, were about 8,000 tokens of every thread's first call).
+export function loaded<T extends object>(tool: T): T & { _meta: Record<string, boolean> } {
+  return { ...tool, _meta: { "anthropic/alwaysLoad": true } };
+}
+
 /// Threads one turn may suggest: the tool is the agent's to offer unasked, and a reply with a row
 /// of chips under it is one nobody reads.
 export const mostSuggested = 2;
@@ -139,15 +143,14 @@ export const mostSuggested = 2;
 export const suggestThread = {
   name: "suggest_thread",
   description:
-    "Offer the user a thread for something you came across that is worth doing and is outside what they asked for: a bug seen in passing, a doc that has gone stale, a test that was already failing. " +
-    "Nothing starts. The user sees your title on a button under your reply, and a click opens a new thread in this project with your prompt in its message field, unsent, theirs to edit or ignore. " +
-    "Most replies suggest nothing. Suggest only what is real, that you saw yourself in the files or the output, and never a part of the task you were given, a next step in it, or a general improvement. " +
-    `One turn suggests ${mostSuggested} at most. Say in a few words of your reply what you noticed; the button carries the rest.`,
+    "Offer the user a thread for something real you saw yourself, in the files or the output, outside what they asked for: a bug seen in passing, a stale doc, a test already failing. " +
+    "Nothing starts. Your title becomes a button under your reply that opens a new thread with your prompt in its field, unsent. " +
+    `Most replies suggest nothing. Never for a part of the task, a next step in it or a general improvement, and ${mostSuggested} a turn at most. Say in a few words of your reply what you noticed.`,
   inputSchema: {
     type: "object",
     properties: {
       title: { type: "string", description: "A few words for the button, naming the work: Fix the off-by-one in paginate()." },
-      prompt: { type: "string", description: "The thread's first message, written for someone who hasn't seen this conversation: what you saw, in which file and line, and what to do about it." },
+      prompt: { type: "string", description: "For someone who hasn't seen this conversation: what you saw, in which file and line, and what to do about it." },
     },
     required: ["title", "prompt"],
   },
@@ -156,17 +159,15 @@ export const suggestThread = {
 export const listThreads = {
   name: "list_threads",
   description:
-    "List the user's threads in this project as OriCode has them stored: each one's id, name, agent, whether it is working, waiting on the user or idle, when it was last active, and the files it edited most recently, latest first. " +
-    'To find which thread changed a file, pass `edited`: only the threads whose own edits touched that file come back, from their whole history. An edit is a file the thread\'s agent or one of its workers wrote with an edit tool; what a shell command changed isn\'t known. ' +
-    "One call lists forty; when there are more, the answer says how many in `more`, and `skip` gives the next forty. To find a thread by its name, pass `named`. " +
-    "A row with `kind` is an agent under the thread that opened it, a workflow's agent, a subagent or a worker, not a thread of the user's. " +
-    "It reads and starts nothing. Use it to find a thread to read, message, wait on or stop, or when the user asks about their other threads.",
+    "List this project's threads, latest first and forty a call (`more` says how many are left, `skip` passes over some): each one's id, name, agent, whether it is working, waiting on the user or idle, when it was last active and the files it edited last. " +
+    "`edited` finds the threads whose own edits touched a file, over their whole history; an edit is an edit tool's, not a shell command's. `named` finds them by name. " +
+    "A row with `kind` is an agent under a thread, a workflow's agent, a subagent or a worker, not a thread of the user's. It reads and starts nothing.",
   inputSchema: {
     type: "object",
     properties: {
-      edited: { type: "string", description: "A file's name or path, Drawer.swift or App/Drawer.swift. Only threads that edited it are listed, each with the matching files." },
-      named: { type: "string", description: "Words of a thread's name, in any case. Only threads whose name holds them are listed." },
-      skip: { type: "number", description: "How many of the threads, latest first, to pass over: 40 for the second forty." },
+      edited: { type: "string", description: "A file's name or path: Drawer.swift or App/Drawer.swift." },
+      named: { type: "string", description: "Words of the name, in any case." },
+      skip: { type: "number", description: "40 for the second forty." },
     },
   },
 };
@@ -174,14 +175,13 @@ export const listThreads = {
 export const readThread = {
   name: "read_thread",
   description:
-    "Read another thread's transcript as OriCode stored it: what the user said, what the agent answered, and each tool call as one line. " +
-    "One call returns the latest part, oldest line first, up to about 12,000 characters, with long messages cut. When there is more, the answer carries `before`: pass it back to read the part before that. " +
-    "Reading wakes nothing: the thread isn't told and nothing is sent to it. Read only what the user's question needs.",
+    "Read a thread's transcript, its latest part: what the user said, what the agent answered and each tool call as a line, oldest first, up to about 12,000 characters with long messages cut. Pass `before` back for the part ahead of it. " +
+    "The thread isn't told. Read only what the user's question needs.",
   inputSchema: {
     type: "object",
     properties: {
       thread: { type: "string", description: "The thread's id, from list_threads or from open_thread's answer." },
-      before: { type: "number", description: "The `before` of an earlier answer, for the part of the transcript ahead of it." },
+      before: { type: "number", description: "The `before` of an earlier answer." },
     },
     required: ["thread"],
   },
@@ -201,10 +201,12 @@ export const parts =
   "In OriCode you work as a lead, not alone. When what you're asked has two or more parts that don't depend on each other, don't do them one after another yourself. A part that only reads, searches, checks or drafts goes to a subagent of your own, with your Agent tool where you have one: it costs far less than a thread, which loads a whole session of its own, and OriCode shows it under your thread while it works. A part gets a thread, opened with open_thread, when it edits files while another part does, when it is long, or when the user should be able to watch it, write to it or answer it on its own; wait for each with wait_thread and bring their replies together. Two scripts that don't use each other are two parts, and so are a fix and an unrelated change to the docs. A thread that edits files while another does gets a worktree of its own with open_thread's `worktree`, and once its turn is done you bring its work into your folder with merge_thread. Only a task that is one part, or a question, you do yourself. When parts that need threads wait on others, don't open their threads yourself: write every part as a task of the project's plan with add_tasks and `run`, each with what it waits on, its first message and a worktree when it edits files while another does. OriCode starts each as a thread under you once what it waits on is done and merged; wait for them with wait_plan, bring each one's work into your folder with merge_thread as it comes back, and once wait_plan says planDone, bring their results together. ";
 
 /// The second half: what the tools do to the user's threads, which every session with them hears.
+/// What each thread tool does its own description says; this keeps what no one tool can: who
+/// decides, what goes to the user, and where the tools that load only when needed are (K-382).
 export const reach =
-  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can: open_thread starts one, message_thread sends one a message, wait_thread waits for one's turn to end and gives you its last reply, answer_ask answers what one you set going asks, stop_thread stops one, merge_thread brings the work of one you opened with a worktree into your folder, and list_threads and read_thread show what there is. read_plan shows the project's plan, every thread working in any project and every ask waiting on the user, add_tasks, claim_task and update_task keep the plan, and add_tasks with `run` runs its tasks as threads under you, which wait_plan waits on. You decide when to use them. " +
-  "Each open, message and stop takes a one-line reason, which both threads show the user. While your turn runs, what a thread you set going asks comes to you before the user, in wait_thread's answer: allow what your own mode would allow, answer its questions from what you know, deny what shouldn't happen, and pass up what your mode can't allow or you aren't sure of, each with answer_ask and a reason. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. A thread you open runs in a permission mode no looser than yours, and OriCode refuses a call that would set more threads working than the user allows at once, and tells you why. " +
-  "Beyond threads, you do in OriCode what the user does from its menus, ⌘K and Settings, with tools named as those name them: rename_thread, archive_thread, restore_thread, delete_thread, pin_thread, open_beside, close_other_side, show, change_thread, change_setting, add_project, run_command and read_oricode, each with a one-line reason the user reads in this thread. To have the user look at something, point at it: show the review on the file, show the file, or open_beside the thread. What loosens what guards the user is theirs to allow, and OriCode asks them; tightening is yours.";
+  "Those tools are the oricode MCP server's, and with them you do to the user's other threads what the user can. You decide when to use them. " +
+  "Each open, message and stop takes a one-line reason, which both threads show the user. What a thread you set going asks comes to you before the user, in wait_thread's answer: allow what your own mode would allow, answer its questions from what you know, deny what shouldn't happen, and pass up what your mode can't allow or you aren't sure of, each with answer_ask and a reason. Ask the user first only where you aren't sure they'd want it. What the user doesn't want you to do with threads is written in the project's CLAUDE.md or AGENTS.md: keep to it. " +
+  "The same server has tools that load only when you need them, which your tool search finds by name where they aren't among yours yet: read_plan, claim_task and update_task for the plan, finish_merge, and what the user does from OriCode's menus, ⌘K and Settings, named as those name it, each with a one-line reason the user reads: rename_thread, archive_thread, restore_thread, delete_thread, pin_thread, open_beside, close_other_side, show, change_thread, change_setting, add_project, run_command and read_oricode. To have the user look at something, point at it: show the review on the file, show the file, or open_beside the thread. What loosens what guards the user is theirs to allow, and OriCode asks them; tightening is yours.";
 
 /// What every session with the tools is told of them, where its agent has somewhere to hear it:
 /// that it decides, asks where it isn't sure, and keeps to the project's instruction file.

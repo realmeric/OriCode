@@ -11,9 +11,9 @@ import type { Usage } from "./usage.ts";
 import { diffArgs, gitRun, parsePatch, top } from "./review.ts";
 import { describe } from "./thread.ts";
 import { Hands, isMacTool, macTools, Pictured } from "./mac.ts";
-import { planTools } from "./plan.ts";
+import { planTools, addTasks, waitPlan } from "./plan.ts";
 import { begin, cameIn, conflictsOf, ignoredLeft, keep, marked, snapshot, summary, undo, type Counted, type Merge } from "./merge.ts";
-import { answerAsk, askApp, finishMerge, listThreads, longestTurnWait, menuToolNames, menuTools, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, UserAsks, waitThread } from "./threads.ts";
+import { answerAsk, askApp, finishMerge, listThreads, loaded, longestTurnWait, menuToolNames, menuTools, mergeThread, messageThread, mostSuggested, openThread, readThread, stopThread, suggestThread, Unanswered, UserAsks, waitThread } from "./threads.ts";
 import { version } from "./version.ts";
 import { signingNow } from "./sshagent.ts";
 import { emit, event, log, tap, untap } from "./wire.ts";
@@ -261,9 +261,9 @@ const startChosen = (() => {
   };
 })();
 
-/// What a head is told of its rays, in the engine's words and not the user's: its tools' MCP
-/// instructions, which the ACP agents have no other way to hear, Claude Code's appended system
-/// prompt and Codex's developer instructions.
+/// What a head is told of its rays, in the engine's words and not the user's: Claude Code's
+/// appended system prompt, Codex's developer instructions, and for the ACP agents, which have no
+/// other way to hear it, its tools' MCP instructions.
 export function brief(rays: Ray[]): string {
   return (
     `You are this thread's head. The user picked these rays for it, as start_worker's agent and model: ${rays.map((ray) => `${ray.agent} ${ray.model}`).join(", ")}. ` +
@@ -461,11 +461,11 @@ export class Rays {
   async rpc(method: string, params: any): Promise<{ result: unknown } | { error: { code: number; message: string } }> {
     switch (method) {
       case "initialize":
-        return { result: { protocolVersion: params.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "oricode", title: "OriCode", version }, instructions: this.instructions } };
+        return { result: { protocolVersion: params.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "oricode", title: "OriCode", version }, ...(this.instructions ? { instructions: this.instructions } : {}) } };
       case "ping":
         return { result: {} };
       case "tools/list":
-        return { result: { tools: [...(this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : []), ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, answerAsk, stopThread, mergeThread, finishMerge, suggestThread, listThreads, readThread, ...planTools, ...menuTools, ...(this.mac ? macTools : [])] } };
+        return { result: { tools: this.listed() } };
       case "tools/call":
         try {
           if (this.choice?.budget != null && (await this.over())) throw new Error(`This thread has spent its ${usd(this.choice.budget)} budget, so OriCode stopped it and its workers. Say so in one line and stop.`);
@@ -478,6 +478,23 @@ export class Rays {
       default:
         return { error: { code: -32601, message: `No ${method} here` } };
     }
+  }
+
+  /// The tools, in the order they always came. A head's own, the thread tools and the plan's
+  /// add_tasks and wait_plan, which the lead text sends the agent to, load from the first turn;
+  /// the rest of the plan's, finish_merge, the menu's and the Mac's wait for Claude Code's tool
+  /// search. Other agents take every tool as listed.
+  private listed(): object[] {
+    const own = this.choice ? tools.map((tool) => (tool.name === "start_worker" ? startChosen : tool)) : this.rays.length ? tools : [];
+    const plan = planTools.map((tool) => (tool === addTasks || tool === waitPlan ? loaded(tool) : tool));
+    return [
+      ...[...own, ...(this.choice ? [changeMyModel] : []), openThread, messageThread, waitThread, answerAsk, stopThread, mergeThread].map(loaded),
+      finishMerge,
+      ...[suggestThread, listThreads, readThread].map(loaded),
+      ...plan,
+      ...menuTools,
+      ...(this.mac ? macTools : []),
+    ];
   }
 
   /// An app the user allowed on a Mac ask that a quit cut off.

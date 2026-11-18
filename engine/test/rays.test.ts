@@ -92,10 +92,10 @@ test("a head is told its rays in its own instructions, and lists and starts only
   const { engine, url, logs, started } = await head(t, "k198");
   const rays = "codex gpt-small, opencode small, codex gpt-large";
   const init = await mcp(url, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "codex", version: "9" } });
-  assert.match(init.instructions, new RegExp(`^You are this thread's head\\. The user picked these rays for it, as start_worker's agent and model: ${rays}\\. Use them: `));
-  // Codex hears it as developer instructions too, after what every session is told of the
-  // window, and the user's prompt is left as it was.
-  assert.equal(started.params.developerInstructions, told(init.instructions));
+  // Codex hears it as developer instructions, after what every session is told of the window,
+  // and the user's prompt is left as it was; its tools' server doesn't say it again.
+  assert.ok(started.params.developerInstructions.startsWith(`${drawing}\n\nYou are this thread's head. The user picked these rays for it, as start_worker's agent and model: ${rays}. Use them: `));
+  assert.equal(init.instructions, undefined);
   const turn = (await logged(join(logs, "codex.log"))).find((message) => message.method === "turn/start");
   assert.equal(JSON.stringify(turn.params.input).includes("rays"), false);
   const listed = await call(url, "list_agents");
@@ -321,6 +321,8 @@ test("an OpenCode head names the tools in session/new, since it takes MCP over H
   const opened = (await logged(join(logs, "acp.log"))).find((message) => message.method === "session/new");
   assert.equal(opened.params.mcpServers.length, 1);
   assert.deepEqual({ ...opened.params.mcpServers[0], url: "" }, { type: "http", name: "oricode", url: "", headers: [] });
+  // An ACP agent has no system prompt OriCode can add to, so it hears the lead from the server.
+  assert.match((await mcp(opened.params.mcpServers[0].url, "initialize", { protocolVersion: "2025-06-18" })).instructions, /^You are this thread's head\. [\s\S]*In OriCode you work as a lead/);
   assert.equal((await call(opened.params.mcpServers[0].url, "list_agents")).agents[0].id, "codex");
   await engine.end();
 });
@@ -342,7 +344,7 @@ test("workflows on a Codex model without ultra are OriCode's: the head is told t
   const opened = sent.find((message) => message.method === "thread/start").params;
   const url: string = opened.config["mcp_servers.oricode"].url;
   assert.match(opened.developerInstructions, /workflows are on: .*start_worker on these rays, as its agent and model: codex gpt-small\./);
-  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, opened.developerInstructions.slice(drawing.length + 2));
+  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, undefined);
   assert.deepEqual((await call(url, "list_agents")).agents.map((agent: any) => [agent.id, agent.models.map((model: { id: string }) => model.id)]), [["codex", ["gpt-small"]]]);
   const start = sent.find((message) => message.method === "turn/start").params;
   assert.equal(start.effort, "medium");
@@ -438,7 +440,7 @@ test("a Claude head gets the tools as an HTTP server loaded with its prompt, all
   const cwd = await mkdtemp(join(tmpdir(), "oricode-rays-claude-"));
   const thread = new Thread("k193-claude", "claude", launch);
   await thread.send({ threadId: "k193-claude", cwd, text: "Go", permissionMode: "default", tools: "http://127.0.0.1:1/head", instructions: "Your rays." });
-  assert.deepEqual(launched[0].mcpServers, { oricode: { type: "http", url: "http://127.0.0.1:1/head", alwaysLoad: true, timeout: 600_000 } });
+  assert.deepEqual(launched[0].mcpServers, { oricode: { type: "http", url: "http://127.0.0.1:1/head", timeout: 600_000 } });
   // Told that the window draws, and its rays, in its system prompt, after Claude Code's own.
   assert.deepEqual(launched[0].systemPrompt, { type: "preset", preset: "claude_code", append: `${drawing}\n\nYour rays.` });
   const allowed = await launched[0].canUseTool("mcp__oricode__start_worker", { agent: "codex" }, { signal: new AbortController().signal, toolUseID: "c1" });
@@ -472,11 +474,11 @@ test("a head that chooses is told so, lists every model it may use, starts a wor
   const sent = await logged(join(logs, "codex.log"));
   const opened = sent.find((message) => message.method === "thread/start").params;
   const url: string = opened.config["mcp_servers.oricode"].url;
-  const init = await mcp(url, "initialize", { protocolVersion: "2025-06-18" });
-  assert.match(init.instructions, /^You run this thread: you choose which models do its work/);
+  const init = opened.developerInstructions.slice(drawing.length + 2);
+  assert.match(init, /^You run this thread: you choose which models do its work/);
   // Its parts go to workers, so it isn't told to open threads for them, only what threads are.
-  assert.equal(init.instructions.includes("first open a thread for each part"), false);
-  assert.match(init.instructions, /Those tools are the oricode MCP server's, and with them you do to the user's other threads/);
+  assert.equal(init.includes("first open a thread for each part"), false);
+  assert.match(init, /Those tools are the oricode MCP server's, and with them you do to the user's other threads/);
   assert.ok(sent.find((message) => message.method === "turn/start").params.input[0].text.startsWith(`${choosingLead("gpt-small", "low")}\n\nhello`));
   assert.ok((await mcp(url, "tools/list")).tools.some((tool: { name: string }) => tool.name === "change_my_model"));
 

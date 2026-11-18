@@ -107,7 +107,7 @@ export function isMacTool(name: string): boolean {
 
 /// What a session with the tools is told of them, where its agent has somewhere to hear it.
 export const seeing =
-  "With the oricode MCP server's list_apps, screenshot, click, type_text, press_key and scroll you can see and use the apps on the user's Mac: a picture of an app's window, and clicks, keys and scrolls in it. " +
+  "With the oricode MCP server's list_apps, screenshot, click, type_text, press_key and scroll, which your tool search finds where they aren't among your tools yet, you can see and use the apps on the user's Mac: a picture of an app's window, and clicks, keys and scrolls in it. " +
   "Use them to check what you built in the running app, an interface change say, or when the user asks you to. The user lets you use each app once in this thread, and your first call on one asks them. " +
   "A click lands at a point in the app's latest screenshot, so take one before you click and another after. You can't see or use OriCode's own windows.";
 

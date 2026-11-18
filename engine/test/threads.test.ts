@@ -50,10 +50,17 @@ test("a thread with no rays has the thread tools alone, is told it decides, and 
   const [started] = await starts();
   const url: string = started.config["mcp_servers.oricode"].url;
   assert.equal(started.developerInstructions, told(`${opening}\n\n${suggesting}`));
-  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, `${opening}\n\n${suggesting}`);
+  // Said once, in Codex's own instructions, and not again by its tools' server.
+  assert.equal((await mcp(url, "initialize", { protocolVersion: "2025-06-18" })).instructions, undefined);
   const tools = (await mcp(url, "tools/list")).tools;
+  // Claude Code loads the thread tools and the plan's add_tasks and wait_plan with its prompt, the rest behind tool search.
+  assert.deepEqual(
+    tools.filter((tool: { _meta?: object }) => tool._meta).map((tool: { name: string }) => tool.name),
+    ["open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "suggest_thread", "list_threads", "read_thread", "add_tasks", "wait_plan"],
+  );
+  assert.deepEqual(tools[0]._meta, { "anthropic/alwaysLoad": true });
   assert.deepEqual(tools.map((tool: { name: string }) => tool.name), ["open_thread", "message_thread", "wait_thread", "answer_ask", "stop_thread", "merge_thread", "finish_merge", "suggest_thread", "list_threads", "read_thread", "read_plan", "add_tasks", "claim_task", "update_task", "wait_plan", ...menuTools.map((tool) => tool.name)]);
-  assert.match(tools[0].description, /Open one when you judge the work wants it/);
+  assert.match(tools[0].description, /when you judge the work wants it/);
   assert.doesNotMatch(tools[0].description, /asked|own words/);
   assert.deepEqual(tools[0].inputSchema.required, ["title", "message", "reason"]);
   assert.match(opening, /CLAUDE\.md or AGENTS\.md: keep to it\./);
@@ -225,7 +232,7 @@ test("a thread lists the others and reads one through the app", async (t) => {
   const tools = (await mcp(url, "tools/list")).tools;
   const described = (name: string) => tools.find((tool: { name: string }) => tool.name === name);
   assert.match(described("list_threads").description, /It reads and starts nothing\./);
-  assert.match(described("read_thread").description, /Reading wakes nothing/);
+  assert.match(described("read_thread").description, /The thread isn't told\./);
   assert.deepEqual(described("read_thread").inputSchema.required, ["thread"]);
   assert.deepEqual(await call(url, "steer_thread", { thread: "t", text: "x" }), { error: "OriCode has no tool called steer_thread." });
 

@@ -53,7 +53,7 @@ test("the plan's tools go to the app with what they name, and the app's answer i
   assert.equal(described("update_task").inputSchema.required, undefined);
   assert.match(described("open_thread").inputSchema.properties.task.description, /takes it as it opens/);
   assert.match(opening, /write every part as a task of the project's plan with add_tasks and `run`/);
-  assert.match(described("add_tasks").description, /With `run`, OriCode runs them for you/);
+  assert.match(described("add_tasks").description, /With `run`, each task starts as a thread under you/);
   assert.equal(described("add_tasks").inputSchema.properties.run.type, "boolean");
   assert.match(described("wait_plan").description, /`planDone` says every task you run is done/);
 

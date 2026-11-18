@@ -512,9 +512,9 @@ export class Thread implements Session {
         resume,
         includePartialMessages: true,
         settingSources: ["user", "project", "local"],
-        // That the window draws, and a head's rays, in its system prompt as well as its tools' MCP
+        // That the window draws, and a head's rays, in its system prompt and not its tools' MCP
         // instructions: the CLI connects MCP servers without holding up the first request, which
-        // could go without them.
+        // could go without them, and the text twice was a thousand tokens of every call (K-382).
         systemPrompt: { type: "preset", preset: "claude_code", append: told(params.instructions) },
         pathToClaudeCodeExecutable: this.claude,
         env,
@@ -524,8 +524,9 @@ export class Thread implements Session {
         // Under a budget each tool waits on the thread's count, so the request after its result
         // isn't sent once the thread is at the line, its own or its workers' spend taking it there.
         hooks: this.hooks(params),
-        // Loaded with the prompt rather than behind tool search, so a head knows it can start workers.
-        mcpServers: params.tools ? { [toolsServer]: { type: "http", url: params.tools, alwaysLoad: true, timeout: toolsTimeout } } : undefined,
+        // The tools rays.ts marks load with the prompt, so a head knows it can start workers and
+        // open threads; the rest wait behind tool search.
+        mcpServers: params.tools ? { [toolsServer]: { type: "http", url: params.tools, timeout: toolsTimeout } } : undefined,
       },
     });
     this.pump(this.query);
