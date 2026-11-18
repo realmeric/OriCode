@@ -136,6 +136,11 @@ export class Thread implements Session {
   /// Whether the thread is at its budget, from the latest send under one.
   private over: (() => Promise<boolean>) | undefined;
   private lastContext = 0;
+  /// What the last call read: its input, cache read and cache write, the context compactAt is held to.
+  private lastPrompt = 0;
+  private compactAt = 0;
+  /// A /compact this thread sent itself is running, a turn the app isn't told of.
+  private compacting = false;
   private fast = false;
   /// The fast mode state last told to the app, so results that repeat it aren't sent again.
   private fastTold = "";
@@ -232,6 +237,8 @@ export class Thread implements Session {
     // effort unpins into ~/.claude.json for good. Workflows below xhigh need nothing of the CLI.
     const key = JSON.stringify([params.cwd, params.model ?? null, params.effort ?? null, ultracode(params), params.tools ?? null, params.instructions ?? null, params.spendCap?.limit ?? null]);
     this.over = params.spendCap?.over;
+    // A model API's window isn't Claude's, and its own CLI settings know it.
+    this.compactAt = this.elsewhere ? 0 : (params.compactAt ?? 0);
     if (!this.query || key !== this.key) {
       let env = cleanEnvironment();
       if (this.elsewhere) {
@@ -405,11 +412,31 @@ export class Thread implements Session {
   /// is out until the CLI says how it ended, not only while the heads list it: they let one go as
   /// soon as the CLI's background list leaves it out, and closing the CLI would end it.
   releaseIfIdle(idleMs: number, now = Date.now()): boolean {
-    if (!this.query || this.running || this.waiting.size > 0 || this.heads.size > 0 || this.idleSince === undefined) return false;
-    if ([...this.workflows.values()].some((workflow) => !workflow.ended) || this.backgroundCalls.size > 0) return false;
+    if (!this.query || this.running || this.idleSince === undefined || this.busy()) return false;
     if (now - this.idleSince < idleMs) return false;
-    if ([...asks.values()].some((ask) => ask.threadId === this.id)) return false;
     this.close();
+    return true;
+  }
+
+  /// Whether anything is still out between turns: a message waiting, a subagent, a workflow or a
+  /// background command the CLI hasn't said the end of, or an ask of the user.
+  private busy(): boolean {
+    if (this.waiting.size > 0 || this.heads.size > 0 || this.backgroundCalls.size > 0) return true;
+    if ([...this.workflows.values()].some((workflow) => !workflow.ended)) return true;
+    return [...asks.values()].some((ask) => ask.threadId === this.id);
+  }
+
+  /// Sends the session /compact once a turn has ended past compactAt with nothing else out, as
+  /// Compact does, but as a turn the app isn't told of: the transcript gets only its `compacted`.
+  /// A message sent meanwhile waits for it, as one sent into any turn does.
+  private compactIfLong(): boolean {
+    if (!this.compactAt || this.lastPrompt <= this.compactAt || !this.inbox || !this.sessionId || this.busy()) return false;
+    log(`compact thread=${this.id} context=${this.lastPrompt} over=${this.compactAt}`);
+    this.begin();
+    this.started = true;
+    this.compacting = true;
+    this.lastPrompt = 0;
+    this.inbox.push({ type: "user", message: { role: "user", content: "/compact" }, parent_tool_use_id: null });
     return true;
   }
 
@@ -901,7 +928,8 @@ export class Thread implements Session {
         }
         const usage = message.message.usage;
         if (usage) {
-          this.lastContext = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.output_tokens ?? 0);
+          this.lastPrompt = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+          this.lastContext = this.lastPrompt + (usage.output_tokens ?? 0);
         }
         if (message.error === "rate_limit") {
           // Said once the turn ends, when the limit that refused it has been reported too.
@@ -1010,6 +1038,16 @@ export class Thread implements Session {
         this.resuming = undefined;
         this.running = false;
         this.grant = undefined;
+        if (this.compacting) {
+          // Its cost is left to the next turn's, and an error to the next turn to meet again.
+          this.compacting = false;
+          this.refused = false;
+          this.idleSince = Date.now();
+          this.streamed.clear();
+          if (message.subtype !== "success") log(`compact thread=${this.id} ended ${message.subtype}`);
+          this.onIdle?.();
+          return;
+        }
         if (this.refused) {
           this.refused = false;
           const limited = limitReached(this.limit);
@@ -1039,6 +1077,7 @@ export class Thread implements Session {
         if (message.subtype !== "success" && message.errors.length && !this.interrupted && !spent) {
           this.fail(message.errors.join("\n"));
         }
+        const settled = message.subtype === "success" && !this.interrupted && !this.stopping;
         event("turn.done", {
           threadId: this.id,
           sessionId: message.session_id,
@@ -1067,6 +1106,8 @@ export class Thread implements Session {
           // a new session, as one that's gone does.
           this.sessionId = undefined;
           this.close();
+        } else if (settled && this.compactIfLong()) {
+          return;
         }
         this.onIdle?.();
         return;

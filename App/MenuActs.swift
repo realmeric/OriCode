@@ -256,6 +256,7 @@ struct MenuSetting {
         MenuSetting(name: "what_it_cost", key: TranscriptSettings.showCost, kind: .toggle(false)),
         MenuSetting(name: "water", key: TranscriptSettings.showWater, kind: .toggle(false)),
         MenuSetting(name: "go_on_when_a_limit_resets", key: Limit.goOnKey, kind: .toggle(true)),
+        MenuSetting(name: "compact_claude_threads_at", key: AutoCompact.key, kind: .whole(AutoCompact.standard, 0...(AutoCompact.choices.max() ?? 0))),
         MenuSetting(name: "notify", key: "notify", kind: .toggle(true)),
         MenuSetting(name: "glass", key: Glass.key, kind: .number(Glass.defaultTint, Glass.range)),
         MenuSetting(name: "transparency", key: Glass.transparencyKey, kind: .number(Glass.defaultTransparency, 0...1)),
@@ -296,6 +297,9 @@ struct MenuSetting {
             return number
         case .whole(_, let range):
             guard let number = given.int, range.contains(number) else { throw AppModel.Refused(why: "\(name) is a whole number from \(range.lowerBound) to \(range.upperBound).") }
+            if key == AutoCompact.key, !AutoCompact.choices.contains(number) {
+                throw AppModel.Refused(why: "\(name) is one of \(AutoCompact.choices.map { String($0) }.joined(separator: ", ")), 0 for off.")
+            }
             return number
         case .choice(let words):
             guard let word = given.string, let found = words.first(where: { $0.word == word }) else {

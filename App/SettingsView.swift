@@ -655,6 +655,7 @@ private struct ConversationPane: View {
     @AppStorage(TranscriptSettings.showThinking) private var showThinking = true
     @AppStorage(TranscriptSettings.concise) private var concise = false
     @AppStorage(TranscriptSettings.showWater) private var showWater = false
+    @AppStorage(AutoCompact.key) private var compactAt = AutoCompact.standard
 
     var body: some View {
         PaneTitle(text: "Conversation")
@@ -665,6 +666,16 @@ private struct ConversationPane: View {
             }
             SettingsRow(title: "Concise replies", detail: "Asks the agent for shorter replies, fewer code comments and changes kept to what you asked. It holds from a thread's next message, on Claude Code and Codex.") {
                 Toggle("Concise replies", isOn: $concise).labelsHidden().toggleStyle(.switch)
+            }
+        }
+        SectionHeading("Context")
+        SettingsCard {
+            SettingsRow(title: "Compact Claude threads at", detail: "Once a turn ends past this much context, the thread is compacted before the next, as Compact does. Every call reads the whole context again, so a long one costs more of the plan's usage. Off, Claude Code compacts near its 1M window.") {
+                Picker("Compact Claude threads at", selection: $compactAt) {
+                    ForEach(AutoCompact.choices, id: \.self) { Text(AutoCompact.name($0)).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
             }
         }
         SectionHeading("Under each turn")

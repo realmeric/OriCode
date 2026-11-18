@@ -47,6 +47,9 @@ export type SendParams = {
   spendCap?: { limit: number; left: number; over?: () => Promise<boolean> };
   /// It's a thread of a project, which hears of the others at work there (others.ts).
   shared?: boolean;
+  /// Claude Code's own compacting waits for the edge of its 1M window. Past this many tokens of
+  /// context, the session is compacted between turns instead; 0 or none leaves it to the CLI.
+  compactAt?: number;
 };
 
 export type Grant = { tool: string; input: Record<string, unknown> };

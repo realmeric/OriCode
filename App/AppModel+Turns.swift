@@ -333,6 +333,8 @@ extension AppModel {
         if let effort = chat.effort, option(for: chat)?.efforts.contains(effort) ?? true { params["effort"] = .string(effort) }
         params["fast"] = .bool(fastMode(of: chat))
         if UserDefaults.standard.bool(forKey: TranscriptSettings.concise) { params["concise"] = true }
+        // Claude Code's threads only; the engine leaves a model API's to its own CLI settings.
+        if chat.providerID == ProviderInfo.claudeID, AutoCompact.threshold > 0 { params["compactAt"] = .number(Double(AutoCompact.threshold)) }
         // The engine tells the session its folder is nobody's project.
         if chat.project?.isNoFolder == true { params["noFolder"] = true }
         if workflows(of: chat) { params["workflows"] = true }
