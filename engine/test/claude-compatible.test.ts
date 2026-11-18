@@ -437,7 +437,7 @@ test("on the Anthropic API the user's own Claude Code sends Opus and the thread'
   if (!claude) return t.skip("Claude Code isn't installed here");
   // On a Console key Claude Code also asks api.anthropic.com itself, past the endpoint: its fast
   // mode check among others. Those go to the stand-in as its proxy, which turns them away.
-  const offline = { HTTPS_PROXY: endpoint, HTTP_PROXY: endpoint, NO_PROXY: "127.0.0.1" };
+  const offline = { HTTPS_PROXY: endpoint, HTTP_PROXY: endpoint, NO_PROXY: "127.0.0.1,localhost" };
   const { turn } = await turnAt(claude, { ...anthropicMaker, env: offline }, "", "opus", "high");
   assert.match(turn.body.model, /^claude-opus-/);
   assert.equal(turn.body.output_config?.effort, "high");
