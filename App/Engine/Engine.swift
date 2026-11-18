@@ -78,7 +78,7 @@ actor Engine {
     private func launch(nodeOverride: String?) async throws {
         stop()
         let node = try await findNode(nodeOverride)
-        guard let script = Bundle.main.url(forResource: "engine", withExtension: nil)?.appending(path: "main.ts") else {
+        guard let script = Bundle.main.url(forResource: "engine", withExtension: nil)?.appending(path: "main.mjs") else {
             throw EngineError.remote("The engine is missing from the app bundle.")
         }
         let process = Process()
@@ -97,8 +97,9 @@ actor Engine {
         }
         // Where the engine keeps what it learned from Claude Code between launches.
         environment["ORICODE_CACHE"] = Build.support.appending(path: "Engine").path
-        // Node keeps what it compiled of the engine and the Agent SDK there, so the next start
-        // reads it instead of compiling it again: 50ms of the engine's start. One folder for each
+        // Node keeps what it compiled of the engine and the Agent SDK there, so the next load
+        // reads it instead of compiling it again: 14ms of the SDK's first load, which the first
+        // turn waits on; the bundled engine starts no faster from it (K-392). One folder for each
         // build, the others removed, so an update leaves nothing behind. The engine takes the
         // variable out of the environment its own children get.
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"

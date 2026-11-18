@@ -65,19 +65,24 @@ phone-device: project
 	xcrun devicectl device install app --device $$device "$(PHONE_DEVICE_APP)" && \
 	xcrun devicectl device process launch --device $$device com.realmeric.oricode.phone
 
-# Staged for the app: no dev tools, no platform binaries (the app runs the user's own claude),
-# no peer dependencies, which sdk.mjs never imports, and none of the SDK's files but sdk.mjs
-# that it needs, and no package-lock.json, which npm ci has read by then and nothing reads again;
-# the import at the end fails the build if a new SDK does need one.
+# Staged for the app: the engine as one file, main.mjs, bundled by esbuild with the Agent SDK
+# left out (K-392): Node strips the types of 51 modules in 285 ms of CPU at every launch and
+# loads the one file in 115. No dev tools, no platform binaries (the app runs the user's own
+# claude), no peer dependencies, which sdk.mjs never imports, and none of the SDK's files but
+# sdk.mjs that it needs, and no package-lock.json, which npm ci has read by then and nothing reads
+# again; the import at the end fails the build if a new SDK does need one, and the `agents` asked
+# of the staged engine fails it if the bundle doesn't start. The tests run the sources.
 $(BUILD)/engine/.stamp: $(ENGINE_SOURCES)
 	@if [ -f engine/package.json ]; then \
 		set -e; \
-		( cd engine && { [ -d node_modules ] || npm ci --silent; } && npx tsc --noEmit -p . ); \
+		( cd engine && { [ -x node_modules/.bin/esbuild ] || npm ci --silent; } && npx tsc --noEmit -p . ); \
 		rm -rf $(BUILD)/engine && mkdir -p $(BUILD)/engine; \
-		cp engine/*.ts engine/package.json engine/package-lock.json $(BUILD)/engine/; \
+		engine/node_modules/.bin/esbuild engine/main.ts --bundle --packages=external --platform=node --format=esm --target=node24 --log-level=warning --outfile=$(BUILD)/engine/main.mjs; \
+		cp engine/package.json engine/package-lock.json $(BUILD)/engine/; \
 		cd $(BUILD)/engine && npm ci --omit=dev --omit=optional --omit=peer --silent && rm -f package-lock.json; \
 		( cd node_modules/@anthropic-ai/claude-agent-sdk && rm -f bridge.* browser-sdk.* extractFromBunfs.* *.d.ts README.md ); \
 		node --input-type=module -e "await import('@anthropic-ai/claude-agent-sdk')"; \
+		echo '{"id":1,"method":"agents"}' | ORICODE_CACHE=$$(mktemp -d) node main.mjs 2>/dev/null | grep -q '"result"'; \
 	else mkdir -p $(BUILD)/engine; fi
 	@touch $@
 
