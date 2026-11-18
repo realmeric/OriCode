@@ -48,6 +48,8 @@ final class PhoneLink {
     @ObservationIgnored var seen: Set<UUID> = []
     /// Each listed thread's latest finished reply.
     @ObservationIgnored var replies: [UUID: String?] = [:]
+    /// The threads whose reply is being read from the store.
+    @ObservationIgnored var readingReplies: Set<UUID> = []
     /// When each ask was first seen waiting.
     @ObservationIgnored var askedAt: [String: Date] = [:]
     /// The threads phones are watching, and their pages (PhoneLink+Talk.swift).

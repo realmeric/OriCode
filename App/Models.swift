@@ -183,13 +183,20 @@ final class PlanTask {
 }
 
 /// One wire event, stored as the JSON it arrived as. `seq` orders events that share a timestamp.
+/// Indexed by its thread, kind and order, so a thread's last event of a kind is one index step:
+/// SQLite answered SwiftData's form of that question by scanning every event in the store, a
+/// second a lookup when the file was cold (K-381).
 @Model
 final class Event {
+    #Index<Event>([\.chat, \.kind, \.seq])
+
     @Attribute(.unique) var id: UUID
     var chat: Chat?
     var turn: Int
     var seq: Int
-    var kind: String
+    /// Its hash is changed for the index above: Core Data leaves indexes out of a model's hash, so
+    /// without it a store made before would open as it was and never be given the index.
+    @Attribute(hashModifier: "K-381") var kind: String
     var payload: Data
     var createdAt: Date
 

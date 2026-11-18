@@ -22,7 +22,7 @@ extension PhoneLink {
     static let window: Duration = .seconds(2)
     /// The latest threads the phone lists beside those at work, waiting or pinned.
     static let latest = 20
-    static let replyLength = 4_000
+    nonisolated static let replyLength = 4_000
 
     /// Starts watching, and writes everything once: the first write after a launch or a new state
     /// key, and what CloudKit holds that no longer is, deleted.
@@ -181,16 +181,32 @@ extension PhoneLink {
                 replies[chat.id] = last?.text.map { String($0.prefix(Self.replyLength)) } ?? replies[chat.id] ?? nil
             }
         } else if replies[chat.id] == nil {
-            replies[chat.id] = Self.storedReply(of: chat.id, in: model?.context)
+            readReply(of: chat.id)
         }
         return replies[chat.id] ?? nil
     }
 
-    /// The last reply of a thread whose transcript isn't in memory, read from its last text event alone.
-    private static func storedReply(of id: UUID, in context: ModelContext?) -> String? {
+    /// Reads the reply of a thread whose transcript isn't in memory off the main thread, in a
+    /// context of its own, and writes the snapshot again once it has it. On the main thread it
+    /// was the window's longest hang, a second a thread the phone lists after every launch (K-381).
+    private func readReply(of id: UUID) {
+        guard let container = model?.context.container, readingReplies.insert(id).inserted else { return }
+        Task { [weak self] in
+            let reply = await Task.detached(priority: .utility) { Self.storedReply(of: id, in: ModelContext(container)) }.value
+            guard let self else { return }
+            readingReplies.remove(id)
+            guard replies[id] == nil else { return }
+            replies[id] = .some(reply)
+            changed()
+        }
+    }
+
+    /// The last reply of a thread whose transcript isn't in memory, read from its last text event
+    /// alone, which Event's index finds in one step.
+    nonisolated static func storedReply(of id: UUID, in context: ModelContext) -> String? {
         var last = FetchDescriptor<Event>(predicate: #Predicate { $0.chat?.id == id && $0.kind == "text" }, sortBy: [SortDescriptor(\.seq, order: .reverse)])
         last.fetchLimit = 1
-        guard let event = try? context?.fetch(last).first, let body = try? JSONDecoder().decode(JSON.self, from: event.payload) else { return nil }
+        guard let event = try? context.fetch(last).first, let body = try? JSONDecoder().decode(JSON.self, from: event.payload) else { return nil }
         return body["delta"]?.string.map { String($0.prefix(replyLength)) }
     }
 
