@@ -553,7 +553,7 @@ final class PhoneLink {
             }
         }
         shownWatch = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) { [weak self] note in
-            guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
+            guard let window = note.object as? NSWindow, window.followsSight else { return }
             let visible = window.occlusionState.contains(.visible)
             MainActor.assumeIsolated {
                 guard let self, visible != self.shown else { return }

@@ -677,7 +677,7 @@ final class AppModel {
             }
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) { [weak self] note in
-            guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
+            guard let window = note.object as? NSWindow, window.followsSight else { return }
             let visible = window.occlusionState.contains(.visible)
             MainActor.assumeIsolated { self?.windowVisible = visible }
         }
@@ -914,5 +914,18 @@ final class AppModel {
 
     private func handle(_ event: EngineEvent) {
         route(event)
+    }
+}
+
+extension NSWindow {
+    /// The window whose being seen is the app's being seen: the main one, and in the bench's build
+    /// the bench's own, since it orders the main one out and what it measures is drawn in its
+    /// window (K-394). The clock, the hang watch, the engine's pacing and the phone follow it.
+    var followsSight: Bool {
+        guard let id = identifier?.rawValue else { return false }
+#if PERF
+        if id == "bench" { return true }
+#endif
+        return id.hasPrefix("main")
     }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftData
 import Testing
@@ -427,6 +428,31 @@ struct StreamClockTests {
         clock.visible = true
         delta(" eight", in: open)
         #expect(clock.beat == .display)
+    }
+
+    /// The bench counts the times the window went out of sight, to fail a run that measured while
+    /// it did (K-394), and only the main window's sight is the app's; the bench's own joins it
+    /// in the Perf build alone.
+    @Test func theClockCountsEachTimeTheWindowGoesOutOfSight() {
+        #expect(clock.hidings == 0)
+        clock.visible = true
+        #expect(clock.hidings == 0)
+        clock.visible = false
+        clock.visible = false
+        #expect(clock.hidings == 1)
+        clock.visible = true
+        clock.visible = false
+        #expect(clock.hidings == 2)
+        let main = NSWindow(), other = NSWindow(), bench = NSWindow()
+        main.identifier = NSUserInterfaceItemIdentifier("main-AppWindow-1")
+        other.identifier = NSUserInterfaceItemIdentifier("settings")
+        bench.identifier = NSUserInterfaceItemIdentifier("bench")
+        #expect(main.followsSight && !other.followsSight)
+#if PERF
+        #expect(bench.followsSight)
+#else
+        #expect(!bench.followsSight)
+#endif
     }
 
     /// The window out of sight: the thread streaming in it isn't drawn, the shared clock keeps

@@ -156,6 +156,14 @@ enum PerfBench {
 
     /// The app active and the window key, as a key press needs it.
     static func front(_ window: NSWindow) async {
+        // PERF_BACK=1: on screen and seen, but the app is not brought forward, for a focused run
+        // on a Mac in use. A key needs the app active, so this is for the parts that stream.
+        if env["PERF_BACK"] == "1" {
+            window.orderFrontRegardless()
+            try? await Task.sleep(for: .milliseconds(300))
+            log("front: not taken (PERF_BACK), window on screen \(window.occlusionState.contains(.visible))")
+            return await sight(window)
+        }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         try? await Task.sleep(for: .milliseconds(300))
@@ -171,6 +179,46 @@ enum PerfBench {
             try? await Task.sleep(for: .milliseconds(300))
         }
         log("front: app active \(NSApp.isActive), window key \(window.isKeyWindow), on screen \(window.occlusionState.contains(.visible))")
+        await sight(window)
+    }
+
+    // MARK: Sight (K-394)
+
+    /// The clock's hidings when the window was last seen with the clock saying so, and what kept
+    /// it from being: a stage's window the bench has not looked at yet has neither.
+    static var sightFrom: Int?
+    static var sightLost: String?
+
+    /// Waits for the stage's window to be on screen and for the app to know it: the main window
+    /// is ordered out, and since K-383 the clock, the hang watch, the engine's pacing and the
+    /// phone follow whichever window is seen (NSWindow.followsSight, which the bench's is), so a
+    /// stream measured before that has heard is the hidden beat, text four times a second. What
+    /// is drawn is measured from here, and `judgeSight` says if the clock was hidden while it was.
+    static func sight(_ window: NSWindow) async {
+        let clock = StreamClock.shared
+        let seen = await until(5) { window.occlusionState.contains(.visible) && clock.visible && (appModel?.windowVisible ?? true) }
+        sightFrom = clock.hidings
+        sightLost = seen ? nil : "the window was never seen together with the clock in 5 s: on screen \(window.occlusionState.contains(.visible)), clock visible \(clock.visible), app's window visible \(appModel?.windowVisible ?? true)"
+        log("SIGHT window on screen \(window.occlusionState.contains(.visible)), clock visible \(clock.visible), beat \(clock.beat.map { "\($0)" } ?? "none"), hidden \(clock.hidings) times so far")
+    }
+
+    /// Run as a stage's window closes, which is the end of what it measured: a run whose clock
+    /// went hidden, or never was seen, while it did gets a HIDDEN line, which scripts/perf/judge.py
+    /// fails and leaves unjudged, since its stream was another measure's.
+    static func judgeSight() {
+        let clock = StreamClock.shared
+        var problem = sightLost
+        if problem == nil {
+            if let from = sightFrom {
+                if clock.hidings > from { problem = "the clock went hidden \(clock.hidings - from) times while it measured" }
+                else if !clock.visible { problem = "the clock was hidden at the end of what it measured" }
+            } else {
+                problem = "it drew without waiting to be seen: front(_:) or sight(_:) was never called"
+            }
+        }
+        sightFrom = nil
+        sightLost = nil
+        log(problem.map { "HIDDEN \($0)" } ?? "SIGHT kept: the clock was visible throughout, hidden \(clock.hidings) times since launch")
     }
 
     @discardableResult
@@ -465,9 +513,8 @@ enum PerfBench {
         let (stage, a, _) = try two(0, 0)
         defer { stage.window.close() }
         try await settle(2000)
-        // The app's own window, ordered out, told the clock nothing can be seen (K-383), and it
-        // would keep its hidden beat, four times a second, for the bench's window on screen.
-        StreamClock.shared.visible = stage.window.occlusionState.contains(.visible)
+        // Not in front, but seen: the clock follows the bench's window like any other part's (K-394).
+        await sight(stage.window)
         // PERF_POWER=battery or low: the rate the clock asks for on battery or in Low Power Mode,
         // on a Mac plugged in.
         switch env["PERF_POWER"] {
@@ -1788,6 +1835,10 @@ final class Stage {
             window.setFrameOrigin(NSPoint(x: x, y: y))
         }
         window.orderFrontRegardless()
+        // Its close is the end of what it measured, and the last word on whether that was seen (K-394).
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+            MainActor.assumeIsolated { PerfBench.judgeSight() }
+        }
     }
 
     func boot() async throws {

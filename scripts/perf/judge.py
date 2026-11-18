@@ -5,7 +5,9 @@
 # no number, 3 when nothing failed but a measure has no quiet run to judge, 0 when every measure
 # was judged and is inside its budget. plan.txt, which perf.sh writes, says how many runs each
 # config was to have. A run the machine wasn't quiet for, or whose window never came to the front
-# or lost it while idle, is left out, since its numbers are another measure's; `stopped` says
+# or lost it while idle, is left out, since its numbers are another measure's; a run the bench
+# says (HIDDEN) drew while the clock was hidden fails with no number, since its stream was the
+# hidden beat's (K-394); `stopped` says
 # perf.sh gave up there, and what was measured before is still judged. With --measured in place
 # of the verdict it prints what budgets.json records.
 import json
@@ -96,7 +98,7 @@ SUMMED = ('review.backstep.witness.off', 'review.backstep.legacy.off')
 EARLY = ['earlyj-witness-40', 'earlyj-witness-150', 'earlyj-legacy-40', 'earlyj-legacy-150']
 
 # Every line by config and run. A label is <config>-r<run>, or the config alone where there is one run.
-lines, away, unquiet, died, machine = {}, set(), set(), {}, ''
+lines, away, unquiet, hidden, died, machine = {}, set(), set(), set(), {}, ''
 path = os.path.join(folder, 'results.txt')
 for line in open(path, errors='replace') if os.path.exists(path) else []:
     found = re.match(r'\[([\w.-]+?)(?:-r(\d+))?\] (.*)', line)
@@ -113,6 +115,10 @@ for line in open(path, errors='replace') if os.path.exists(path) else []:
     # The bench died, was killed at its time limit, or a part of it gave up before it measured.
     if re.match(r'run exit|no app|\w+ failed:|\w+: (the composer never|no transcript|the engine isn|no diff read|no page|the keyboard is on no change)|REVIEWSCROLL: the review', text):
         died[(config, run)] = text
+    # The clock was hidden while the window measured, so what it measured is the hidden beat's (K-394).
+    if text.startswith('HIDDEN '):
+        died[(config, run)] = text
+        hidden.add((config, run))
     # Idle in front is idle with nobody at the Mac: another app coming forward is someone there.
     if config.startswith('idle-front') and text.startswith('IDLE ') and 'in front:' in text and '"OriCode Perf"' not in text:
         away.add((config, run))
@@ -138,6 +144,9 @@ def values(name, config, start, number):
         said = lines.get((config, run))
         if (config, run) in away or (config, run) in unquiet or (said is None and stopped):
             lost.append(name)
+            continue
+        if (config, run) in hidden:
+            failed.setdefault((config, run), []).append(name)
             continue
         got = [float(m.group(1)) for text in said or [] if re.match(start, text) for m in [re.search(number, text)] if m]
         if got:

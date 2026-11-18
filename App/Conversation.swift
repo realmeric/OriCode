@@ -322,12 +322,16 @@ final class StreamClock: NSObject {
     /// be watching, and a block made again waits for no frame.
     var visible = true {
         didSet {
+            if oldValue && !visible { hidings += 1 }
             guard visible != oldValue, beat != nil || !makers.isEmpty else { return }
             stop()
             start()
         }
     }
     static let hiddenEvery: TimeInterval = 0.25
+    /// How many times the window went out of sight, for the bench: a run that measured a stream
+    /// while this moved measured the hidden beat and not the display's (K-394).
+    private(set) var hidings = 0
     /// The Mac's power, which sets how often the link asks to fire: words appearing read the same
     /// at 60 Hz as at ProMotion's 120, and on battery or in Low Power Mode at less (FrameRates).
     var power: FrameRates.Power {
@@ -420,7 +424,7 @@ final class StreamClock: NSObject {
         // The display the window is on, which mainWindow doesn't say while the app is in the
         // background. A view's own link would stop with its window, and a window can close
         // mid-stream.
-        let window = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
+        let window = NSApp.windows.first { $0.followsSight && $0.isVisible } ?? NSApp.windows.first { $0.followsSight }
         guard let screen = window?.screen ?? NSScreen.main else {
             // No display to keep time by: everything at once.
             beat = nil
