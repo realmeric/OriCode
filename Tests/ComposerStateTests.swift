@@ -218,6 +218,7 @@ struct ComposerStateTests {
                 .frame(minWidth: 720, minHeight: 480)
                 .preferredColorScheme(.dark)))
         let window = NSWindow(contentViewController: host)
+        window.isReleasedWhenClosed = false
         window.styleMask = [.titled, .resizable, .fullSizeContentView]
         window.setContentSize(NSSize(width: 900, height: 600))
         window.setFrameOrigin(NSPoint(x: -6000, y: -6000))

@@ -170,23 +170,35 @@ struct StreamingTests {
     /// so often as it streams, and a crash takes that much of it and no more.
     @Test func aLongReplyIsPutOnItsEventAsItStreams() async throws {
         let conversation = Conversation(chat: chat, context: context)
+        // Frames when the test says, each long after the deltas before it, so a frame shows all
+        // that's held and not the part the pace (K-364) would give it. `keeps` is the real
+        // time between writes.
+        let clock = StreamClock(manual: true)
+        let time = TestTime()
+        conversation.clock = clock
+        conversation.now = { time.at }
+        func frame() {
+            time.at += Conversation.behind
+            clock.tick()
+        }
         conversation.keeps = .milliseconds(150)
         conversation.userSent("Go")
         delta("One", in: conversation)
         conversation.flush()
         delta(" two", in: conversation)
-        try await Task.sleep(for: .milliseconds(50))
+        frame()
+        #expect(conversation.items.last?.text == "One two")
         // Whatever the store saves now, the event still has what the flush gave it.
         try context.save()
         #expect(try storedText() == "One")
         try await Task.sleep(for: .milliseconds(150))
         delta(" three", in: conversation)
-        try await Task.sleep(for: .milliseconds(50))
+        frame()
         try context.save()
         #expect(try storedText() == "One two three")
         // And not again at the next frame.
         delta(" four", in: conversation)
-        try await Task.sleep(for: .milliseconds(50))
+        frame()
         #expect(conversation.items.last?.text == "One two three four")
         try context.save()
         #expect(try storedText() == "One two three")

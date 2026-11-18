@@ -14,3 +14,8 @@ enum TestStore {
         return container
     }
 }
+
+/// A time that moves only when a test moves it, for what reads `now` through a closure.
+final class TestTime {
+    var at = ContinuousClock.now
+}

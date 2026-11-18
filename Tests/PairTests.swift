@@ -227,6 +227,7 @@ struct PairTests {
                 .modelContainer(container)
                 .preferredColorScheme(.dark)))
         let window = NSWindow(contentViewController: host)
+        window.isReleasedWhenClosed = false
         window.styleMask = [.titled, .resizable, .fullSizeContentView]
         window.setContentSize(NSSize(width: width, height: 760))
         window.setFrameOrigin(NSPoint(x: -6000, y: -6000))

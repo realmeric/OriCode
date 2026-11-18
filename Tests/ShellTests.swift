@@ -8,6 +8,10 @@ import Testing
 /// Commands from the composer's shell prompt: what their blocks show, and what Claude reads.
 @MainActor
 struct ShellTests {
+    init() {
+        _ = TestShell.clean
+    }
+
     @Test func aTerminalReadsBackAsItsLinesWithWrappedOnesJoined() {
         let long = String(repeating: "x", count: ShellBlock.columns + 10)
         let terminal = ShellRender.replay(Data("one\r\n\u{1B}[31mtwo\u{1B}[0m three\r\n\(long)\r\n\r\n\r\n".utf8))
@@ -171,6 +175,7 @@ struct ShellTests {
         chat.started = true
         let window = NSWindow(contentViewController: NSHostingController(rootView:
             RootView().environment(model).environment(Updates()).modelContainer(container).frame(width: 1000, height: 700)))
+        window.isReleasedWhenClosed = false
         window.alphaValue = 0
         window.orderFrontRegardless()
         defer { window.close() }

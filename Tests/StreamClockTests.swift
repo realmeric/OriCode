@@ -12,6 +12,10 @@ struct StreamClockTests {
     private let open: Conversation
     private let beside: Conversation
     private let clock = StreamClock(manual: true)
+    /// The time the threads read, which moves only when a test moves it: pacing follows the
+    /// arrival of deltas (K-364), and a test that ticks without time passing would see every
+    /// delta land in the same instant.
+    private let time = TestTime()
 
     init() throws {
         container = try TestStore.memory()
@@ -25,6 +29,7 @@ struct StreamClockTests {
             context.insert(chat)
             let conversation = Conversation(chat: chat, context: context)
             conversation.clock = clock
+            conversation.now = { [time] in time.at }
             conversation.userSent("Go")
             conversations.append(conversation)
         }
@@ -32,6 +37,19 @@ struct StreamClockTests {
         open = conversations[0]
         beside = conversations[1]
         beside.everyOtherFrame = { true }
+    }
+
+    /// A frame long after every delta held came: all of it is due, so what a frame shows is
+    /// decided by the blocks and the thread beside, not by the pace.
+    private func tick() {
+        time.at += Conversation.behind
+        clock.tick()
+    }
+
+    /// The display's next frame, `elapsed` after the last.
+    private func frame(after elapsed: Duration = Conversation.frame) {
+        time.at += elapsed
+        clock.tick()
     }
 
     private func delta(_ text: String, in conversation: Conversation) {
@@ -47,8 +65,8 @@ struct StreamClockTests {
     private func startBoth(_ first: String, _ second: String) {
         delta(first, in: open)
         delta(second, in: beside)
-        clock.tick()
-        clock.tick()
+        tick()
+        tick()
     }
 
     @Test func deltasWaitForTheFrameAndBothThreadsShowInIt() {
@@ -60,7 +78,7 @@ struct StreamClockTests {
         // The first makes the reply's item; the rest wait for the frame.
         #expect(text(of: open) == "One")
         #expect(text(of: beside) == "Uno")
-        clock.tick()
+        tick()
         #expect(text(of: open) == "One two")
         #expect(text(of: beside) == "Uno dos")
     }
@@ -71,9 +89,9 @@ struct StreamClockTests {
         delta(" b", in: beside)
         #expect(text(of: beside) == "Go")
         // The open thread's new row fills this frame.
-        clock.tick()
+        tick()
         #expect(text(of: beside) == "Go")
-        clock.tick()
+        tick()
         #expect(text(of: beside) == "a b")
     }
 
@@ -83,7 +101,7 @@ struct StreamClockTests {
         for n in 0..<4 {
             delta(" \(n)", in: open)
             delta(" \(n)", in: beside)
-            clock.tick()
+            tick()
             #expect(text(of: open) == "A" + (0...n).map { " \($0)" }.joined())
             shown.append(text(of: beside))
         }
@@ -92,31 +110,31 @@ struct StreamClockTests {
 
     @Test func theThreadBesideWaitsAFrameWhileTheOpenOneStartsABlock() {
         startBoth("A", "a")
-        clock.tick()
+        tick()
         delta(" more", in: beside)
-        clock.tick()
+        tick()
         #expect(text(of: beside) == "a more")
         delta(" Still.", in: open)
         delta(" and more", in: beside)
-        clock.tick()
+        tick()
         // Its turn comes as the open thread's reply starts a block, and it waits that frame out,
         delta("\n\nA second one.", in: open)
-        clock.tick()
+        tick()
         #expect(text(of: open) == "A Still.\n\nA second one.")
         #expect(text(of: beside) == "a more")
         // but never past the third.
         delta("\n\nA third.", in: open)
-        clock.tick()
+        tick()
         #expect(text(of: beside) == "a more and more")
     }
 
     @Test func aFrameStartsOneBlockAtMost() {
         delta("A", in: open)
-        clock.tick()
+        tick()
         delta("\n\nTwo.\n\nThree.", in: open)
-        clock.tick()
+        tick()
         #expect(text(of: open) == "A\n\nTwo.\n\n")
-        clock.tick()
+        tick()
         #expect(text(of: open) == "A\n\nTwo.\n\nThree.")
     }
 
@@ -137,7 +155,7 @@ struct StreamClockTests {
         // The open thread's turn ends before the row is made.
         beside.everyOtherFrame = { false }
         delta(" b", in: beside)
-        clock.tick()
+        tick()
         delta(" c", in: beside)
         beside.flush()
         #expect(beside.items.compactMap(\.text) == ["Go", "a b c"])
@@ -160,8 +178,8 @@ struct StreamClockTests {
     @Test func aDeletedThreadsWaitingRowIsNeverRecorded() {
         delta("a", in: beside)
         beside.forget()
-        clock.tick()
-        clock.tick()
+        tick()
+        tick()
         #expect(beside.items.compactMap(\.text) == ["Go"])
         #expect(!context.hasChanges)
     }
@@ -177,33 +195,33 @@ struct StreamClockTests {
         func settle() async { for _ in 0..<5 { await Task.yield() } }
         await settle()
         // Not in a frame a row is added in,
-        clock.tick()
-        clock.tick()
-        clock.tick()
+        tick()
+        tick()
+        tick()
         await settle()
         #expect(text(of: beside) == "b")
         #expect(!made)
         // nor in one the open thread starts a block in,
         delta("\n\nNext.", in: open)
-        clock.tick()
+        tick()
         await settle()
         #expect(!made)
         // nor in one the thread beside grows in,
         delta(" c", in: beside)
-        clock.tick()
+        tick()
         await settle()
         #expect(text(of: beside) == "b c")
         #expect(!made)
         // but in the first with room.
         delta(" On.", in: open)
-        clock.tick()
+        tick()
         await maker.value
         #expect(made)
         // What it left to draw fills the next frame, so the thread beside waits for the one after.
         delta(" d", in: beside)
-        clock.tick()
+        tick()
         #expect(text(of: beside) == "b c")
-        clock.tick()
+        tick()
         #expect(text(of: beside) == "b c d")
     }
 
@@ -229,29 +247,41 @@ struct StreamClockTests {
         delta("Start.", in: open)
         let burst = String(repeating: " word", count: 120)
         delta(burst, in: open)
-        clock.tick()
+        frame()
         let first = text(of: open) ?? ""
         #expect(first.count > 6 && first.count < 6 + burst.count)
         #expect(first.hasSuffix(" ") || first.hasSuffix("word"))
-        for _ in 0..<40 { clock.tick() }
+        for _ in 0..<40 { frame() }
         #expect(text(of: open) == "Start." + burst)
     }
 
     /// Claude Code's stream as it comes: a delta every 20 ms, the result straight after the last.
-    /// Each frame shows what has come, and the turn's end has nothing left to add.
+    /// Each frame shows more of the reply, all of it but the delta still being spread (K-364),
+    /// and the turn's end has nothing left to add.
     @Test func deltasTwentyMillisecondsApartShowAsTheyCome() {
         beside.everyOtherFrame = { false }
         let words = (0..<60).map { " word\($0)" }
         var events: [(at: Double, delta: String?)] = words.enumerated().map { (Double($0.offset) * 20, $0.element) }
         events += (1...80).map { (Double($0) * 1000 / 60, nil) }
         var sent = ""
+        var last = ""
+        var shown = ""
+        let start = time.at
         for event in events.sorted(by: { $0.at < $1.at }) where event.at <= 1180 {
+            time.at = start + .microseconds(Int(event.at * 1000))
             if let text = event.delta {
                 delta(text, in: open)
                 sent += text
+                last = text
             } else {
+                let behind = shown != sent
                 clock.tick()
-                #expect(text(of: open) == sent)
+                let now = text(of: open) ?? ""
+                #expect(sent.hasPrefix(now))
+                #expect(sent.count - now.count < last.count, "\(now.count) of \(sent.count) at \(event.at) ms")
+                // No frame with words waiting goes by without some of them.
+                #expect(!behind || now.count > shown.count, "a stop at \(event.at) ms")
+                shown = now
             }
         }
         #expect(sent == words.joined())
@@ -263,7 +293,8 @@ struct StreamClockTests {
     }
 
     /// A burst the agent held and sent at once, with its turn's end right behind it: the footer
-    /// waits until the burst has been shown at the steady rate.
+    /// waits for the burst, which is shown whole in the next frame (K-364), and comes in the one
+    /// after.
     @Test func aTurnsEndWaitsForTheBurstBeforeIt() throws {
         let container = try TestStore.memory()
         let project = Project(name: "alpha", path: NSTemporaryDirectory())
@@ -276,6 +307,7 @@ struct StreamClockTests {
         model.selectedChatID = chat.id
         let conversation = model.conversation(for: chat)
         conversation.clock = clock
+        conversation.now = { [time] in time.at }
         conversation.userSent("Go")
         let id = chat.id.uuidString
         model.route(EngineEvent(name: "turn.started", threadId: id, body: ["event": "turn.started", "sessionId": "s"]))
@@ -283,10 +315,12 @@ struct StreamClockTests {
         let burst = String(repeating: " word", count: 200)
         model.route(EngineEvent(name: "text", threadId: id, body: ["event": "text", "delta": .string(burst)]))
         model.route(EngineEvent(name: "turn.done", threadId: id, body: ["event": "turn.done", "sessionId": "s", "stopReason": "end_turn"]))
-        clock.tick()
         #expect(conversation.running)
-        #expect((conversation.items.last?.text?.count ?? 0) < 6 + burst.count)
-        for _ in 0..<60 { clock.tick() }
+        #expect(conversation.items.last?.text == "Start.")
+        frame()
+        #expect(conversation.running)
+        #expect(conversation.items.compactMap(\.text).last == "Start." + burst)
+        frame()
         #expect(!conversation.running)
         #expect(conversation.items.compactMap(\.text).last == "Start." + burst)
         #expect(model.behindBurst.isEmpty)
@@ -300,7 +334,7 @@ struct StreamClockTests {
         delta("One", in: open)
         delta(" two three four five six seven", in: open)
         #expect(clock.beat == .hidden)
-        clock.tick()
+        tick()
         #expect(text(of: open) == "One two three four five six seven")
         #expect(clock.beat == nil)
         clock.visible = true

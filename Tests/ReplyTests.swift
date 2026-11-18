@@ -86,11 +86,19 @@ struct ReplyTests {
         func height(_ view: some View) async throws -> CGFloat {
             let host = NSHostingView(rootView: view.frame(width: 640).environment(\.colorScheme, .dark))
             host.frame = NSRect(x: 0, y: 0, width: 640, height: 2000)
-            for _ in 0..<5 {
+            // Laid out until the height holds for five layouts: code waits for its colours and a
+            // block for a frame of the shared clock to be made again in, which with other suites
+            // running can come after the first hundred milliseconds.
+            var height = -1.0
+            var held = 0
+            for _ in 0..<150 where held < 5 {
                 host.layoutSubtreeIfNeeded()
                 try await Task.sleep(for: .milliseconds(20))
+                let now = host.fittingSize.height
+                held = now == height ? held + 1 : 0
+                height = now
             }
-            return host.fittingSize.height
+            return height
         }
         let whole = try await height(
             Markdown(text)

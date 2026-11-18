@@ -305,6 +305,7 @@ struct BesideTests {
             .frame(width: 1180, height: 760)
             .preferredColorScheme(.dark)))
         let window = NSWindow(contentViewController: host)
+        window.isReleasedWhenClosed = false
         window.styleMask = [.titled, .resizable, .fullSizeContentView]
         window.setFrameOrigin(NSPoint(x: -6000, y: -6000))
         window.alphaValue = 0

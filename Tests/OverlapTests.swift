@@ -263,6 +263,7 @@ final class OverlapStage {
                 .preferredColorScheme(.dark)))
         host.sceneBridgingOptions = [.toolbars]
         window = Unplaced(contentViewController: host)
+        window.isReleasedWhenClosed = false
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified

@@ -226,6 +226,7 @@ Chocolate remains tied to the regions where cacao is grown, and that connection 
                 .frame(minWidth: 720, minHeight: 480)
                 .preferredColorScheme(.dark)))
         let window = Unplaced(contentViewController: host)
+        window.isReleasedWhenClosed = false
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.title = ""

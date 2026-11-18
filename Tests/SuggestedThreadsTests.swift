@@ -51,6 +51,8 @@ struct SuggestedThreadsTests {
     @Test func aSuggestionWaitsForItsTurnsEndAndIsStoredUnderTheReply() throws {
         let (model, chat) = try model()
         let conversation = model.conversation(for: chat)
+        let clock = StreamClock(manual: true)
+        conversation.clock = clock
         conversation.userSent("Add the totals")
         model.route(event("turn.started", chat))
         model.route(event("text", chat, ["delta": "Added. The README"]))
@@ -59,6 +61,12 @@ struct SuggestedThreadsTests {
         #expect(buttons(conversation).isEmpty)
         model.route(event("text", chat, ["delta": " is out of date too."]))
         model.route(event("turn.done", chat, ["stopReason": "end_turn"]))
+        // The turn's end waits for the reply's last words to be shown, a frame, and comes in the
+        // frame after (K-320).
+        #expect(buttons(conversation).isEmpty)
+        clock.tick()
+        clock.tick()
+        #expect(!conversation.running)
         #expect(buttons(conversation) == ["Fix the README's install line"])
 
         // Read from the store, as after a relaunch: one reply, its footer, then the button.

@@ -151,6 +151,7 @@ struct MarkPaletteTests {
         let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height).environment(\.colorScheme, .dark))
         host.frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.contentView = host
         for _ in 0..<steps {
             host.layoutSubtreeIfNeeded()

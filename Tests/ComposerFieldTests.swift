@@ -32,6 +32,7 @@ struct ComposerFieldTests {
         let draft = Draft()
         let field = ComposerTextView.make()
         let window = NSWindow(contentRect: NSRect(x: -6000, y: -6000, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
         field.frame = NSRect(x: 0, y: 0, width: 400, height: 20)
         field.autoresizingMask = [.width]
@@ -241,6 +242,7 @@ struct ComposerFieldTests {
                 .frame(minWidth: 720, minHeight: 480)
                 .preferredColorScheme(.dark)))
         let window = NSWindow(contentViewController: host)
+        window.isReleasedWhenClosed = false
         window.styleMask = [.titled, .resizable, .fullSizeContentView]
         window.setContentSize(NSSize(width: 900, height: 600))
         window.setFrameOrigin(NSPoint(x: -6000, y: -6000))
