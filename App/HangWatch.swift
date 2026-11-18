@@ -55,6 +55,8 @@ final class HangWatch: @unchecked Sendable {
         sampler.arguments = [String(ProcessInfo.processInfo.processIdentifier), "5", "-file", file.path]
         sampler.standardOutput = FileHandle.nullDevice
         sampler.standardError = FileHandle.nullDevice
+        // A diagnostic of a hang already over: it needn't take a performance core from the window.
+        sampler.qualityOfService = .utility
         guard (try? sampler.run()) != nil else { return }
         sampler.waitUntilExit()
         let samples = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil))?

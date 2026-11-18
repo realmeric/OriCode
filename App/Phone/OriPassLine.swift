@@ -91,7 +91,8 @@ final class OriPassLine {
     private func look() {
         guard on, connection == nil else { return }
         let path = path
-        Task.detached {
+        // Nothing waits on the connect; a thread's name reaches the phone a moment later either way.
+        Task.detached(priority: .utility) {
             let tried = PassConnection.connect(to: path)
             await MainActor.run { self.tried(tried) }
         }

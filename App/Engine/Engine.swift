@@ -106,9 +106,12 @@ actor Engine {
         environment["NODE_COMPILE_CACHE"] = compiled.path
         Self.removeOtherCompileCaches(keeping: compiled)
         process.environment = environment
-        // Its CLIs inherit it, idle ones and probes too, and none of them is what the user waits
-        // on the way a click is. A turn's CPU work measured as fast at utility as at
-        // user-initiated on a Mac with cores to spare; its idle timers coalesce more.
+        // A QoS clamp, which every CLI, MCP server and tool shell under it inherits (K-389): their
+        // threads run at priority 20, below the window's 46. Utility leaves the cluster to the
+        // scheduler, which put a turn's short bursts on the efficiency cores and its sustained
+        // work on the performance cores. Background would pin all of it to the efficiency cores
+        // at priority 4, measured to cost a turn 0.9 s to its first delta, a tool call 0.2 s and
+        // a build an agent runs three to five times its time, so it isn't used.
         process.qualityOfService = .utility
 
         let input = Pipe(), output = Pipe(), errors = Pipe()
