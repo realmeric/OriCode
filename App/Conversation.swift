@@ -328,11 +328,35 @@ final class StreamClock: NSObject {
         }
     }
     static let hiddenEvery: TimeInterval = 0.25
+    /// The Mac's power, which sets how often the link asks to fire: words appearing read the same
+    /// at 60 Hz as at ProMotion's 120, and on battery or in Low Power Mode at less (FrameRates).
+    var power: FrameRates.Power {
+        didSet {
+            guard power != oldValue else { return }
+            link?.preferredFrameRateRange = FrameRates.motion(power)
+            interval = nil
+        }
+    }
+    /// The time from one of the link's frames to the next as it last fired, which the pacing
+    /// spreads what's held over; until it has fired, what the range prefers, at most the display's.
+    private var interval: Duration?
+    var frame: Duration {
+        if let interval { return interval }
+        let preferred = Double(FrameRates.motion(power).preferred ?? 60)
+        return max(Conversation.frame, .seconds(1 / preferred))
+    }
+    /// The link's frames since launch, for the bench.
+    private(set) var frames = 0
 
-    init(manual: Bool = false) {
+    init(manual: Bool = false, power: FrameRates.Power = .plugged) {
         self.manual = manual
+        self.power = power
         super.init()
         guard !manual else { return }
+        self.power = PowerState.shared.power
+        NotificationCenter.default.addObserver(forName: PowerState.changed, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.power = PowerState.shared.power }
+        }
         // A link made on a display that's gone, or that the window has left, keeps the wrong
         // time or none, and what's held would wait for the next event recorded.
         for name in [NSApplication.didChangeScreenParametersNotification, NSWindow.didChangeScreenNotification] {
@@ -405,7 +429,8 @@ final class StreamClock: NSObject {
             while !makers.isEmpty { makers.removeFirst().resume.resume() }
             return
         }
-        let link = screen.displayLink(target: self, selector: #selector(frame))
+        let link = screen.displayLink(target: self, selector: #selector(fire))
+        link.preferredFrameRateRange = FrameRates.motion(power)
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -424,7 +449,10 @@ final class StreamClock: NSObject {
         start()
     }
 
-    @objc private func frame() {
+    @objc private func fire(_ link: CADisplayLink) {
+        frames += 1
+        let gap = link.targetTimestamp - link.timestamp
+        if gap > 0 { interval = .seconds(gap) }
         tick()
     }
 
@@ -1420,10 +1448,11 @@ final class Conversation {
     private func paced(_ total: Int) -> Int {
         if afterCatchingUp != nil { return total }
         let now = now()
-        let cadence = min(max(self.cadence ?? .milliseconds(50), Self.frame), Self.behind)
+        let frame = clock.frame
+        let cadence = min(max(self.cadence ?? .milliseconds(50), frame), Self.behind)
         var until = (burstAt ?? now) + cadence
         if let oldest = arrived.first { until = min(until, oldest.at + Self.behind) }
-        let frames = max(1, Int((now.duration(to: until) / Self.frame).rounded(.up)))
+        let frames = max(1, Int((now.duration(to: until) / frame).rounded(.up)))
         // Oldest first, so what's due is where the list starts.
         var due = 0
         for part in arrived {

@@ -318,6 +318,9 @@ private struct MovingRays: NSViewRepresentable {
             pulse.autoreverses = true
             pulse.repeatCount = Self.pulses
             pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            // A small dot's light easing down and back: it asked for nothing and drew at the
+            // display's 120 for half a minute.
+            pulse.preferredFrameRateRange = FrameRates.drift(PowerState.shared.power)
             dot.add(pulse, forKey: "pulse")
         }
 
@@ -332,6 +335,14 @@ private struct MovingRays: NSViewRepresentable {
             watching = [
                 NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main, using: again),
                 NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main, using: again),
+                // A turn asks for its rate as it starts and can last the whole of a turn, so a change
+                // of power starts it again from where it is, at the new rate.
+                NotificationCenter.default.addObserver(forName: PowerState.changed, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, self.spinner.animation(forKey: "turn") != nil else { return }
+                        self.spinner.startTurning(clockwise: -1, period: self.turnPeriod)
+                    }
+                },
             ]
             pulse()
         }
@@ -384,10 +395,13 @@ extension CALayer {
         turn.repeatCount = .infinity
         turn.fillMode = .backwards
         // The slow turn moves 40° a second, which 20 frames draw smoothly at the mark's sizes, and
-        // the capsule's mark turns for as long as an agent works.
-        turn.preferredFrameRateRange = period < 1
-            ? CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
-            : CAFrameRateRange(minimum: 10, maximum: 30, preferred: 20)
+        // the capsule's mark turns for as long as an agent works. The fast one asked for 120 for
+        // the whole of a turn, which held a ProMotion display there under a reply streaming at 60;
+        // its trail blurs the steps between 60 frames.
+        turn.preferredFrameRateRange = MainActor.assumeIsolated {
+            let power = PowerState.shared.power
+            return period < 1 ? FrameRates.motion(power) : FrameRates.drift(power)
+        }
         add(turn, forKey: "turn")
     }
 
@@ -414,7 +428,7 @@ extension CALayer {
         coast.beginTime = convertTime(CACurrentMediaTime(), from: nil) - span
         coast.fillMode = .backwards
         coast.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, Float(0.2 * slope), 0.4, 1)
-        if period < 1 { coast.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120) }
+        if period < 1 { coast.preferredFrameRateRange = MainActor.assumeIsolated { FrameRates.motion(PowerState.shared.power) } }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         CATransaction.setCompletionBlock(completion)

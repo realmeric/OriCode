@@ -46,9 +46,9 @@ struct StreamClockTests {
         clock.tick()
     }
 
-    /// The display's next frame, `elapsed` after the last.
-    private func frame(after elapsed: Duration = Conversation.frame) {
-        time.at += elapsed
+    /// The clock's next frame, `elapsed` after the last: its own interval unless said.
+    private func frame(after elapsed: Duration? = nil) {
+        time.at += elapsed ?? clock.frame
         clock.tick()
     }
 
@@ -253,6 +253,57 @@ struct StreamClockTests {
         #expect(first.hasSuffix(" ") || first.hasSuffix("word"))
         for _ in 0..<40 { frame() }
         #expect(text(of: open) == "Start." + burst)
+    }
+
+    /// The rate a reply's words ask for: never ProMotion's 120, less on battery, less again in
+    /// Low Power Mode, which wins over the power source; what drifts asks for less still.
+    @Test func textAsksForLessThanTheDisplayAndLessAgainOnLowPower() {
+        #expect(FrameRates.power(lowPowerMode: false, onBattery: false) == .plugged)
+        #expect(FrameRates.power(lowPowerMode: false, onBattery: true) == .battery)
+        #expect(FrameRates.power(lowPowerMode: true, onBattery: false) == .low)
+        #expect(FrameRates.power(lowPowerMode: true, onBattery: true) == .low)
+        let promotion = [FrameRates.Power.plugged, .battery, .low].map { FrameRates.motion($0, display: 120) }
+        #expect(promotion.map { $0.preferred ?? 0 } == [60, 40, 30])
+        #expect(promotion.map(\.maximum) == [60, 40, 30])
+        // A 60 Hz display has no 40: battery asks for the 30 under it.
+        let sixty = [FrameRates.Power.plugged, .battery, .low].map { FrameRates.motion($0, display: 60) }
+        #expect(sixty.map { $0.preferred ?? 0 } == [60, 30, 30])
+        #expect(FrameRates.drift(.low).maximum < FrameRates.drift(.plugged).maximum)
+        #expect(FrameRates.drift(.plugged).maximum <= FrameRates.motion(.low).maximum)
+        clock.power = .low
+        #expect(clock.frame == .seconds(1.0 / 30))
+        clock.power = .plugged
+        #expect(clock.frame == max(Conversation.frame, .seconds(1.0 / 60)))
+    }
+
+    /// In Low Power Mode the clock fires 30 times a second and the pacing spreads what's held over
+    /// those frames: a delta every 20 ms still shows in every frame, never more than the two
+    /// deltas a frame spans behind, with no frame that has words waiting going by without some.
+    @Test func atThirtyFramesASecondTheWordsStillComeEveryFrame() {
+        clock.power = .low
+        beside.everyOtherFrame = { false }
+        let words = (0..<60).map { " word\($0)" }
+        var events: [(at: Double, delta: String?)] = words.enumerated().map { (Double($0.offset) * 20, $0.element) }
+        events += (1...40).map { (Double($0) * 1000 / 30, nil) }
+        var sent = ""
+        var shown = ""
+        let start = time.at
+        for event in events.sorted(by: { $0.at < $1.at }) where event.at <= 1180 {
+            time.at = start + .microseconds(Int(event.at * 1000))
+            if let text = event.delta {
+                delta(text, in: open)
+                sent += text
+            } else {
+                let behind = shown != sent
+                clock.tick()
+                let now = text(of: open) ?? ""
+                #expect(sent.hasPrefix(now))
+                #expect(sent.count - now.count <= 2 * " word00".count, "\(now.count) of \(sent.count) at \(event.at) ms")
+                #expect(!behind || now.count > shown.count, "a stop at \(event.at) ms")
+                shown = now
+            }
+        }
+        #expect(sent == words.joined())
     }
 
     /// Claude Code's stream as it comes: a delta every 20 ms, the result straight after the last.

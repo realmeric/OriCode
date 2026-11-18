@@ -58,6 +58,7 @@ enum PerfBench {
                     case "mem": try await memory()
                     case "seed": try await seedStore()
                     case "earlyj": try await earlyJ()
+                    case "textrate": try await textRate()
                     case "backstep": try await backStep()
                     case "besidetitle": try await besideTitle()
                     default: log("unknown part \(part)")
@@ -452,6 +453,48 @@ enum PerfBench {
             }
             if turns == 100 { screenshot(stage.window, "\(label)-stream") }
         }
+    }
+
+    /// K-390: a reply streaming for PERF_SECONDS (20) at Claude Code's pace, 12 characters every
+    /// 20 ms, in a window ordered in without taking the front and with no display link of the
+    /// bench's own, which would keep the display's rate by itself: how many frames showed text a
+    /// second, the longest wait between two, and the main thread's CPU. The energy is read from
+    /// outside, by top, over the same seconds.
+    static func textRate() async throws {
+        let seconds = env["PERF_SECONDS"].flatMap(Double.init) ?? 20
+        let (stage, a, _) = try two(0, 0)
+        defer { stage.window.close() }
+        try await settle(2000)
+        // The app's own window, ordered out, told the clock nothing can be seen (K-383), and it
+        // would keep its hidden beat, four times a second, for the bench's window on screen.
+        StreamClock.shared.visible = stage.window.occlusionState.contains(.visible)
+        // PERF_POWER=battery or low: the rate the clock asks for on battery or in Low Power Mode,
+        // on a Mac plugged in.
+        switch env["PERF_POWER"] {
+        case "battery": StreamClock.shared.power = .battery
+        case "low": StreamClock.shared.power = .low
+        default: break
+        }
+        stage.send("turn.started", [:], to: a)
+        try await settle(1000)
+        log("TEXTRATE window on screen \(StreamClock.shared.visible), power \(StreamClock.shared.power)")
+        let watch = TextWatch(stage.model.conversation(for: stage.chat).live)
+        let text = Array(message(Int(seconds * 600) + 200))
+        let start = cpu()
+        let first = ContinuousClock.now
+        var beat = 0
+        log("TEXTRATE begin")
+        while beat * 12 < Int(seconds * 600) {
+            stage.send("text", ["delta": .string(String(text[beat * 12..<(beat + 1) * 12]))], to: a)
+            beat += 1
+            try await Task.sleep(until: first + .milliseconds(20 * beat), tolerance: .zero)
+        }
+        let ran = first.duration(to: .now) / .seconds(1)
+        let gaps = watch.gaps.dropFirst().sorted()
+        log(String(format: "TEXTRATE %.1f s, %d deltas: text shown in %d frames, %.1f a second; gap median %.1f ms, p95 %.1f, worst %.1f; main %.0f ms a second; refresh %.1f ms",
+                   ran, beat, watch.gaps.count, Double(watch.gaps.count) / ran, gaps.isEmpty ? 0 : gaps[gaps.count / 2],
+                   gaps.isEmpty ? 0 : gaps[min(gaps.count - 1, gaps.count * 95 / 100)], gaps.last ?? 0, (cpu() - start) / ran, refresh * 1000))
+        watch.stop()
     }
 
     /// Several threads at work at once, as a lead's are: PERF_OTHERS threads, none of them the one
@@ -1811,4 +1854,33 @@ final class Stage {
             return String(format: "[x %.0f w %.0f y %.0f of %.0f]", frame.minX, frame.width, scroll.contentView.bounds.origin.y, scroll.documentView?.frame.height ?? 0)
         }.joined(separator: " ")
     }
+}
+
+/// Each change of a reply's live text, which is one frame that showed some of it.
+@MainActor
+final class TextWatch {
+    private let live: LiveText
+    private var last = PerfBench.clock()
+    private var on = true
+    private(set) var gaps: [Double] = []
+
+    init(_ live: LiveText) {
+        self.live = live
+        watch()
+    }
+
+    private func watch() {
+        guard on else { return }
+        withObservationTracking { _ = live.text } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let now = PerfBench.clock()
+                self.gaps.append(now - self.last)
+                self.last = now
+                self.watch()
+            }
+        }
+    }
+
+    func stop() { on = false }
 }

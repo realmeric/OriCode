@@ -767,6 +767,8 @@ private struct FastBubbles: NSViewRepresentable {
                 spin.toValue = from - 2 * .pi
                 spin.duration = orbit.period
                 spin.repeatCount = .infinity
+                // Bubbles a few points across, turning for as long as the picker is open.
+                spin.preferredFrameRateRange = FrameRates.motion(PowerState.shared.power)
                 ring.add(spin, forKey: "orbit")
             }
             for (index, bubble) in bubbles.enumerated() where bubble.layer.animation(forKey: "fizz") == nil {
@@ -778,6 +780,7 @@ private struct FastBubbles: NSViewRepresentable {
                 fizz.repeatCount = .infinity
                 fizz.timeOffset = Double(index) * 0.13
                 fizz.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                fizz.preferredFrameRateRange = FrameRates.motion(PowerState.shared.power)
                 bubble.layer.removeAnimation(forKey: "settle")
                 bubble.layer.add(fizz, forKey: "fizz")
             }
