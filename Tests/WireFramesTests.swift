@@ -46,12 +46,14 @@ struct WireFramesTests {
     }
 
     /// A Claude Code the Agent SDK can run that streams `count` deltas at `rate` a second, then the
-    /// reply and the result, and says it's signed in.
+    /// reply and the result, and says it's signed in. It writes the wall clock's milliseconds as it
+    /// sends the first delta to `first` beside it.
     private static func standIn(rate: Int, count: Int) throws -> String {
         let folder = FileManager.default.temporaryDirectory.appending(path: "wire-frames-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let script = folder.appending(path: "stream.mjs")
         try """
+        import { writeFileSync } from "node:fs";
         import { createInterface } from "node:readline";
         const argv = process.argv.slice(2);
         if (argv.includes("--version")) { process.stdout.write("9.9.9 (Claude Code)\\n"); process.exit(0); }
@@ -68,6 +70,7 @@ struct WireFramesTests {
           send({ type: "stream_event", parent_tool_use_id: null, event: { type: "message_start", message: { id } } });
           let sent = 0, text = "";
           const start = performance.now();
+          writeFileSync(\(String(reflecting: folder.appending(path: "first").path)), String(Date.now()));
           const tick = () => {
             const due = Math.min(count, Math.floor(((performance.now() - start) / 1000) * rate) + 1);
             while (sent < due) { const word = `w${sent} `; text += word; sent += 1; send({ type: "stream_event", parent_tool_use_id: null, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: word } } }); }
@@ -89,7 +92,11 @@ struct WireFramesTests {
         var rate: Int
         var messages: Int
         var seconds: Double
+        /// From the stand-in sending its first delta to the app having it: the engine's part.
         var firstWordMs: Double
+        /// From the app's send to the first delta's, the SDK starting the stand-in included, which
+        /// is two processes started and so whatever the Mac's load makes it.
+        var startMs: Double
         var app: Usage
         var engine: Usage
         var text: String
@@ -99,7 +106,8 @@ struct WireFramesTests {
     /// the main actor with a frame every 16 ms, as the app does, measured over the stream.
     private func stream(rate: Int, seconds: Int) async throws -> Run {
         let count = rate * seconds
-        setenv("ORICODE_CLAUDE", try Self.standIn(rate: rate, count: count), 1)
+        let cli = try Self.standIn(rate: rate, count: count)
+        setenv("ORICODE_CLAUDE", cli, 1)
         let container = try TestStore.memory()
         let project = Project(name: "alpha", path: NSTemporaryDirectory())
         container.mainContext.insert(project)
@@ -118,6 +126,7 @@ struct WireFramesTests {
         let threadId = chat.id.uuidString
         let sentAt = ContinuousClock.now
         var first: ContinuousClock.Instant?
+        var firstAt = Date.distantPast
         var last = sentAt
         var messages = 0
         var appBefore = Usage.ours(), engineBefore = Usage.of(pid)
@@ -133,6 +142,7 @@ struct WireFramesTests {
                 if event.name == "text" {
                     if first == nil {
                         first = .now
+                        firstAt = .now
                         appBefore = .ours()
                         engineBefore = .of(pid)
                     }
@@ -150,19 +160,25 @@ struct WireFramesTests {
         for _ in 0..<3 { clock.tick() }
         await engine.stop()
         let text = conversation.items.compactMap(\.text).last ?? ""
-        return Run(rate: rate, messages: messages, seconds: (first ?? last).duration(to: last) / .seconds(1), firstWordMs: sentAt.duration(to: first ?? last) / .milliseconds(1), app: app, engine: engineUsage, text: text)
+        let stamp = try String(contentsOfFile: (cli as NSString).deletingLastPathComponent + "/first", encoding: .utf8)
+        let sentFirstAt = Date(timeIntervalSince1970: (Double(stamp) ?? 0) / 1000)
+        let firstWordMs = firstAt.timeIntervalSince(sentFirstAt) * 1000
+        let startMs = sentAt.duration(to: first ?? last) / .milliseconds(1) - firstWordMs
+        return Run(rate: rate, messages: messages, seconds: (first ?? last).duration(to: last) / .seconds(1), firstWordMs: firstWordMs, startMs: startMs, app: app, engine: engineUsage, text: text)
     }
 
     @Test func aStreamWakesTheAppAboutOnceAFrameWhateverItsRate() async throws {
-        var lines = ["rate  msgs/s  first word  app cpu  app idle wkups/s  app intr wkups/s  app csw/s  engine cpu"]
+        var lines = ["rate  msgs/s  start  first word  app cpu  app idle wkups/s  app intr wkups/s  app csw/s  engine cpu"]
         for rate in [200, 500, 1000] {
             let run = try await stream(rate: rate, seconds: 2)
             let expected = (0..<(rate * 2)).map { "w\($0) " }.joined()
             #expect(run.text == expected, "every word, in order, at \(rate)/s")
             let perSecond = Double(run.messages) / run.seconds
             #expect(perSecond <= 75, "\(perSecond) messages a second at \(rate) deltas a second")
-            #expect(run.firstWordMs < 1500)
-            lines.append(String(format: "%4.0f  %6.0f  %7.0f ms  %5.0f ms  %16.0f  %16.0f  %9.0f  %7.0f ms", Double(rate), perSecond, run.firstWordMs, run.app.cpuMs,
+            // The first delta goes out the moment it comes (Frames), so it reaches the app within a
+            // frame or two of the stand-in sending it, however long the SDK took to start it.
+            #expect(run.firstWordMs < 100, "the first word took \(run.firstWordMs) ms from the stand-in to the app")
+            lines.append(String(format: "%4.0f  %6.0f  %5.0f  %7.0f ms  %5.0f ms  %16.0f  %16.0f  %9.0f  %7.0f ms", Double(rate), perSecond, run.startMs, run.firstWordMs, run.app.cpuMs,
                                 Double(run.app.idleWakeups) / run.seconds, Double(run.app.interruptWakeups) / run.seconds, Double(run.app.switches) / run.seconds, run.engine.cpuMs))
         }
         print("WIRE FRAMES, \(2) s of stream each:\n" + lines.joined(separator: "\n"))

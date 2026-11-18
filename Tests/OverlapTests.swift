@@ -641,8 +641,12 @@ final class OverlapStage {
                 let shown = clip.map { $0.intersection(frame) } ?? frame
                 if !shown.isNull, shown.width > 0, shown.height > 0 {
                     let line = (text ?? role).split(whereSeparator: \.isNewline).first.map(String.init) ?? role
+                    // A composer is a text area too, and stays the window's own; a reply's text
+                    // area, which can't be typed in, is the transcript's, and scrolls under the
+                    // column's title as the rest of the transcript does.
+                    let typed = role == "AXTextArea" && object.accessibilityIsAttributeSettable(.value)
                     words.append(Word(name: String(line.prefix(48)), role: role, frame: toolbar ? Self.drawn(shown) : shown, over: over,
-                                      transcript: over == nil && scrolled && role != "AXTextArea", scrolls: scrolled, place: place))
+                                      transcript: over == nil && scrolled && !typed, scrolls: scrolled, place: place))
                 }
             }
             for (index, child) in ((ask(object, "accessibilityChildren", .children) as? [Any]) ?? []).enumerated() {
