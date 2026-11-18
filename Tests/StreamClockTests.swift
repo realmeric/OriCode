@@ -326,6 +326,42 @@ struct StreamClockTests {
         #expect(model.behindBurst.isEmpty)
     }
 
+    /// The engine sends a frame's deltas as one message with `parts` saying when each came
+    /// (K-391): the pace reads them as the deltas they were, so a reply coalesced on the wire
+    /// shows frame by frame as one streamed delta by delta.
+    @Test func aCoalescedMessageIsPacedAsItsDeltasWouldBe() {
+        beside.everyOtherFrame = { false }
+        delta("Start.", in: open)
+        delta("Start.", in: beside)
+        tick()
+        let words = (0..<3).map { String(repeating: " word\($0)", count: 15) }
+        // Three deltas 3 ms apart to the open thread, as they would have come one by one.
+        for word in words {
+            time.at += .milliseconds(3)
+            delta(word, in: open)
+        }
+        // The same three to the thread beside as the engine sends them: one message, with the
+        // parts' offsets from the first and their lengths in UTF-16 units.
+        var parts: [JSON] = []
+        for (index, word) in words.enumerated() { parts.append(.array([.number(Double(index * 3)), .number(Double(word.utf16.count))])) }
+        beside.receive(EngineEvent(name: "text", threadId: beside.chat.id.uuidString, body: ["event": "text", "delta": .string(words.joined()), "parts": .array(parts)]))
+        var frames = 0
+        while text(of: open) != "Start." + words.joined(), frames < 60 {
+            frame()
+            frames += 1
+            #expect(text(of: open)?.count == text(of: beside)?.count, "frame \(frames)")
+        }
+        #expect(frames > 1, "the words were spread over frames")
+        #expect(text(of: beside) == "Start." + words.joined())
+    }
+
+    /// A message whose parts don't add up to its text is read as one delta.
+    @Test func partsThatDontFitTheTextAreOneDelta() {
+        #expect(Conversation.pieces(of: "ab cd", parts: [[0, 2], [4, 2]]).map { [$0.count, $0.before] } == [[5, 0]])
+        #expect(Conversation.pieces(of: "ab cd", parts: [[0, 2], [4, 3]]).map { [$0.count, $0.before] } == [[2, 4], [3, 0]])
+        #expect(Conversation.pieces(of: "ab", parts: nil).map { [$0.count, $0.before] } == [[2, 0]])
+    }
+
     /// Out of sight the clock keeps no frames: what's held waits for the hidden beat and is shown
     /// there all at once, with nothing paced and no block counted.
     @Test func outOfSightTheClockKeepsNoFrames() {

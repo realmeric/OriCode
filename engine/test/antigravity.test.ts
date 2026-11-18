@@ -79,11 +79,13 @@ test("a turn: one agy in the folder with stream-json both ways, its thinking, te
   assert.equal(await agy.send({ threadId: "hello", cwd, text: "hello", id: "m1", model: "gemini-3.8-flash-high" }), false);
   delete process.env.CLAUDE_CODE_MESSAGING_TOKEN;
   let done = await until(named("turn.done", "hello"), from);
-  assert.deepEqual(told("hello", from).map((event) => event.event), ["message.taken", "turn.started", "thinking", "text", "text", "turn.done"]);
-  const [, started, thinking, first, second] = told("hello", from);
+  // The two text deltas come in one message when they fall inside one frame (K-391).
+  const said = told("hello", from);
+  assert.deepEqual(said.map((event) => event.event).filter((name, i, all) => !(name === "text" && all[i - 1] === "text")), ["message.taken", "turn.started", "thinking", "text", "turn.done"]);
+  const [, started, thinking] = said;
   assert.equal(started.sessionId, "c-1");
   assert.equal(thinking.delta, "A greeting.");
-  assert.equal(first.delta + second.delta, "Hi there.");
+  assert.equal(said.filter((event) => event.event === "text").map((event) => event.delta).join(""), "Hi there.");
   assert.equal(done.stopReason, "end_turn");
   assert.equal(done.sessionId, "c-1");
   assert.deepEqual(done.usage, { input: 200, output: 10, cacheRead: 800, cacheWrite: 0 });

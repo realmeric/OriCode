@@ -35,7 +35,7 @@ import { listFiles, viewFile, writeProjectFile } from "./files.ts";
 import { run, stopAll } from "./shell.ts";
 import { signingNow, useSshAgent } from "./sshagent.ts";
 import { version } from "./version.ts";
-import { emit, event, log, type Request } from "./wire.ts";
+import { emit, event, flushFrames, log, windowShown, type Request } from "./wire.ts";
 
 // The compile cache is for this engine's own modules; the CLIs and servers it starts don't inherit it.
 delete process.env.NODE_COMPILE_CACHE;
@@ -738,6 +738,7 @@ const methods: Record<string, (params: any) => Promise<unknown>> = {
   /// Which thread is open, whether the window can be seen, and whether macOS says memory is short.
   async window({ threadId, visible, pressed }: { threadId?: string | null; visible: boolean; pressed?: boolean }) {
     shown = { threadId: threadId ?? null, visible, pressed: pressed === true };
+    windowShown(visible);
     letGo();
     return { ok: true };
   },
@@ -814,5 +815,6 @@ async function shutDown(): Promise<void> {
   await Promise.race([settleMerges(), new Promise((done) => setTimeout(done, 10_000))]);
   stopAll();
   for (const found of sessions.values()) found.close();
+  flushFrames();
   process.exit(0);
 }

@@ -207,6 +207,9 @@ actor Engine {
         }
     }
 
+    /// The engine's pid, for a test that measures it.
+    var processIdentifier: Int32? { process?.processIdentifier }
+
     func stop() {
         generation += 1
         failPending()

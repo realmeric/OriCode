@@ -553,8 +553,9 @@ test("Copilot's error as the turn's only text is the turn's error; text that goe
   await session.send({ threadId: "refused", cwd, text: "quote" });
   await until(named("turn.done", "refused"), from);
   const quoted = events.slice(from).filter((event) => event.threadId === "refused");
-  assert.deepEqual(quoted.map((event) => event.event), ["turn.started", "text", "text", "turn.done"]);
-  assert.equal(quoted[1].delta + quoted[2].delta, "Error: is what it printed, and then it stopped.");
+  // Two deltas inside one frame come as one message (K-391), so the text is read joined.
+  assert.deepEqual(quoted.map((event) => event.event).filter((name, i, all) => !(name === "text" && all[i - 1] === "text")), ["turn.started", "text", "turn.done"]);
+  assert.equal(quoted.filter((event) => event.event === "text").map((event) => event.delta).join(""), "Error: is what it printed, and then it stopped.");
   // An agent that doesn't send its errors that way has them shown as it sent them.
   const plain = await standIn("plain");
   sessions.push(plain.session);

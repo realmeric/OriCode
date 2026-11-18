@@ -1062,7 +1062,7 @@ final class Conversation {
         case "text", "thinking":
             let delta = event.body["delta"]?.string ?? ""
             if let open, open.kind == event.name {
-                hold(delta)
+                hold(delta, parts: event.body["parts"])
             } else if everyOtherFrame() || opening?.kind == event.name {
                 // A new row costs its frame 10 ms, so beside the open thread it waits for one with
                 // room, and the deltas after it join it there, paced or not, so the reply stays one row.
@@ -1299,24 +1299,50 @@ final class Conversation {
         flush()
     }
 
-    /// A delta waits for the display's next frame, where every thread's are shown together.
-    private func hold(_ delta: String) {
+    /// A delta waits for the display's next frame, where every thread's are shown together. The
+    /// engine sends a frame's deltas as one message (K-391) with `parts`, `[offsetMs, utf16Length]`
+    /// for each, so the pace is read from when each came, as if they had come one by one.
+    private func hold(_ delta: String, parts: JSON? = nil) {
         let now = now()
+        for piece in Self.pieces(of: delta, parts: parts) {
+            came(piece.count, at: now - .milliseconds(piece.before))
+        }
+        held += delta
+        heldCount += delta.count
+        clock.wait(for: self)
+    }
+
+    /// `count` characters of a reply that came `at`: kept for the frame to show and read for the pace.
+    private func came(_ count: Int, at: ContinuousClock.Instant) {
         // Deltas a few milliseconds apart are one burst; the time from one burst to the next is
         // how soon the next is expected. A pause of a second or more is a pause, not the pace.
-        if lastDelta.map({ $0.duration(to: now) >= Self.together }) ?? true {
-            if let burstAt, burstAt.duration(to: now) < Self.pause {
-                let gap = burstAt.duration(to: now)
+        if lastDelta.map({ $0.duration(to: at) >= Self.together }) ?? true {
+            if let burstAt, burstAt.duration(to: at) < Self.pause {
+                let gap = burstAt.duration(to: at)
                 cadence = cadence.map { $0 * 0.7 + gap * 0.3 } ?? gap
             }
-            burstAt = now
+            burstAt = at
         }
-        lastDelta = now
-        let count = delta.count
-        arrived.append((now, count))
-        held += delta
-        heldCount += count
-        clock.wait(for: self)
+        lastDelta = at
+        arrived.append((at, count))
+    }
+
+    /// The deltas a message holds, each as its characters and how many milliseconds before the
+    /// message's last it came; the whole message as one when it says nothing of its parts.
+    static func pieces(of delta: String, parts: JSON?) -> [(count: Int, before: Int)] {
+        guard let parts = parts?.array, parts.count > 1 else { return [(delta.count, 0)] }
+        var pieces: [(count: Int, before: Int)] = []
+        var start = delta.utf16.startIndex
+        let last = parts.last?.array?.first?.int ?? 0
+        for part in parts {
+            guard let pair = part.array, pair.count == 2, let offset = pair[0].int, let length = pair[1].int,
+                  let end = delta.utf16.index(start, offsetBy: length, limitedBy: delta.utf16.endIndex)
+            else { return [(delta.count, 0)] }
+            pieces.append((delta[start..<end].count, max(0, last - offset)))
+            start = end
+        }
+        guard start == delta.utf16.endIndex else { return [(delta.count, 0)] }
+        return pieces
     }
 
     /// Whether deltas wait for the clock, or the turn's end waits a frame after the last of them.
