@@ -78,6 +78,17 @@ final class PhoneLink {
     @ObservationIgnored private var tearing: Task<Void, Never>?
     /// The look for the phone's answers while something waits on it (see `pace`).
     @ObservationIgnored private var pacing: (every: Duration, task: Task<Void, Never>)?
+    /// What the look's pace is read from: the last write's asks and work, the screen, the window,
+    /// whether the zone's pushes are known to come, and when the phone was last buzzed.
+    @ObservationIgnored private var asking = false
+    @ObservationIgnored private var working = false
+    @ObservationIgnored private var locked = false
+    @ObservationIgnored private var asleep = false
+    @ObservationIgnored private var shown = true
+    @ObservationIgnored private var pushesCome = false
+    @ObservationIgnored var nudgedAt: ContinuousClock.Instant?
+    @ObservationIgnored private var unlockWatch: NSObjectProtocol?
+    @ObservationIgnored private var shownWatch: NSObjectProtocol?
 
     var container: CKContainer { CKContainer(identifier: Container.identifier) }
     var running: Bool { sync != nil }
@@ -116,7 +127,7 @@ final class PhoneLink {
         self.sync = sync
         NSApp.registerForRemoteNotifications()
         let near = NearHost(mac: keys.mac, key: { [weak self] name in self?.keys?.phones.first { $0.id == name }?.pairingKey }) { [weak self] in
-            self?.fetchNow()
+            self?.fetchNow(.near)
         }
         near.start()
         self.near = near
@@ -157,6 +168,12 @@ final class PhoneLink {
         activeWatch = nil
         lockWatch.map(DistributedNotificationCenter.default().removeObserver)
         lockWatch = nil
+        unlockWatch.map(DistributedNotificationCenter.default().removeObserver)
+        unlockWatch = nil
+        shownWatch.map(NotificationCenter.default.removeObserver)
+        shownWatch = nil
+        pushesCome = false
+        nudgedAt = nil
         nudged = []
         passed = []
         pacing?.task.cancel()
@@ -238,56 +255,137 @@ final class PhoneLink {
         }
     }
 
-    /// What the phone wrote since the last read. One at a time; asked again meanwhile, it reads again after.
-    func fetch() async {
+    /// Why the Mac reads: a push, the phone on the same Wi-Fi, the timed look, Meriç back at it,
+    /// a code on screen, or a read asked for while one ran.
+    enum Reading { case pushed, near, polled, back, pairing, again }
+
+    /// What the phone wrote since the last read. One at a time; asked again meanwhile, it reads
+    /// again after. A look or a return that finds a command or a phone's record no push brought
+    /// says the pushes don't come, and the look goes back to its untrusting pace.
+    func fetch(_ reading: Reading = .back) async {
         guard let sync else { return }
-        guard !fetching else { return fetchAgain = true }
+        guard !fetching else {
+            if reading != .polled { fetchAgain = true }
+            return
+        }
         fetching = true
         defer { fetching = false }
         await making?.value
+        var reading = reading
         repeat {
             fetchAgain = false
             do {
                 let changes = try await sync.fetch()
                 guard sync === self.sync else { return }
+                Self.logger.notice("read, \(String(describing: reading), privacy: .public)")
+                let phoneWrote = changes.changed.contains(where: Self.phoneWrote) || changes.deleted.contains { $0.type == RecordType.phone }
+                if phoneWrote, pushesCome, reading == .polled || reading == .back {
+                    Self.logger.notice("the phone wrote and no push said so")
+                    pushesCome = false
+                    repace()
+                }
                 for record in changes.changed { fetched(record) }
                 for (id, type) in changes.deleted { gone(id, type: type) }
             } catch {
                 Self.logger.error("couldn't read: \(error.localizedDescription, privacy: .public)")
             }
+            reading = .again
         } while fetchAgain
         sendNow()
     }
 
-    func fetchNow() {
-        Task { await fetch() }
+    /// What the phone writes and the Mac hasn't answered: a command with no outcome, or a phone's own record.
+    nonisolated static func phoneWrote(_ record: CKRecord) -> Bool {
+        record.recordType == RecordType.phone || record.recordType == RecordType.command && record.data(Field.outcome) == nil
     }
 
-    /// A silent push from the zone's subscription: the phone wrote.
+    func fetchNow(_ reading: Reading = .back) {
+        Task { await fetch(reading) }
+    }
+
+    /// A silent push from the zone's subscription: the phone wrote, and the pushes come.
     func pushed(_ userInfo: [AnyHashable: Any]) {
         guard let keys else { return }
         let ours = ZoneSync.isPush(userInfo, for: keys.zone)
         Self.logger.notice("a push, \(ours ? "the zone's" : "not the zone's", privacy: .public)")
-        if ours { fetchNow() }
+        guard ours else { return }
+        if !pushesCome {
+            pushesCome = true
+            repace()
+        }
+        fetchNow(.pushed)
     }
 
+    /// What the timed look is paced by.
+    struct Poll: Equatable {
+        var asking = false
+        var watched = false
+        var working = false
+        /// The phone was buzzed in the last ten minutes, and may be answered from its notification.
+        var nudged = false
+        var pushesCome = false
+        var locked = false
+        var asleep = false
+        var shown = true
+    }
+
+    static let nudgeWindow: Duration = .seconds(600)
+
     /// A push is how the phone's commands reach the Mac, but CloudKit's silent pushes come late or
-    /// not at all, so while an ask waits on an answer or a phone is watching a thread the Mac also
-    /// looks every five seconds, while a thread works every fifteen, and with a phone paired and
-    /// nothing working every twenty: on Meriç's Mac no push came, and a message from the phone
-    /// waited until something on the Mac started working (2026-10-26). Without a phone paired the
-    /// Mac never looks (rule 6).
+    /// not at all: on Meriç's Mac none came, and a message from the phone waited until something on
+    /// the Mac started working (2026-10-26). So the Mac also looks, as little as that allows. Asleep,
+    /// never. While the phone is in use, an ask waiting, a thread watched or a buzz in the last ten
+    /// minutes, it looks whatever the screen, every five seconds for an ask or a watched thread and
+    /// fifteen after a buzz, or once a minute once a push has come. Otherwise it looks only while
+    /// Meriç is at the window, unlocked and shown, every fifteen seconds while a thread works and
+    /// twenty with nothing working, and not at all once pushes come: the look was waking the Mac
+    /// three times a minute all day (K-384). Every return, a wake, an unlock, the window shown or
+    /// OriCode brought forward, reads at once, so a write a lost push left behind is read the moment
+    /// Meriç is back. Without a phone paired the Mac never looks (rule 6).
+    nonisolated static func pollEvery(_ poll: Poll) -> Duration? {
+        guard !poll.asleep else { return nil }
+        let phoneInUse = poll.asking || poll.watched || poll.nudged
+        if poll.pushesCome { return phoneInUse ? .seconds(60) : nil }
+        if poll.asking || poll.watched { return .seconds(5) }
+        if poll.nudged { return .seconds(15) }
+        guard !poll.locked, poll.shown else { return nil }
+        return poll.working ? .seconds(15) : .seconds(20)
+    }
+
+    private var poll: Poll {
+        Poll(asking: asking, watched: !talk.leases.threads.isEmpty, working: working,
+             nudged: nudgedAt.map { ContinuousClock.now - $0 < Self.nudgeWindow } ?? false,
+             pushesCome: pushesCome, locked: locked, asleep: asleep, shown: shown)
+    }
+
     func pace(asking: Bool, working: Bool) {
-        let every: Duration = asking || !talk.leases.threads.isEmpty ? .seconds(5) : working ? .seconds(15) : .seconds(20)
+        self.asking = asking
+        self.working = working
+        repace()
+    }
+
+    /// The look started, changed or stopped for how things stand now; each look asks again after
+    /// it reads, so a buzz's ten minutes run out by themselves.
+    func repace() {
+        let every = sync == nil ? nil : Self.pollEvery(poll)
         guard every != pacing?.every else { return }
         pacing?.task.cancel()
+        Self.logger.notice("looking \(every.map { "every \($0.components.seconds)s" } ?? "no more", privacy: .public)")
+        guard let every else { return pacing = nil }
         pacing = (every, Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: every)
                 guard !Task.isCancelled else { return }
-                await self?.fetch()
+                await self?.fetch(.polled)
+                self?.repace()
             }
         })
+    }
+
+    /// Back at the Mac: whatever the phone did meanwhile is read now, and the look paced again.
+    private func back() {
+        repace()
+        fetchNow(.back)
     }
 
     private func fetched(_ record: CKRecord) {
@@ -341,7 +439,7 @@ final class PhoneLink {
             while ContinuousClock.now < until {
                 try? await Task.sleep(for: Self.codeLook)
                 guard !Task.isCancelled else { return }
-                await self?.fetch()
+                await self?.fetch(.pairing)
             }
             // Run out, and not replaced by a newer code meanwhile.
             guard !Task.isCancelled else { return }
@@ -439,21 +537,45 @@ final class PhoneLink {
         guard sleepWatch.isEmpty else { return }
         // Back at the Mac: whatever the phone did meanwhile is read now.
         activeWatch = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fetchNow() }
+            MainActor.assumeIsolated { self?.back() }
         }
         lockWatch = DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.screenLocked() }
+            MainActor.assumeIsolated {
+                self?.locked = true
+                self?.repace()
+                self?.screenLocked()
+            }
+        }
+        unlockWatch = DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.locked = false
+                self?.back()
+            }
+        }
+        shownWatch = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) { [weak self] note in
+            guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
+            let visible = window.occlusionState.contains(.visible)
+            MainActor.assumeIsolated {
+                guard let self, visible != self.shown else { return }
+                self.shown = visible
+                if visible { self.back() } else { self.repace() }
+            }
         }
         let center = NSWorkspace.shared.notificationCenter
         sleepWatch = [
             center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.closing(as: .asleep) }
+                MainActor.assumeIsolated {
+                    self?.asleep = true
+                    self?.repace()
+                    self?.closing(as: .asleep)
+                }
             },
             center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    self?.asleep = false
                     self?.publishMac(.awake)
                     self?.sendNow()
-                    self?.fetchNow()
+                    self?.back()
                 }
             },
         ]

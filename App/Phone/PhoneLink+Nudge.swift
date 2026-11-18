@@ -104,6 +104,8 @@ extension PhoneLink {
             guard let record = record(RecordType.nudge, RecordName.nudge(ask.id)), (try? record.seal(info, key: keys.state)) != nil else { continue }
             put(record)
             nudged.insert(ask.id)
+            nudgedAt = .now
+            repace()
         }
         sendNow()
     }
@@ -135,6 +137,8 @@ extension PhoneLink {
                   (try? record.seal(info, key: keys.state)) != nil
             else { continue }
             put(record)
+            nudgedAt = .now
+            repace()
             // Once the phone has had it, it has done its work; the last few are kept.
             endNudges.append(record.recordID)
             while endNudges.count > 5 { delete(endNudges.removeFirst()) }
