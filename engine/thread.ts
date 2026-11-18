@@ -2,25 +2,25 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import {
-  getSessionInfo,
+import type {
+  EffortLevel,
+  FastModeDisabledReason,
+  FastModeState,
+  HookInput,
+  HookJSONOutput,
+  Options,
+  PermissionMode,
+  PermissionResult,
+  Query,
   query,
-  type EffortLevel,
-  type FastModeDisabledReason,
-  type FastModeState,
-  type HookInput,
-  type HookJSONOutput,
-  type Options,
-  type PermissionMode,
-  type PermissionResult,
-  type Query,
-  type SDKMessage,
-  type SDKRateLimitInfo,
-  type SDKUserMessage,
-  type SlashCommand,
+  SDKMessage,
+  SDKRateLimitInfo,
+  SDKUserMessage,
+  SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { within } from "./child.ts";
 import { cleanEnvironment, cliDebugFile } from "./claude.ts";
+import { sdk } from "./sdk.ts";
 import { adaptive, applied, type Applied } from "./models.ts";
 import { stepsEnded, subagentTranscript } from "./follow.ts";
 import { Heads } from "./heads.ts";
@@ -177,7 +177,7 @@ export class Thread implements Session {
   private held = new Set<string>();
   /// An interrupt on its way to the CLI, which may land on the turn after the one it was for.
   private stopping = false;
-  private launch: typeof query;
+  private launch: typeof query | undefined;
   /// The model API the CLI is pointed at, or none for Claude Code as the user signed it in.
   private elsewhere: Elsewhere | undefined;
   /// Settled once that endpoint's environment is read, so a send that arrives meanwhile joins the
@@ -188,8 +188,8 @@ export class Thread implements Session {
   /// Called once a turn has ended and the CLI sits idle.
   onIdle: (() => void) | undefined;
 
-  /// `launch` is the SDK's query; tests hand in one that starts no CLI.
-  constructor(id: string, claude: string, launch: typeof query = query, elsewhere?: Elsewhere) {
+  /// `launch` is the SDK's query, imported at the first turn when none is given; tests hand in one that starts no CLI.
+  constructor(id: string, claude: string, launch?: typeof query, elsewhere?: Elsewhere) {
     this.id = id;
     this.claude = claude;
     this.launch = launch;
@@ -253,6 +253,8 @@ export class Thread implements Session {
           this.starting = undefined;
         }
       }
+      // Imported here, so start() keeps its place in the turn: the SDK is read at a thread's first send.
+      this.launch ??= (await sdk()).query;
       this.close();
       this.start(params, key, env);
     } else {
@@ -520,7 +522,7 @@ export class Thread implements Session {
     this.initialized = Promise.withResolvers<void>();
     const inbox = new Inbox();
     this.inbox = inbox;
-    this.query = this.launch({
+    this.query = this.launch!({
       prompt: inbox,
       options: {
         cwd: params.cwd,
@@ -1283,6 +1285,7 @@ export function errorText(error: string, maker?: string): string {
 /// hand first, then the summary it writes beside the transcript, which until then is the first
 /// prompt and says nothing new.
 export async function sessionTitle(sessionId: string, cwd: string): Promise<string> {
+  const { getSessionInfo } = await sdk();
   const info = await getSessionInfo(sessionId, { dir: cwd }).catch(() => undefined);
   return info?.customTitle?.trim() || (info && info.summary !== info.firstPrompt ? info.summary.trim() : "");
 }

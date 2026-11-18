@@ -50,7 +50,11 @@ struct IconArt: View {
 
 @MainActor
 func render(into folder: URL, molten: Bool) throws {
-let sizes: [(points: Int, scale: Int)] = [(16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), (256, 1), (256, 2), (512, 1), (512, 2)]
+// Seven sizes of the ten the set has slots for: 32pt at 1x, 256pt at 1x and 512pt at 1x draw the
+// 32, 256 and 512 pixels that 16pt, 128pt and 256pt at 2x already hold, and the asset catalog
+// stores each rendition whole, so the app carried every one of them twice (223 KB). A 1x screen
+// scales the next size down; Retina asks for the 2x slots, all of which are here.
+let sizes: [(points: Int, scale: Int)] = [(16, 1), (16, 2), (32, 2), (128, 1), (128, 2), (256, 2), (512, 2)]
 var images: [[String: String]] = []
 
 for (points, scale) in sizes {

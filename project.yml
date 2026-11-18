@@ -124,6 +124,9 @@ targetTemplates:
           DEPLOYMENT_POSTPROCESSING: YES
           STRIP_INSTALLED_PRODUCT: YES
           STRIP_STYLE: all
+          # The app's own code at -Osize: its binary 12,104 KB to 10,604 KB, and the Markdown, code
+          # highlight and layout path it times (K-386) no slower by more than 3%.
+          SWIFT_OPTIMIZATION_LEVEL: -Osize
     preBuildScripts:
       - name: Engine
         script: |

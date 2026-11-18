@@ -15,6 +15,12 @@ app=$1
 sparkle="$app/Contents/Frameworks/Sparkle.framework"
 rm -rf "$sparkle/XPCServices" "$sparkle/Versions/B/XPCServices" "$sparkle"/Versions/B/Resources/{*.nib,*.lproj}(N)
 
+# AppIcon.icns is what the asset catalog compiler writes beside Assets.car for macOS before 26,
+# which OriCode's deployment target is past: NSWorkspace draws the icon from Assets.car, and with
+# the file taken out it drew the same at 32, 128 and 512 px, to within 3 of 255 in a few bytes
+# (K-386). Nothing in the app or its scripts opens the file.
+rm -f "$app/Contents/Resources/AppIcon.icns"
+
 # Highlightr's themes but atom-one-dark, which CodeHighlighter uses, and pojoaque, which
 # Highlightr() loads first and returns nil without.
 highlightr="$app/Contents/Resources/Highlightr_Highlightr.bundle/Contents/Resources"

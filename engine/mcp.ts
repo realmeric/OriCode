@@ -1,6 +1,7 @@
-import { query, type McpServerStatus, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus, query, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { run, within } from "./child.ts";
 import { cleanEnvironment } from "./claude.ts";
+import { sdk } from "./sdk.ts";
 
 /// An MCP server Claude Code loads for a folder, as Settings lists it.
 export type McpServer = {
@@ -22,8 +23,8 @@ const idle: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]: () => ({ n
 /// One asked to be switched is switched first: Claude Code keeps that for the folder itself, in
 /// its own configuration, so the app touches nobody's settings files and every later session
 /// there starts with it. claude.ai's connectors, which run on the account's login, are left out.
-export async function mcpServers(claude: string, cwd: string, toggle?: { name: string; on: boolean }, launch: typeof query = query): Promise<McpServer[]> {
-  const probe = launch({ prompt: idle, options: { cwd, pathToClaudeCodeExecutable: claude, settingSources: ["user", "project", "local"], env: cleanEnvironment() } });
+export async function mcpServers(claude: string, cwd: string, toggle?: { name: string; on: boolean }, launch?: typeof query): Promise<McpServer[]> {
+  const probe = (launch ?? (await sdk()).query)({ prompt: idle, options: { cwd, pathToClaudeCodeExecutable: claude, settingSources: ["user", "project", "local"], env: cleanEnvironment() } });
   try {
     await within(probe.initializationResult(), 30_000, "Claude Code's MCP servers");
     if (toggle) await within(probe.toggleMcpServer(toggle.name, toggle.on), 30_000, "Claude Code's MCP servers");

@@ -1,8 +1,9 @@
 import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { query, type FastModeDisabledReason, type FastModeState, type ModelInfo, type SDKUserMessage, type SlashCommand } from "@anthropic-ai/claude-agent-sdk";
+import type { FastModeDisabledReason, FastModeState, ModelInfo, query, SDKUserMessage, SlashCommand } from "@anthropic-ai/claude-agent-sdk";
 import { agent, binary } from "./agents.ts";
+import { sdk } from "./sdk.ts";
 import { cachedModels, defaultsKey, readCache, writeCache, type Cache } from "./cache.ts";
 import { run, within } from "./child.ts";
 import { readCatalog, readSettings, readSettingsEffort } from "./catalog.ts";
@@ -160,6 +161,7 @@ function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
   let found = commandsByFolder.get(cwd);
   if (!found) {
     found = (async () => {
+      const { query } = await sdk();
       const probe = query({
         prompt: idle,
         options: { cwd, pathToClaudeCodeExecutable: claude, settingSources: ["user", "project", "local"], env: cleanEnvironment() },
@@ -181,6 +183,7 @@ function folderCommands(claude: string, cwd: string): Promise<SlashCommand[]> {
 /// next. With the catalog off the probe lists the same rows every time, and the engine adds the
 /// catalog's names, older models and newer ones itself.
 async function supportedModels(claude: string): Promise<ModelInfo[]> {
+  const { query } = await sdk();
   const env = { ...cleanEnvironment(), CLAUDE_CODE_MODEL_CATALOG: "0" };
   const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env, stderr: (data: string) => process.stderr.write(data), debugFile: cliDebugFile("probe") } });
   try {
@@ -245,6 +248,7 @@ async function refresh(claude: string, tell: (models: ModelsEvent) => void): Pro
 /// the event goes out all the same.
 async function learnDefaults(claude: string, base: Model[], tell: (models: ModelsEvent) => void): Promise<void> {
   const key = defaultsKey(base, await readSettings());
+  const { query } = await sdk();
   const probe = query({
     prompt: idle,
     options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: ["user"], settings: { disableAllHooks: true }, env: cleanEnvironment() },
@@ -278,6 +282,7 @@ async function learnDefaults(claude: string, base: Model[], tell: (models: Model
 /// initialize handshake carries the state, and the reason when it can't be on. `env` is the
 /// thread's, which on a model API's key answers for that key.
 export async function fastCheck(claude: string, model: string | undefined, env = cleanEnvironment()): Promise<{ state: FastModeState; reason: FastModeDisabledReason | null }> {
+  const { query } = await sdk();
   const probe = query({
     prompt: idle,
     options: { cwd: homedir(), model, pathToClaudeCodeExecutable: claude, settingSources: [], env, settings: { fastMode: true } },
@@ -293,6 +298,7 @@ export async function fastCheck(claude: string, model: string | undefined, env =
 /// One small Haiku call, no tools and no settings, so hooks and MCP servers stay out of it. On
 /// another maker's endpoint `env` points Haiku at that maker's small model.
 export async function oneShot(claude: string, cwd: string, prompt: string, env = cleanEnvironment(), model = "haiku"): Promise<string> {
+  const { query } = await sdk();
   const call = query({
     prompt,
     options: { cwd, model, tools: [], maxTurns: 1, settingSources: [], pathToClaudeCodeExecutable: claude, env },
@@ -321,9 +327,9 @@ export async function aside(
   tell: (delta: string) => void,
   stop: AbortSignal,
   env = cleanEnvironment(),
-  launch: typeof query = query,
+  launch?: typeof query,
 ): Promise<string> {
-  const call = launch({
+  const call = (launch ?? (await sdk()).query)({
     prompt: `${asideLead}\n\n${asked.text}`,
     options: {
       cwd: asked.cwd,

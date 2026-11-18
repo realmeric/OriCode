@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { within } from "./child.ts";
 import { cleanEnvironment } from "./claude.ts";
+import { sdk } from "./sdk.ts";
 
 export type UsageWindow = { id: string; label: string; used: number | null; resetsAt: string | null };
 /// A reset the account was granted, which the agent's own CLI can spend on its limits.
@@ -34,6 +35,7 @@ let inFlight: Promise<Usage> | undefined;
 export function usage(claude: string): Promise<Usage> {
   if (cached && Date.now() - cached.at < 60_000 && !passed(cached.usage)) return Promise.resolve(cached.usage);
   inFlight ??= (async () => {
+    const { query } = await sdk();
     const probe = query({ prompt: idle, options: { cwd: homedir(), pathToClaudeCodeExecutable: claude, settingSources: [], env: cleanEnvironment() } });
     try {
       const answer = await within(probe.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }), 20_000, "Claude Code's usage");

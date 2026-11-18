@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { getSessionInfo, getSessionMessages, listSessions } from "@anthropic-ai/claude-agent-sdk";
+import type { getSessionMessages, listSessions } from "@anthropic-ai/claude-agent-sdk";
+import { sdk } from "./sdk.ts";
 import { todosIn, toolView } from "./acp-map.ts";
 import { describe } from "./thread.ts";
 import { log } from "./wire.ts";
@@ -126,9 +127,9 @@ export function claudeResumes(sessionId: string, recorded: string | null | undef
 /// thread, and another app's is that app's to list. The SDK lists a folder's by its real path
 /// alone, so it lists every folder's, and the folder's are taken from them by the path each was
 /// started in.
-export async function claudeSessionsIn(folder: Folder, list: typeof listSessions = listSessions): Promise<Found[]> {
+export async function claudeSessionsIn(folder: Folder, list?: typeof listSessions): Promise<Found[]> {
   const found: Found[] = [];
-  for (const session of await list({ includeProgrammatic: false })) {
+  for (const session of await (list ?? (await sdk()).listSessions)({ includeProgrammatic: false })) {
     if (found.length === perSource) break;
     if (!(await folder.holds(session.cwd))) continue;
     found.push({
@@ -145,7 +146,7 @@ export async function claudeSessionsIn(folder: Folder, list: typeof listSessions
 
 /// Whether Claude Code still keeps a session, which another app's thread may name after it's gone.
 export async function claudeKeeps(sessionId: string): Promise<boolean> {
-  return (await getSessionInfo(sessionId)) !== undefined;
+  return ((await (await sdk()).getSessionInfo(sessionId)) !== undefined);
 }
 
 export const claudeCode: Source = {
@@ -163,8 +164,8 @@ const machine = /^\s*<(command-name|command-message|command-args|local-command-s
 
 /// A Claude Code session's transcript, wherever the CLI keeps it. A subagent's own messages are
 /// left out, as they are from a live thread.
-export async function claudeEvents(sessionId: string, read: typeof getSessionMessages = getSessionMessages): Promise<Transcript> {
-  const messages = await read(sessionId);
+export async function claudeEvents(sessionId: string, read?: typeof getSessionMessages): Promise<Transcript> {
+  const messages = await (read ?? (await sdk()).getSessionMessages)(sessionId);
   const events: Transcript = [];
   for (const message of messages) {
     if (message.parent_tool_use_id) continue;
